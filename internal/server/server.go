@@ -16,7 +16,9 @@ import (
 	"mega-magic/internal/evaluator"
 	"mega-magic/internal/handler"
 	"mega-magic/internal/messaging"
+	"mega-magic/internal/monitoring"
 	"mega-magic/internal/notifier"
+	"mega-magic/internal/probe"
 	"mega-magic/pkg/logger"
 )
 
@@ -34,6 +36,7 @@ type Server struct {
 	authHandler *handler.AuthHandler
 	evaluator   *evaluator.Evaluator
 	voucherHandler *handler.VoucherHandler
+	monitorHandler *handler.MonitorHandler
 }
 
 func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
@@ -100,11 +103,22 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	// Voucher management for vistors (revenue features)
 	voucherHandler := handler.NewVoucherHandler(database.NewVoucherRepository(db))
 
+	// Probe + monitoring: peer reachability classification and state fan-out.
+	probeService := probe.NewProbeService(cacheClient, 5 * time.Minute)
+	monitoringService := monitoring.NewMonitoringService(
+		database.NewPeerHeartbeatRepository(db),
+		database.NewTelemetrySampleRepository(db),
+		cacheClient,
+		messagingClient,
+		probeService,
+	)
+	monitorHandler := handler.NewMonitorHandler(database.NewDeviceRepository(db), monitoringService)
+
 	r := gin.New()
 	r.Use(gin.Recovery())
 	r.Use(loggerMiddleware(sugar))
 
-	setupRoutes(r, authService, authHandler, routerHandler, telemetryHandler, incidentHandler, webhookHandler, voucherHandler, messagingClient, cacheClient, db)
+	setupRoutes(r, authService, authHandler, routerHandler, telemetryHandler, incidentHandler, webhookHandler, voucherHandler, monitorHandler, messagingClient, cacheClient, db)
 
 	// Start the policy evaluator: watches NATS telemetry and auto-opens incidents.
 	evaluator := evaluator.New(
@@ -142,7 +156,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	}, nil
 }
 
-func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.AuthHandler, routerHandler *handler.RouterHandler, telemetryHandler *handler.TelemetryHandler, incidentHandler *handler.IncidentHandler, webhookHandler *handler.WebhookHandler, voucherHandler *handler.VoucherHandler, msg *messaging.Client, cache *cache.Client, db *database.DB) {
+func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.AuthHandler, routerHandler *handler.RouterHandler, telemetryHandler *handler.TelemetryHandler, incidentHandler *handler.IncidentHandler, webhookHandler *handler.WebhookHandler, voucherHandler *handler.VoucherHandler, monitorHandler *handler.MonitorHandler, msg *messaging.Client, cache *cache.Client, db *database.DB) {
 	r.GET("/health", healthCheck)
 	r.GET("/ready", readinessCheck(&Server{cache: cache, db: db, messaging: msg}))
 
@@ -185,6 +199,11 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 				incidents.POST("", incidentHandler.Create)
 				incidents.POST("/:id/acknowledge", incidentHandler.Acknowledge)
 				incidents.POST("/:id/resolve", incidentHandler.Resolve)
+			}
+
+			peers := protected.Group("/peers")
+			{
+				peers.GET("/:peerId/state", monitorHandler.PeerState)
 			}
 
 			policies := protected.Group("/alert-policies")
