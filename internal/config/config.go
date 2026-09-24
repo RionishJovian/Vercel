@@ -19,6 +19,7 @@ type Config struct {
 	Logging    LoggingConfig    `mapstructure:"logging"`
 	Features   FeaturesConfig   `mapstructure:"features"`
 	Monitoring MonitoringConfig `mapstructure:"monitoring"`
+	Recovery   RecoveryConfig   `mapstructure:"recovery"`
 }
 
 type ServerConfig struct {
@@ -122,6 +123,18 @@ type MonitoringConfig struct {
 	AlertWebhookURL      string        `mapstructure:"alert_webhook_url"`
 }
 
+// RecoveryConfig tunes the peer self-healing loop: how stale a handshake must be
+// before a peer is a recovery candidate (TDown), when repeated failures escalate
+// to an incident (TEscalate), and how many attempts run inside a window before
+// backoff suppresses further auto-recovery (MaxAttempts / BackoffWindow).
+type RecoveryConfig struct {
+	Enabled       bool          `mapstructure:"enabled"`
+	TDown         time.Duration `mapstructure:"t_down"`
+	TEscalate     time.Duration `mapstructure:"t_escalate"`
+	MaxAttempts   int           `mapstructure:"max_attempts"`
+	BackoffWindow time.Duration `mapstructure:"backoff_window"`
+}
+
 func Load(path string) (*Config, error) {
 	v := viper.New()
 	v.SetConfigFile(path)
@@ -222,4 +235,10 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("monitoring.sla_check_interval", "60s")
 	v.SetDefault("monitoring.state_sweep_interval", "60s")
 	v.SetDefault("monitoring.alert_webhook_url", "")
+
+	v.SetDefault("recovery.enabled", true)
+	v.SetDefault("recovery.t_down", "180s")
+	v.SetDefault("recovery.t_escalate", "10m")
+	v.SetDefault("recovery.max_attempts", 3)
+	v.SetDefault("recovery.backoff_window", "15m")
 }

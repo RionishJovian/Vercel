@@ -19,6 +19,7 @@ import (
 	"mega-magic/internal/monitoring"
 	"mega-magic/internal/notifier"
 	"mega-magic/internal/probe"
+	"mega-magic/internal/recovery"
 	"mega-magic/pkg/logger"
 )
 
@@ -38,6 +39,7 @@ type Server struct {
 	voucherHandler *handler.VoucherHandler
 	monitorHandler *handler.MonitorHandler
 	sweep       *monitoring.Sweep
+	recovery    *recovery.RecoveryService
 }
 
 func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
@@ -140,6 +142,14 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	sweepWorker.Start()
 	sugar.Infow("State sweep started", "interval", cfg.Monitoring.StateSweepInterval)
 
+	// Start the recovery worker: consumes peer.recover (from the evaluator),
+	// runs the a/b/c self-healing ladder, emits recovery.result / escalate.
+	recoveryService := recovery.New(messagingClient, cacheClient, monitoringService, cfg.Recovery, sugar)
+	if err := recoveryService.Start(); err != nil {
+		return nil, fmt.Errorf("recovery start: %w", err)
+	}
+	sugar.Infow("Recovery worker started", "enabled", cfg.Recovery.Enabled)
+
 	return &Server{
 		cfg:         cfg,
 		log:         log,
@@ -161,6 +171,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		evaluator:   evaluator,
 		voucherHandler: voucherHandler,
 		sweep:       sweepWorker,
+		recovery:    recoveryService,
 	}, nil
 }
 

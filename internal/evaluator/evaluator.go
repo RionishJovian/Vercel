@@ -237,6 +237,19 @@ func (e *Evaluator) raisePeerIncident(businessID string, env *peerStateEnvelope)
 	e.logger.Infof("evaluator: opened %s peer incident %s for peer %s (business %s)",
 		severity, created.ID, env.PeerID, businessID)
 
+	// Kick the self-healing loop: the recovery worker consumes this and runs the
+	// a/b/c recovery ladder (spec 4.2). Fire-and-forget.
+	if e.msg != nil {
+		trig := map[string]string{
+			"business_id": businessID,
+			"peer_id":     env.PeerID,
+			"state":       env.State,
+		}
+		if data, err := json.Marshal(trig); err == nil {
+			_ = e.msg.Publish(businessID, "peer.recover", data)
+		}
+	}
+
 	if e.notifier != nil {
 		e.notifier.IncidentOpened(businessID, created)
 	}
