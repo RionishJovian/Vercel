@@ -17,6 +17,25 @@ func NewProbeService(cacheClient *cache.Client, tDown time.Duration) *ProbeServi
 	return &ProbeService{cache: cacheClient, tDown: tDown}
 }
 
+// classifyFreshness is the pure peer-state decision table, extracted from
+// ClassifyPeerState so it can be tested deterministically (no wall clock).
+// - up:      handshake fresh AND data plane up
+// - stale:   handshake expired BUT data plane still up (edge in reachability)
+// - offline: handshake expired AND data plane down
+// - unknown: any other combination
+func classifyFreshness(fresh, dataPlaneUp bool) string {
+	if fresh && dataPlaneUp {
+		return "up"
+	}
+	if !fresh && dataPlaneUp {
+		return "stale"
+	}
+	if !fresh && !dataPlaneUp {
+		return "offline"
+	}
+	return "unknown"
+}
+
 func (s *ProbeService) ClassifyPeerState(latestHeartbeat *model.PeerHeartbeat, latestSample *model.TelemetrySample) string {
 	if latestHeartbeat == nil && latestSample == nil {
 		return "unknown"
@@ -38,16 +57,7 @@ func (s *ProbeService) ClassifyPeerState(latestHeartbeat *model.PeerHeartbeat, l
 		}
 	}
 
-	if fresh && dataPlaneUp {
-		return "up"
-	}
-	if !fresh && dataPlaneUp {
-		return "stale"
-	}
-	if !fresh && !dataPlaneUp {
-		return "offline"
-	}
-	return "unknown"
+	return classifyFreshness(fresh, dataPlaneUp)
 }
 
 func (s *ProbeService) GetPeerReachability(ctx context.Context, businessID, peerID string, latestHeartbeat *model.PeerHeartbeat, latestSample *model.TelemetrySample) (string, error) {
