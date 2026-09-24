@@ -19,8 +19,15 @@ type Device struct {
 	ManagementIP    *net.IP   `json:"management_ip,omitempty"`
 	IsOnline        bool      `json:"is_online"`
 	LastSeenAt      *time.Time `json:"last_seen_at,omitempty"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
+}
+
+// PeerKey identifies one managed peer/router for a tenant — the unit the
+// state-sweep worker iterates. Lightweight (two columns) vs the full Device.
+type PeerKey struct {
+	BusinessID string `json:"business_id"`
+	DeviceID   string `json:"device_id"`
 }
 
 type Voucher struct {

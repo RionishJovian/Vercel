@@ -37,6 +37,7 @@ type Server struct {
 	evaluator   *evaluator.Evaluator
 	voucherHandler *handler.VoucherHandler
 	monitorHandler *handler.MonitorHandler
+	sweep       *monitoring.Sweep
 }
 
 func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
@@ -133,6 +134,12 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	}
 	sugar.Info("Policy evaluator started")
 
+	// Start the state sweep: periodically re-evaluates every peer's reachability
+	// independently of any request, feeding stale/offline states to the evaluator.
+	sweepWorker := monitoring.NewSweep(database.NewDeviceRepository(db), monitoringService, sugar, cfg.Monitoring.StateSweepInterval)
+	sweepWorker.Start()
+	sugar.Infow("State sweep started", "interval", cfg.Monitoring.StateSweepInterval)
+
 	return &Server{
 		cfg:         cfg,
 		log:         log,
@@ -153,6 +160,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		authHandler: authHandler,
 		evaluator:   evaluator,
 		voucherHandler: voucherHandler,
+		sweep:       sweepWorker,
 	}, nil
 }
 

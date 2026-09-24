@@ -118,6 +118,7 @@ type MonitoringConfig struct {
 	MetricsPort          int           `mapstructure:"metrics_port"`
 	HealthCheckInterval  time.Duration `mapstructure:"health_check_interval"`
 	SLACheckInterval     time.Duration `mapstructure:"sla_check_interval"`
+	StateSweepInterval   time.Duration `mapstructure:"state_sweep_interval"`
 	AlertWebhookURL      string        `mapstructure:"alert_webhook_url"`
 }
 
@@ -219,5 +220,6 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("monitoring.metrics_port", 9091)
 	v.SetDefault("monitoring.health_check_interval", "30s")
 	v.SetDefault("monitoring.sla_check_interval", "60s")
+	v.SetDefault("monitoring.state_sweep_interval", "60s")
 	v.SetDefault("monitoring.alert_webhook_url", "")
 }

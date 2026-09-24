@@ -144,6 +144,31 @@ func (r *DeviceRepository) ListDevicesByBusiness(businessID string) ([]*model.De
 	return devices, nil
 }
 
+// ListAllPeerKeys returns every managed peer across all tenants — the
+// authoritative fleet the state-sweep worker iterates. Lightweight: only
+// business_id + device_id (use ListDevicesByBusiness for full device rows).
+func (r *DeviceRepository) ListAllPeerKeys() ([]*model.PeerKey, error) {
+	rows, err := r.db.Query("SELECT business_id, device_id FROM devices")
+	if err != nil {
+		return nil, fmt.Errorf("list all peer keys: %w", err)
+	}
+	defer rows.Close()
+
+	var keys []*model.PeerKey
+	for rows.Next() {
+		k := &model.PeerKey{}
+		if err := rows.Scan(&k.BusinessID, &k.DeviceID); err != nil {
+			return nil, fmt.Errorf("scan peer key row: %w", err)
+		}
+		keys = append(keys, k)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate peer key rows: %w", err)
+	}
+
+	return keys, nil
+}
+
 // UpdateDevice updates an existing device record
 func (r *DeviceRepository) UpdateDevice(device *model.Device) (*model.Device, error) {
 	query := `
