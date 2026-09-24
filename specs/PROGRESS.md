@@ -18,6 +18,7 @@ This file is the canonical, git-tracked status snapshot. Re-run it after any sig
 | `479b9d8` | **evaluator** — stale/offline → deduped `peer_offline` incident |
 | `48e56f3` | **sweep** — autonomous 60s push loop (no NATS subscription; polls all peer keys) |
 | `e423e04` | **recovery** — a/b/c self-healing ladder + backoff + escalate (subscribes `mm.*.peer.recover`) |
+| `05074ba` | **fleet** — per-tenant fleet aggregate + `GET /api/v1/fleet/health` (read-only, worst-state overall) — **first module with unit tests** |
 
 ---
 
@@ -74,4 +75,6 @@ Rough module health:
 
 ## 7 · Next unit (as of this status)
 
-**`fleet` aggregate + peer-health endpoint** (read-only, reuses probe/monitoring/device_repo, surfaces AC#6 data). Provisioner queued as its own scoped safety-first mini-project.
+**`fleet` peer-health endpoint — DONE (commit `05074ba`).** `GET /api/v1/fleet/health` returns per-tenant peer counts (up/stale/offline/unknown), worst-state overall severity, and per-peer rows. `internal/fleet` is the **first module with real unit tests** (aggregation + severity math, no DB needed). Verified live: owner → 2 peers, unauthenticated → 401.
+
+Provisioner queued as its own scoped safety-first mini-project. After fleet, the natural next domain by dependency order is **fleet dashboard/UI state** (surfaces AC#6 offline state end-to-end) — but that requires a frontend, which is a separate decision to make with the user.
