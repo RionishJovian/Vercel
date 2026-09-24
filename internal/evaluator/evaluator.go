@@ -18,6 +18,7 @@ import (
 )
 
 const telemetrySubject = "telemetry.ingest"
+const monitorStateSubject = "monitor.peer.state"
 
 // Evaluator watches the NATS telemetry stream and auto-opens incidents when a
 // sample breaches a tenant's alert policy threshold. It dedupes per
@@ -40,13 +41,20 @@ func New(
 	return &Evaluator{msg: msg, policyRepo: policyRepo, incidentRepo: incidentRepo, notifier: notifier, logger: logger}
 }
 
-// Start subscribes to the cross-tenant telemetry pattern `mm.*.telemetry.ingest`.
+// Start subscribes to the cross-tenant telemetry pattern `mm.*.telemetry.ingest`
+// and the peer state pattern `mm.*.monitor.peer.state`.
 func (e *Evaluator) Start() error {
 	pattern := fmt.Sprintf("mm.*.%s", telemetrySubject)
 	if err := e.msg.SubscribePattern(pattern, e.handleSample); err != nil {
 		return fmt.Errorf("evaluator subscribe %s: %w", pattern, err)
 	}
 	e.logger.Infof("evaluator: watching %s for every tenant", pattern)
+
+	statePattern := fmt.Sprintf("mm.*.%s", monitorStateSubject)
+	if err := e.msg.SubscribePattern(statePattern, e.handlePeerState); err != nil {
+		return fmt.Errorf("evaluator subscribe %s: %w", statePattern, err)
+	}
+	e.logger.Infof("evaluator: watching %s for every tenant", statePattern)
 	return nil
 }
 
@@ -149,6 +157,85 @@ func (e *Evaluator) raiseIncident(businessID string, p *model.AlertPolicy, s *sa
 	}
 	e.logger.Infof("evaluator: opened %s incident %s for subject %s (business %s)",
 		p.Kind, created.ID, s.SubjectID, businessID)
+
+	if e.notifier != nil {
+		e.notifier.IncidentOpened(businessID, created)
+	}
+	return nil
+}
+
+// peerStateEnvelope is the payload the monitoring service publishes to
+// `mm.<business_id>.monitor.peer.state` after a peer reachability evaluation.
+type peerStateEnvelope struct {
+	BusinessID string   `json:"business_id"`
+	PeerID     string   `json:"peer_id"`
+	State      string   `json:"state"`
+	ObservedAt time.Time `json:"observed_at"`
+}
+
+// handlePeerState escalates a peer that has drifted into `stale` (warning) or
+// `offline` (critical) to an incident. It dedupes per business+peer+kind so the
+// same condition doesn't stack while an incident is already open.
+func (e *Evaluator) handlePeerState(m *nats.Msg) {
+	// Subject shape: mm.<business_id>.monitor.peer.state
+	parts := strings.Split(m.Subject, ".")
+	if len(parts) < 3 {
+		return
+	}
+
+	var env peerStateEnvelope
+	if err := json.Unmarshal(m.Data, &env); err != nil {
+		e.logger.Warnf("evaluator: bad peer-state payload from %s: %v", m.Subject, err)
+		return
+	}
+	if env.PeerID == "" {
+		return
+	}
+
+	if env.State != "stale" && env.State != "offline" {
+		return
+	}
+	if err := e.raisePeerIncident(env.BusinessID, &env); err != nil {
+		e.logger.Warnf("evaluator: raise peer incident (peer=%s state=%s): %v", env.PeerID, env.State, err)
+	}
+}
+
+// raisePeerIncident creates a peer_offline incident unless one is already open
+// for this business+peer+kind.
+func (e *Evaluator) raisePeerIncident(businessID string, env *peerStateEnvelope) error {
+	open, err := e.incidentRepo.HasOpenIncidentBySubject(businessID, env.PeerID, "peer_offline")
+	if err != nil {
+		return err
+	}
+	if open {
+		return nil // already firing, don't stack
+	}
+
+	severity := "warning"
+	detail := fmt.Sprintf("peer reachability state %q drifted past threshold", env.State)
+	if env.State == "offline" {
+		severity = "critical"
+		detail = "peer offline — all in-band recovery exhausted, site/escalation required"
+	}
+
+	now := time.Now().UTC()
+	inc := &model.Incident{
+		ID:         newID(),
+		BusinessID: businessID,
+		DeviceID:   &env.PeerID,
+		Kind:       "peer_offline",
+		Severity:   severity,
+		SubjectID:  env.PeerID,
+		Detail:     &detail,
+		OpenedAt:   now,
+	}
+
+	created, err := e.incidentRepo.Create(inc)
+	if err != nil {
+		return err
+	}
+	e.logger.Infof("evaluator: opened %s peer incident %s for peer %s (business %s)",
+		severity, created.ID, env.PeerID, businessID)
 
 	if e.notifier != nil {
 		e.notifier.IncidentOpened(businessID, created)
