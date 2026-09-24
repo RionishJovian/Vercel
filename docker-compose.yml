@@ -1,0 +1,132 @@
+# Mega Magic Project - Local Development Stack
+# Based on: docs/Development_Implementation_Blueprint 2.md
+
+version: '3.8'
+
+services:
+  # Central SaaS Control API Engine (Go backend)
+  saas-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: mega_magic_backend_dev
+    volumes:
+      - ./cmd:/app/cmd
+      - ./internal:/app/internal
+      - ./pkg:/app/pkg
+      - ./go.mod:/app/go.mod
+      - ./go.sum:/app/go.sum
+    working_dir: /app
+    ports:
+      - "8080:8080"
+      - "9090:9090"  # gRPC if needed
+    environment:
+      - DATABASE_URL=postgres://mega_admin:MegaSecurePass123@saas-db:5432/mega_magic_dev?sslmode=disable
+      - REDIS_URL=redis://saas-cache:6379/0
+      - NATS_URL=nats://mq-broker:4222
+      - LOG_LEVEL=debug
+      - ENVIRONMENT=development
+    depends_on:
+      saas-db:
+        condition: service_healthy
+      saas-cache:
+        condition: service_started
+      mq-broker:
+        condition: service_started
+    command: ["air", "-c", ".air.toml"]  # Hot reload for development
+
+  # Multi-Tenant Data Vault (PostgreSQL 16)
+  saas-db:
+    image: postgres:16-alpine
+    container_name: mega_magic_db_dev
+    ports:
+      - "5433:5432"
+    environment:
+      - POSTGRES_USER=mega_admin
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-MegaSecurePass123}
+      - POSTGRES_DB=mega_magic_dev
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./migrations:/docker-entrypoint-initdb.d/migrations
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mega_admin -d mega_magic_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Real-Time Telemetry & Online Status Cache (Redis 7)
+  saas-cache:
+    image: redis:7-alpine
+    container_name: mega_magic_cache_dev
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Asynchronous Message Bus Broker (NATS 2)
+  mq-broker:
+    image: nats:2-alpine
+    container_name: mega_magic_nats_dev
+    ports:
+      - "4222:4222"    # Client connections
+      - "8222:8222"    # HTTP monitoring
+      - "6222:6222"    # Route connections (for clustering)
+    command: [
+      "-js",                    # Enable JetStream
+      "-m", "8222",             # HTTP monitoring port
+      "--jetstream_max_mem=256",
+      "--jetstream_max_file=512"
+    ]
+    volumes:
+      - nats_data:/data
+    healthcheck:
+      test: ["CMD", "nats", "server", "check"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Magic Hub Edge Transport Bridge (WireGuard Mock)
+  magic-hub-bridge:
+    image: linuxserver/wireguard:latest
+    container_name: mega_magic_wg_bridge_dev
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    ports:
+      - "51820:51820/udp"
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=UTC
+      - SERVERURL=127.0.0.1
+      - PEERS=1
+      - INTERNAL_SUBNET=10.255.0.0/24
+    volumes:
+      - ./magichub/config:/config
+      - ./magichub/modules:/lib/modules
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
+      - net.ipv4.ip_forward=1
+
+  # RouterOS CHR Virtual Machine (for testing)
+  # Note: Run separately via VirtualBox/QEMU, not in Docker
+  # chr-routeros:
+  #   image: mikrotik/chr:latest
+  #   This needs KVM/VirtualBox - see docs/Development_Implementation_Blueprint 2.md
+
+volumes:
+  postgres_data:
+  redis_data:
+  nats_data:
+
+networks:
+  default:
+    name: mega_magic_dev_network
+    driver: bridge

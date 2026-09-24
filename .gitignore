@@ -1,0 +1,36 @@
+# Secrets — never commit
+config.yaml
+.env
+.env.*
+*.key
+*.pem
+secrets/
+
+# Binaries & build artifacts
+bin/
+tmp/
+*.exe
+*.test
+*.out
+*.prof
+mm-*
+/build/
+
+# Dependencies & node
+node_modules/
+.bun/
+bun.lockb
+*.tsbuildinfo
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+*.swp
+
+# Logs
+*.log
+logs/
+
+# Air hot-reload
+.tmp*/

@@ -1,0 +1,1 @@
+REVOKE ALL ON FUNCTION public.enforce_device_quota_trigger() FROM PUBLIC, anon, authenticated;

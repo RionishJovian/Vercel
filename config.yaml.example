@@ -1,0 +1,104 @@
+# Mega Magic Project - Configuration
+# Copy to config.yaml and customize
+
+# Server
+server:
+  host: "0.0.0.0"
+  port: 8080
+  grpc_port: 9090
+  read_timeout: 30s
+  write_timeout: 30s
+  shutdown_timeout: 10s
+
+# Database (PostgreSQL)
+database:
+  host: "localhost"
+  port: 5433
+  user: "mega_admin"
+  password: "CHANGE-ME"
+  name: "mega_magic_dev"
+  sslmode: "disable"
+  max_open_conns: 25
+  max_idle_conns: 5
+  conn_max_lifetime: 300s
+
+# Redis Cache
+redis:
+  host: "localhost"
+  port: 6379
+  password: ""
+  db: 0
+  pool_size: 10
+  min_idle_conns: 2
+  dial_timeout: 5s
+  read_timeout: 3s
+  write_timeout: 3s
+
+# NATS Message Bus
+nats:
+  url: "nats://localhost:4222"
+  jetstream: true
+  max_reconnects: -1
+  reconnect_wait: 2s
+  ping_interval: 20s
+  max_outstanding_pings: 3
+
+# Magic Hub WireGuard
+wireguard:
+  interface: "wg-magichub"
+  listen_port: 13231
+  peer_keepalive: 25s
+  allowed_ips:
+    - "10.255.0.1/32"
+    - "192.168.0.0/16"
+  management_vlan: 99
+  management_subnet: "192.168.99.0/24"
+
+# Telemetry
+telemetry:
+  hardware_interval: 60s       # Hardware snapshot every 60s
+  heartbeat_interval: 25s      # WireGuard keep-alive every 25s
+  retention_days: 30           # Telemetry retention
+  max_batch_size: 100          # Batch insert size
+
+# Quotas (Test Profile Alpha defaults)
+quotas:
+  small_wisp_device_limit: 10
+  enterprise_isp_device_limit: 100
+  global_admin_device_limit: 99999
+  ai_tokens_monthly_small: 50000
+  ai_tokens_monthly_enterprise: 2000000
+  webfig_pass_duration: 3h
+
+# Security
+security:
+  jwt_secret: "CHANGE_ME_IN_PRODUCTION_USE_STRONG_RANDOM_32_BYTES"
+  jwt_expiry: 24h
+  refresh_expiry: 168h  # 7 days
+  bcrypt_cost: 12
+  aes_gcm_key: "CHANGE_ME_32_BYTE_KEY_FOR_ENCRYPTION"
+  tls_cert_path: ""
+  tls_key_path: ""
+
+# Logging
+logging:
+  level: "debug"
+  format: "json"
+  output: "stdout"
+  sampling: true
+
+# Feature Flags
+features:
+  ai_scan_enabled: true
+  voucher_system_enabled: true
+  portal_consent_enabled: true
+  topology_canvas_enabled: true
+  magic_switch_enabled: true
+  webfig_proxy_enabled: true
+
+# Monitoring
+monitoring:
+  metrics_port: 9091
+  health_check_interval: 30s
+  sla_check_interval: 60s
+  alert_webhook_url: ""

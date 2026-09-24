@@ -1,0 +1,48 @@
+# Mega Magic Project - Development Dockerfile
+# Multi-stage: builder -> dev with hot reload
+
+# Build stage
+FROM golang:1.23-alpine AS builder
+
+WORKDIR /app
+
+# Install build dependencies
+RUN apk add --no-cache git make
+
+# Copy go mod files
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy source
+COPY . .
+
+# Build binary
+RUN CGO_ENABLED=0 GOOS=linux go build -o /mega-magic ./cmd/server
+
+# Development stage with hot reload (air)
+FROM golang:1.23-alpine AS dev
+
+WORKDIR /app
+
+# Install air for hot reload (cosmtrek/air works with Go 1.23)
+RUN go install github.com/cosmtrek/air@v1.52.0
+
+# Install additional dev tools
+RUN apk add --no-cache \
+    postgresql-client \
+    redis \
+    curl \
+    make \
+    git
+
+# Copy go mod files for caching
+COPY go.mod go.sum ./
+COPY .air.toml ./
+COPY config.yaml ./
+RUN go mod download
+
+# Expose ports
+EXPOSE 8080 9090 9091
+
+# Default command runs air for hot reload
+CMD ["air", "-c", ".air.toml"]
