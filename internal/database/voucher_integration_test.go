@@ -2,12 +2,12 @@ package database
 
 import (
 	"crypto/rand"
+	"database/sql"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/url"
 	"os"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -99,141 +99,12 @@ func setupHarness(base string) {
 		harnessFatal = fmt.Errorf("read schema: %w", err)
 		return
 	}
-	if err := loadSchema(db, string(sqlBytes)); err != nil {
+	// Strict load: the schema must apply cleanly on a fresh DB (the RLS ordering
+	// fix guarantees the policies no longer need the old role-DDL workaround).
+	if _, err := db.Exec(string(sqlBytes)); err != nil {
 		harnessFatal = fmt.Errorf("load schema into %s: %w", harnessName, err)
 		return
 	}
-}
-
-// loadSchema applies database/init.sql statement-by-statement.
-//
-// init.sql has an ORDERING DEFECT: its `CREATE POLICY ... TO authenticated`
-// statements (≈L288-340) run before `CREATE ROLE authenticated` (L421), so a
-// single-batch load aborts with 42704 (undefined role). We therefore:
-//   - split into statements (dollar-quote/quote/comment aware), and
-//   - skip cluster-global role DDL (CREATE/DROP/ALTER ROLE) so a test never
-//     mutates the shared cluster, and
-//   - tolerate "undefined role" (42704) / "duplicate role" (42710) for the
-//     policy + GRANT statements that need that role.
-//
-// Consequence: RLS policies/grants are not applied in the throwaway DB. That is
-// irrelevant to the money-path SQL, which runs as the table owner (mega_admin
-// bypasses RLS). Any OTHER error is fatal.
-func loadSchema(db *DB, text string) error {
-	for _, stmt := range splitSQL(text) {
-		s := strings.TrimSpace(stmt)
-		if s == "" {
-			continue
-		}
-		up := strings.ToUpper(s)
-		if strings.HasPrefix(up, "CREATE ROLE") || strings.HasPrefix(up, "DROP ROLE") || strings.HasPrefix(up, "ALTER ROLE") {
-			continue
-		}
-		if _, err := db.Exec(s); err != nil {
-			if isUndefinedRoleErr(err) || isDuplicateRoleErr(err) {
-				continue
-			}
-			return fmt.Errorf("statement %.60q: %w", s, err)
-		}
-	}
-	return nil
-}
-
-func isUndefinedRoleErr(err error) bool {
-	var pgErr *pq.Error
-	return errors.As(err, &pgErr) && pgErr.Code == "42704"
-}
-
-func isDuplicateRoleErr(err error) bool {
-	var pgErr *pq.Error
-	return errors.As(err, &pgErr) && pgErr.Code == "42710"
-}
-
-// splitSQL splits SQL text on top-level semicolons, ignoring semicolons inside
-// single-quoted strings, dollar-quoted bodies ($$...$$ / $tag$...$tag$), and
-// comments.
-func splitSQL(text string) []string {
-	var out []string
-	var b strings.Builder
-	i, n := 0, len(text)
-	for i < n {
-		c := text[i]
-		switch {
-		case c == '-' && i+1 < n && text[i+1] == '-':
-			j := strings.IndexByte(text[i:], '\n')
-			if j < 0 {
-				b.WriteString(text[i:])
-				i = n
-				continue
-			}
-			b.WriteString(text[i : i+j+1])
-			i += j + 1
-		case c == '/' && i+1 < n && text[i+1] == '*':
-			j := strings.Index(text[i+2:], "*/")
-			if j < 0 {
-				b.WriteString(text[i:])
-				i = n
-				continue
-			}
-			b.WriteString(text[i : i+2+j+2])
-			i += 2 + j + 2
-		case c == '\'':
-			b.WriteByte(c)
-			i++
-			for i < n {
-				b.WriteByte(text[i])
-				if text[i] == '\'' {
-					if i+1 < n && text[i+1] == '\'' {
-						b.WriteByte(text[i+1])
-						i += 2
-						continue
-					}
-					i++
-					break
-				}
-				i++
-			}
-		case c == '$':
-			if tag, ok := dollarTag(text[i:]); ok {
-				end := strings.Index(text[i+len(tag):], tag)
-				if end < 0 {
-					b.WriteString(text[i:])
-					i = n
-					continue
-				}
-				b.WriteString(text[i : i+len(tag)+end+len(tag)])
-				i += len(tag) + end + len(tag)
-				continue
-			}
-			b.WriteByte(c)
-			i++
-		case c == ';':
-			out = append(out, b.String())
-			b.Reset()
-			i++
-		default:
-			b.WriteByte(c)
-			i++
-		}
-	}
-	if strings.TrimSpace(b.String()) != "" {
-		out = append(out, b.String())
-	}
-	return out
-}
-
-func dollarTag(s string) (string, bool) {
-	if len(s) >= 2 && s[1] == '$' {
-		return "$$", true
-	}
-	j := 1
-	for j < len(s) && (s[j] == '_' || (s[j] >= 'a' && s[j] <= 'z') || (s[j] >= 'A' && s[j] <= 'Z') || (s[j] >= '0' && s[j] <= '9')) {
-		j++
-	}
-	if j > 1 && j < len(s) && s[j] == '$' {
-		return s[:j+1], true
-	}
-	return "", false
 }
 
 func teardownHarness() {
@@ -635,4 +506,117 @@ func mustGetVoucher(t *testing.T, db *DB, businessID, code string) *model.Vouche
 func isUniqueViolationErr(err error) bool {
 	var pgErr *pq.Error
 	return errors.As(err, &pgErr) && pgErr.Code == "23505"
+}
+
+// --- RLS isolation proof ----------------------------------------------------
+
+// tenantTx opens a transaction acting as the NON-owner `authenticated` role with
+// the tenant set, so RLS policies actually apply.
+func tenantTx(t *testing.T, db *DB, businessID string) *sql.Tx {
+	t.Helper()
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	if _, err := tx.Exec(`SET LOCAL ROLE authenticated`); err != nil {
+		t.Fatalf("set role authenticated: %v", err)
+	}
+	if _, err := tx.Exec(`SELECT set_config('app.current_business_id', $1, true)`, businessID); err != nil {
+		t.Fatalf("set tenant context: %v", err)
+	}
+	return tx
+}
+
+// TestDB_RLS_schemaApplied proves the fixed init.sql actually applies RLS: the
+// role exists, RLS is enabled, and all 10 policies are present.
+func TestDB_RLS_schemaApplied(t *testing.T) {
+	db := requireHarness(t)
+
+	var policies int
+	if err := db.QueryRow(`SELECT count(*) FROM pg_policies WHERE schemaname = 'public'`).Scan(&policies); err != nil {
+		t.Fatalf("count policies: %v", err)
+	}
+	if policies < 10 {
+		t.Fatalf("pg_policies = %d, want >= 10 (RLS block did not apply)", policies)
+	}
+
+	var roleExists bool
+	if err := db.QueryRow(`SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated')`).Scan(&roleExists); err != nil {
+		t.Fatalf("check role: %v", err)
+	}
+	if !roleExists {
+		t.Fatal("role 'authenticated' must exist after init.sql")
+	}
+
+	var rlsOn bool
+	if err := db.QueryRow(`SELECT relrowsecurity FROM pg_class WHERE relname = 'vouchers'`).Scan(&rlsOn); err != nil {
+		t.Fatalf("check rowsecurity: %v", err)
+	}
+	if !rlsOn {
+		t.Fatal("RLS must be enabled on vouchers")
+	}
+}
+
+// TestDB_RLS_tenantIsolation is the payoff: on a REAL DB with the fixed schema,
+// a non-owner tenant session sees ONLY its own business's rows; a cross-business
+// row is invisible.
+func TestDB_RLS_tenantIsolation(t *testing.T) {
+	db := requireHarness(t)
+	repo := NewVoucherRepository(db)
+	bizA := insertBusiness(t, db)
+	bizB := insertBusiness(t, db)
+	vA := newActiveVoucher(t, repo, bizA, 60, nil)
+	vB := newActiveVoucher(t, repo, bizB, 60, nil)
+
+	// The owner connection bypasses RLS (current app posture) — both rows visible.
+	var ownerSeen int
+	if err := db.QueryRow(`SELECT count(*) FROM vouchers WHERE business_id IN ($1, $2)`, bizA, bizB).Scan(&ownerSeen); err != nil {
+		t.Fatalf("owner count: %v", err)
+	}
+	if ownerSeen != 2 {
+		t.Fatalf("owner should see both tenants' rows (RLS bypass), got %d", ownerSeen)
+	}
+
+	// Tenant A: filtered query returns only A's row; B's row is invisible.
+	tx := tenantTx(t, db, bizA)
+	var aSeen int
+	if err := tx.QueryRow(`SELECT count(*) FROM vouchers WHERE business_id IN ($1, $2)`, bizA, bizB).Scan(&aSeen); err != nil {
+		t.Fatalf("tenant A count: %v", err)
+	}
+	if aSeen != 1 {
+		t.Fatalf("tenant A should see exactly its own row, got %d", aSeen)
+	}
+	var aCross int
+	if err := tx.QueryRow(`SELECT count(*) FROM vouchers WHERE code = $1`, vB.Code).Scan(&aCross); err != nil {
+		t.Fatalf("tenant A cross count: %v", err)
+	}
+	if aCross != 0 {
+		t.Fatal("tenant A can see tenant B's voucher — isolation broken")
+	}
+	var aOwn int
+	if err := tx.QueryRow(`SELECT count(*) FROM vouchers WHERE code = $1`, vA.Code).Scan(&aOwn); err != nil {
+		t.Fatalf("tenant A own count: %v", err)
+	}
+	if aOwn != 1 {
+		t.Fatal("tenant A cannot see its own voucher")
+	}
+	_ = tx.Rollback()
+
+	// Tenant B: symmetric.
+	tx2 := tenantTx(t, db, bizB)
+	var bSeen int
+	if err := tx2.QueryRow(`SELECT count(*) FROM vouchers WHERE business_id IN ($1, $2)`, bizA, bizB).Scan(&bSeen); err != nil {
+		t.Fatalf("tenant B count: %v", err)
+	}
+	if bSeen != 1 {
+		t.Fatalf("tenant B should see exactly its own row, got %d", bSeen)
+	}
+	var bCross int
+	if err := tx2.QueryRow(`SELECT count(*) FROM vouchers WHERE code = $1`, vA.Code).Scan(&bCross); err != nil {
+		t.Fatalf("tenant B cross count: %v", err)
+	}
+	if bCross != 0 {
+		t.Fatal("tenant B can see tenant A's voucher — isolation broken")
+	}
+	_ = tx2.Rollback()
 }

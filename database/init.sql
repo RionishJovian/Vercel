@@ -281,6 +281,16 @@ ALTER TABLE alert_policies ENABLE ROW LEVEL SECURITY;
 ALTER TABLE incidents ENABLE ROW LEVEL SECURITY;
 ALTER TABLE audit_events ENABLE ROW LEVEL SECURITY;
 
+-- The `authenticated` role must exist BEFORE the policies that reference it.
+-- `CREATE ROLE` has no native IF NOT EXISTS, so guard it with a DO block.
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+        CREATE ROLE authenticated;
+    END IF;
+END;
+$$;
+
 -- RLS Policies: Users can only access their business_id data
 -- These assume a session variable `current_business_id` is set by middleware
 
@@ -417,7 +427,6 @@ VALUES
     ('00000000-0000-0000-0000-000000000003', 'Metro Carrier Guest Wi-Fi', 'Welcome to Metro Carrier Networks.', 'Enterprise guest access terms apply.', '#0066cc', '#00ffff')
 ON CONFLICT (business_id) DO NOTHING;
 
--- Grant permissions
-CREATE ROLE authenticated;
+-- Grant permissions (the authenticated role is created above, before the policies)
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO authenticated;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO authenticated;
