@@ -25,6 +25,8 @@ This file is the canonical, git-tracked status snapshot. Re-run it after any sig
 | `f311cf7` | **wire consumer into server.New** — flag-gated OFF, fail-loud |
 | `2089af2` | **RFC 6238 TOTP verifier** — all 6 official vectors pass |
 | `b001c65` | **Telegram 2FA approve bridge** — human in the loop, default-deny |
+| `ee3eb47` | **docs(progress)** — provisioner arc complete, CCR2004 stood down |
+| `28ef5ee` | **voucher** — real redemption: code gen, atomic single-tx claim + Sovereign grant, race-guard |
 
 ---
 
@@ -81,6 +83,10 @@ Rough module health:
 
 ## 7 · Next unit (dependency-based recommendation)
 
-**Provisioner arc is DONE** (`6afd3fa`→`b001c65`): the self-healing loop is now complete end-to-end — probe → monitor → evaluate → sweep → recover → **human-approve → OTP high-risk → real RouterOS apply → verify → 60s rollback** — all flag-gated OFF and lab-proven.
+**Voucher redemption is DONE** (`28ef5ee`): real code gen, atomic single-transaction claim + Sovereign tier grant, fail-closed unknown plan, race-guard (409), and a fixed base schema bug. Full gate green (9 modules). **This is the first revenue path in the rewrite** — a paid voucher now actually grants the Sovereign pass.
 
-Remaining product modules by dependency order: `billing`/`voucher` (monetization — the Sovereign revenue path, depends on quota + device linking), then `portal` (customer self-service), then `topology` (network map), then `ai`/`vps`. **The next integration to build is `voucher` — it's the front door to revenue (The Sovereign tier), depends only on existing quota/device repos, and unlocks end-to-end monetization testing before the larger portal.**
+Remaining product modules by dependency order: **`portal`** (customer self-service redemption — the next integration; depends on the now-live voucher + device repos), then `topology` (network map), then `ai`/`vps`. **Billing/quota enforcement** (sweep checking WebfigPassExpiresAt against actual usage) is queued as follow-up to voucher.
+
+Two queued follow-ups (require an explicit decision when surfaced):
+1. **DB integration harness** — the `…TXN` SQL paths (claim race → 409, rollback) are untested; a DB fixture/iut harness would finally exercise them.
+2. **Portal redemption — who redeems?** (clawclaw finding #7): anonymous customer at the captive portal vs staff/owner redemption. Determines authz on the redeem endpoint. Decided when portal lands, not before.
