@@ -47,6 +47,6 @@ peer.recover event → DryRun → emit proposed changes
 ```
 
 ## Questions for Sign-Off
-1. Approve dry-run + manual-gate pattern?
-2. Is 60s rollback window appropriate?
-3. Should the Telegram approval require 2FA (e.g., OTP from Lead's phone)?
+1. Approve dry-run + manual-gate pattern? **— APPROVED**
+2. Is 60s rollback window appropriate? **— APPROVED: 60s auto-rollback on verification failure**
+3. Should the Telegram approval require 2FA (e.g., OTP from Lead's phone)? **— APPROVED: OTP required ONLY for high-risk actions (`rotate_listen_port`, `escalate`); low/medium (`reprobe`, `reset_peer`, `ensure_keepalive`) approve on manual gate alone**
