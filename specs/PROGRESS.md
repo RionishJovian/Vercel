@@ -29,6 +29,8 @@ This file is the canonical, git-tracked status snapshot. Re-run it after any sig
 | `28ef5ee` | **voucher** — real redemption: code gen, atomic single-tx claim + Sovereign grant, race-guard |
 | `e5604c5` | **test(db)** — voucher money-path DB integration harness (throwaway DB, env-gated) — first real-SQL proof |
 | `aa9ee10` | **fix(db)** — `authenticated` role before RLS policies → 10 isolation policies now apply; DB-proven tenant isolation |
+| `6927817` | **feat(db)** — `WithTenant` tx-scoped RLS helper + real-DB mechanism proofs (isolates-on / unscoped-off boundary) |
+| `5839ba8` | **fix(provisioner)** — enforce RLS on money path: voucher/quota via WithTenant; cross-business read/update BLOCKED, DB-proven + missing quota policy |
 
 ---
 
@@ -91,5 +93,5 @@ Remaining product modules by dependency order: **`portal`** (customer self-servi
 
 Two queued follow-ups (require an explicit decision):
 1. **DB integration harness — DONE (`e5604c5`)** — money-path SQL (claim race → 409, rollback) now DB-proven, then reused to prove RLS isolation (`aa9ee10`).
-2. **RLS enforcement — MECHANISM-FIRST (`aa9ee10`+`6927817`)** — the 10 tenant policies now load + are DB-proven, and a tx-scoped `WithTenant` helper is built + **real-DB-proven** to isolate (own-business only, fail-closed). A key proof: an *unscoped* bare-pool read does **not** isolate — so the **67 bare `db.Exec/QueryRow` repo calls MUST become tx-scoped**. Remaining rollout (a big, separate slice): convert money-path repos first, then the rest, then flip the app to a restricted `authenticated` connection behind per-request middleware. This is the enforcement step — schema + mechanism are done; the call-site conversion is the remaining work.
+2. **RLS enforcement — money path DONE (`aa9ee10`→`5839ba8`)** — 10+1 policies load + DB-proven; `WithTenant` helper proven; **money path (voucher create/list/get/update/delete + redeem) now runs tx-scoped: cross-business read/update BLOCKED on a real DB** (incl. the missing `business_metered_quotas` policy — enforcement would otherwise deny-all the Sovereign grant). **Remaining:** the 9 other tenant repos (incident, audit, telemetry, heartbeat, webhook, alert_policy, portal_*, nats, user) + their handlers still bare — the rest of the 67-call rollout — then the restricted `authenticated` app connection + per-request middleware. Device_repo TXN drift (orphaned, from this slice) held out — belongs in the device-rollout slice.
 3. **Portal redemption — who redeems?** (clawclaw finding #7, decided: **anonymous customer at the captive portal**, MAC-anchored). Determines authz on the redeem endpoint. Ready to scope portal with this baked in.
