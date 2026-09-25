@@ -7,9 +7,13 @@ testing the real Provisioner Applier WITHOUT touching production.
 - Container: chr-lab (image mikrotik/chr:stable), on mega_magic_dev_network
 - RouterOS 7.24.4; SSH enabled, admin/empty, mgmt IP 172.20.0.250
 - SSH banner: SSH-2.0-ROSSSH  →  reachable from host at 172.20.0.250:22
-- WG tunnel iface: wg-magichub (listen-port 13231), IP 10.77.0.4/30,
-  peer allowed-address 10.77.0.4/32, keepalive 25s
+- WG tunnel iface: wg-magichub (listen-port 13231), IP 10.99.0.3/30
+  (SANDBOX range, isolated from prod 10.77.0.0/24 — never 10.77.0.x),
+  peer allowed-address 10.99.0.1/32 (sandbox hub), keepalive 25s
 - Lab keypair: priv /tmp/lab_priv, pub /tmp/lab_pub
+- Live CCR2004 reference (Kyaw Caffee, PROD — never point the lab at it):
+  iface=magic-cloud, pubkey=<<in private KB, not here>>, endpoint hub.mikromagic.com:51820,
+  allowed-address 10.77.0.1/32, device IP 10.77.0.4/24 gw 10.77.0.0, keepalive 25s.
 - Snapshot: /system backup saved as lab-initial; export file lab-default.rsc
 
 ## Pitfalls (learned)
