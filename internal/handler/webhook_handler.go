@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"database/sql"
 	"net/http"
 	"strconv"
 
@@ -12,11 +13,18 @@ import (
 )
 
 type WebhookHandler struct {
+	db          *database.DB
 	webhookRepo *database.WebhookRepository
 }
 
-func NewWebhookHandler(repo *database.WebhookRepository) *WebhookHandler {
-	return &WebhookHandler{webhookRepo: repo}
+func NewWebhookHandler(db *database.DB, repo *database.WebhookRepository) *WebhookHandler {
+	return &WebhookHandler{db: db, webhookRepo: repo}
+}
+
+// withTenantTx runs fn in an RLS-bound tenant transaction (pinned conn when
+// database.rls_enforce is on, owner tx otherwise).
+func (h *WebhookHandler) withTenantTx(c *gin.Context, businessID string, fn func(tx *sql.Tx) error) error {
+	return runInTenant(c, h.db, businessID, fn)
 }
 
 type CreateWebhookRequest struct {
@@ -40,7 +48,16 @@ func (h *WebhookHandler) List(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
-	endpoints, err := h.webhookRepo.ListEndpoints(businessID)
+
+	var endpoints []*model.WebhookEndpoint
+	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
+		eps, err := h.webhookRepo.ListEndpointsTXN(tx, businessID)
+		if err != nil {
+			return err
+		}
+		endpoints = eps
+		return nil
+	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -85,7 +102,16 @@ func (h *WebhookHandler) Create(c *gin.Context) {
 		EventTypes: eventTypes,
 		Enabled:    enabled,
 	}
-	created, err := h.webhookRepo.CreateEndpoint(ep)
+
+	var created *model.WebhookEndpoint
+	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
+		e, err := h.webhookRepo.CreateEndpointTXN(tx, ep)
+		if err != nil {
+			return err
+		}
+		created = e
+		return nil
+	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -109,50 +135,53 @@ func (h *WebhookHandler) Update(c *gin.Context) {
 	}
 
 	id := c.Param("id")
-	existing, err := h.webhookRepo.GetEndpointByID(id)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
-		return
-	}
-	if existing == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "webhook not found"})
-		return
-	}
-	if existing.BusinessID != businessID {
-		c.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
-		return
-	}
-
-	var req UpdateWebhookRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	if req.URL != nil {
-		existing.URL = *req.URL
-	}
-	if req.Secret != nil {
-		existing.Secret = req.Secret
-	}
-	if req.EventTypes != nil {
-		for _, ev := range req.EventTypes {
-			if !validWebhookEvents[ev] {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid event_type: " + ev})
-				return
-			}
+	var updated *model.WebhookEndpoint
+	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
+		existing, err := h.webhookRepo.GetEndpointByIDTXN(tx, id)
+		if err != nil {
+			return &httpError{status: http.StatusInternalServerError, msg: "database error"}
 		}
-		existing.EventTypes = req.EventTypes
-	}
-	if req.Enabled != nil {
-		existing.Enabled = *req.Enabled
-	}
+		if existing == nil {
+			return &httpError{status: http.StatusNotFound, msg: "webhook not found"}
+		}
+		if existing.BusinessID != businessID {
+			return &httpError{status: http.StatusForbidden, msg: "access denied"}
+		}
 
-	if err := h.webhookRepo.UpdateEndpoint(existing); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		var req UpdateWebhookRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			return &httpError{status: http.StatusBadRequest, msg: err.Error()}
+		}
+
+		if req.URL != nil {
+			existing.URL = *req.URL
+		}
+		if req.Secret != nil {
+			existing.Secret = req.Secret
+		}
+		if req.EventTypes != nil {
+			for _, ev := range req.EventTypes {
+				if !validWebhookEvents[ev] {
+					return &httpError{status: http.StatusBadRequest, msg: "invalid event_type: " + ev}
+				}
+			}
+			existing.EventTypes = req.EventTypes
+		}
+		if req.Enabled != nil {
+			existing.Enabled = *req.Enabled
+		}
+
+		if err := h.webhookRepo.UpdateEndpointTXN(tx, existing); err != nil {
+			return &httpError{status: http.StatusInternalServerError, msg: err.Error()}
+		}
+		updated = existing
+		return nil
+	})
+	if err != nil {
+		respondErr(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"webhook": existing})
+	c.JSON(http.StatusOK, gin.H{"webhook": updated})
 }
 
 // Delete removes a webhook endpoint.
@@ -164,22 +193,24 @@ func (h *WebhookHandler) Delete(c *gin.Context) {
 	}
 
 	id := c.Param("id")
-	existing, err := h.webhookRepo.GetEndpointByID(id)
+	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
+		existing, err := h.webhookRepo.GetEndpointByIDTXN(tx, id)
+		if err != nil {
+			return &httpError{status: http.StatusInternalServerError, msg: "database error"}
+		}
+		if existing == nil {
+			return &httpError{status: http.StatusNotFound, msg: "webhook not found"}
+		}
+		if existing.BusinessID != businessID {
+			return &httpError{status: http.StatusForbidden, msg: "access denied"}
+		}
+		if err := h.webhookRepo.DeleteEndpointTXN(tx, id); err != nil {
+			return &httpError{status: http.StatusInternalServerError, msg: err.Error()}
+		}
+		return nil
+	})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
-		return
-	}
-	if existing == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "webhook not found"})
-		return
-	}
-	if existing.BusinessID != businessID {
-		c.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
-		return
-	}
-
-	if err := h.webhookRepo.DeleteEndpoint(id); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondErr(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "deleted", "webhook_id": id})
@@ -199,7 +230,16 @@ func (h *WebhookHandler) ListDeliveries(c *gin.Context) {
 			limit = n
 		}
 	}
-	deliveries, err := h.webhookRepo.ListDeliveries(businessID, limit)
+
+	var deliveries []*model.WebhookDelivery
+	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
+		ds, err := h.webhookRepo.ListDeliveriesTXN(tx, businessID, limit)
+		if err != nil {
+			return err
+		}
+		deliveries = ds
+		return nil
+	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

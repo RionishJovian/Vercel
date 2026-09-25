@@ -86,7 +86,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	userRepo := database.NewUserRepository(db)
 
 	// Notifier fans incident events out to tenant webhook endpoints.
-	notifierr := notifier.New(database.NewWebhookRepository(db), sugar)
+	notifierr := notifier.New(database.NewWebhookRepository(db), db, sugar)
 
 	authHandler := handler.NewAuthHandler(userRepo, authService, db)
 	routerHandler := handler.NewRouterHandler(
@@ -107,7 +107,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		database.NewDeviceRepository(db),
 		notifierr,
 	)
-	webhookHandler := handler.NewWebhookHandler(database.NewWebhookRepository(db))
+	webhookHandler := handler.NewWebhookHandler(db, database.NewWebhookRepository(db))
 	// Voucher management for vistors (revenue features)
 	voucherHandler := handler.NewVoucherHandler(db, database.NewVoucherRepository(db), database.NewBusinessMeteredQuotaRepository(db))
 	portalHandler := handler.NewPortalHandler(

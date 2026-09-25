@@ -1395,3 +1395,142 @@ func TestDB_PortalDeviceAnchored_isolation(t *testing.T) {
 		return nil
 	})
 }
+
+// TestDB_WebhookSchema_applied proves the Part-1 drift fix: a fresh init.sql load
+// now declares the webhook tables + indexes, and the Part-2 RLS policies apply.
+func TestDB_WebhookSchema_applied(t *testing.T) {
+	db := requireHarness(t)
+
+	for _, tbl := range []string{"webhook_endpoints", "webhook_deliveries"} {
+		var exists bool
+		if err := db.QueryRow(
+			`SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name=$1)`, tbl,
+		).Scan(&exists); err != nil {
+			t.Fatalf("table check %s: %v", tbl, err)
+		}
+		if !exists {
+			t.Fatalf("init.sql must declare %s", tbl)
+		}
+	}
+
+	var idx int
+	if err := db.QueryRow(`SELECT count(*) FROM pg_indexes WHERE schemaname='public' AND indexname LIKE 'idx_webhook_%'`).Scan(&idx); err != nil {
+		t.Fatalf("index check: %v", err)
+	}
+	if idx < 4 {
+		t.Fatalf("webhook indexes = %d, want >= 4", idx)
+	}
+
+	var pol int
+	if err := db.QueryRow(`SELECT count(*) FROM pg_policies WHERE schemaname='public' AND tablename LIKE 'webhook_%'`).Scan(&pol); err != nil {
+		t.Fatalf("policy check: %v", err)
+	}
+	if pol < 2 {
+		t.Fatalf("webhook RLS policies = %d, want >= 2", pol)
+	}
+
+	for _, tbl := range []string{"webhook_endpoints", "webhook_deliveries"} {
+		var rls bool
+		if err := db.QueryRow(`SELECT relrowsecurity FROM pg_class WHERE relname=$1`, tbl).Scan(&rls); err != nil {
+			t.Fatalf("rowsecurity check %s: %v", tbl, err)
+		}
+		if !rls {
+			t.Fatalf("RLS must be enabled on %s", tbl)
+		}
+	}
+}
+
+// TestDB_Webhook_isolation proves the owner CRUD + notifier worker paths isolate:
+// own-business endpoint/delivery work, cross-business is invisible, and the
+// worker (WithTenant-wrapped) path still succeeds.
+func TestDB_Webhook_isolation(t *testing.T) {
+	db := requireHarness(t)
+	repo := NewWebhookRepository(db)
+	bizA := insertBusiness(t, db)
+	bizB := insertBusiness(t, db)
+
+	mkEndpoint := func(biz, url string) *model.WebhookEndpoint {
+		var e *model.WebhookEndpoint
+		inTenant(t, db, biz, func(tx *sql.Tx) error {
+			var err error
+			e, err = repo.CreateEndpointTXN(tx, &model.WebhookEndpoint{
+				BusinessID: biz, URL: url, EventTypes: []string{"incident.opened"}, Enabled: true,
+			})
+			return err
+		})
+		return e
+	}
+	epA := mkEndpoint(bizA, "https://a.example.test/hook")
+	epB := mkEndpoint(bizB, "https://b.example.test/hook")
+	if epA == nil || epB == nil {
+		t.Fatal("endpoint create via TXN failed")
+	}
+
+	// list-own only.
+	inTenant(t, db, bizA, func(tx *sql.Tx) error {
+		es, err := repo.ListEndpointsTXN(tx, bizA)
+		if err != nil {
+			return err
+		}
+		if len(es) != 1 || es[0].ID != epA.ID {
+			t.Fatalf("tenant A endpoints = %+v, want only its own", es)
+		}
+		return nil
+	})
+
+	// cross-business endpoint read BLOCKED.
+	inTenant(t, db, bizB, func(tx *sql.Tx) error {
+		e, err := repo.GetEndpointByIDTXN(tx, epA.ID)
+		if err != nil {
+			return err
+		}
+		if e != nil {
+			t.Fatal("cross-business webhook endpoint visible to tenant B")
+		}
+		return nil
+	})
+
+	// WORKER PROOF: a delivery write through WithTenant(tx, businessID) — the
+	// notifier's path — succeeds and is tenant-scoped.
+	var delID string
+	inTenant(t, db, bizA, func(tx *sql.Tx) error {
+		d, err := repo.CreateDeliveryTXN(tx, &model.WebhookDelivery{
+			WebhookID: &epA.ID, BusinessID: bizA, EventType: "incident.opened",
+			Payload: []byte(`{"event":"incident.opened"}`), Status: "pending",
+		})
+		if err != nil {
+			return err
+		}
+		delID = d.ID
+		return nil
+	})
+	if delID == "" {
+		t.Fatal("worker-path delivery create failed under WithTenant")
+	}
+	msg := ""
+	inTenant(t, db, bizA, func(tx *sql.Tx) error {
+		return repo.MarkDeliveryResultTXN(tx, delID, "delivered", 200, &msg)
+	})
+
+	// A's delivery is invisible to B.
+	inTenant(t, db, bizB, func(tx *sql.Tx) error {
+		ds, err := repo.ListDeliveriesTXN(tx, bizB, 20)
+		if err != nil {
+			return err
+		}
+		if len(ds) != 0 {
+			t.Fatalf("tenant B sees %d deliveries, want 0 (cross-business invisible)", len(ds))
+		}
+		return nil
+	})
+	inTenant(t, db, bizA, func(tx *sql.Tx) error {
+		ds, err := repo.ListDeliveriesTXN(tx, bizA, 20)
+		if err != nil {
+			return err
+		}
+		if len(ds) != 1 || ds[0].Status != "delivered" {
+			t.Fatalf("tenant A deliveries = %+v, want 1 delivered", ds)
+		}
+		return nil
+	})
+}

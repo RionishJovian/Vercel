@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -24,20 +25,83 @@ const (
 )
 
 // Notifier fans incident events out to the tenant's webhook endpoints.
-// It is synchronous for now (evaluator's caller is a NATS handler, so a
-// brief delay is acceptable); a queued worker can replace it later.
+//
+// It holds the DB handle so every webhook-repo call can run inside a
+// tenant-bound transaction (WithTenant). Without that, enabling RLS would
+// deny-all the worker's reads/writes and outbound webhooks would silently stop.
 type Notifier struct {
 	webhookRepo *database.WebhookRepository
+	db          *database.DB
 	client      *http.Client
 	logger      *zap.SugaredLogger
 }
 
-func New(repo *database.WebhookRepository, logger *zap.SugaredLogger) *Notifier {
+func New(repo *database.WebhookRepository, db *database.DB, logger *zap.SugaredLogger) *Notifier {
 	return &Notifier{
 		webhookRepo: repo,
+		db:          db,
 		client:      &http.Client{Timeout: 10 * time.Second},
 		logger:      logger,
 	}
+}
+
+// withTenant runs fn in a transaction RLS-bound to businessID. When no DB handle
+// is configured (legacy construction), it falls back to the caller's bare path
+// so behaviour is unchanged.
+func (n *Notifier) withTenant(businessID string, fn func(tx *sql.Tx) error) error {
+	if n.db == nil {
+		return nil // caller handles the bare fallback
+	}
+	tx, err := n.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := database.WithTenant(tx, businessID, func() error { return fn(tx) }); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (n *Notifier) listEnabledForEvent(businessID, eventType string) ([]*model.WebhookEndpoint, error) {
+	if n.db == nil {
+		return n.webhookRepo.ListEnabledForEvent(businessID, eventType)
+	}
+	var out []*model.WebhookEndpoint
+	err := n.withTenant(businessID, func(tx *sql.Tx) error {
+		eps, e := n.webhookRepo.ListEnabledForEventTXN(tx, businessID, eventType)
+		if e != nil {
+			return e
+		}
+		out = eps
+		return nil
+	})
+	return out, err
+}
+
+func (n *Notifier) createDelivery(d *model.WebhookDelivery, businessID string) (*model.WebhookDelivery, error) {
+	if n.db == nil {
+		return n.webhookRepo.CreateDelivery(d)
+	}
+	var out *model.WebhookDelivery
+	err := n.withTenant(businessID, func(tx *sql.Tx) error {
+		dd, e := n.webhookRepo.CreateDeliveryTXN(tx, d)
+		if e != nil {
+			return e
+		}
+		out = dd
+		return nil
+	})
+	return out, err
+}
+
+func (n *Notifier) markDeliveryResult(businessID, id, status string, statusCode int, errMsg *string) error {
+	if n.db == nil {
+		return n.webhookRepo.MarkDeliveryResult(id, status, statusCode, errMsg)
+	}
+	return n.withTenant(businessID, func(tx *sql.Tx) error {
+		return n.webhookRepo.MarkDeliveryResultTXN(tx, id, status, statusCode, errMsg)
+	})
 }
 
 // IncidentOpened delivers an incident.opened event to every subscribed endpoint.
@@ -60,20 +124,21 @@ func (n *Notifier) IncidentOpened(businessID string, inc *model.Incident) {
 // IncidentResolved delivers an incident.resolved event.
 func (n *Notifier) IncidentResolved(businessID string, inc *model.Incident) {
 	payload, _ := json.Marshal(map[string]any{
-		"event":         "incident.resolved",
-		"id":            inc.ID,
-		"business_id":   businessID,
-		"kind":          inc.Kind,
-		"subject_id":    inc.SubjectID,
-		"resolved_at":   inc.ResolvedAt,
-		"timestamp":     time.Now().UTC(),
+		"event":       "incident.resolved",
+		"id":          inc.ID,
+		"business_id": businessID,
+		"kind":        inc.Kind,
+		"subject_id":  inc.SubjectID,
+		"resolved_at": inc.ResolvedAt,
+		"timestamp":   time.Now().UTC(),
 	})
 	n.dispatch(businessID, "incident.resolved", payload)
 }
 
 // dispatch finds subscribed endpoints, records a delivery row, and POSTs.
+// Its repo calls are tenant-bound (the worker has no owner session context).
 func (n *Notifier) dispatch(businessID, eventType string, payload []byte) {
-	endpoints, err := n.webhookRepo.ListEnabledForEvent(businessID, eventType)
+	endpoints, err := n.listEnabledForEvent(businessID, eventType)
 	if err != nil {
 		n.logger.Warnf("notifier: list endpoints for %s: %v", businessID, err)
 		return
@@ -90,18 +155,19 @@ func (n *Notifier) dispatch(businessID, eventType string, payload []byte) {
 			Payload:    payload,
 			Status:     "pending",
 		}
-		created, err := n.webhookRepo.CreateDelivery(delivery)
+		created, err := n.createDelivery(delivery, businessID)
 		if err != nil {
 			n.logger.Warnf("notifier: record delivery for %s: %v", ep.ID, err)
 			continue
 		}
 
 		// Async per endpoint: slow targets must not block other webhooks.
-		go n.attempt(ep, created, payload)
+		// businessID is carried in so the async write is tenant-bound too.
+		go n.attempt(ep, created, payload, businessID)
 	}
 }
 
-func (n *Notifier) attempt(ep *model.WebhookEndpoint, delivery *model.WebhookDelivery, payload []byte) {
+func (n *Notifier) attempt(ep *model.WebhookEndpoint, delivery *model.WebhookDelivery, payload []byte, businessID string) {
 	lastErr := ""
 	statusCode := 0
 
@@ -135,7 +201,7 @@ func (n *Notifier) attempt(ep *model.WebhookEndpoint, delivery *model.WebhookDel
 
 		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 			msg := ""
-			if err := n.webhookRepo.MarkDeliveryResult(delivery.ID, "delivered", resp.StatusCode, &msg); err != nil {
+			if err := n.markDeliveryResult(businessID, delivery.ID, "delivered", resp.StatusCode, &msg); err != nil {
 				n.logger.Warnf("notifier: mark delivered %s: %v", delivery.ID, err)
 			}
 			n.logger.Infof("notifier: delivered %s to %s (%d)", delivery.EventType, ep.URL, resp.StatusCode)
@@ -149,7 +215,7 @@ func (n *Notifier) attempt(ep *model.WebhookEndpoint, delivery *model.WebhookDel
 	if msg == "" {
 		msg = fmt.Sprintf("http %d", statusCode)
 	}
-	if err := n.webhookRepo.MarkDeliveryResult(delivery.ID, "failed", statusCode, &msg); err != nil {
+	if err := n.markDeliveryResult(businessID, delivery.ID, "failed", statusCode, &msg); err != nil {
 		n.logger.Warnf("notifier: mark failed %s: %v", delivery.ID, err)
 	}
 	n.logger.Warnf("notifier: delivery %s to %s failed after %d attempts (last: %s)",
