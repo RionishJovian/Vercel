@@ -1,6 +1,6 @@
 # Mega Magic — Progress Status
 
-**Updated:** 2026-09-24 · **Repo:** `mega-magic-project` (V-language VSL, ~6,300 LOC) · **Tree:** clean, vet+build green
+**Updated:** 2026-09-25 · **Repo:** `mega-magic-project` (V-language VSL, ~11,600 LOC) · **Tree:** clean, vet+build green
 
 This file is the canonical, git-tracked status snapshot. Re-run it after any significant milestone. It survives context compaction — treat it as source of truth for "where the project stands."
 
@@ -19,6 +19,12 @@ This file is the canonical, git-tracked status snapshot. Re-run it after any sig
 | `48e56f3` | **sweep** — autonomous 60s push loop (no NATS subscription; polls all peer keys) |
 | `e423e04` | **recovery** — a/b/c self-healing ladder + backoff + escalate (subscribes `mm.*.peer.recover`) |
 | `05074ba` | **fleet** — per-tenant fleet aggregate + `GET /api/v1/fleet/health` (read-only, worst-state overall) — **first module with unit tests** |
+| `6afd3fa`→`7ba635b` | **provisioner** — dry-run → artifact fix → **gated apply path** (approve-gate, verify-before-apply, 60s OTP rollback) |
+| `9660801` | **CHR lab target** — containerized-RouterOS throwaway box (sandbox 10.99.0.x) |
+| `524f170` | **real Applier + Prober** — SSH/RouterOS transport, prod-guard fail-closed, lab-proven end-to-end |
+| `f311cf7` | **wire consumer into server.New** — flag-gated OFF, fail-loud |
+| `2089af2` | **RFC 6238 TOTP verifier** — all 6 official vectors pass |
+| `b001c65` | **Telegram 2FA approve bridge** — human in the loop, default-deny |
 
 ---
 
@@ -48,10 +54,10 @@ All six units verified against the **running binary** with real NATS events (off
 
 ## 4 · NOT BUILT / CAVEATS
 
-- **9 of 22 modules empty stubs:** `ai`, `billing`, `fleet`, `portal`, `provisioner`, `router`, `topology`, `voucher`, `vps` (note: `voucher`/`router` *handler+repo* exist; the *module dirs* are empty)
-- **Zero tests** — `go test` → `[no test files]` in every module. Most urgent risk as surface grows.
-- **No provisioning/remote-exec** — `provisioner` empty; **nothing consumes `peer.recover.cmd`** (recovery worker publishes hub intents into a void; can't yet actually fix a router)
-- **No hub transport** — no SSH/wg/exec plumbing anywhere in the codebase
+- **Remaining empty module stubs:** `ai`, `billing`, `portal`, `topology`, `vps` (note: `voucher`/`router` *handler+repo* exist; the *module dirs* are empty)
+- **Tests now exist** — `probe`, `fleet`, `recovery`, and the provisioner stack (`routeros` transport, `otp`, `telegram` bridge) all carry unit tests; the whole-suite `go test ./...` is green. Growing coverage as each new module lands.
+- **Live-write trigger deliberately cold:** the real RouterOS Applier only runs when `provisioner.applier.enabled=true` (default **false**). No prod host/keys/endpoint in the repo. Operator must set `otp_secret` + inject a real Telegram messenger before any live use. Human approve-gate + OTP high-risk gate + 60s auto-rollback are in the path.
+- **Recovery apparatus for the CCR2004 is stood down** (2026-09-25): device offline ~52h+; hub-side retries won't change customer-side reality. Not treated as an active alarm; re-check only if the customer re-engages.
 
 ---
 
@@ -68,13 +74,13 @@ Rough module health:
 
 ## 6 · Lead flags (audit, not actions)
 
-1. **Zero-test gap** — live-only verification won't scale once billing/portal/AI land. Recommended: stand up `go test` harness for pure functions (classifier, recovery backoff) with the next real unit (fleet).
-2. **Provisioner = functional bottleneck + highest risk** — it's what makes self-healing actually *fix* a router, but touching the live production CCR2004 needs a safety-first design (dry-run → manual approve-gate → verify-before-apply) before any code.
+1. **Live-write trigger held cold (by design).** The provisioner is lab-proven but the flag defaults OFF. Before ever wiring a real router: inject a real Telegram messenger, set an operator `otp_secret`, and run one deliberate live smoke against an approved target. Capability is complete; usage is a separate, explicit, Lead-gated decision.
+2. **Remaining feature surface** is the separate product modules (`ai`, `billing`, `portal`, `topology`, `vps`) — see dependency order in §7.
 
 ---
 
-## 7 · Next unit (as of this status)
+## 7 · Next unit (dependency-based recommendation)
 
-**`fleet` peer-health endpoint — DONE (commit `05074ba`).** `GET /api/v1/fleet/health` returns per-tenant peer counts (up/stale/offline/unknown), worst-state overall severity, and per-peer rows. `internal/fleet` is the **first module with real unit tests** (aggregation + severity math, no DB needed). Verified live: owner → 2 peers, unauthenticated → 401.
+**Provisioner arc is DONE** (`6afd3fa`→`b001c65`): the self-healing loop is now complete end-to-end — probe → monitor → evaluate → sweep → recover → **human-approve → OTP high-risk → real RouterOS apply → verify → 60s rollback** — all flag-gated OFF and lab-proven.
 
-Provisioner queued as its own scoped safety-first mini-project. After fleet, the natural next domain by dependency order is **fleet dashboard/UI state** (surfaces AC#6 offline state end-to-end) — but that requires a frontend, which is a separate decision to make with the user.
+Remaining product modules by dependency order: `billing`/`voucher` (monetization — the Sovereign revenue path, depends on quota + device linking), then `portal` (customer self-service), then `topology` (network map), then `ai`/`vps`. **The next integration to build is `voucher` — it's the front door to revenue (The Sovereign tier), depends only on existing quota/device repos, and unlocks end-to-end monetization testing before the larger portal.**
