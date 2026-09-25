@@ -101,6 +101,15 @@ func (r *BusinessMeteredQuotaRepository) ExtendWebfigPassTXN(tx *sql.Tx, busines
 	return err
 }
 
+// UpdateAITokenBalanceTXN is the transaction-scoped variant of
+// UpdateAITokenBalance.
+func (r *BusinessMeteredQuotaRepository) UpdateAITokenBalanceTXN(tx *sql.Tx, businessID string, balance int) error {
+	_, err := tx.Exec(
+		`UPDATE business_metered_quotas SET ai_token_balance = $1, updated_at = $2 WHERE business_id = $3`,
+		balance, time.Now().UTC(), businessID)
+	return err
+}
+
 func (r *BusinessMeteredQuotaRepository) UpdateAITokenBalance(businessID string, balance int) error {
 	_, err := r.db.Exec(
 		`UPDATE business_metered_quotas SET ai_token_balance = $1, updated_at = $2 WHERE business_id = $3`,

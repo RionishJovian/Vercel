@@ -747,3 +747,160 @@ func TestDB_WithTenant_unscopedIsOff_boundary(t *testing.T) {
 		t.Fatalf("unscoped pool query saw %d rows, want 2 (no tenant scoping) — boundary", poolSeen)
 	}
 }
+
+// inTenant runs fn inside a committed tenant-scoped transaction (WithTenant).
+func inTenant(t *testing.T, db *DB, businessID string, fn func(tx *sql.Tx) error) {
+	t.Helper()
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	defer tx.Rollback()
+	if err := WithTenant(tx, businessID, func() error { return fn(tx) }); err != nil {
+		t.Fatalf("tenant tx: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+}
+
+// TestDB_TXN_moneyPathIsolation proves the CONVERTED money-path repo calls (the
+// TXN variants the handler now uses under WithTenant) isolate: own-business
+// succeeds, cross-business is blocked, and the write path fails closed.
+func TestDB_TXN_moneyPathIsolation(t *testing.T) {
+	db := requireHarness(t)
+	repo := NewVoucherRepository(db)
+	bizA := insertBusiness(t, db)
+	bizB := insertBusiness(t, db)
+	now := time.Now().UTC()
+	mins := 60
+
+	newV := func(biz string) *model.Voucher {
+		code, _ := voucher.GenerateCode(rand.Reader, voucher.DefaultCodeLength)
+		return &model.Voucher{BusinessID: biz, PlanKey: "sovereign", PlanLabel: "Sovereign",
+			Code: code, DurationMinutes: &mins, Status: voucher.StatusActive}
+	}
+
+	// create-own (through TXN + WithTenant).
+	var vA, vB *model.Voucher
+	inTenant(t, db, bizA, func(tx *sql.Tx) error {
+		v, err := repo.CreateVoucherTXN(tx, newV(bizA))
+		vA = v
+		return err
+	})
+	inTenant(t, db, bizB, func(tx *sql.Tx) error {
+		v, err := repo.CreateVoucherTXN(tx, newV(bizB))
+		vB = v
+		return err
+	})
+	if vA == nil || vB == nil {
+		t.Fatal("create via TXN failed")
+	}
+
+	// list-own: each tenant sees ONLY its own voucher.
+	inTenant(t, db, bizA, func(tx *sql.Tx) error {
+		vs, err := repo.ListVouchersByBusinessTXN(tx, bizA)
+		if err != nil {
+			return err
+		}
+		if len(vs) != 1 || vs[0].Code != vA.Code {
+			t.Fatalf("tenant A list = %+v, want only its own voucher", vs)
+		}
+		return nil
+	})
+	inTenant(t, db, bizB, func(tx *sql.Tx) error {
+		vs, err := repo.ListVouchersByBusinessTXN(tx, bizB)
+		if err != nil {
+			return err
+		}
+		if len(vs) != 1 || vs[0].Code != vB.Code {
+			t.Fatalf("tenant B list = %+v, want only its own voucher", vs)
+		}
+		return nil
+	})
+
+	// cross-business read blocked: B cannot fetch A's code.
+	inTenant(t, db, bizB, func(tx *sql.Tx) error {
+		got, err := repo.GetVoucherByCodeTXN(tx, bizB, vA.Code)
+		if err != nil {
+			return err
+		}
+		if got != nil {
+			t.Fatal("cross-business voucher visible to tenant B")
+		}
+		return nil
+	})
+
+	// cross-business update blocked; own update succeeds.
+	inTenant(t, db, bizB, func(tx *sql.Tx) error {
+		upd, err := repo.UpdateVoucherStatusByBusinessTXN(tx, bizB, vA.ID, voucher.StatusUsed, nil)
+		if err != nil {
+			return err
+		}
+		if upd != nil {
+			t.Fatal("cross-business update mutated tenant A's row")
+		}
+		return nil
+	})
+	inTenant(t, db, bizA, func(tx *sql.Tx) error {
+		upd, err := repo.UpdateVoucherStatusByBusinessTXN(tx, bizA, vA.ID, voucher.StatusUsed, nil)
+		if err != nil {
+			return err
+		}
+		if upd == nil || upd.Status != voucher.StatusUsed {
+			t.Fatalf("own update failed: %+v", upd)
+		}
+		return nil
+	})
+
+	// delete only own-business.
+	inTenant(t, db, bizB, func(tx *sql.Tx) error {
+		ok, err := repo.DeleteVoucherIfUnusedTXN(tx, bizB, vA.ID)
+		if err != nil {
+			return err
+		}
+		if ok {
+			t.Fatal("cross-business delete succeeded")
+		}
+		return nil
+	})
+	inTenant(t, db, bizA, func(tx *sql.Tx) error {
+		ok, err := repo.DeleteVoucherIfUnusedTXN(tx, bizA, vB.ID)
+		if err != nil {
+			return err
+		}
+		if ok {
+			t.Fatal("tenant A deleted tenant B's voucher")
+		}
+		return nil
+	})
+
+	// fail-closed write: an invalid tenant id is refused before fn runs.
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	ran := false
+	werr := WithTenant(tx, "not-a-uuid", func() error { ran = true; return nil })
+	_ = tx.Rollback()
+	if werr == nil || ran {
+		t.Fatal("invalid tenant must fail closed without running fn")
+	}
+
+	// quota TXN under tenant context: own-business pass write succeeds.
+	qrepo := NewBusinessMeteredQuotaRepository(db)
+	exp := now.Add(time.Hour)
+	inTenant(t, db, bizA, func(tx *sql.Tx) error {
+		return qrepo.UpsertTXN(tx, &model.BusinessMeteredQuota{BusinessID: bizA, WebfigPassExpiresAt: &exp})
+	})
+	inTenant(t, db, bizA, func(tx *sql.Tx) error {
+		q, err := qrepo.GetByBusinessTXN(tx, bizA)
+		if err != nil {
+			return err
+		}
+		if q == nil || q.WebfigPassExpiresAt == nil {
+			t.Fatal("quota pass not written under tenant context")
+		}
+		return nil
+	})
+}

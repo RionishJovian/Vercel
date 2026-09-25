@@ -300,6 +300,14 @@ CREATE POLICY businesses_tenant_isolation ON businesses
     USING (business_id = current_setting('app.current_business_id')::uuid)
     WITH CHECK (business_id = current_setting('app.current_business_id')::uuid);
 
+-- Metered quotas: tenant-scoped. REQUIRED for the money path: the table had RLS
+-- enabled but NO policy, which deny-alls writes for the `authenticated` role and
+-- would break voucher redemption's entitlement grant.
+CREATE POLICY business_metered_quotas_tenant_isolation ON business_metered_quotas
+    FOR ALL TO authenticated
+    USING (business_id = current_setting('app.current_business_id')::uuid)
+    WITH CHECK (business_id = current_setting('app.current_business_id')::uuid);
+
 -- Users: Users can only see users in their business
 CREATE POLICY users_tenant_isolation ON users
     FOR ALL TO authenticated

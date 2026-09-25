@@ -34,6 +34,40 @@ func NewVoucherHandler(db *database.DB, voucherRepo *database.VoucherRepository,
 	return &VoucherHandler{db: db, voucherRepo: voucherRepo, quotaRepo: quotaRepo}
 }
 
+// Sentinel errors mapped to HTTP status codes by the converted handlers, so the
+// transaction wrapper can distinguish them from real failures.
+var (
+	errVoucherNotFound     = errors.New("voucher not found")
+	errVoucherNotDeletable = errors.New("redeemed vouchers cannot be deleted")
+)
+
+// httpError lets a value returned from inside a tenant transaction carry an exact
+// HTTP status + message, so converting a handler to the tx path does not change
+// its API responses.
+type httpError struct {
+	status int
+	msg    string
+}
+
+func (e *httpError) Error() string { return e.msg }
+
+// withTenantTx runs fn inside a transaction with the tenant RLS context set via
+// database.WithTenant (SET LOCAL ROLE authenticated + app.current_business_id),
+// committing on success and rolling back on any error. Every money-path query
+// runs through here so it is reliably tenant-scoped.
+func (h *VoucherHandler) withTenantTx(businessID string, fn func(tx *sql.Tx) error) error {
+	tx, err := h.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if err := database.WithTenant(tx, businessID, func() error { return fn(tx) }); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 // CreateVoucher generates new voucher codes for a business.
 func (h *VoucherHandler) CreateVoucher(c *gin.Context) {
 	var req struct {
@@ -73,14 +107,20 @@ func (h *VoucherHandler) CreateVoucher(c *gin.Context) {
 	expiresAt := voucher.ComputeExpiry(now, req.DurationMinutes)
 
 	vouchers := make([]*model.Voucher, 0, count)
-	for i := 0; i < count; i++ {
-		created, err := h.createOneVoucher(businessID, req.PlanKey, req.PlanLabel, req.PriceMMK,
-			req.DurationMinutes, req.DeviceMAC, req.DeviceID, req.Status, expiresAt, now)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create voucher: " + err.Error()})
-			return
+	err := h.withTenantTx(businessID, func(tx *sql.Tx) error {
+		for i := 0; i < count; i++ {
+			created, err := h.createOneVoucher(tx, businessID, req.PlanKey, req.PlanLabel, req.PriceMMK,
+				req.DurationMinutes, req.DeviceMAC, req.DeviceID, req.Status, expiresAt, now)
+			if err != nil {
+				return err
+			}
+			vouchers = append(vouchers, created)
 		}
-		vouchers = append(vouchers, created)
+		return nil
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create voucher: " + err.Error()})
+		return
 	}
 
 	c.JSON(http.StatusCreated, gin.H{"vouchers": vouchers})
@@ -88,7 +128,7 @@ func (h *VoucherHandler) CreateVoucher(c *gin.Context) {
 
 // createOneVoucher generates a unique code and inserts the voucher, retrying on
 // a unique-constraint collision (codes are business-scoped-unique).
-func (h *VoucherHandler) createOneVoucher(businessID, planKey, planLabel string, priceMMK int,
+func (h *VoucherHandler) createOneVoucher(tx *sql.Tx, businessID, planKey, planLabel string, priceMMK int,
 	durationMinutes *int, deviceMAC, deviceID *string, status string, expiresAt *time.Time, now time.Time,
 ) (*model.Voucher, error) {
 	var lastErr error
@@ -111,7 +151,7 @@ func (h *VoucherHandler) createOneVoucher(businessID, planKey, planLabel string,
 			FirstSeenAt: nil,
 			ExpiresAt:   expiresAt,
 		}
-		created, err := h.voucherRepo.CreateVoucher(v)
+		created, err := h.voucherRepo.CreateVoucherTXN(tx, v)
 		if err == nil {
 			return created, nil
 		}
@@ -141,17 +181,25 @@ func (h *VoucherHandler) GetVoucherByCode(c *gin.Context) {
 	}
 
 	code := c.Param("code")
-	voucher, err := h.voucherRepo.GetVoucherByCode(businessID, code)
+	var found *model.Voucher
+	err := h.withTenantTx(businessID, func(tx *sql.Tx) error {
+		v, err := h.voucherRepo.GetVoucherByCodeTXN(tx, businessID, code)
+		if err != nil {
+			return err
+		}
+		found = v
+		return nil
+	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	if voucher == nil {
+	if found == nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "voucher not found"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"voucher": voucher})
+	c.JSON(http.StatusOK, gin.H{"voucher": found})
 }
 
 // ListVouchers lists all vouchers for the business.
@@ -162,7 +210,15 @@ func (h *VoucherHandler) ListVouchers(c *gin.Context) {
 		return
 	}
 
-	vouchers, err := h.voucherRepo.ListVouchersByBusiness(businessID)
+	var vouchers []*model.Voucher
+	err := h.withTenantTx(businessID, func(tx *sql.Tx) error {
+		vs, err := h.voucherRepo.ListVouchersByBusinessTXN(tx, businessID)
+		if err != nil {
+			return err
+		}
+		vouchers = vs
+		return nil
+	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -189,29 +245,39 @@ func (h *VoucherHandler) UpdateVoucherStatus(c *gin.Context) {
 		return
 	}
 
-	// Ownership check: never allow a cross-tenant edit by id.
-	voucher, err := h.voucherRepo.GetVoucherByID(id)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	if voucher == nil || voucher.BusinessID != businessID {
-		c.JSON(http.StatusNotFound, gin.H{"error": "voucher not found"})
-		return
-	}
+	var updated *model.Voucher
+	err := h.withTenantTx(businessID, func(tx *sql.Tx) error {
+		// Ownership check inside the tenant scope: never allow a cross-tenant
+		// edit by id.
+		existing, err := h.voucherRepo.GetVoucherByIDTXN(tx, id)
+		if err != nil {
+			return err
+		}
+		if existing == nil || existing.BusinessID != businessID {
+			return errVoucherNotFound
+		}
 
-	status := req.Status
-	if status == "" {
-		status = voucher.Status
-	}
+		status := req.Status
+		if status == "" {
+			status = existing.Status
+		}
 
-	updated, err := h.voucherRepo.UpdateVoucherStatusByBusiness(businessID, id, status, req.FirstSeenAt)
+		upd, err := h.voucherRepo.UpdateVoucherStatusByBusinessTXN(tx, businessID, id, status, req.FirstSeenAt)
+		if err != nil {
+			return err
+		}
+		if upd == nil {
+			return errVoucherNotFound
+		}
+		updated = upd
+		return nil
+	})
 	if err != nil {
+		if errors.Is(err, errVoucherNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "voucher not found"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	if updated == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "voucher not found"})
 		return
 	}
 
@@ -227,23 +293,33 @@ func (h *VoucherHandler) DeleteVoucher(c *gin.Context) {
 	}
 
 	id := c.Param("id")
-	deleted, err := h.voucherRepo.DeleteVoucherIfUnused(businessID, id)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	if !deleted {
+	err := h.withTenantTx(businessID, func(tx *sql.Tx) error {
+		deleted, err := h.voucherRepo.DeleteVoucherIfUnusedTXN(tx, businessID, id)
+		if err != nil {
+			return err
+		}
+		if deleted {
+			return nil
+		}
 		// Distinguish "not ours / not found" from "redeemed, cannot delete".
-		existing, gerr := h.voucherRepo.GetVoucherByID(id)
+		existing, gerr := h.voucherRepo.GetVoucherByIDTXN(tx, id)
 		if gerr != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": gerr.Error()})
-			return
+			return gerr
 		}
 		if existing == nil || existing.BusinessID != businessID {
-			c.JSON(http.StatusNotFound, gin.H{"error": "voucher not found"})
-			return
+			return errVoucherNotFound
 		}
-		c.JSON(http.StatusConflict, gin.H{"error": "redeemed vouchers cannot be deleted"})
+		return errVoucherNotDeletable
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, errVoucherNotFound):
+			c.JSON(http.StatusNotFound, gin.H{"error": "voucher not found"})
+		case errors.Is(err, errVoucherNotDeletable):
+			c.JSON(http.StatusConflict, gin.H{"error": "redeemed vouchers cannot be deleted"})
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		}
 		return
 	}
 
@@ -251,7 +327,8 @@ func (h *VoucherHandler) DeleteVoucher(c *gin.Context) {
 }
 
 // RedeemVoucher handles voucher redemption: atomically claim, apply the plan's
-// entitlement, and return the redeemed voucher.
+// entitlement, and return the redeemed voucher — all inside ONE tenant-scoped
+// transaction (RLS context + atomic claim + entitlement).
 func (h *VoucherHandler) RedeemVoucher(c *gin.Context) {
 	businessID := auth.GetBusinessID(c)
 	if businessID == "" {
@@ -262,37 +339,6 @@ func (h *VoucherHandler) RedeemVoucher(c *gin.Context) {
 	code := c.Param("code")
 	now := time.Now().UTC()
 
-	// Pre-check for a precise error (the claim below is the authoritative gate).
-	existing, err := h.voucherRepo.GetVoucherByCode(businessID, code)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	if existing == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "voucher not found"})
-		return
-	}
-	if reason := voucher.RedeemBlockReason(existing, now); reason != "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": reason})
-		return
-	}
-
-	// Fail closed on an unknown plan BEFORE claiming anything.
-	effect, err := voucher.ResolvePlanEffect(existing.PlanKey)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	if effect.ExtendWebfigPass && (existing.DurationMinutes == nil || *existing.DurationMinutes <= 0) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "voucher plan requires duration_minutes to grant a pass"})
-		return
-	}
-
-	// One atomic unit: claim the voucher AND grant the entitlement in the SAME
-	// transaction (mirrors auth_handler.go's register flow). If anything fails
-	// (or the process dies) before commit, the deferred Rollback leaves the
-	// voucher untouched — a paid voucher is never consumed without its
-	// entitlement, and there is no crash window between two commits.
 	tx, err := h.db.Begin()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
@@ -300,19 +346,53 @@ func (h *VoucherHandler) RedeemVoucher(c *gin.Context) {
 	}
 	defer tx.Rollback()
 
-	claimed, err := h.voucherRepo.ClaimVoucherTXN(tx, businessID, code, now)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	if claimed == nil {
-		c.JSON(http.StatusConflict, gin.H{"error": "voucher is no longer redeemable"})
-		return
-	}
+	var claimed *model.Voucher
+	var applied gin.H
+	err = database.WithTenant(tx, businessID, func() error {
+		// Pre-check for a precise error (the claim below is the authoritative gate).
+		existing, err := h.voucherRepo.GetVoucherByCodeTXN(tx, businessID, code)
+		if err != nil {
+			return err
+		}
+		if existing == nil {
+			return &httpError{status: http.StatusNotFound, msg: "voucher not found"}
+		}
+		if reason := voucher.RedeemBlockReason(existing, now); reason != "" {
+			return &httpError{status: http.StatusBadRequest, msg: reason}
+		}
 
-	applied, err := h.applyPlanEffectTXN(tx, businessID, effect, *claimed.DurationMinutes, now)
+		// Fail closed on an unknown plan BEFORE claiming anything.
+		effect, err := voucher.ResolvePlanEffect(existing.PlanKey)
+		if err != nil {
+			return &httpError{status: http.StatusBadRequest, msg: err.Error()}
+		}
+		if effect.ExtendWebfigPass && (existing.DurationMinutes == nil || *existing.DurationMinutes <= 0) {
+			return &httpError{status: http.StatusBadRequest, msg: "voucher plan requires duration_minutes to grant a pass"}
+		}
+
+		// Atomic claim: only one concurrent redeemer can win.
+		cl, err := h.voucherRepo.ClaimVoucherTXN(tx, businessID, code, now)
+		if err != nil {
+			return err
+		}
+		if cl == nil {
+			return &httpError{status: http.StatusConflict, msg: "voucher is no longer redeemable"}
+		}
+
+		ap, err := h.applyPlanEffectTXN(tx, businessID, effect, *cl.DurationMinutes, now)
+		if err != nil {
+			return &httpError{status: http.StatusInternalServerError, msg: "failed to apply voucher entitlement: " + err.Error()}
+		}
+		claimed, applied = cl, ap
+		return nil
+	})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to apply voucher entitlement: " + err.Error()})
+		var he *httpError
+		if errors.As(err, &he) {
+			c.JSON(he.status, gin.H{"error": he.msg})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 

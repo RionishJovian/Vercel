@@ -322,3 +322,243 @@ func nullableInt(i *int) *int {
 	}
 	return i
 }
+
+// ---------------------------------------------------------------------------
+// Transaction-scoped variants (RLS enforcement rollout: money path).
+//
+// Each runs the SAME SQL as its bare counterpart but on the caller's *sql.Tx,
+// so it can be wrapped in WithTenant and get reliable tenant scoping. The bare
+// versions stay for callers outside the money path (later rollout).
+// ---------------------------------------------------------------------------
+
+// CreateVoucherTXN is the transaction-scoped variant of CreateVoucher.
+func (r *VoucherRepository) CreateVoucherTXN(tx *sql.Tx, voucher *model.Voucher) (*model.Voucher, error) {
+	query := `
+		INSERT INTO vouchers (business_id, device_id, plan_key, plan_label, code,
+		                      price_mmk, duration_minutes, device_mac, status,
+		                      first_seen_at, expires_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		RETURNING id, business_id, device_id, plan_key, plan_label, code,
+		          price_mmk, duration_minutes, device_mac, status,
+		          first_seen_at, expires_at, created_at, updated_at`
+
+	v := &model.Voucher{}
+	var deviceID, deviceMAC sql.NullString
+	var durationMin sql.NullInt64
+	var firstSeen, expires sql.NullTime
+
+	err := tx.QueryRow(query,
+		voucher.BusinessID, nullString(voucher.DeviceID), voucher.PlanKey, voucher.PlanLabel,
+		voucher.Code, voucher.PriceMMK, nullableInt(voucher.DurationMinutes),
+		macAddrStr(voucher.DeviceMAC), voucher.Status, nullTime(voucher.FirstSeenAt), nullTime(voucher.ExpiresAt),
+	).Scan(
+		&v.ID, &v.BusinessID, &deviceID, &v.PlanKey, &v.PlanLabel, &v.Code,
+		&v.PriceMMK, &durationMin, &deviceMAC, &v.Status,
+		&firstSeen, &expires, &v.CreatedAt, &v.UpdatedAt,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("create voucher: %w", err)
+	}
+	v.DeviceID = scanNullableString(deviceID)
+	v.DurationMinutes = scanNullableInt(durationMin)
+	v.DeviceMAC = scanMACAddr(deviceMAC)
+	v.FirstSeenAt = scanNullableTime(firstSeen)
+	v.ExpiresAt = scanNullableTime(expires)
+	return v, nil
+}
+
+// GetVoucherByIDTXN is the transaction-scoped variant of GetVoucherByID.
+func (r *VoucherRepository) GetVoucherByIDTXN(tx *sql.Tx, id string) (*model.Voucher, error) {
+	query := `
+		SELECT id, business_id, device_id, plan_key, plan_label, code,
+		       price_mmk, duration_minutes, device_mac, status,
+		       first_seen_at, expires_at, created_at, updated_at
+		FROM vouchers
+		WHERE id = $1`
+
+	v := &model.Voucher{}
+	var deviceID, deviceMAC sql.NullString
+	var durationMin sql.NullInt64
+	var firstSeen, expires sql.NullTime
+
+	err := tx.QueryRow(query, id).Scan(
+		&v.ID, &v.BusinessID, &deviceID, &v.PlanKey, &v.PlanLabel, &v.Code,
+		&v.PriceMMK, &durationMin, &deviceMAC, &v.Status,
+		&firstSeen, &expires, &v.CreatedAt, &v.UpdatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get voucher by id: %w", err)
+	}
+	v.DeviceID = scanNullableString(deviceID)
+	v.DurationMinutes = scanNullableInt(durationMin)
+	v.DeviceMAC = scanMACAddr(deviceMAC)
+	v.FirstSeenAt = scanNullableTime(firstSeen)
+	v.ExpiresAt = scanNullableTime(expires)
+	return v, nil
+}
+
+// ListVouchersByBusinessTXN is the transaction-scoped variant of
+// ListVouchersByBusiness.
+func (r *VoucherRepository) ListVouchersByBusinessTXN(tx *sql.Tx, businessID string) ([]*model.Voucher, error) {
+	query := `
+		SELECT id, business_id, device_id, plan_key, plan_label, code,
+		       price_mmk, duration_minutes, device_mac, status,
+		       first_seen_at, expires_at, created_at, updated_at
+		FROM vouchers
+		WHERE business_id = $1
+		ORDER BY created_at DESC`
+
+	rows, err := tx.Query(query, businessID)
+	if err != nil {
+		return nil, fmt.Errorf("list vouchers by business: %w", err)
+	}
+	defer rows.Close()
+
+	var vouchers []*model.Voucher
+	for rows.Next() {
+		v := &model.Voucher{}
+		var deviceID, deviceMAC sql.NullString
+		var durationMin sql.NullInt64
+		var firstSeen, expires sql.NullTime
+		if err := rows.Scan(
+			&v.ID, &v.BusinessID, &deviceID, &v.PlanKey, &v.PlanLabel, &v.Code,
+			&v.PriceMMK, &durationMin, &deviceMAC, &v.Status,
+			&firstSeen, &expires, &v.CreatedAt, &v.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan voucher row: %w", err)
+		}
+		v.DeviceID = scanNullableString(deviceID)
+		v.DurationMinutes = scanNullableInt(durationMin)
+		v.DeviceMAC = scanMACAddr(deviceMAC)
+		v.FirstSeenAt = scanNullableTime(firstSeen)
+		v.ExpiresAt = scanNullableTime(expires)
+		vouchers = append(vouchers, v)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate voucher rows: %w", err)
+	}
+	return vouchers, nil
+}
+
+// GetVoucherByCodeTXN is the transaction-scoped variant of GetVoucherByCode.
+func (r *VoucherRepository) GetVoucherByCodeTXN(tx *sql.Tx, businessID, code string) (*model.Voucher, error) {
+	query := `
+		SELECT id, business_id, device_id, plan_key, plan_label, code,
+		       price_mmk, duration_minutes, device_mac, status,
+		       first_seen_at, expires_at, created_at, updated_at
+		FROM vouchers
+		WHERE business_id = $1 AND code = $2`
+
+	v := &model.Voucher{}
+	var deviceID, deviceMAC sql.NullString
+	var durationMin sql.NullInt64
+	var firstSeen, expires sql.NullTime
+
+	err := tx.QueryRow(query, businessID, code).Scan(
+		&v.ID, &v.BusinessID, &deviceID, &v.PlanKey, &v.PlanLabel, &v.Code,
+		&v.PriceMMK, &durationMin, &deviceMAC, &v.Status,
+		&firstSeen, &expires, &v.CreatedAt, &v.UpdatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get voucher by code: %w", err)
+	}
+	v.DeviceID = scanNullableString(deviceID)
+	v.DurationMinutes = scanNullableInt(durationMin)
+	v.DeviceMAC = scanMACAddr(deviceMAC)
+	v.FirstSeenAt = scanNullableTime(firstSeen)
+	v.ExpiresAt = scanNullableTime(expires)
+	return v, nil
+}
+
+// UpdateVoucherStatusTXN is the transaction-scoped variant of
+// UpdateVoucherStatus.
+func (r *VoucherRepository) UpdateVoucherStatusTXN(tx *sql.Tx, id, status string, firstSeenAt *time.Time) (*model.Voucher, error) {
+	query := `
+		UPDATE vouchers
+		SET status = $2, first_seen_at = COALESCE($3, first_seen_at), updated_at = $4
+		WHERE id = $1
+		RETURNING id, business_id, device_id, plan_key, plan_label, code,
+		          price_mmk, duration_minutes, device_mac, status,
+		          first_seen_at, expires_at, created_at, updated_at`
+
+	v := &model.Voucher{}
+	var deviceID, deviceMAC sql.NullString
+	var durationMin sql.NullInt64
+	var firstSeen, expires sql.NullTime
+
+	err := tx.QueryRow(query, id, status, nullTime(firstSeenAt), time.Now().UTC()).Scan(
+		&v.ID, &v.BusinessID, &deviceID, &v.PlanKey, &v.PlanLabel, &v.Code,
+		&v.PriceMMK, &durationMin, &deviceMAC, &v.Status,
+		&firstSeen, &expires, &v.CreatedAt, &v.UpdatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("update voucher status: %w", err)
+	}
+	v.DeviceID = scanNullableString(deviceID)
+	v.DurationMinutes = scanNullableInt(durationMin)
+	v.DeviceMAC = scanMACAddr(deviceMAC)
+	v.FirstSeenAt = scanNullableTime(firstSeen)
+	v.ExpiresAt = scanNullableTime(expires)
+	return v, nil
+}
+
+// UpdateVoucherStatusByBusinessTXN is the transaction-scoped variant of
+// UpdateVoucherStatusByBusiness.
+func (r *VoucherRepository) UpdateVoucherStatusByBusinessTXN(tx *sql.Tx, businessID, id, status string, firstSeenAt *time.Time) (*model.Voucher, error) {
+	query := `
+		UPDATE vouchers
+		SET status = $3, first_seen_at = COALESCE($4, first_seen_at), updated_at = $5
+		WHERE id = $1 AND business_id = $2
+		RETURNING id, business_id, device_id, plan_key, plan_label, code,
+		          price_mmk, duration_minutes, device_mac, status,
+		          first_seen_at, expires_at, created_at, updated_at`
+
+	v := &model.Voucher{}
+	var deviceID, deviceMAC sql.NullString
+	var durationMin sql.NullInt64
+	var firstSeen, expires sql.NullTime
+
+	err := tx.QueryRow(query, id, businessID, status, nullTime(firstSeenAt), time.Now().UTC()).Scan(
+		&v.ID, &v.BusinessID, &deviceID, &v.PlanKey, &v.PlanLabel, &v.Code,
+		&v.PriceMMK, &durationMin, &deviceMAC, &v.Status,
+		&firstSeen, &expires, &v.CreatedAt, &v.UpdatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("update voucher status: %w", err)
+	}
+	v.DeviceID = scanNullableString(deviceID)
+	v.DurationMinutes = scanNullableInt(durationMin)
+	v.DeviceMAC = scanMACAddr(deviceMAC)
+	v.FirstSeenAt = scanNullableTime(firstSeen)
+	v.ExpiresAt = scanNullableTime(expires)
+	return v, nil
+}
+
+// DeleteVoucherIfUnusedTXN is the transaction-scoped variant of
+// DeleteVoucherIfUnused.
+func (r *VoucherRepository) DeleteVoucherIfUnusedTXN(tx *sql.Tx, businessID, id string) (bool, error) {
+	var deletedID string
+	err := tx.QueryRow(
+		`DELETE FROM vouchers WHERE id = $1 AND business_id = $2 AND status <> 'used' RETURNING id`,
+		id, businessID,
+	).Scan(&deletedID)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("delete voucher: %w", err)
+	}
+	return true, nil
+}
