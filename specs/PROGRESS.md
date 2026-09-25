@@ -33,6 +33,7 @@ This file is the canonical, git-tracked status snapshot. Re-run it after any sig
 | `5839ba8` | **fix(provisioner)** — enforce RLS on money path: voucher/quota via WithTenant; cross-business read/update BLOCKED, DB-proven + missing quota policy |
 | `3db3740` | **feat(database)** — enforce RLS on operational alerting: incident/alert_policy via WithTenant + alert_policies policy (cross-tenant now 404, no leak) |
 | `10a9fc7` | **feat(database)** — enforce RLS on telemetry: ingest/list/latest via WithTenant + telemetry policy FOR ALL (was SELECT-only) |
+| `c2a9d82` | **feat(database)** — **keystone**: flag-gated restricted pool + tenant connection pinning — RLS applies at the CONNECTION level for the whole request |
 
 ---
 
@@ -95,5 +96,5 @@ Remaining product modules by dependency order: **`portal`** (customer self-servi
 
 Two queued follow-ups (require an explicit decision):
 1. **DB integration harness — DONE (`e5604c5`)** — money-path SQL (claim race → 409, rollback) now DB-proven, then reused to prove RLS isolation (`aa9ee10`).
-2. **RLS enforcement — money path + alerting + telemetry DONE (`aa9ee10`→`10a9fc7`)** — **~25 of 67 bare calls** cleared, all real-DB-proven cross-business-blocked; 3 same-class policy fixes landed (quota, alert_policies, telemetry FOR ALL). Cross-tenant probes return 404 (no existence leak). **Remaining (~42):** heartbeat (worker-written, device-derived business — own pattern), nats_subject (bus plumbing — skip), user (auth, login-before-context), portal_* (pair with portal slice), webhook (no RLS at all), audit (system-appended), device handler. **NEXT (keystone, clawclaw agrees): the restricted `authenticated` app connection + per-request middleware** — makes all this enforcement actually LIVE (today it's per-tx SET ROLE over an owner pool).
+2. **RLS enforcement — keystone LIVE (`aa9ee10`→`c2a9d82`)** — the **restricted pool + tenant connection pinning** (flag-gated `database.rls_enforce`, default off) means when enabled, RLS applies at the **connection level** (not per-tx): proven by a pinned tenant A connection seeing only its own rows across multiple statements, cross-business invisible. **~25 of 67 bare calls converted** (money path, alerting, telemetry) + 3 same-class policy fixes + the mechanism itself. **Remaining:** convert the ~42 remaining bare sites (heartbeat, user, portal_*, webhook, audit, device) onto the pinned conn; optional later: dedicated login role `mega_app` ⊂ `authenticated` (option a) vs current per-conn SET ROLE (b). Cross-tenant probes return 404 (no existence leak). Portal anonymous redemption (your decision) is now safe to build on this foundation.
 3. **Portal redemption — who redeems?** (clawclaw finding #7, decided: **anonymous customer at the captive portal**, MAC-anchored). Determines authz on the redeem endpoint. Ready to scope portal with this baked in.
