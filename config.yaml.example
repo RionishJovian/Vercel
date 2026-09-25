@@ -102,3 +102,23 @@ monitoring:
   health_check_interval: 30s
   sla_check_interval: 60s
   alert_webhook_url: ""
+
+# Provisioner real apply path (SSH + RouterOS). DISABLED by default.
+# When enabled, the target MUST NOT be production; the transport fails closed on
+# prod-shaped hosts/ports regardless. Credentials are injected here, never hardcoded.
+provisioner:
+  applier:
+    enabled: false
+    host: ""                 # lab/sandbox router only (never production)
+    port: 22
+    user: ""
+    password: ""
+    private_key_path: ""
+    insecure_ignore_host_key: true   # lab RouterOS uses a self-signed key
+    allow_empty_password: false      # true only for a disposable lab (admin/empty)
+    timeout: 10s
+    interface: "wg-magichub"
+    listen_port_rotate_to: 0         # required for rotate_listen_port
+    reset_hold: 30s                  # disable-peer hold (> UDP timeout)
+    ping_target: ""                  # peer address probed for data-plane reachability
+    t_down: 180s

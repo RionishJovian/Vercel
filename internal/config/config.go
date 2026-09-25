@@ -8,18 +8,19 @@ import (
 )
 
 type Config struct {
-	Server     ServerConfig     `mapstructure:"server"`
-	Database   DatabaseConfig   `mapstructure:"database"`
-	Redis      RedisConfig      `mapstructure:"redis"`
-	NATS       NATSConfig       `mapstructure:"nats"`
-	WireGuard  WireGuardConfig  `mapstructure:"wireguard"`
-	Telemetry  TelemetryConfig  `mapstructure:"telemetry"`
-	Quotas     QuotasConfig     `mapstructure:"quotas"`
-	Security   SecurityConfig   `mapstructure:"security"`
-	Logging    LoggingConfig    `mapstructure:"logging"`
-	Features   FeaturesConfig   `mapstructure:"features"`
-	Monitoring MonitoringConfig `mapstructure:"monitoring"`
-	Recovery   RecoveryConfig   `mapstructure:"recovery"`
+	Server      ServerConfig      `mapstructure:"server"`
+	Database    DatabaseConfig    `mapstructure:"database"`
+	Redis       RedisConfig       `mapstructure:"redis"`
+	NATS        NATSConfig        `mapstructure:"nats"`
+	WireGuard   WireGuardConfig   `mapstructure:"wireguard"`
+	Telemetry   TelemetryConfig   `mapstructure:"telemetry"`
+	Quotas      QuotasConfig      `mapstructure:"quotas"`
+	Security    SecurityConfig    `mapstructure:"security"`
+	Logging     LoggingConfig     `mapstructure:"logging"`
+	Features    FeaturesConfig    `mapstructure:"features"`
+	Monitoring  MonitoringConfig  `mapstructure:"monitoring"`
+	Recovery    RecoveryConfig    `mapstructure:"recovery"`
+	Provisioner ProvisionerConfig `mapstructure:"provisioner"`
 }
 
 type ServerConfig struct {
@@ -56,12 +57,12 @@ type RedisConfig struct {
 }
 
 type NATSConfig struct {
-	URL                string        `mapstructure:"url"`
-	JetStream          bool          `mapstructure:"jetstream"`
-	MaxReconnects      int           `mapstructure:"max_reconnects"`
-	ReconnectWait      time.Duration `mapstructure:"reconnect_wait"`
-	PingInterval       time.Duration `mapstructure:"ping_interval"`
-	MaxOutstandingPings int          `mapstructure:"max_outstanding_pings"`
+	URL                 string        `mapstructure:"url"`
+	JetStream           bool          `mapstructure:"jetstream"`
+	MaxReconnects       int           `mapstructure:"max_reconnects"`
+	ReconnectWait       time.Duration `mapstructure:"reconnect_wait"`
+	PingInterval        time.Duration `mapstructure:"ping_interval"`
+	MaxOutstandingPings int           `mapstructure:"max_outstanding_pings"`
 }
 
 type WireGuardConfig struct {
@@ -74,10 +75,10 @@ type WireGuardConfig struct {
 }
 
 type TelemetryConfig struct {
-	HardwareInterval   time.Duration `mapstructure:"hardware_interval"`
-	HeartbeatInterval  time.Duration `mapstructure:"heartbeat_interval"`
-	RetentionDays      int           `mapstructure:"retention_days"`
-	MaxBatchSize       int           `mapstructure:"max_batch_size"`
+	HardwareInterval  time.Duration `mapstructure:"hardware_interval"`
+	HeartbeatInterval time.Duration `mapstructure:"heartbeat_interval"`
+	RetentionDays     int           `mapstructure:"retention_days"`
+	MaxBatchSize      int           `mapstructure:"max_batch_size"`
 }
 
 type QuotasConfig struct {
@@ -85,7 +86,7 @@ type QuotasConfig struct {
 	EnterpriseISPDeviceLimit  int           `mapstructure:"enterprise_isp_device_limit"`
 	GlobalAdminDeviceLimit    int           `mapstructure:"global_admin_device_limit"`
 	AITokensMonthlySmall      int64         `mapstructure:"ai_tokens_monthly_small"`
-	AITokensMonthlyEnterprise int64          `mapstructure:"ai_tokens_monthly_enterprise"`
+	AITokensMonthlyEnterprise int64         `mapstructure:"ai_tokens_monthly_enterprise"`
 	WebFigPassDuration        time.Duration `mapstructure:"webfig_pass_duration"`
 }
 
@@ -116,11 +117,11 @@ type FeaturesConfig struct {
 }
 
 type MonitoringConfig struct {
-	MetricsPort          int           `mapstructure:"metrics_port"`
-	HealthCheckInterval  time.Duration `mapstructure:"health_check_interval"`
-	SLACheckInterval     time.Duration `mapstructure:"sla_check_interval"`
-	StateSweepInterval   time.Duration `mapstructure:"state_sweep_interval"`
-	AlertWebhookURL      string        `mapstructure:"alert_webhook_url"`
+	MetricsPort         int           `mapstructure:"metrics_port"`
+	HealthCheckInterval time.Duration `mapstructure:"health_check_interval"`
+	SLACheckInterval    time.Duration `mapstructure:"sla_check_interval"`
+	StateSweepInterval  time.Duration `mapstructure:"state_sweep_interval"`
+	AlertWebhookURL     string        `mapstructure:"alert_webhook_url"`
 }
 
 // RecoveryConfig tunes the peer self-healing loop: how stale a handshake must be
@@ -133,6 +134,32 @@ type RecoveryConfig struct {
 	TEscalate     time.Duration `mapstructure:"t_escalate"`
 	MaxAttempts   int           `mapstructure:"max_attempts"`
 	BackoffWindow time.Duration `mapstructure:"backoff_window"`
+}
+
+// ProvisionerConfig configures the real provisioner apply path.
+type ProvisionerConfig struct {
+	Applier ApplierConfig `mapstructure:"applier"`
+}
+
+// ApplierConfig configures the REAL SSH + RouterOS Applier/Prober. It is
+// DISABLED by default; live router writes require Enabled=true. The target must
+// never be a production host — the transport fails closed on prod-shaped
+// addresses regardless of this flag.
+type ApplierConfig struct {
+	Enabled               bool          `mapstructure:"enabled"`
+	Host                  string        `mapstructure:"host"`
+	Port                  int           `mapstructure:"port"`
+	User                  string        `mapstructure:"user"`
+	Password              string        `mapstructure:"password"`
+	PrivateKeyPath        string        `mapstructure:"private_key_path"`
+	InsecureIgnoreHostKey bool          `mapstructure:"insecure_ignore_host_key"`
+	AllowEmptyPassword    bool          `mapstructure:"allow_empty_password"`
+	Timeout               time.Duration `mapstructure:"timeout"`
+	Interface             string        `mapstructure:"interface"`
+	ListenPortRotateTo    int           `mapstructure:"listen_port_rotate_to"`
+	ResetHold             time.Duration `mapstructure:"reset_hold"`
+	PingTarget            string        `mapstructure:"ping_target"`
+	TDown                 time.Duration `mapstructure:"t_down"`
 }
 
 func Load(path string) (*Config, error) {
@@ -241,4 +268,14 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("recovery.t_escalate", "10m")
 	v.SetDefault("recovery.max_attempts", 3)
 	v.SetDefault("recovery.backoff_window", "15m")
+
+	// Live provisioner applier: OFF by default. Never point at production.
+	v.SetDefault("provisioner.applier.enabled", false)
+	v.SetDefault("provisioner.applier.port", 22)
+	v.SetDefault("provisioner.applier.insecure_ignore_host_key", true)
+	v.SetDefault("provisioner.applier.allow_empty_password", false)
+	v.SetDefault("provisioner.applier.timeout", "10s")
+	v.SetDefault("provisioner.applier.interface", "wg-magichub")
+	v.SetDefault("provisioner.applier.reset_hold", "30s")
+	v.SetDefault("provisioner.applier.t_down", "180s")
 }

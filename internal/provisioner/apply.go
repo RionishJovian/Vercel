@@ -20,6 +20,14 @@ type RollbackSnapshot struct {
 	IPRoutes        []string  `json:"ip_routes,omitempty"`
 	// Protecting records the changes this snapshot protects.
 	Protecting []Change `json:"protecting"`
+	// On-device snapshot artifacts and the parsed WireGuard values the live SSH
+	// Applier needs to revert in place. Empty for the in-memory/unit-test path;
+	// populated by internal/provisioner/routeros.
+	ExportFile           string `json:"export_file,omitempty"`
+	BackupName           string `json:"backup_name,omitempty"`
+	WGListenPort         int    `json:"wg_listen_port,omitempty"`
+	WGPeerKeepalive      string `json:"wg_peer_keepalive,omitempty"`
+	WGPeerAllowedAddress string `json:"wg_peer_allowed_address,omitempty"`
 }
 
 // Applier applies validated changes to a peer's router and restores a snapshot.
