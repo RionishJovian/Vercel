@@ -620,3 +620,130 @@ func TestDB_RLS_tenantIsolation(t *testing.T) {
 	}
 	_ = tx2.Rollback()
 }
+
+// --- WithTenant mechanism proof ---------------------------------------------
+
+// TestDB_WithTenant_isolatesThroughHelper proves the reusable helper establishes
+// a reliable tenant scope on the transaction's pinned connection: queries inside
+// fn see ONLY the current business's rows.
+func TestDB_WithTenant_isolatesThroughHelper(t *testing.T) {
+	db := requireHarness(t)
+	repo := NewVoucherRepository(db)
+	bizA := insertBusiness(t, db)
+	bizB := insertBusiness(t, db)
+	vA := newActiveVoucher(t, repo, bizA, 60, nil)
+	vB := newActiveVoucher(t, repo, bizB, 60, nil)
+
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	defer tx.Rollback()
+
+	ran := false
+	err = WithTenant(tx, bizA, func() error {
+		ran = true
+		var seen int
+		if err := tx.QueryRow(`SELECT count(*) FROM vouchers WHERE business_id IN ($1, $2)`, bizA, bizB).Scan(&seen); err != nil {
+			return err
+		}
+		if seen != 1 {
+			t.Fatalf("tenant A saw %d rows through WithTenant, want 1", seen)
+		}
+		var cross int
+		if err := tx.QueryRow(`SELECT count(*) FROM vouchers WHERE code = $1`, vB.Code).Scan(&cross); err != nil {
+			return err
+		}
+		if cross != 0 {
+			t.Fatal("cross-business row visible through WithTenant — isolation broken")
+		}
+		var own int
+		if err := tx.QueryRow(`SELECT count(*) FROM vouchers WHERE code = $1`, vA.Code).Scan(&own); err != nil {
+			return err
+		}
+		if own != 1 {
+			t.Fatal("own row not visible through WithTenant")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("WithTenant: %v", err)
+	}
+	if !ran {
+		t.Fatal("fn must run when the scope is established")
+	}
+}
+
+// TestDB_WithTenant_failClosed proves the guard: a missing/malformed business id
+// or a nil tx fails and fn is NOT run (state guard, fail-closed).
+func TestDB_WithTenant_failClosed(t *testing.T) {
+	db := requireHarness(t)
+	cases := []struct {
+		name  string
+		biz   string
+		nilTx bool
+	}{
+		{"empty business id", "", false},
+		{"malformed business id", "not-a-uuid", false},
+		{"nil tx", "00000000-0000-0000-0000-0000000000aa", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ran := false
+			fn := func() error { ran = true; return nil }
+
+			var err error
+			if tc.nilTx {
+				err = WithTenant(nil, tc.biz, fn)
+			} else {
+				tx, berr := db.Begin()
+				if berr != nil {
+					t.Fatalf("begin: %v", berr)
+				}
+				defer tx.Rollback()
+				err = WithTenant(tx, tc.biz, fn)
+			}
+			if err == nil {
+				t.Fatal("must fail closed")
+			}
+			if ran {
+				t.Fatal("fn must NOT run when the tenant scope cannot be established")
+			}
+		})
+	}
+}
+
+// TestDB_WithTenant_unscopedIsOff_boundary names the danger step 3 must close:
+// a query NOT wrapped in WithTenant (a bare tx, or the bare pool helpers used by
+// the repos) has NO guaranteed tenant scoping and sees across businesses.
+func TestDB_WithTenant_unscopedIsOff_boundary(t *testing.T) {
+	db := requireHarness(t)
+	repo := NewVoucherRepository(db)
+	bizA := insertBusiness(t, db)
+	bizB := insertBusiness(t, db)
+	_ = newActiveVoucher(t, repo, bizA, 60, nil)
+	_ = newActiveVoucher(t, repo, bizB, 60, nil)
+
+	// Bare transaction, no WithTenant / no role set: no isolation applied.
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	defer tx.Rollback()
+	var txSeen int
+	if err := tx.QueryRow(`SELECT count(*) FROM vouchers WHERE business_id IN ($1, $2)`, bizA, bizB).Scan(&txSeen); err != nil {
+		t.Fatalf("unscoped tx count: %v", err)
+	}
+	if txSeen != 2 {
+		t.Fatalf("unscoped tx saw %d rows, want 2 (no tenant scoping) — boundary", txSeen)
+	}
+
+	// Bare POOL query (the shape the 67 repo call sites use): also unscoped.
+	var poolSeen int
+	if err := db.QueryRow(`SELECT count(*) FROM vouchers WHERE business_id IN ($1, $2)`, bizA, bizB).Scan(&poolSeen); err != nil {
+		t.Fatalf("unscoped pool count: %v", err)
+	}
+	if poolSeen != 2 {
+		t.Fatalf("unscoped pool query saw %d rows, want 2 (no tenant scoping) — boundary", poolSeen)
+	}
+}
