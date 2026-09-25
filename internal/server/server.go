@@ -93,6 +93,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		messagingClient,
 	)
 	telemetryHandler := handler.NewTelemetryHandler(
+		db,
 		database.NewTelemetrySampleRepository(db),
 		cacheClient,
 		messagingClient,

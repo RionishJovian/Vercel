@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -16,13 +17,30 @@ import (
 )
 
 type TelemetryHandler struct {
+	db            *database.DB
 	telemetryRepo *database.TelemetrySampleRepository
 	cache         *cache.Client
 	msg           *messaging.Client
 }
 
-func NewTelemetryHandler(tr *database.TelemetrySampleRepository, c *cache.Client, msg *messaging.Client) *TelemetryHandler {
-	return &TelemetryHandler{telemetryRepo: tr, cache: c, msg: msg}
+func NewTelemetryHandler(db *database.DB, tr *database.TelemetrySampleRepository, c *cache.Client, msg *messaging.Client) *TelemetryHandler {
+	return &TelemetryHandler{db: db, telemetryRepo: tr, cache: c, msg: msg}
+}
+
+// withTenantTx runs fn in a transaction with the tenant RLS context set via
+// database.WithTenant, committing on success and rolling back on error. Mirrors
+// the money-path/alerting helpers so telemetry queries are tenant-scoped.
+func (h *TelemetryHandler) withTenantTx(businessID string, fn func(tx *sql.Tx) error) error {
+	tx, err := h.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if err := database.WithTenant(tx, businessID, func() error { return fn(tx) }); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // Ingest receives a telemetry sample (from the collector or edge agent) and stores it.
@@ -68,7 +86,10 @@ func (h *TelemetryHandler) Ingest(c *gin.Context) {
 		TunnelState:    req.TunnelState,
 		ObservedAt:     time.Now().UTC(),
 	}
-	if _, err := h.telemetryRepo.Insert(sample); err != nil {
+	if err := h.withTenantTx(businessID, func(tx *sql.Tx) error {
+		_, err := h.telemetryRepo.InsertTXN(tx, sample)
+		return err
+	}); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to store telemetry: " + err.Error()})
 		return
 	}
@@ -120,12 +141,15 @@ func (h *TelemetryHandler) List(c *gin.Context) {
 	since := time.Now().UTC().Add(-time.Duration(days) * 24 * time.Hour)
 
 	var samples []*model.TelemetrySample
-	var err error
-	if deviceID != "" {
-		samples, err = h.telemetryRepo.ListByDevice(deviceID, &since, nil)
-	} else {
-		samples, err = h.telemetryRepo.ListByBusiness(businessID, &since, nil)
-	}
+	err := h.withTenantTx(businessID, func(tx *sql.Tx) error {
+		var e error
+		if deviceID != "" {
+			samples, e = h.telemetryRepo.ListByDeviceTXN(tx, deviceID, &since, nil)
+		} else {
+			samples, e = h.telemetryRepo.ListByBusinessTXN(tx, businessID, &since, nil)
+		}
+		return e
+	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list telemetry: " + err.Error()})
 		return
@@ -155,7 +179,15 @@ func (h *TelemetryHandler) Latest(c *gin.Context) {
 	}
 
 	// DB fallback and re-warm the cache.
-	sample, err := h.telemetryRepo.GetLatestByDevice(deviceID)
+	var sample *model.TelemetrySample
+	err := h.withTenantTx(businessID, func(tx *sql.Tx) error {
+		s, e := h.telemetryRepo.GetLatestByDeviceTXN(tx, deviceID)
+		if e != nil {
+			return e
+		}
+		sample = s
+		return nil
+	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read telemetry: " + err.Error()})
 		return

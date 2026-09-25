@@ -1053,3 +1053,101 @@ func TestDB_Alerting_isolation(t *testing.T) {
 		return nil
 	})
 }
+
+// TestDB_Telemetry_isolation proves the CONVERTED telemetry path (TXN variants
+// under WithTenant) isolates: own-business ingest + list succeed, cross-business
+// telemetry is invisible.
+func TestDB_Telemetry_isolation(t *testing.T) {
+	db := requireHarness(t)
+	trepo := NewTelemetrySampleRepository(db)
+	drepo := NewDeviceRepository(db)
+	bizA := insertBusiness(t, db)
+	bizB := insertBusiness(t, db)
+	now := time.Now().UTC()
+
+	// Devices are set up on the owner path (device handler conversion is a later
+	// slice); telemetry_samples.device_id has an FK to devices.
+	mkDevice := func(biz string) string {
+		d, err := drepo.CreateDevice(&model.Device{BusinessID: biz, HardwareName: "harness",
+			DeploymentLayer: "ACCESS_POINT", Vendor: "mikrotik", Category: "ap", Transport: "direct"})
+		if err != nil {
+			t.Fatalf("create device: %v", err)
+		}
+		return d.DeviceID
+	}
+	devA := mkDevice(bizA)
+	devB := mkDevice(bizB)
+
+	mkSample := func(biz, dev string) *model.TelemetrySample {
+		return &model.TelemetrySample{BusinessID: biz, DeviceID: &dev, SubjectKind: "router",
+			SubjectID: "s", ObservedAt: now}
+	}
+
+	// ingest own-business through the converted TXN path.
+	inTenant(t, db, bizA, func(tx *sql.Tx) error {
+		_, err := trepo.InsertTXN(tx, mkSample(bizA, devA))
+		return err
+	})
+	inTenant(t, db, bizB, func(tx *sql.Tx) error {
+		_, err := trepo.InsertTXN(tx, mkSample(bizB, devB))
+		return err
+	})
+
+	// list-own only.
+	inTenant(t, db, bizA, func(tx *sql.Tx) error {
+		xs, err := trepo.ListByBusinessTXN(tx, bizA, nil, nil)
+		if err != nil {
+			return err
+		}
+		if len(xs) != 1 || xs[0].BusinessID != bizA {
+			t.Fatalf("tenant A telemetry list = %d rows, want only its own", len(xs))
+		}
+		return nil
+	})
+
+	// cross-business telemetry read BLOCKED (B reading A's device).
+	inTenant(t, db, bizB, func(tx *sql.Tx) error {
+		xs, err := trepo.ListByDeviceTXN(tx, devA, nil, nil)
+		if err != nil {
+			return err
+		}
+		if len(xs) != 0 {
+			t.Fatal("cross-business telemetry visible to tenant B")
+		}
+		return nil
+	})
+
+	// own-device read works.
+	inTenant(t, db, bizA, func(tx *sql.Tx) error {
+		xs, err := trepo.ListByDeviceTXN(tx, devA, nil, nil)
+		if err != nil {
+			return err
+		}
+		if len(xs) != 1 {
+			t.Fatalf("own-device telemetry = %d rows, want 1", len(xs))
+		}
+		return nil
+	})
+
+	// latest: own works; cross-business blocked.
+	inTenant(t, db, bizA, func(tx *sql.Tx) error {
+		s, err := trepo.GetLatestByDeviceTXN(tx, devA)
+		if err != nil {
+			return err
+		}
+		if s == nil {
+			t.Fatal("own latest telemetry is nil")
+		}
+		return nil
+	})
+	inTenant(t, db, bizB, func(tx *sql.Tx) error {
+		s, err := trepo.GetLatestByDeviceTXN(tx, devA)
+		if err != nil {
+			return err
+		}
+		if s != nil {
+			t.Fatal("cross-business latest telemetry visible to tenant B")
+		}
+		return nil
+	})
+}

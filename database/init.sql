@@ -320,10 +320,13 @@ CREATE POLICY devices_tenant_isolation ON devices
     USING (business_id = current_setting('app.current_business_id')::uuid)
     WITH CHECK (business_id = current_setting('app.current_business_id')::uuid);
 
--- Telemetry: Users can only see telemetry for their business
+-- Telemetry: tenant-scoped. Covers WRITES too (ingest): the original FOR SELECT
+-- policy deny-all'd inserts for `authenticated`, which would break telemetry
+-- ingest the moment enforcement applies.
 CREATE POLICY telemetry_tenant_isolation ON telemetry_samples
-    FOR SELECT TO authenticated
-    USING (business_id = current_setting('app.current_business_id')::uuid);
+    FOR ALL TO authenticated
+    USING (business_id = current_setting('app.current_business_id')::uuid)
+    WITH CHECK (business_id = current_setting('app.current_business_id')::uuid);
 
 -- Heartbeats: Users can only see heartbeats for their business
 CREATE POLICY heartbeats_tenant_isolation ON peer_heartbeats
