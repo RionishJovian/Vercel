@@ -2,7 +2,9 @@ package handler
 
 import (
 	"crypto/rand"
+	"database/sql"
 	"encoding/hex"
+	"errors"
 	"net/http"
 	"time"
 
@@ -15,6 +17,7 @@ import (
 )
 
 type IncidentHandler struct {
+	db           *database.DB
 	incidentRepo *database.IncidentRepository
 	policyRepo   *database.AlertPolicyRepository
 	deviceRepo   *database.DeviceRepository
@@ -22,12 +25,40 @@ type IncidentHandler struct {
 }
 
 func NewIncidentHandler(
+	db *database.DB,
 	incidentRepo *database.IncidentRepository,
 	policyRepo *database.AlertPolicyRepository,
 	deviceRepo *database.DeviceRepository,
 	notifier *notifier.Notifier,
 ) *IncidentHandler {
-	return &IncidentHandler{incidentRepo: incidentRepo, policyRepo: policyRepo, deviceRepo: deviceRepo, notifier: notifier}
+	return &IncidentHandler{db: db, incidentRepo: incidentRepo, policyRepo: policyRepo, deviceRepo: deviceRepo, notifier: notifier}
+}
+
+// withTenantTx runs fn in a transaction with the tenant RLS context set via
+// database.WithTenant, committing on success and rolling back on error. Mirrors
+// the money-path helper so every operational-alerting query is tenant-scoped.
+func (h *IncidentHandler) withTenantTx(businessID string, fn func(tx *sql.Tx) error) error {
+	tx, err := h.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if err := database.WithTenant(tx, businessID, func() error { return fn(tx) }); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// respondErr renders an error produced inside a tenant tx, honouring a carried
+// httpError (exact status + message) and falling back to 500 otherwise.
+func respondErr(c *gin.Context, err error) {
+	var he *httpError
+	if errors.As(err, &he) {
+		c.JSON(he.status, gin.H{"error": he.msg})
+		return
+	}
+	c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 }
 
 func newID() string {
@@ -44,7 +75,15 @@ func (h *IncidentHandler) ListOpen(c *gin.Context) {
 		return
 	}
 
-	incidents, err := h.incidentRepo.ListOpenByBusiness(businessID)
+	var incidents []model.Incident
+	err := h.withTenantTx(businessID, func(tx *sql.Tx) error {
+		xs, err := h.incidentRepo.ListOpenByBusinessTXN(tx, businessID)
+		if err != nil {
+			return err
+		}
+		incidents = xs
+		return nil
+	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list incidents: " + err.Error()})
 		return
@@ -61,7 +100,15 @@ func (h *IncidentHandler) ListByDevice(c *gin.Context) {
 	}
 
 	deviceID := c.Param("deviceId")
-	incidents, err := h.incidentRepo.ListByDevice(businessID, deviceID)
+	var incidents []model.Incident
+	err := h.withTenantTx(businessID, func(tx *sql.Tx) error {
+		xs, err := h.incidentRepo.ListByDeviceTXN(tx, businessID, deviceID)
+		if err != nil {
+			return err
+		}
+		incidents = xs
+		return nil
+	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list device incidents: " + err.Error()})
 		return
@@ -110,7 +157,15 @@ func (h *IncidentHandler) Create(c *gin.Context) {
 		OpenedAt:     now,
 	}
 
-	created, err := h.incidentRepo.Create(inc)
+	var created *model.Incident
+	err := h.withTenantTx(businessID, func(tx *sql.Tx) error {
+		cr, err := h.incidentRepo.CreateTXN(tx, inc)
+		if err != nil {
+			return err
+		}
+		created = cr
+		return nil
+	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create incident: " + err.Error()})
 		return
@@ -129,22 +184,24 @@ func (h *IncidentHandler) Acknowledge(c *gin.Context) {
 	userID := auth.GetUserID(c)
 
 	id := c.Param("id")
-	inc, err := h.incidentRepo.GetByID(id)
+	err := h.withTenantTx(businessID, func(tx *sql.Tx) error {
+		inc, err := h.incidentRepo.GetByIDTXN(tx, id)
+		if err != nil {
+			return &httpError{status: http.StatusInternalServerError, msg: "database error"}
+		}
+		if inc == nil {
+			return &httpError{status: http.StatusNotFound, msg: "incident not found"}
+		}
+		if inc.BusinessID != businessID {
+			return &httpError{status: http.StatusForbidden, msg: "access denied"}
+		}
+		if err := h.incidentRepo.AcknowledgeTXN(tx, id, userID); err != nil {
+			return &httpError{status: http.StatusInternalServerError, msg: err.Error()}
+		}
+		return nil
+	})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
-		return
-	}
-	if inc == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "incident not found"})
-		return
-	}
-	if inc.BusinessID != businessID {
-		c.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
-		return
-	}
-
-	if err := h.incidentRepo.Acknowledge(id, userID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondErr(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "acknowledged", "incident_id": id})
@@ -160,28 +217,35 @@ func (h *IncidentHandler) Resolve(c *gin.Context) {
 	userID := auth.GetUserID(c)
 
 	id := c.Param("id")
-	inc, err := h.incidentRepo.GetByID(id)
+	var resolved *model.Incident
+	err := h.withTenantTx(businessID, func(tx *sql.Tx) error {
+		inc, err := h.incidentRepo.GetByIDTXN(tx, id)
+		if err != nil {
+			return &httpError{status: http.StatusInternalServerError, msg: "database error"}
+		}
+		if inc == nil {
+			return &httpError{status: http.StatusNotFound, msg: "incident not found"}
+		}
+		if inc.BusinessID != businessID {
+			return &httpError{status: http.StatusForbidden, msg: "access denied"}
+		}
+		if err := h.incidentRepo.ResolveTXN(tx, id, userID); err != nil {
+			return &httpError{status: http.StatusInternalServerError, msg: err.Error()}
+		}
+		resolved = inc
+		return nil
+	})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
-		return
-	}
-	if inc == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "incident not found"})
-		return
-	}
-	if inc.BusinessID != businessID {
-		c.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
+		respondErr(c, err)
 		return
 	}
 
-	if err := h.incidentRepo.Resolve(id, userID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	now := time.Now().UTC()
-	inc.ResolvedAt = &now
-	if h.notifier != nil {
-		h.notifier.IncidentResolved(businessID, inc)
+	if resolved != nil {
+		now := time.Now().UTC()
+		resolved.ResolvedAt = &now
+		if h.notifier != nil {
+			h.notifier.IncidentResolved(businessID, resolved)
+		}
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "resolved", "incident_id": id})
 }
@@ -205,7 +269,15 @@ func (h *IncidentHandler) ListPolicies(c *gin.Context) {
 		return
 	}
 
-	policies, err := h.policyRepo.ListByBusiness(businessID)
+	var policies []*model.AlertPolicy
+	err := h.withTenantTx(businessID, func(tx *sql.Tx) error {
+		ps, err := h.policyRepo.ListByBusinessTXN(tx, businessID)
+		if err != nil {
+			return err
+		}
+		policies = ps
+		return nil
+	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list policies: " + err.Error()})
 		return
@@ -242,7 +314,15 @@ func (h *IncidentHandler) CreatePolicy(c *gin.Context) {
 		NotificationChannels: req.NotificationChannels,
 	}
 
-	created, err := h.policyRepo.Create(policy)
+	var created *model.AlertPolicy
+	err := h.withTenantTx(businessID, func(tx *sql.Tx) error {
+		cr, err := h.policyRepo.CreateTXN(tx, policy)
+		if err != nil {
+			return err
+		}
+		created = cr
+		return nil
+	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create policy: " + err.Error()})
 		return
@@ -251,12 +331,12 @@ func (h *IncidentHandler) CreatePolicy(c *gin.Context) {
 }
 
 type UpdatePolicyRequest struct {
-	Kind                 *string   `json:"kind"`
-	Enabled              *bool     `json:"enabled"`
-	Severity             *string   `json:"severity"`
-	Threshold            *float64  `json:"threshold"`
-	CooldownMinutes      *int      `json:"cooldown_minutes"`
-	NotificationChannels []string  `json:"notification_channels"`
+	Kind                 *string  `json:"kind"`
+	Enabled              *bool    `json:"enabled"`
+	Severity             *string  `json:"severity"`
+	Threshold            *float64 `json:"threshold"`
+	CooldownMinutes      *int     `json:"cooldown_minutes"`
+	NotificationChannels []string `json:"notification_channels"`
 }
 
 // UpdatePolicy updates an existing alert policy.
@@ -268,54 +348,57 @@ func (h *IncidentHandler) UpdatePolicy(c *gin.Context) {
 	}
 
 	id := c.Param("id")
-	existing, err := h.policyRepo.GetByID(id)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
-		return
-	}
-	if existing == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "policy not found"})
-		return
-	}
-	if existing.BusinessID != businessID {
-		c.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
-		return
-	}
-
-	var req UpdatePolicyRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	if req.Kind != nil {
-		existing.Kind = *req.Kind
-	}
-	if req.Enabled != nil {
-		existing.Enabled = *req.Enabled
-	}
-	if req.Severity != nil {
-		if *req.Severity != "info" && *req.Severity != "warning" && *req.Severity != "critical" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid severity: expected info, warning or critical"})
-			return
+	var updated *model.AlertPolicy
+	err := h.withTenantTx(businessID, func(tx *sql.Tx) error {
+		existing, err := h.policyRepo.GetByIDTXN(tx, id)
+		if err != nil {
+			return &httpError{status: http.StatusInternalServerError, msg: "database error"}
 		}
-		existing.Severity = *req.Severity
-	}
-	if req.Threshold != nil {
-		existing.Threshold = *req.Threshold
-	}
-	if req.CooldownMinutes != nil {
-		existing.CooldownMinutes = *req.CooldownMinutes
-	}
-	if req.NotificationChannels != nil {
-		existing.NotificationChannels = req.NotificationChannels
-	}
+		if existing == nil {
+			return &httpError{status: http.StatusNotFound, msg: "policy not found"}
+		}
+		if existing.BusinessID != businessID {
+			return &httpError{status: http.StatusForbidden, msg: "access denied"}
+		}
 
-	if err := h.policyRepo.Update(existing); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update policy: " + err.Error()})
+		var req UpdatePolicyRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			return &httpError{status: http.StatusBadRequest, msg: err.Error()}
+		}
+
+		if req.Kind != nil {
+			existing.Kind = *req.Kind
+		}
+		if req.Enabled != nil {
+			existing.Enabled = *req.Enabled
+		}
+		if req.Severity != nil {
+			if *req.Severity != "info" && *req.Severity != "warning" && *req.Severity != "critical" {
+				return &httpError{status: http.StatusBadRequest, msg: "invalid severity: expected info, warning or critical"}
+			}
+			existing.Severity = *req.Severity
+		}
+		if req.Threshold != nil {
+			existing.Threshold = *req.Threshold
+		}
+		if req.CooldownMinutes != nil {
+			existing.CooldownMinutes = *req.CooldownMinutes
+		}
+		if req.NotificationChannels != nil {
+			existing.NotificationChannels = req.NotificationChannels
+		}
+
+		if err := h.policyRepo.UpdateTXN(tx, existing); err != nil {
+			return &httpError{status: http.StatusInternalServerError, msg: "failed to update policy: " + err.Error()}
+		}
+		updated = existing
+		return nil
+	})
+	if err != nil {
+		respondErr(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"policy": existing})
+	c.JSON(http.StatusOK, gin.H{"policy": updated})
 }
 
 // DeletePolicy removes an alert policy.
@@ -327,22 +410,24 @@ func (h *IncidentHandler) DeletePolicy(c *gin.Context) {
 	}
 
 	id := c.Param("id")
-	existing, err := h.policyRepo.GetByID(id)
+	err := h.withTenantTx(businessID, func(tx *sql.Tx) error {
+		existing, err := h.policyRepo.GetByIDTXN(tx, id)
+		if err != nil {
+			return &httpError{status: http.StatusInternalServerError, msg: "database error"}
+		}
+		if existing == nil {
+			return &httpError{status: http.StatusNotFound, msg: "policy not found"}
+		}
+		if existing.BusinessID != businessID {
+			return &httpError{status: http.StatusForbidden, msg: "access denied"}
+		}
+		if err := h.policyRepo.DeleteTXN(tx, id); err != nil {
+			return &httpError{status: http.StatusInternalServerError, msg: err.Error()}
+		}
+		return nil
+	})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
-		return
-	}
-	if existing == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "policy not found"})
-		return
-	}
-	if existing.BusinessID != businessID {
-		c.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
-		return
-	}
-
-	if err := h.policyRepo.Delete(id); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondErr(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "deleted", "policy_id": id})

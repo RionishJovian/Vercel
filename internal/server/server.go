@@ -98,6 +98,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		messagingClient,
 	)
 	incidentHandler := handler.NewIncidentHandler(
+		db,
 		database.NewIncidentRepository(db),
 		database.NewAlertPolicyRepository(db),
 		database.NewDeviceRepository(db),

@@ -120,3 +120,88 @@ func scanAlertPolicies(rows *sql.Rows) ([]*model.AlertPolicy, error) {
 	}
 	return policies, nil
 }
+
+// ---------------------------------------------------------------------------
+// Transaction-scoped variants (RLS enforcement rollout: operational alerting).
+// Same SQL on the caller's *sql.Tx so they can run under WithTenant. Bare
+// versions stay for the later full rollout.
+// ---------------------------------------------------------------------------
+
+// CreateTXN is the transaction-scoped variant of Create.
+func (r *AlertPolicyRepository) CreateTXN(tx *sql.Tx, policy *model.AlertPolicy) (*model.AlertPolicy, error) {
+	query := `
+		INSERT INTO alert_policies (business_id, kind, enabled, severity, threshold, cooldown_minutes, notification_channels)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		RETURNING id, business_id, kind, enabled, severity, threshold, cooldown_minutes, notification_channels, created_at, updated_at`
+	p := &model.AlertPolicy{}
+	var channels pq.StringArray
+	err := tx.QueryRow(query,
+		policy.BusinessID, policy.Kind, policy.Enabled, policy.Severity,
+		policy.Threshold, policy.CooldownMinutes, policy.NotificationChannels,
+	).Scan(
+		&p.ID, &p.BusinessID, &p.Kind, &p.Enabled, &p.Severity,
+		&p.Threshold, &p.CooldownMinutes, &channels, &p.CreatedAt, &p.UpdatedAt,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("create alert policy: %w", err)
+	}
+	p.NotificationChannels = channels
+	return p, nil
+}
+
+// GetByIDTXN is the transaction-scoped variant of GetByID.
+func (r *AlertPolicyRepository) GetByIDTXN(tx *sql.Tx, id string) (*model.AlertPolicy, error) {
+	return scanAlertPolicy(tx.QueryRow(
+		`SELECT id, business_id, kind, enabled, severity, threshold, cooldown_minutes, notification_channels, created_at, updated_at FROM alert_policies WHERE id = $1`, id))
+}
+
+// ListByBusinessTXN is the transaction-scoped variant of ListByBusiness.
+func (r *AlertPolicyRepository) ListByBusinessTXN(tx *sql.Tx, businessID string) ([]*model.AlertPolicy, error) {
+	rows, err := tx.Query(
+		`SELECT id, business_id, kind, enabled, severity, threshold, cooldown_minutes, notification_channels, created_at, updated_at FROM alert_policies WHERE business_id = $1 ORDER BY created_at DESC`, businessID)
+	if err != nil {
+		return nil, fmt.Errorf("list alert policies: %w", err)
+	}
+	defer rows.Close()
+	return scanAlertPolicies(rows)
+}
+
+// ListEnabledTXN is the transaction-scoped variant of ListEnabled.
+func (r *AlertPolicyRepository) ListEnabledTXN(tx *sql.Tx, businessID string) ([]*model.AlertPolicy, error) {
+	rows, err := tx.Query(
+		`SELECT id, business_id, kind, enabled, severity, threshold, cooldown_minutes, notification_channels, created_at, updated_at FROM alert_policies WHERE business_id = $1 AND enabled = true ORDER BY created_at DESC`, businessID)
+	if err != nil {
+		return nil, fmt.Errorf("list enabled alert policies: %w", err)
+	}
+	defer rows.Close()
+	return scanAlertPolicies(rows)
+}
+
+// UpdateTXN is the transaction-scoped variant of Update.
+func (r *AlertPolicyRepository) UpdateTXN(tx *sql.Tx, policy *model.AlertPolicy) error {
+	result, err := tx.Exec(
+		`UPDATE alert_policies SET kind=$1, enabled=$2, severity=$3, threshold=$4, cooldown_minutes=$5, notification_channels=$6, updated_at=$7 WHERE id=$8`,
+		policy.Kind, policy.Enabled, policy.Severity, policy.Threshold,
+		policy.CooldownMinutes, policy.NotificationChannels, time.Now().UTC(), policy.ID)
+	if err != nil {
+		return fmt.Errorf("update alert policy: %w", err)
+	}
+	n, _ := result.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("alert policy not found: %s", policy.ID)
+	}
+	return nil
+}
+
+// DeleteTXN is the transaction-scoped variant of Delete.
+func (r *AlertPolicyRepository) DeleteTXN(tx *sql.Tx, id string) error {
+	result, err := tx.Exec(`DELETE FROM alert_policies WHERE id = $1`, id)
+	if err != nil {
+		return fmt.Errorf("delete alert policy: %w", err)
+	}
+	n, _ := result.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("alert policy not found: %s", id)
+	}
+	return nil
+}

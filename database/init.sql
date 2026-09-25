@@ -353,6 +353,14 @@ CREATE POLICY incidents_tenant_isolation ON incidents
     USING (business_id = current_setting('app.current_business_id')::uuid)
     WITH CHECK (business_id = current_setting('app.current_business_id')::uuid);
 
+-- Alert policies: tenant-scoped. REQUIRED by the operational alerting path: the
+-- table had RLS enabled but NO policy (deny-all for `authenticated`), and
+-- incidents reference alert_policies(policy_id).
+CREATE POLICY alert_policies_tenant_isolation ON alert_policies
+    FOR ALL TO authenticated
+    USING (business_id = current_setting('app.current_business_id')::uuid)
+    WITH CHECK (business_id = current_setting('app.current_business_id')::uuid);
+
 -- Audit: Users can only see audit events for their business
 CREATE POLICY audit_tenant_isolation ON audit_events
     FOR SELECT TO authenticated

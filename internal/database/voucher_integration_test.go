@@ -904,3 +904,152 @@ func TestDB_TXN_moneyPathIsolation(t *testing.T) {
 		return nil
 	})
 }
+
+// testUUID returns a canonical hyphenated UUID string (matching Postgres'
+// canonical output, so scanned ids compare equal).
+func testUUID() string {
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+}
+
+func insertUser(t *testing.T, db *DB, businessID string) string {
+	t.Helper()
+	var id string
+	err := db.QueryRow(
+		`INSERT INTO users (business_id, full_name, email, password_hash, user_role) VALUES ($1, $2, $3, $4, 'OWNER') RETURNING user_id`,
+		businessID, "Harness User", "u-"+randHex(6)+"@example.test", "x",
+	).Scan(&id)
+	if err != nil {
+		t.Fatalf("insert user: %v", err)
+	}
+	return id
+}
+
+// TestDB_Alerting_isolation proves the CONVERTED operational-alerting path
+// (incident + alert_policy TXN variants under WithTenant) isolates: own-business
+// create/list/get/ack/resolve works, cross-business is blocked.
+func TestDB_Alerting_isolation(t *testing.T) {
+	db := requireHarness(t)
+	irepo := NewIncidentRepository(db)
+	prepo := NewAlertPolicyRepository(db)
+	bizA := insertBusiness(t, db)
+	bizB := insertBusiness(t, db)
+	userA := insertUser(t, db, bizA)
+	now := time.Now().UTC()
+
+	newPolicy := func(biz string) *model.AlertPolicy {
+		return &model.AlertPolicy{BusinessID: biz, Kind: "site_offline", Enabled: true,
+			Severity: "warning", CooldownMinutes: 30, NotificationChannels: []string{}}
+	}
+
+	// alert_policies: create own-business.
+	var polA, polB *model.AlertPolicy
+	inTenant(t, db, bizA, func(tx *sql.Tx) error {
+		p, err := prepo.CreateTXN(tx, newPolicy(bizA))
+		polA = p
+		return err
+	})
+	inTenant(t, db, bizB, func(tx *sql.Tx) error {
+		p, err := prepo.CreateTXN(tx, newPolicy(bizB))
+		polB = p
+		return err
+	})
+	if polA == nil || polB == nil {
+		t.Fatal("policy create via TXN failed")
+	}
+
+	// list-own only.
+	inTenant(t, db, bizA, func(tx *sql.Tx) error {
+		ps, err := prepo.ListByBusinessTXN(tx, bizA)
+		if err != nil {
+			return err
+		}
+		if len(ps) != 1 || ps[0].ID != polA.ID {
+			t.Fatalf("tenant A policies = %+v, want only its own", ps)
+		}
+		return nil
+	})
+
+	// cross-business policy read blocked.
+	inTenant(t, db, bizB, func(tx *sql.Tx) error {
+		p, err := prepo.GetByIDTXN(tx, polA.ID)
+		if err != nil {
+			return err
+		}
+		if p != nil {
+			t.Fatal("cross-business policy visible to tenant B")
+		}
+		return nil
+	})
+
+	// cross-business policy update/delete affect 0 rows.
+	inTenant(t, db, bizB, func(tx *sql.Tx) error {
+		cross := newPolicy(bizB)
+		cross.ID = polA.ID // target A's row, as tenant B
+		if err := prepo.UpdateTXN(tx, cross); err == nil {
+			t.Fatal("cross-business policy update should affect 0 rows")
+		}
+		return nil
+	})
+	inTenant(t, db, bizB, func(tx *sql.Tx) error {
+		if err := prepo.DeleteTXN(tx, polA.ID); err == nil {
+			t.Fatal("cross-business policy delete should affect 0 rows")
+		}
+		return nil
+	})
+
+	// incidents: create own-business.
+	incA := &model.Incident{ID: testUUID(), BusinessID: bizA, Kind: "site_offline",
+		Severity: "warning", SubjectID: "sA", SubjectLabel: "Site A", OpenedAt: now}
+	incB := &model.Incident{ID: testUUID(), BusinessID: bizB, Kind: "site_offline",
+		Severity: "warning", SubjectID: "sB", SubjectLabel: "Site B", OpenedAt: now}
+	inTenant(t, db, bizA, func(tx *sql.Tx) error { _, err := irepo.CreateTXN(tx, incA); return err })
+	inTenant(t, db, bizB, func(tx *sql.Tx) error { _, err := irepo.CreateTXN(tx, incB); return err })
+
+	// list-own only.
+	inTenant(t, db, bizA, func(tx *sql.Tx) error {
+		list, err := irepo.ListOpenByBusinessTXN(tx, bizA)
+		if err != nil {
+			return err
+		}
+		if len(list) != 1 || list[0].ID != incA.ID {
+			t.Fatalf("tenant A incidents = %+v, want only its own", list)
+		}
+		return nil
+	})
+
+	// cross-business incident read blocked (B fetching A's incident id).
+	inTenant(t, db, bizB, func(tx *sql.Tx) error {
+		got, err := irepo.GetByIDTXN(tx, incA.ID)
+		if err != nil {
+			return err
+		}
+		if got != nil {
+			t.Fatal("cross-business incident visible to tenant B")
+		}
+		return nil
+	})
+
+	// ack: own succeeds; cross affects 0 rows.
+	inTenant(t, db, bizA, func(tx *sql.Tx) error {
+		return irepo.AcknowledgeTXN(tx, incA.ID, userA)
+	})
+	inTenant(t, db, bizB, func(tx *sql.Tx) error {
+		if err := irepo.AcknowledgeTXN(tx, incA.ID, userA); err == nil {
+			t.Fatal("cross-business acknowledge should affect 0 rows")
+		}
+		return nil
+	})
+
+	// resolve: own succeeds; cross affects 0 rows.
+	inTenant(t, db, bizA, func(tx *sql.Tx) error {
+		return irepo.ResolveTXN(tx, incA.ID, userA)
+	})
+	inTenant(t, db, bizB, func(tx *sql.Tx) error {
+		if err := irepo.ResolveTXN(tx, incA.ID, userA); err == nil {
+			t.Fatal("cross-business resolve should affect 0 rows")
+		}
+		return nil
+	})
+}
