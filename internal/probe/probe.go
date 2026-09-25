@@ -19,7 +19,7 @@ func NewProbeService(cacheClient *cache.Client, tDown time.Duration) *ProbeServi
 
 // classifyFreshness is the pure peer-state decision table, extracted from
 // ClassifyPeerState so it can be tested deterministically (no wall clock).
-// - up:      handshake fresh AND data plane up
+// - up:      handshake fresh AND data plane up (both required)
 // - stale:   handshake expired BUT data plane still up (edge in reachability)
 // - offline: handshake expired AND data plane down
 // - unknown: any other combination
