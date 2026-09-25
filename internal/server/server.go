@@ -25,22 +25,22 @@ import (
 )
 
 type Server struct {
-	cfg         *config.Config
-	log         *logger.Logger
-	sugar       *zap.SugaredLogger
-	http        *http.Server
-	gin         *gin.Engine
-	db          *database.DB
-	cache       *cache.Client
-	messaging   *messaging.Client
-	authService *auth.Service
-	userRepo    *database.UserRepository
-	authHandler *handler.AuthHandler
-	evaluator   *evaluator.Evaluator
+	cfg            *config.Config
+	log            *logger.Logger
+	sugar          *zap.SugaredLogger
+	http           *http.Server
+	gin            *gin.Engine
+	db             *database.DB
+	cache          *cache.Client
+	messaging      *messaging.Client
+	authService    *auth.Service
+	userRepo       *database.UserRepository
+	authHandler    *handler.AuthHandler
+	evaluator      *evaluator.Evaluator
 	voucherHandler *handler.VoucherHandler
 	monitorHandler *handler.MonitorHandler
-	sweep       *monitoring.Sweep
-	recovery    *recovery.RecoveryService
+	sweep          *monitoring.Sweep
+	recovery       *recovery.RecoveryService
 }
 
 func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
@@ -108,7 +108,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	voucherHandler := handler.NewVoucherHandler(database.NewVoucherRepository(db))
 
 	// Probe + monitoring: peer reachability classification and state fan-out.
-	probeService := probe.NewProbeService(cacheClient, 5 * time.Minute)
+	probeService := probe.NewProbeService(cacheClient, 5*time.Minute)
 	monitoringService := monitoring.NewMonitoringService(
 		database.NewPeerHeartbeatRepository(db),
 		database.NewTelemetrySampleRepository(db),
@@ -157,11 +157,19 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	}
 	sugar.Infow("Recovery worker started", "enabled", cfg.Recovery.Enabled)
 
+	// Wire the live provisioner apply path (Slice 1): flag-gated OFF by default.
+	// When enabled, peer.recover intents reach the real RouterOS Applier through
+	// the approve -> apply -> verify -> rollback gate. A failure here must fail
+	// startup loudly.
+	if err := startLiveApplier(cfg, messagingClient, sugar); err != nil {
+		return nil, err
+	}
+
 	return &Server{
-		cfg:         cfg,
-		log:         log,
-		sugar:       sugar,
-		gin:         r,
+		cfg:   cfg,
+		log:   log,
+		sugar: sugar,
+		gin:   r,
 		http: &http.Server{
 			Addr:           fmt.Sprintf(":%d", cfg.Server.Port),
 			Handler:        r,
@@ -169,16 +177,16 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 			WriteTimeout:   cfg.Server.WriteTimeout,
 			MaxHeaderBytes: 1 << 20,
 		},
-		db:          db,
-		cache:       cacheClient,
-		messaging:   messagingClient,
-		authService: authService,
-		userRepo:    userRepo,
-		authHandler: authHandler,
-		evaluator:   evaluator,
+		db:             db,
+		cache:          cacheClient,
+		messaging:      messagingClient,
+		authService:    authService,
+		userRepo:       userRepo,
+		authHandler:    authHandler,
+		evaluator:      evaluator,
 		voucherHandler: voucherHandler,
-		sweep:       sweepWorker,
-		recovery:    recoveryService,
+		sweep:          sweepWorker,
+		recovery:       recoveryService,
 	}, nil
 }
 
@@ -248,10 +256,10 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 			{
 				vouchers.GET("", voucherHandler.ListVouchers)
 				vouchers.POST("", voucherHandler.CreateVoucher)
-				vouchers.GET("/:id", voucherHandler.GetVoucherByCode)  // Note: reused handler for redemption
+				vouchers.GET("/:id", voucherHandler.GetVoucherByCode) // Note: reused handler for redemption
 				vouchers.PUT("/:id", voucherHandler.UpdateVoucherStatus)
 				vouchers.DELETE("/:id", voucherHandler.DeleteVoucher)
-				vouchers.POST("/:code/redeem", voucherHandler.RedeemVoucher)  // For voucher redemption
+				vouchers.POST("/:code/redeem", voucherHandler.RedeemVoucher) // For voucher redemption
 			}
 
 			webhooks := protected.Group("/webhooks")
