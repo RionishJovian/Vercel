@@ -9,7 +9,8 @@ testing the real Provisioner Applier WITHOUT touching production.
 - SSH banner: SSH-2.0-ROSSSH  →  reachable from host at 172.20.0.250:22
 - WG tunnel iface: wg-magichub (listen-port 13231), IP 10.99.0.3/30
   (SANDBOX range, isolated from prod 10.77.0.0/24 — never 10.77.0.x),
-  peer allowed-address 10.99.0.1/32 (sandbox hub), keepalive 25s
+  peer `peer2` allowed-address 10.99.0.1/32 (sandbox hub), keepalive 25s
+  (state VERIFIED live 2026-09-25 via SSH reprint: peer=10.99.0.1/32, iface=10.99.0.3/30)
 - Lab keypair: priv /tmp/lab_priv, pub /tmp/lab_pub
 - Live CCR2004 reference (Kyaw Caffee, PROD — never point the lab at it):
   iface=magic-cloud, pubkey=<<in private KB, not here>>, endpoint hub.mikromagic.com:51820,
