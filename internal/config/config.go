@@ -167,6 +167,11 @@ type ApplierConfig struct {
 	OtpDigits int           `mapstructure:"otp_digits"`
 	OtpStep   time.Duration `mapstructure:"otp_step"`
 	OtpSkew   int           `mapstructure:"otp_skew"`
+
+	// Telegram approve-bridge target. The real bot transport is an injected seam
+	// (not implemented yet); with no messenger the bridge stays inert and
+	// approvals time out to DENY.
+	TelegramChatID string `mapstructure:"telegram_chat_id"`
 }
 
 func Load(path string) (*Config, error) {
@@ -289,4 +294,5 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("provisioner.applier.otp_digits", 6)
 	v.SetDefault("provisioner.applier.otp_step", "30s")
 	v.SetDefault("provisioner.applier.otp_skew", 1)
+	v.SetDefault("provisioner.applier.telegram_chat_id", "")
 }

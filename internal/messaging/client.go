@@ -175,6 +175,18 @@ func (c *Client) Request(ctx context.Context, businessID, subject string, data [
 	return msg, nil
 }
 
+// Reply publishes data to a request's reply subject (the answering half of NATS
+// request/reply). Used by the approval bridge to answer provision.approval.
+func (c *Client) Reply(req *nats.Msg, data []byte) error {
+	if req == nil || req.Reply == "" {
+		return fmt.Errorf("nats reply: message has no reply subject")
+	}
+	if err := c.conn.Publish(req.Reply, data); err != nil {
+		return fmt.Errorf("nats reply %s: %w", req.Reply, err)
+	}
+	return nil
+}
+
 func (c *Client) IsConnected() bool {
 	return c.conn != nil && c.conn.IsConnected()
 }

@@ -66,5 +66,20 @@ func startLiveApplier(cfg *config.Config, client *messaging.Client, sugar *zap.S
 
 	sugar.Infow("Live apply consumer started (flag-gated)",
 		"host", appCfg.Host, "interface", appCfg.Interface)
+
+	// Telegram approve bridge (Slice 3): answers provision.approval on behalf of
+	// the human Lead. The real bot transport is an injected seam; without a
+	// messenger the bridge is inert and approvals time out to DENY (fail closed).
+	if messenger, ok := provisioner.ConfigTelegramMessenger(appCfg.TelegramChatID); ok {
+		approver := provisioner.NewTelegramApprover(messenger, appCfg.TelegramChatID, 5*time.Minute)
+		bridge := recovery.NewApprovalBridge(approver, client, sugar)
+		if err := bridge.Start(); err != nil {
+			return fmt.Errorf("approval bridge start: %w", err)
+		}
+		sugar.Info("Telegram approval bridge started (flag-gated)")
+	} else {
+		sugar.Warn("Telegram approval bridge not configured (no bot messenger) — approval requests will time out and DENY")
+	}
+
 	return nil
 }
