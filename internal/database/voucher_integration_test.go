@@ -1229,3 +1229,123 @@ func TestDB_RestrictedConn_isolation(t *testing.T) {
 		t.Fatal("TenantConn must refuse a malformed business id")
 	}
 }
+
+// TestDB_PortalDevice_isolation proves the converted portal-config / device
+// request paths isolate (cross-business blocked) while ListAllPeerKeys stays a
+// system-level (owner) sweep path.
+func TestDB_PortalDevice_isolation(t *testing.T) {
+	db := requireHarness(t)
+	prepo := NewPortalConfigRepository(db)
+	srepo := NewPortalSessionRepository(db)
+	drepo := NewDeviceRepository(db)
+	bizA := insertBusiness(t, db)
+	bizB := insertBusiness(t, db)
+	now := time.Now().UTC()
+
+	// portal_config: upsert own-business, read own; cross-business read blocked.
+	inTenant(t, db, bizA, func(tx *sql.Tx) error {
+		return prepo.UpsertTXN(tx, &model.PortalConfig{BusinessID: bizA, BusinessName: "A Wi-Fi", ConsentRequired: true})
+	})
+	inTenant(t, db, bizB, func(tx *sql.Tx) error {
+		return prepo.UpsertTXN(tx, &model.PortalConfig{BusinessID: bizB, BusinessName: "B Wi-Fi", ConsentRequired: true})
+	})
+	inTenant(t, db, bizA, func(tx *sql.Tx) error {
+		c, err := prepo.GetByBusinessTXN(tx, bizA)
+		if err != nil {
+			return err
+		}
+		if c == nil || c.BusinessName != "A Wi-Fi" {
+			t.Fatalf("own portal config = %+v", c)
+		}
+		return nil
+	})
+	inTenant(t, db, bizB, func(tx *sql.Tx) error {
+		// Tenant B asking for A's config sees nothing (RLS-bound).
+		c, err := prepo.GetByBusinessTXN(tx, bizA)
+		if err != nil {
+			return err
+		}
+		if c != nil {
+			t.Fatal("cross-business portal config visible to tenant B")
+		}
+		return nil
+	})
+
+	// portal_session: create own; list-own only.
+	inTenant(t, db, bizA, func(tx *sql.Tx) error {
+		_, err := srepo.CreateTXN(tx, &model.PortalSession{BusinessID: bizA, ClientMAC: "aa:bb:cc:00:00:01", AuthenticatedAt: now, IsActive: true})
+		return err
+	})
+	inTenant(t, db, bizB, func(tx *sql.Tx) error {
+		_, err := srepo.CreateTXN(tx, &model.PortalSession{BusinessID: bizB, ClientMAC: "aa:bb:cc:00:00:02", AuthenticatedAt: now, IsActive: true})
+		return err
+	})
+	inTenant(t, db, bizA, func(tx *sql.Tx) error {
+		ss, err := srepo.ListActiveByBusinessTXN(tx, bizA)
+		if err != nil {
+			return err
+		}
+		if len(ss) != 1 || ss[0].BusinessID != bizA {
+			t.Fatalf("tenant A sessions = %d, want only its own", len(ss))
+		}
+		return nil
+	})
+
+	// device: create own; cross-business read blocked; update/delete own only.
+	mk := func(biz string) string {
+		var id string
+		inTenant(t, db, biz, func(tx *sql.Tx) error {
+			d, err := drepo.CreateDeviceTXN(tx, &model.Device{BusinessID: biz, HardwareName: "harness",
+				DeploymentLayer: "ACCESS_POINT", Vendor: "mikrotik", Category: "ap", Transport: "direct"})
+			if err != nil {
+				return err
+			}
+			id = d.DeviceID
+			return nil
+		})
+		return id
+	}
+	devA := mk(bizA)
+	devB := mk(bizB)
+
+	inTenant(t, db, bizA, func(tx *sql.Tx) error {
+		ds, err := drepo.ListDevicesByBusinessTXN(tx, bizA)
+		if err != nil {
+			return err
+		}
+		if len(ds) != 1 || ds[0].DeviceID != devA {
+			t.Fatalf("tenant A devices = %d, want only its own", len(ds))
+		}
+		return nil
+	})
+	inTenant(t, db, bizB, func(tx *sql.Tx) error {
+		d, err := drepo.GetDeviceByIDTXN(tx, devA)
+		if err != nil {
+			return err
+		}
+		if d != nil {
+			t.Fatal("cross-business device visible to tenant B")
+		}
+		return nil
+	})
+	inTenant(t, db, bizB, func(tx *sql.Tx) error {
+		if err := drepo.DeleteDeviceTXN(tx, devA); err == nil {
+			t.Fatal("cross-business device delete should affect 0 rows")
+		}
+		return nil
+	})
+
+	// ListAllPeerKeys is a SYSTEM-LEVEL sweep path (owner) — still sees every
+	// tenant's devices, unchanged by enforcement.
+	keys, err := drepo.ListAllPeerKeys()
+	if err != nil {
+		t.Fatalf("ListAllPeerKeys: %v", err)
+	}
+	seen := map[string]bool{}
+	for _, k := range keys {
+		seen[k.DeviceID] = true
+	}
+	if !seen[devA] || !seen[devB] {
+		t.Fatal("ListAllPeerKeys must remain cross-tenant (system-level) and include all devices")
+	}
+}

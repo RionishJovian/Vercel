@@ -1,24 +1,33 @@
 package handler
 
 import (
+	"database/sql"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 
 	"mega-magic/internal/auth"
 	"mega-magic/internal/database"
+	"mega-magic/internal/model"
 	"mega-magic/internal/monitoring"
 
 	"strings"
 )
 
 type MonitorHandler struct {
-	deviceRepo  *database.DeviceRepository
-	monitoring  *monitoring.MonitoringService
+	db         *database.DB
+	deviceRepo *database.DeviceRepository
+	monitoring *monitoring.MonitoringService
 }
 
-func NewMonitorHandler(deviceRepo *database.DeviceRepository, mon *monitoring.MonitoringService) *MonitorHandler {
-	return &MonitorHandler{deviceRepo: deviceRepo, monitoring: mon}
+func NewMonitorHandler(db *database.DB, deviceRepo *database.DeviceRepository, mon *monitoring.MonitoringService) *MonitorHandler {
+	return &MonitorHandler{db: db, deviceRepo: deviceRepo, monitoring: mon}
+}
+
+// withTenantTx runs fn in an RLS-bound tenant transaction (pinned conn when
+// database.rls_enforce is on, owner tx otherwise).
+func (h *MonitorHandler) withTenantTx(c *gin.Context, businessID string, fn func(tx *sql.Tx) error) error {
+	return runInTenant(c, h.db, businessID, fn)
 }
 
 // looksLikeUUID returns true when s is a canonical 8-4-4-4-12 hyphenated hex
@@ -61,9 +70,17 @@ func (h *MonitorHandler) PeerState(c *gin.Context) {
 	}
 
 	// Ownership check: the peer must belong to this tenant's devices.
-	dev, err := h.deviceRepo.GetDeviceByID(peerID)
+	var dev *model.Device
+	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
+		d, err := h.deviceRepo.GetDeviceByIDTXN(tx, peerID)
+		if err != nil {
+			return &httpError{status: http.StatusInternalServerError, msg: "database error"}
+		}
+		dev = d
+		return nil
+	})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
+		respondErr(c, err)
 		return
 	}
 	if dev == nil {

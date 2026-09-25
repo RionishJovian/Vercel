@@ -90,6 +90,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 
 	authHandler := handler.NewAuthHandler(userRepo, authService, db)
 	routerHandler := handler.NewRouterHandler(
+		db,
 		database.NewDeviceRepository(db),
 		messagingClient,
 	)
@@ -119,7 +120,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		messagingClient,
 		probeService,
 	)
-	monitorHandler := handler.NewMonitorHandler(database.NewDeviceRepository(db), monitoringService)
+	monitorHandler := handler.NewMonitorHandler(db, database.NewDeviceRepository(db), monitoringService)
 
 	// Fleet aggregate: read-only per-tenant peer-health overview.
 	fleetHandler := handler.NewFleetHandler(fleet.NewFleetService(

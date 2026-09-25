@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"database/sql"
 	"net"
 	"net/http"
 	"time"
@@ -13,6 +14,7 @@ import (
 )
 
 type RouterHandler struct {
+	db         *database.DB
 	deviceRepo *database.DeviceRepository
 	messaging  MessagingClient
 }
@@ -21,8 +23,14 @@ type MessagingClient interface {
 	Publish(businessID, subject string, data []byte) error
 }
 
-func NewRouterHandler(deviceRepo *database.DeviceRepository, msg MessagingClient) *RouterHandler {
-	return &RouterHandler{deviceRepo: deviceRepo, messaging: msg}
+func NewRouterHandler(db *database.DB, deviceRepo *database.DeviceRepository, msg MessagingClient) *RouterHandler {
+	return &RouterHandler{db: db, deviceRepo: deviceRepo, messaging: msg}
+}
+
+// withTenantTx runs fn in an RLS-bound tenant transaction (pinned conn when
+// database.rls_enforce is on, owner tx otherwise). Mirrors the money-path helper.
+func (h *RouterHandler) withTenantTx(c *gin.Context, businessID string, fn func(tx *sql.Tx) error) error {
+	return runInTenant(c, h.db, businessID, fn)
 }
 
 type CreateRouterRequest struct {
@@ -98,7 +106,15 @@ func validateDeviceEnums(deploymentLayer, vendor, category, transport string) st
 func (h *RouterHandler) ListRouters(c *gin.Context) {
 	businessID := auth.GetBusinessID(c)
 
-	devices, err := h.deviceRepo.ListDevicesByBusiness(businessID)
+	var devices []*model.Device
+	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
+		ds, err := h.deviceRepo.ListDevicesByBusinessTXN(tx, businessID)
+		if err != nil {
+			return err
+		}
+		devices = ds
+		return nil
+	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list routers"})
 		return
@@ -110,10 +126,19 @@ func (h *RouterHandler) ListRouters(c *gin.Context) {
 // GetRouter returns a single router by ID
 func (h *RouterHandler) GetRouter(c *gin.Context) {
 	deviceID := c.Param("id")
+	businessID := auth.GetBusinessID(c)
 
-	device, err := h.deviceRepo.GetDeviceByID(deviceID)
+	var device *model.Device
+	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
+		d, err := h.deviceRepo.GetDeviceByIDTXN(tx, deviceID)
+		if err != nil {
+			return &httpError{status: http.StatusInternalServerError, msg: "database error"}
+		}
+		device = d
+		return nil
+	})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
+		respondErr(c, err)
 		return
 	}
 	if device == nil {
@@ -121,8 +146,8 @@ func (h *RouterHandler) GetRouter(c *gin.Context) {
 		return
 	}
 
-	// Verify ownership
-	businessID := auth.GetBusinessID(c)
+	// Ownership is enforced by the tenant scope (a cross-business device is
+	// invisible → 404); the explicit check remains as defence-in-depth.
 	if device.BusinessID != businessID {
 		c.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
 		return
@@ -148,20 +173,28 @@ func (h *RouterHandler) CreateRouter(c *gin.Context) {
 	now := time.Now().UTC()
 
 	device := &model.Device{
-		BusinessID:       businessID,
-		HardwareName:     req.HardwareName,
-		DeviceModel:      req.DeviceModel,
-		DeploymentLayer:  req.DeploymentLayer,
-		Vendor:           req.Vendor,
-		Category:         req.Category,
-		Transport:        req.Transport,
-		MACAddress:       parseMAC(req.MACAddress),
-		ManagementIP:     parseIP(req.ManagementIP),
-		IsOnline:         false,
-		LastSeenAt:       &now,
+		BusinessID:      businessID,
+		HardwareName:    req.HardwareName,
+		DeviceModel:     req.DeviceModel,
+		DeploymentLayer: req.DeploymentLayer,
+		Vendor:          req.Vendor,
+		Category:        req.Category,
+		Transport:       req.Transport,
+		MACAddress:      parseMAC(req.MACAddress),
+		ManagementIP:    parseIP(req.ManagementIP),
+		IsOnline:        false,
+		LastSeenAt:      &now,
 	}
 
-	created, err := h.deviceRepo.CreateDevice(device)
+	var created *model.Device
+	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
+		cr, err := h.deviceRepo.CreateDeviceTXN(tx, device)
+		if err != nil {
+			return err
+		}
+		created = cr
+		return nil
+	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to register router"})
 		return
@@ -181,75 +214,75 @@ func (h *RouterHandler) UpdateRouter(c *gin.Context) {
 	deviceID := c.Param("id")
 	businessID := auth.GetBusinessID(c)
 
-	existing, err := h.deviceRepo.GetDeviceByID(deviceID)
+	var updated *model.Device
+	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
+		existing, err := h.deviceRepo.GetDeviceByIDTXN(tx, deviceID)
+		if err != nil {
+			return &httpError{status: http.StatusInternalServerError, msg: "database error"}
+		}
+		if existing == nil {
+			return &httpError{status: http.StatusNotFound, msg: "router not found"}
+		}
+		if existing.BusinessID != businessID {
+			return &httpError{status: http.StatusForbidden, msg: "access denied"}
+		}
+
+		var req UpdateRouterRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			return &httpError{status: http.StatusBadRequest, msg: err.Error()}
+		}
+
+		// Validate only the fields being updated (nil = untouched).
+		if req.DeploymentLayer != nil && !validDeploymentLayers[*req.DeploymentLayer] {
+			return &httpError{status: http.StatusBadRequest, msg: "invalid deployment_layer: expected MAIN_GATEWAY, DOWNSTREAM_SWITCH, ACCESS_POINT or CONTROLLER"}
+		}
+		if req.Vendor != nil && !validVendors[*req.Vendor] {
+			return &httpError{status: http.StatusBadRequest, msg: "invalid vendor: expected mikrotik, ruijie, cisco, tplink, ubiquiti or generic"}
+		}
+		if req.Category != nil && !validCategories[*req.Category] {
+			return &httpError{status: http.StatusBadRequest, msg: "invalid category: expected router, gateway, switch, ap or controller"}
+		}
+		if req.Transport != nil && !validTransports[*req.Transport] {
+			return &httpError{status: http.StatusBadRequest, msg: "invalid transport: expected direct, connector, tunnel or controller"}
+		}
+
+		if req.HardwareName != nil {
+			existing.HardwareName = *req.HardwareName
+		}
+		if req.DeviceModel != nil {
+			existing.DeviceModel = req.DeviceModel
+		}
+		if req.DeploymentLayer != nil {
+			existing.DeploymentLayer = *req.DeploymentLayer
+		}
+		if req.Vendor != nil {
+			existing.Vendor = *req.Vendor
+		}
+		if req.Category != nil {
+			existing.Category = *req.Category
+		}
+		if req.Transport != nil {
+			existing.Transport = *req.Transport
+		}
+		if req.MACAddress != nil {
+			existing.MACAddress = parseMAC(req.MACAddress)
+		}
+		if req.ManagementIP != nil {
+			existing.ManagementIP = parseIP(req.ManagementIP)
+		}
+		if req.IsOnline != nil {
+			existing.IsOnline = *req.IsOnline
+		}
+
+		upd, err := h.deviceRepo.UpdateDeviceTXN(tx, existing)
+		if err != nil {
+			return &httpError{status: http.StatusInternalServerError, msg: "failed to update router"}
+		}
+		updated = upd
+		return nil
+	})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
-		return
-	}
-	if existing == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "router not found"})
-		return
-	}
-	if existing.BusinessID != businessID {
-		c.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
-		return
-	}
-
-	var req UpdateRouterRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	// Validate only the fields being updated (nil = untouched).
-	if req.DeploymentLayer != nil && !validDeploymentLayers[*req.DeploymentLayer] {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid deployment_layer: expected MAIN_GATEWAY, DOWNSTREAM_SWITCH, ACCESS_POINT or CONTROLLER"})
-		return
-	}
-	if req.Vendor != nil && !validVendors[*req.Vendor] {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid vendor: expected mikrotik, ruijie, cisco, tplink, ubiquiti or generic"})
-		return
-	}
-	if req.Category != nil && !validCategories[*req.Category] {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid category: expected router, gateway, switch, ap or controller"})
-		return
-	}
-	if req.Transport != nil && !validTransports[*req.Transport] {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid transport: expected direct, connector, tunnel or controller"})
-		return
-	}
-
-	if req.HardwareName != nil {
-		existing.HardwareName = *req.HardwareName
-	}
-	if req.DeviceModel != nil {
-		existing.DeviceModel = req.DeviceModel
-	}
-	if req.DeploymentLayer != nil {
-		existing.DeploymentLayer = *req.DeploymentLayer
-	}
-	if req.Vendor != nil {
-		existing.Vendor = *req.Vendor
-	}
-	if req.Category != nil {
-		existing.Category = *req.Category
-	}
-	if req.Transport != nil {
-		existing.Transport = *req.Transport
-	}
-	if req.MACAddress != nil {
-		existing.MACAddress = parseMAC(req.MACAddress)
-	}
-	if req.ManagementIP != nil {
-		existing.ManagementIP = parseIP(req.ManagementIP)
-	}
-	if req.IsOnline != nil {
-		existing.IsOnline = *req.IsOnline
-	}
-
-	updated, err := h.deviceRepo.UpdateDevice(existing)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update router"})
+		respondErr(c, err)
 		return
 	}
 
@@ -261,22 +294,25 @@ func (h *RouterHandler) DeleteRouter(c *gin.Context) {
 	deviceID := c.Param("id")
 	businessID := auth.GetBusinessID(c)
 
-	existing, err := h.deviceRepo.GetDeviceByID(deviceID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
-		return
-	}
-	if existing == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "router not found"})
-		return
-	}
-	if existing.BusinessID != businessID {
-		c.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
-		return
-	}
+	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
+		existing, err := h.deviceRepo.GetDeviceByIDTXN(tx, deviceID)
+		if err != nil {
+			return &httpError{status: http.StatusInternalServerError, msg: "database error"}
+		}
+		if existing == nil {
+			return &httpError{status: http.StatusNotFound, msg: "router not found"}
+		}
+		if existing.BusinessID != businessID {
+			return &httpError{status: http.StatusForbidden, msg: "access denied"}
+		}
 
-	if err := h.deviceRepo.DeleteDevice(deviceID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete router"})
+		if err := h.deviceRepo.DeleteDeviceTXN(tx, deviceID); err != nil {
+			return &httpError{status: http.StatusInternalServerError, msg: "failed to delete router"}
+		}
+		return nil
+	})
+	if err != nil {
+		respondErr(c, err)
 		return
 	}
 
