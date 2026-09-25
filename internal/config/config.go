@@ -160,6 +160,13 @@ type ApplierConfig struct {
 	ResetHold             time.Duration `mapstructure:"reset_hold"`
 	PingTarget            string        `mapstructure:"ping_target"`
 	TDown                 time.Duration `mapstructure:"t_down"`
+
+	// RFC 6238 TOTP gate for HIGH-RISK actions. Empty secret => high-risk stays
+	// DENIED (fail closed). The secret is injected via config, never hardcoded.
+	OtpSecret string        `mapstructure:"otp_secret"`
+	OtpDigits int           `mapstructure:"otp_digits"`
+	OtpStep   time.Duration `mapstructure:"otp_step"`
+	OtpSkew   int           `mapstructure:"otp_skew"`
 }
 
 func Load(path string) (*Config, error) {
@@ -278,4 +285,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("provisioner.applier.interface", "wg-magichub")
 	v.SetDefault("provisioner.applier.reset_hold", "30s")
 	v.SetDefault("provisioner.applier.t_down", "180s")
+	v.SetDefault("provisioner.applier.otp_secret", "")
+	v.SetDefault("provisioner.applier.otp_digits", 6)
+	v.SetDefault("provisioner.applier.otp_step", "30s")
+	v.SetDefault("provisioner.applier.otp_skew", 1)
 }

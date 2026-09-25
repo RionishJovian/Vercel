@@ -122,3 +122,10 @@ provisioner:
     reset_hold: 30s                  # disable-peer hold (> UDP timeout)
     ping_target: ""                  # peer address probed for data-plane reachability
     t_down: 180s
+    # RFC 6238 TOTP gate for HIGH-RISK actions (rotate_listen_port/escalate).
+    # Empty secret => high-risk approvals stay DENIED. Inject the secret via
+    # config/env; never commit it.
+    otp_secret: ""
+    otp_digits: 6
+    otp_step: 30s
+    otp_skew: 1

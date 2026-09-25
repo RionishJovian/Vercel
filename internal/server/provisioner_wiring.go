@@ -47,12 +47,19 @@ func startLiveApplier(cfg *config.Config, client *messaging.Client, sugar *zap.S
 
 	svc := provisioner.NewApplyService(applier, prober)
 
-	// Slice 1 deliberately ships NO real TOTP provider. Passing a nil
-	// OtpVerifier preserves the committed fail-closed rule: an approved
-	// high-risk plan (rotate_listen_port/escalate) is DENIED by
-	// EvaluateApproval until the real provider lands in Slice 2.
+	// Real RFC 6238 TOTP gate for HIGH-RISK actions (Slice 2). Until a base32
+	// secret is configured (provisioner.applier.otp_secret), the verifier DENIES
+	// every high-risk approval, preserving the fail-closed posture. Slice 3 (the
+	// Telegram bridge) will hand this verifier the presented code.
+	otp := provisioner.NewTOTPVerifier(provisioner.TOTPConfig{
+		Secret: appCfg.OtpSecret,
+		Digits: appCfg.OtpDigits,
+		Step:   appCfg.OtpStep,
+		Skew:   appCfg.OtpSkew,
+	})
+
 	approver := recovery.NewNatsApprover(client, 5*time.Minute)
-	consumer := recovery.NewApplyConsumer(svc, prober, approver, nil, client, sugar)
+	consumer := recovery.NewApplyConsumer(svc, prober, approver, otp, client, sugar)
 	if err := consumer.Start(client); err != nil {
 		return fmt.Errorf("live applier consumer start: %w", err)
 	}
