@@ -27,6 +27,8 @@ This file is the canonical, git-tracked status snapshot. Re-run it after any sig
 | `b001c65` | **Telegram 2FA approve bridge** — human in the loop, default-deny |
 | `ee3eb47` | **docs(progress)** — provisioner arc complete, CCR2004 stood down |
 | `28ef5ee` | **voucher** — real redemption: code gen, atomic single-tx claim + Sovereign grant, race-guard |
+| `e5604c5` | **test(db)** — voucher money-path DB integration harness (throwaway DB, env-gated) — first real-SQL proof |
+| `aa9ee10` | **fix(db)** — `authenticated` role before RLS policies → 10 isolation policies now apply; DB-proven tenant isolation |
 
 ---
 
@@ -87,6 +89,7 @@ Rough module health:
 
 Remaining product modules by dependency order: **`portal`** (customer self-service redemption — the next integration; depends on the now-live voucher + device repos), then `topology` (network map), then `ai`/`vps`. **Billing/quota enforcement** (sweep checking WebfigPassExpiresAt against actual usage) is queued as follow-up to voucher.
 
-Two queued follow-ups (require an explicit decision when surfaced):
-1. **DB integration harness** — the `…TXN` SQL paths (claim race → 409, rollback) are untested; a DB fixture/iut harness would finally exercise them.
-2. **Portal redemption — who redeems?** (clawclaw finding #7): anonymous customer at the captive portal vs staff/owner redemption. Determines authz on the redeem endpoint. Decided when portal lands, not before.
+Two queued follow-ups (require an explicit decision):
+1. **DB integration harness — DONE (`e5604c5`)** — money-path SQL (claim race → 409, rollback) now DB-proven, then reused to prove RLS isolation (`aa9ee10`).
+2. **RLS: isolation is AVAILABLE, not ENFORCED (`aa9ee10`)** — the 10 tenant policies now load and are DB-proven, but the app still connects as owner `mega_admin` (bypasses RLS). Wiring a restricted role (`authenticated` + `set app.current_business_id` in middleware) is a separate decision — requires app/middleware/connection changes, deliberately out of the schema fix's scope.
+3. **Portal redemption — who redeems?** (clawclaw finding #7, decided: **anonymous customer at the captive portal**, MAC-anchored). Determines authz on the redeem endpoint. Ready to scope portal with this baked in.
