@@ -1349,3 +1349,49 @@ func TestDB_PortalDevice_isolation(t *testing.T) {
 		t.Fatal("ListAllPeerKeys must remain cross-tenant (system-level) and include all devices")
 	}
 }
+
+// TestDB_PortalDeviceAnchored_isolation proves the DEVICE is the tenant anchor:
+// a client attached to device A (business A) cannot redeem a voucher code that
+// belongs to business B. Codes are only business-scoped-unique, so resolution
+// MUST come from the device — and under A's tenant, B's code is invisible.
+func TestDB_PortalDeviceAnchored_isolation(t *testing.T) {
+	db := requireHarness(t)
+	repo := NewVoucherRepository(db)
+	prepo := NewPortalConfigRepository(db)
+	bizA := insertBusiness(t, db)
+	bizB := insertBusiness(t, db)
+	vB := newActiveVoucher(t, repo, bizB, 60, nil)
+	codeB := vB.Code
+
+	// Device A -> business A: B's code is not visible under A's tenant.
+	inTenant(t, db, bizA, func(tx *sql.Tx) error {
+		got, err := repo.GetVoucherByCodeTXN(tx, bizA, codeB)
+		if err != nil {
+			return err
+		}
+		if got != nil {
+			t.Fatal("device-anchored tenant A must NOT see business B's voucher code")
+		}
+		return nil
+	})
+
+	// Under its true tenant (B), the code IS visible; cross-business config read
+	// is blocked.
+	inTenant(t, db, bizB, func(tx *sql.Tx) error {
+		got, err := repo.GetVoucherByCodeTXN(tx, bizB, codeB)
+		if err != nil {
+			return err
+		}
+		if got == nil {
+			t.Fatal("business B must see its own voucher code")
+		}
+		c, err := prepo.GetByBusinessTXN(tx, bizA)
+		if err != nil {
+			return err
+		}
+		if c != nil {
+			t.Fatal("cross-business portal config visible to tenant B")
+		}
+		return nil
+	})
+}

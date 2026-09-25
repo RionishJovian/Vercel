@@ -110,6 +110,14 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	webhookHandler := handler.NewWebhookHandler(database.NewWebhookRepository(db))
 	// Voucher management for vistors (revenue features)
 	voucherHandler := handler.NewVoucherHandler(db, database.NewVoucherRepository(db), database.NewBusinessMeteredQuotaRepository(db))
+	portalHandler := handler.NewPortalHandler(
+		db,
+		database.NewDeviceRepository(db),
+		database.NewPortalConfigRepository(db),
+		database.NewPortalSessionRepository(db),
+		database.NewVoucherRepository(db),
+		database.NewBusinessMeteredQuotaRepository(db),
+	)
 
 	// Probe + monitoring: peer reachability classification and state fan-out.
 	probeService := probe.NewProbeService(cacheClient, 5*time.Minute)
@@ -148,7 +156,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		sugar.Info("RLS enforcement disabled — owner pool, no connection pinning (default)")
 	}
 
-	setupRoutes(r, authService, authHandler, routerHandler, telemetryHandler, incidentHandler, webhookHandler, voucherHandler, monitorHandler, fleetHandler, messagingClient, cacheClient, db, tenantMW)
+	setupRoutes(r, authService, authHandler, routerHandler, telemetryHandler, incidentHandler, webhookHandler, voucherHandler, portalHandler, monitorHandler, fleetHandler, messagingClient, cacheClient, db, tenantMW)
 
 	// Start the policy evaluator: watches NATS telemetry and auto-opens incidents.
 	evaluator := evaluator.New(
@@ -211,13 +219,23 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	}, nil
 }
 
-func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.AuthHandler, routerHandler *handler.RouterHandler, telemetryHandler *handler.TelemetryHandler, incidentHandler *handler.IncidentHandler, webhookHandler *handler.WebhookHandler, voucherHandler *handler.VoucherHandler, monitorHandler *handler.MonitorHandler, fleetHandler *handler.FleetHandler, msg *messaging.Client, cache *cache.Client, db *database.DB, tenantMW gin.HandlerFunc) {
+func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.AuthHandler, routerHandler *handler.RouterHandler, telemetryHandler *handler.TelemetryHandler, incidentHandler *handler.IncidentHandler, webhookHandler *handler.WebhookHandler, voucherHandler *handler.VoucherHandler, portalHandler *handler.PortalHandler, monitorHandler *handler.MonitorHandler, fleetHandler *handler.FleetHandler, msg *messaging.Client, cache *cache.Client, db *database.DB, tenantMW gin.HandlerFunc) {
 	r.GET("/health", healthCheck)
 	r.GET("/ready", readinessCheck(&Server{cache: cache, db: db, messaging: msg}))
 
 	v1 := r.Group("/api/v1")
 	{
 		v1.GET("/version", version)
+
+		// PUBLIC captive-portal endpoints — anonymous, NO auth middleware. The
+		// tenant is resolved from the DEVICE the client is attached to (not from
+		// the voucher code).
+		portalPublic := v1.Group("/portal")
+		{
+			portalPublic.GET("/:deviceId/config", portalHandler.PublicConfig)
+			portalPublic.POST("/:deviceId/redeem", portalHandler.PublicRedeem)
+			portalPublic.GET("/status", portalHandler.PublicStatus)
+		}
 
 		authGroup := v1.Group("/auth")
 		{
@@ -284,6 +302,12 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 				vouchers.PUT("/:id", voucherHandler.UpdateVoucherStatus)
 				vouchers.DELETE("/:id", voucherHandler.DeleteVoucher)
 				vouchers.POST("/:code/redeem", voucherHandler.RedeemVoucher) // For voucher redemption
+			}
+
+			portalStaff := protected.Group("/portal")
+			{
+				portalStaff.GET("/config", portalHandler.StaffGetConfig)
+				portalStaff.PUT("/config", portalHandler.StaffUpdateConfig)
 			}
 
 			webhooks := protected.Group("/webhooks")

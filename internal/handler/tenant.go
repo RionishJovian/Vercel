@@ -35,3 +35,20 @@ func runInTenant(c *gin.Context, owner *database.DB, businessID string, fn func(
 	}
 	return tx.Commit()
 }
+
+// withDeviceTenant runs fn in a transaction RLS-bound to a business resolved from
+// a DEVICE. The anonymous portal path has no auth context, so it cannot use the
+// pinned connection (which only exists on protected/flagged requests); it opens
+// its own tx and establishes the tenant from the device-derived business.
+func withDeviceTenant(owner *database.DB, businessID string, fn func(tx *sql.Tx) error) error {
+	tx, err := owner.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if err := database.WithTenant(tx, businessID, func() error { return fn(tx) }); err != nil {
+		return err
+	}
+	return tx.Commit()
+}

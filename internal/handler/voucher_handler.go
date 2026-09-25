@@ -340,39 +340,9 @@ func (h *VoucherHandler) RedeemVoucher(c *gin.Context) {
 	var claimed *model.Voucher
 	var applied gin.H
 	err = database.WithTenant(tx, businessID, func() error {
-		// Pre-check for a precise error (the claim below is the authoritative gate).
-		existing, err := h.voucherRepo.GetVoucherByCodeTXN(tx, businessID, code)
-		if err != nil {
-			return err
-		}
-		if existing == nil {
-			return &httpError{status: http.StatusNotFound, msg: "voucher not found"}
-		}
-		if reason := voucher.RedeemBlockReason(existing, now); reason != "" {
-			return &httpError{status: http.StatusBadRequest, msg: reason}
-		}
-
-		// Fail closed on an unknown plan BEFORE claiming anything.
-		effect, err := voucher.ResolvePlanEffect(existing.PlanKey)
-		if err != nil {
-			return &httpError{status: http.StatusBadRequest, msg: err.Error()}
-		}
-		if effect.ExtendWebfigPass && (existing.DurationMinutes == nil || *existing.DurationMinutes <= 0) {
-			return &httpError{status: http.StatusBadRequest, msg: "voucher plan requires duration_minutes to grant a pass"}
-		}
-
-		// Atomic claim: only one concurrent redeemer can win.
-		cl, err := h.voucherRepo.ClaimVoucherTXN(tx, businessID, code, now)
-		if err != nil {
-			return err
-		}
-		if cl == nil {
-			return &httpError{status: http.StatusConflict, msg: "voucher is no longer redeemable"}
-		}
-
-		ap, err := h.applyPlanEffectTXN(tx, businessID, effect, *cl.DurationMinutes, now)
-		if err != nil {
-			return &httpError{status: http.StatusInternalServerError, msg: "failed to apply voucher entitlement: " + err.Error()}
+		cl, ap, e := redeemVoucherTx(tx, h.voucherRepo, h.quotaRepo, businessID, code, now)
+		if e != nil {
+			return e
 		}
 		claimed, applied = cl, ap
 		return nil
@@ -399,18 +369,66 @@ func (h *VoucherHandler) RedeemVoucher(c *gin.Context) {
 	})
 }
 
-// applyPlanEffectTXN grants the plan entitlement inside the redemption tx and
+// redeemVoucherTx is the SHARED money-path redemption core, run inside a tx that
+// is already RLS-bound to businessID. Both the owner endpoint (RedeemVoucher,
+// business from JWT) and the anonymous device-anchored portal endpoint
+// (business from the device) call it — payment logic lives in exactly one place.
+func redeemVoucherTx(
+	tx *sql.Tx,
+	vrepo *database.VoucherRepository,
+	qrepo *database.BusinessMeteredQuotaRepository,
+	businessID, code string,
+	now time.Time,
+) (*model.Voucher, gin.H, error) {
+	// Pre-check for a precise error (the claim below is the authoritative gate).
+	existing, err := vrepo.GetVoucherByCodeTXN(tx, businessID, code)
+	if err != nil {
+		return nil, nil, err
+	}
+	if existing == nil {
+		return nil, nil, &httpError{status: http.StatusNotFound, msg: "voucher not found"}
+	}
+	if reason := voucher.RedeemBlockReason(existing, now); reason != "" {
+		return nil, nil, &httpError{status: http.StatusBadRequest, msg: reason}
+	}
+
+	// Fail closed on an unknown plan BEFORE claiming anything.
+	effect, err := voucher.ResolvePlanEffect(existing.PlanKey)
+	if err != nil {
+		return nil, nil, &httpError{status: http.StatusBadRequest, msg: err.Error()}
+	}
+	if effect.ExtendWebfigPass && (existing.DurationMinutes == nil || *existing.DurationMinutes <= 0) {
+		return nil, nil, &httpError{status: http.StatusBadRequest, msg: "voucher plan requires duration_minutes to grant a pass"}
+	}
+
+	// Atomic claim: only one concurrent redeemer can win.
+	claimed, err := vrepo.ClaimVoucherTXN(tx, businessID, code, now)
+	if err != nil {
+		return nil, nil, err
+	}
+	if claimed == nil {
+		return nil, nil, &httpError{status: http.StatusConflict, msg: "voucher is no longer redeemable"}
+	}
+
+	applied, err := applyPlanEffectTx(tx, qrepo, businessID, effect, *claimed.DurationMinutes, now)
+	if err != nil {
+		return nil, nil, &httpError{status: http.StatusInternalServerError, msg: "failed to apply voucher entitlement: " + err.Error()}
+	}
+	return claimed, applied, nil
+}
+
+// applyPlanEffectTx grants the plan entitlement inside the redemption tx and
 // returns a summary. Reading the current pass and writing the new expiry use the
 // same *sql.Tx so the whole redemption is atomic.
-func (h *VoucherHandler) applyPlanEffectTXN(tx *sql.Tx, businessID string, effect voucher.PlanEffect, durationMinutes int, now time.Time) (gin.H, error) {
-	if h.quotaRepo == nil {
+func applyPlanEffectTx(tx *sql.Tx, qrepo *database.BusinessMeteredQuotaRepository, businessID string, effect voucher.PlanEffect, durationMinutes int, now time.Time) (gin.H, error) {
+	if qrepo == nil {
 		return nil, errors.New("no quota repository configured")
 	}
 	if !effect.ExtendWebfigPass {
 		return gin.H{"plan_key": effect.PlanKey, "effect": "none"}, nil
 	}
 
-	current, err := h.quotaRepo.GetByBusinessTXN(tx, businessID)
+	current, err := qrepo.GetByBusinessTXN(tx, businessID)
 	if err != nil {
 		return nil, err
 	}
@@ -422,10 +440,10 @@ func (h *VoucherHandler) applyPlanEffectTXN(tx *sql.Tx, businessID string, effec
 
 	if current == nil {
 		q := &model.BusinessMeteredQuota{BusinessID: businessID, WebfigPassExpiresAt: &newExpiry}
-		if err := h.quotaRepo.UpsertTXN(tx, q); err != nil {
+		if err := qrepo.UpsertTXN(tx, q); err != nil {
 			return nil, err
 		}
-	} else if err := h.quotaRepo.ExtendWebfigPassTXN(tx, businessID, newExpiry); err != nil {
+	} else if err := qrepo.ExtendWebfigPassTXN(tx, businessID, newExpiry); err != nil {
 		return nil, err
 	}
 
