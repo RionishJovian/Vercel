@@ -118,6 +118,19 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		database.NewVoucherRepository(db),
 		database.NewBusinessMeteredQuotaRepository(db),
 	)
+	// Billing notify seam: no live Telegram transport yet (ConfigMessenger returns
+	// ok=false), so the messenger is nil and Telegram is notification-only. The
+	// operator approves/rejects on the protected web endpoint.
+	billingHandler := handler.NewBillingHandler(
+		db,
+		database.NewDeviceRepository(db),
+		database.NewPortalConfigRepository(db),
+		database.NewPurchaseRequestRepository(db),
+		database.NewVoucherRepository(db),
+		database.NewBusinessMeteredQuotaRepository(db),
+		nil,
+		cfg.Billing.ReceiptDir,
+	)
 
 	// Probe + monitoring: peer reachability classification and state fan-out.
 	probeService := probe.NewProbeService(cacheClient, 5*time.Minute)
@@ -156,7 +169,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		sugar.Info("RLS enforcement disabled — owner pool, no connection pinning (default)")
 	}
 
-	setupRoutes(r, authService, authHandler, routerHandler, telemetryHandler, incidentHandler, webhookHandler, voucherHandler, portalHandler, monitorHandler, fleetHandler, messagingClient, cacheClient, db, tenantMW)
+	setupRoutes(r, authService, authHandler, routerHandler, telemetryHandler, incidentHandler, webhookHandler, voucherHandler, portalHandler, billingHandler, monitorHandler, fleetHandler, messagingClient, cacheClient, db, tenantMW)
 
 	// Start the policy evaluator: watches NATS telemetry and auto-opens incidents.
 	evaluator := evaluator.New(
@@ -219,7 +232,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	}, nil
 }
 
-func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.AuthHandler, routerHandler *handler.RouterHandler, telemetryHandler *handler.TelemetryHandler, incidentHandler *handler.IncidentHandler, webhookHandler *handler.WebhookHandler, voucherHandler *handler.VoucherHandler, portalHandler *handler.PortalHandler, monitorHandler *handler.MonitorHandler, fleetHandler *handler.FleetHandler, msg *messaging.Client, cache *cache.Client, db *database.DB, tenantMW gin.HandlerFunc) {
+func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.AuthHandler, routerHandler *handler.RouterHandler, telemetryHandler *handler.TelemetryHandler, incidentHandler *handler.IncidentHandler, webhookHandler *handler.WebhookHandler, voucherHandler *handler.VoucherHandler, portalHandler *handler.PortalHandler, billingHandler *handler.BillingHandler, monitorHandler *handler.MonitorHandler, fleetHandler *handler.FleetHandler, msg *messaging.Client, cache *cache.Client, db *database.DB, tenantMW gin.HandlerFunc) {
 	r.GET("/health", healthCheck)
 	r.GET("/ready", readinessCheck(&Server{cache: cache, db: db, messaging: msg}))
 
@@ -235,6 +248,8 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 			portalPublic.GET("/:deviceId/config", portalHandler.PublicConfig)
 			portalPublic.POST("/:deviceId/redeem", portalHandler.PublicRedeem)
 			portalPublic.GET("/status", portalHandler.PublicStatus)
+			// Billing: guest submits a purchase request (device-anchored).
+			portalPublic.POST("/:deviceId/purchase", billingHandler.PublicCreatePurchase)
 		}
 
 		authGroup := v1.Group("/auth")
@@ -308,6 +323,13 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 			{
 				portalStaff.GET("/config", portalHandler.StaffGetConfig)
 				portalStaff.PUT("/config", portalHandler.StaffUpdateConfig)
+			}
+
+			billing := protected.Group("/billing")
+			{
+				billing.GET("/requests", billingHandler.ListRequests)
+				billing.POST("/approve/:requestId", billingHandler.ApprovePurchase)
+				billing.POST("/reject/:requestId", billingHandler.RejectPurchase)
 			}
 
 			webhooks := protected.Group("/webhooks")

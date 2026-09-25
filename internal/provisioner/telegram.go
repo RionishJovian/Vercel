@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"mega-magic/internal/telegram"
 )
 
 // ---------------------------------------------------------------------------
@@ -22,24 +24,18 @@ import (
 // (TelegramMessenger) — exactly like the SSH/Applier transport seam. Nothing
 // here touches a real bot; tests use a fake.
 
-// TelegramMessenger is the injectable transport seam for the bot. A later,
+// TelegramMessenger is the shared injectable transport seam for the bot (lifted
+// to internal/telegram so billing and provisioner use ONE interface). A later,
 // explicit step supplies a real Bot-API implementation.
-type TelegramMessenger interface {
-	// SendMessage delivers text to target (a chat/channel id).
-	SendMessage(target, text string) error
-	// AwaitReply waits for the inbound reply correlated with requestID and
-	// returns the reply text, the request id it was actually correlated with,
-	// and ok=false on timeout/no reply.
-	AwaitReply(requestID string, timeout time.Duration) (text, replyID string, ok bool)
-}
+type TelegramMessenger = telegram.Messenger
 
 // ConfigTelegramMessenger is the documented seam for the REAL bot transport.
 //
-// Slice 3 deliberately does NOT implement a live telegram bot (no token, no
-// inbound routing): this returns ok=false so the bridge stays inert until a
-// later explicit step injects a real TelegramMessenger. Fail closed.
+// It deliberately does NOT implement a live telegram bot (no token, no inbound
+// routing): this returns ok=false so the bridge stays inert until a later
+// explicit step injects a real Messenger. Fail closed.
 func ConfigTelegramMessenger(chatID string) (TelegramMessenger, bool) {
-	return nil, false
+	return telegram.ConfigMessenger(chatID)
 }
 
 // TelegramApprover implements provisioner.Approver over a TelegramMessenger.

@@ -21,6 +21,13 @@ type Config struct {
 	Monitoring  MonitoringConfig  `mapstructure:"monitoring"`
 	Recovery    RecoveryConfig    `mapstructure:"recovery"`
 	Provisioner ProvisionerConfig `mapstructure:"provisioner"`
+	Billing     BillingConfig     `mapstructure:"billing"`
+}
+
+// BillingConfig configures the billing module. ReceiptDir is the tenant-scoped
+// root where guest payment receipts are stored (never world-readable).
+type BillingConfig struct {
+	ReceiptDir string `mapstructure:"receipt_dir"`
 }
 
 type ServerConfig struct {
@@ -212,6 +219,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("database.port", 5432)
 	v.SetDefault("database.user", "mega_admin")
 	v.SetDefault("database.password", "MegaSecurePass123")
+	v.SetDefault("billing.receipt_dir", "./data/receipts")
 	v.SetDefault("database.name", "mega_magic_dev")
 	v.SetDefault("database.sslmode", "disable")
 	v.SetDefault("database.max_open_conns", 25)

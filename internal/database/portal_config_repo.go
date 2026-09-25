@@ -16,13 +16,38 @@ func NewPortalConfigRepository(db *DB) *PortalConfigRepository {
 	return &PortalConfigRepository{db: db}
 }
 
-func (r *PortalConfigRepository) GetByBusiness(businessID string) (*model.PortalConfig, error) {
+// strOrNil binds an empty string as SQL NULL.
+func strOrNil(s string) interface{} {
+	if s == "" {
+		return nil
+	}
+	return s
+}
+
+const portalConfigCols = `business_id, business_name, welcome_text, terms_text, primary_hex, glass_tint_hex, consent_required, consent_text, bank_name, bank_account, bank_holder, updated_at`
+
+func portalConfigUpsertSQL() string {
+	return `INSERT INTO portal_configs (business_id, business_name, welcome_text, terms_text, primary_hex, glass_tint_hex, consent_required, consent_text, bank_name, bank_account, bank_holder, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		 ON CONFLICT (business_id) DO UPDATE SET
+		   business_name = EXCLUDED.business_name,
+		   welcome_text = EXCLUDED.welcome_text,
+		   terms_text = EXCLUDED.terms_text,
+		   primary_hex = EXCLUDED.primary_hex,
+		   glass_tint_hex = EXCLUDED.glass_tint_hex,
+		   consent_required = EXCLUDED.consent_required,
+		   consent_text = EXCLUDED.consent_text,
+		   bank_name = EXCLUDED.bank_name,
+		   bank_account = EXCLUDED.bank_account,
+		   bank_holder = EXCLUDED.bank_holder,
+		   updated_at = EXCLUDED.updated_at`
+}
+
+func scanPortalConfig(row interface{ Scan(...interface{}) error }) (*model.PortalConfig, error) {
 	p := &model.PortalConfig{}
-	var welcome, terms, primary, glass, consentText sql.NullString
-	err := r.db.QueryRow(
-		`SELECT business_id, business_name, welcome_text, terms_text, primary_hex, glass_tint_hex, consent_required, consent_text, updated_at
-		 FROM portal_configs WHERE business_id = $1`, businessID,
-	).Scan(&p.BusinessID, &p.BusinessName, &welcome, &terms, &primary, &glass, &p.ConsentRequired, &consentText, &p.UpdatedAt)
+	var welcome, terms, primary, glass, consentText, bankName, bankAccount, bankHolder sql.NullString
+	err := row.Scan(&p.BusinessID, &p.BusinessName, &welcome, &terms, &primary, &glass,
+		&p.ConsentRequired, &consentText, &bankName, &bankAccount, &bankHolder, &p.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -34,24 +59,22 @@ func (r *PortalConfigRepository) GetByBusiness(businessID string) (*model.Portal
 	p.PrimaryHex = nullStr(primary)
 	p.GlassTintHex = nullStr(glass)
 	p.ConsentText = nullStr(consentText)
+	p.BankName = nullStr(bankName)
+	p.BankAccount = nullStr(bankAccount)
+	p.BankHolder = nullStr(bankHolder)
 	return p, nil
 }
 
+func (r *PortalConfigRepository) GetByBusiness(businessID string) (*model.PortalConfig, error) {
+	return scanPortalConfig(r.db.QueryRow(`SELECT `+portalConfigCols+` FROM portal_configs WHERE business_id = $1`, businessID))
+}
+
 func (r *PortalConfigRepository) Upsert(cfg *model.PortalConfig) error {
-	_, err := r.db.Exec(
-		`INSERT INTO portal_configs (business_id, business_name, welcome_text, terms_text, primary_hex, glass_tint_hex, consent_required, consent_text, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-		 ON CONFLICT (business_id) DO UPDATE SET
-		   business_name = EXCLUDED.business_name,
-		   welcome_text = EXCLUDED.welcome_text,
-		   terms_text = EXCLUDED.terms_text,
-		   primary_hex = EXCLUDED.primary_hex,
-		   glass_tint_hex = EXCLUDED.glass_tint_hex,
-		   consent_required = EXCLUDED.consent_required,
-		   consent_text = EXCLUDED.consent_text,
-		   updated_at = EXCLUDED.updated_at`,
+	_, err := r.db.Exec(portalConfigUpsertSQL(),
 		cfg.BusinessID, cfg.BusinessName, cfg.WelcomeText, cfg.TermsText,
-		cfg.PrimaryHex, cfg.GlassTintHex, cfg.ConsentRequired, cfg.ConsentText, time.Now().UTC())
+		cfg.PrimaryHex, cfg.GlassTintHex, cfg.ConsentRequired, cfg.ConsentText,
+		strOrNil(cfg.BankName), strOrNil(cfg.BankAccount), strOrNil(cfg.BankHolder),
+		time.Now().UTC())
 	return err
 }
 
@@ -75,42 +98,16 @@ func (r *PortalConfigRepository) Delete(businessID string) error {
 
 // GetByBusinessTXN is the transaction-scoped variant of GetByBusiness.
 func (r *PortalConfigRepository) GetByBusinessTXN(tx *sql.Tx, businessID string) (*model.PortalConfig, error) {
-	p := &model.PortalConfig{}
-	var welcome, terms, primary, glass, consentText sql.NullString
-	err := tx.QueryRow(
-		`SELECT business_id, business_name, welcome_text, terms_text, primary_hex, glass_tint_hex, consent_required, consent_text, updated_at
-		 FROM portal_configs WHERE business_id = $1`, businessID,
-	).Scan(&p.BusinessID, &p.BusinessName, &welcome, &terms, &primary, &glass, &p.ConsentRequired, &consentText, &p.UpdatedAt)
-	if err == sql.ErrNoRows {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("get portal config: %w", err)
-	}
-	p.WelcomeText = nullStr(welcome)
-	p.TermsText = nullStr(terms)
-	p.PrimaryHex = nullStr(primary)
-	p.GlassTintHex = nullStr(glass)
-	p.ConsentText = nullStr(consentText)
-	return p, nil
+	return scanPortalConfig(tx.QueryRow(`SELECT `+portalConfigCols+` FROM portal_configs WHERE business_id = $1`, businessID))
 }
 
 // UpsertTXN is the transaction-scoped variant of Upsert.
 func (r *PortalConfigRepository) UpsertTXN(tx *sql.Tx, cfg *model.PortalConfig) error {
-	_, err := tx.Exec(
-		`INSERT INTO portal_configs (business_id, business_name, welcome_text, terms_text, primary_hex, glass_tint_hex, consent_required, consent_text, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-		 ON CONFLICT (business_id) DO UPDATE SET
-		   business_name = EXCLUDED.business_name,
-		   welcome_text = EXCLUDED.welcome_text,
-		   terms_text = EXCLUDED.terms_text,
-		   primary_hex = EXCLUDED.primary_hex,
-		   glass_tint_hex = EXCLUDED.glass_tint_hex,
-		   consent_required = EXCLUDED.consent_required,
-		   consent_text = EXCLUDED.consent_text,
-		   updated_at = EXCLUDED.updated_at`,
+	_, err := tx.Exec(portalConfigUpsertSQL(),
 		cfg.BusinessID, cfg.BusinessName, cfg.WelcomeText, cfg.TermsText,
-		cfg.PrimaryHex, cfg.GlassTintHex, cfg.ConsentRequired, cfg.ConsentText, time.Now().UTC())
+		cfg.PrimaryHex, cfg.GlassTintHex, cfg.ConsentRequired, cfg.ConsentText,
+		strOrNil(cfg.BankName), strOrNil(cfg.BankAccount), strOrNil(cfg.BankHolder),
+		time.Now().UTC())
 	return err
 }
 

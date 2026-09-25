@@ -165,8 +165,32 @@ CREATE TABLE portal_configs (
     glass_tint_hex text NOT NULL DEFAULT '#7ad0ff',
     consent_required boolean NOT NULL DEFAULT true,
     consent_text text,
+    bank_name text,
+    bank_account text,
+    bank_holder text,
     updated_at timestamptz NOT NULL DEFAULT now()
 );
+
+-- ============================================================================
+-- BILLING: device-anchored purchase requests (operator-approved)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS purchase_requests (
+    id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+    business_id uuid NOT NULL REFERENCES businesses(business_id) ON DELETE CASCADE,
+    device_id uuid REFERENCES devices(device_id) ON DELETE SET NULL,
+    plan_key text NOT NULL,
+    amount integer NOT NULL DEFAULT 0,
+    bank_reference text,
+    receipt_path text,
+    status text NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'approved', 'rejected')),
+    decided_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_purchase_requests_business ON purchase_requests(business_id, status, created_at DESC);
 
 CREATE TABLE portal_sessions (
     id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -322,6 +346,7 @@ ALTER TABLE incidents ENABLE ROW LEVEL SECURITY;
 ALTER TABLE audit_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE webhook_endpoints ENABLE ROW LEVEL SECURITY;
 ALTER TABLE webhook_deliveries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE purchase_requests ENABLE ROW LEVEL SECURITY;
 
 -- The `authenticated` role must exist BEFORE the policies that reference it.
 -- `CREATE ROLE` has no native IF NOT EXISTS, so guard it with a DO block.
@@ -418,6 +443,12 @@ CREATE POLICY webhook_endpoints_tenant_isolation ON webhook_endpoints
     WITH CHECK (business_id = current_setting('app.current_business_id')::uuid);
 
 CREATE POLICY webhook_deliveries_tenant_isolation ON webhook_deliveries
+    FOR ALL TO authenticated
+    USING (business_id = current_setting('app.current_business_id')::uuid)
+    WITH CHECK (business_id = current_setting('app.current_business_id')::uuid);
+
+-- Billing: tenant-scoped purchase requests.
+CREATE POLICY purchase_requests_tenant_isolation ON purchase_requests
     FOR ALL TO authenticated
     USING (business_id = current_setting('app.current_business_id')::uuid)
     WITH CHECK (business_id = current_setting('app.current_business_id')::uuid);
