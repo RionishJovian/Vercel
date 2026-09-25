@@ -35,3 +35,34 @@ func (h *FleetHandler) FleetHealth(c *gin.Context) {
 
 	c.JSON(http.StatusOK, health)
 }
+
+// OfflineHealth returns only peers whose state is offline, owner-scoped.
+func (h *FleetHandler) OfflineHealth(c *gin.Context) {
+	businessID := auth.GetBusinessID(c)
+	if businessID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	health, err := h.fleetSvc.Health(c.Request.Context(), businessID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to build fleet health: " + err.Error()})
+		return
+	}
+
+	// Filter to only offline peers
+	var offline []fleet.PeerSummary
+	for _, p := range health.Peers {
+		if p.State == fleet.StateOffline {
+			offline = append(offline, p)
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"business_id": health.BusinessID,
+		"total_peers": health.Total,
+		"offline_peers": len(offline),
+		"offline":     offline,
+		"overall_state": health.Overall,
+	})
+}

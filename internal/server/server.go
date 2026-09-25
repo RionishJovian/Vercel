@@ -234,6 +234,7 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 
 			// Read-only per-tenant fleet aggregate (peer-health overview).
 			protected.GET("/fleet/health", fleetHandler.FleetHealth)
+			protected.GET("/fleet/health/offline", fleetHandler.OfflineHealth)
 
 			policies := protected.Group("/alert-policies")
 			{
