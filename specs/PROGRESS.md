@@ -32,6 +32,7 @@ This file is the canonical, git-tracked status snapshot. Re-run it after any sig
 | `6927817` | **feat(db)** — `WithTenant` tx-scoped RLS helper + real-DB mechanism proofs (isolates-on / unscoped-off boundary) |
 | `5839ba8` | **fix(provisioner)** — enforce RLS on money path: voucher/quota via WithTenant; cross-business read/update BLOCKED, DB-proven + missing quota policy |
 | `3db3740` | **feat(database)** — enforce RLS on operational alerting: incident/alert_policy via WithTenant + alert_policies policy (cross-tenant now 404, no leak) |
+| `10a9fc7` | **feat(database)** — enforce RLS on telemetry: ingest/list/latest via WithTenant + telemetry policy FOR ALL (was SELECT-only) |
 
 ---
 
@@ -94,5 +95,5 @@ Remaining product modules by dependency order: **`portal`** (customer self-servi
 
 Two queued follow-ups (require an explicit decision):
 1. **DB integration harness — DONE (`e5604c5`)** — money-path SQL (claim race → 409, rollback) now DB-proven, then reused to prove RLS isolation (`aa9ee10`).
-2. **RLS enforcement — money path + operational alerting DONE (`aa9ee10`→`3db3740`)** — policies load + DB-proven; `WithTenant` helper proven; **money path (voucher/quota) and operational alerting (incident/alert_policy) now run tx-scoped — cross-business read/update BLOCKED on a real DB** (incl. both missing-policy fixes: `business_metered_quotas`, `alert_policies`). **~21 of 67 bare calls cleared.** Cross-tenant probes now return **404** (row invisible under RLS, no existence leak) vs prior 403 — same-tenant byte-identical. **Remaining (~46):** telemetry, heatbeat, nats, user, portal_config, portal_session, device handler (all still bare) + **webhook (no RLS at all — needs enablement + policy + outbound-delivery read, its own slice)** + audit (policy exists, system-appended — its own decision) — then the restricted `authenticated` app connection + per-request middleware.
+2. **RLS enforcement — money path + alerting + telemetry DONE (`aa9ee10`→`10a9fc7`)** — **~25 of 67 bare calls** cleared, all real-DB-proven cross-business-blocked; 3 same-class policy fixes landed (quota, alert_policies, telemetry FOR ALL). Cross-tenant probes return 404 (no existence leak). **Remaining (~42):** heartbeat (worker-written, device-derived business — own pattern), nats_subject (bus plumbing — skip), user (auth, login-before-context), portal_* (pair with portal slice), webhook (no RLS at all), audit (system-appended), device handler. **NEXT (keystone, clawclaw agrees): the restricted `authenticated` app connection + per-request middleware** — makes all this enforcement actually LIVE (today it's per-tx SET ROLE over an owner pool).
 3. **Portal redemption — who redeems?** (clawclaw finding #7, decided: **anonymous customer at the captive portal**, MAC-anchored). Determines authz on the redeem endpoint. Ready to scope portal with this baked in.
