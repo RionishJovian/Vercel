@@ -105,7 +105,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	)
 	webhookHandler := handler.NewWebhookHandler(database.NewWebhookRepository(db))
 	// Voucher management for vistors (revenue features)
-	voucherHandler := handler.NewVoucherHandler(database.NewVoucherRepository(db))
+	voucherHandler := handler.NewVoucherHandler(db, database.NewVoucherRepository(db), database.NewBusinessMeteredQuotaRepository(db))
 
 	// Probe + monitoring: peer reachability classification and state fan-out.
 	probeService := probe.NewProbeService(cacheClient, 5*time.Minute)

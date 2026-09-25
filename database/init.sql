@@ -141,7 +141,7 @@ CREATE TABLE vouchers (
     duration_minutes integer,
     device_mac macaddr,
     status text NOT NULL DEFAULT 'unused'
-        CHECK (status IN ('unused', 'active', 'expired', 'revoked', 'banned')),
+        CHECK (status IN ('unused', 'active', 'used', 'expired', 'revoked', 'banned')),
     first_seen_at timestamptz,
     expires_at timestamptz,
     created_at timestamptz NOT NULL DEFAULT now(),
