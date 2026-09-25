@@ -94,8 +94,16 @@ add action=add-src-to-address-list place-before=0 \
     comment="Portal brute-force feed -- adjust rate/src to your hotspot"
 
  /ip firewall filter
-add action=drop chain=input comment="CAPTIVE PORTAL GUARD: Drop Brute-Force Attacking MACs" \
-    src-address-list=portal_bruteforce
+
+ # [FIX-8] Explicit control-plane accept-above-drop (spec 4.1): the WG command
+ # tunnel (listen-port 13231) must be accepted on input BEFORE any drop guard.
+ # Placed above the brute-force drop so portal hardening can never collide with
+ # the magic-hub control plane.
+ add action=accept chain=input protocol=udp dst-port=13231 \
+     comment="Magic Hub WG control-plane accept (spec 4.1)"
+
+ add action=drop chain=input comment="CAPTIVE PORTAL GUARD: Drop Brute-Force Attacking MACs" \
+     src-address-list=portal_bruteforce
 
  add action=drop chain=forward comment="CAPTIVE PORTAL GUARD: Block Unauthenticated DNS Tunneling" \
     dst-port=53 forward-hotspot=!auth protocol=udp src-address=!192.168.99.0/24
