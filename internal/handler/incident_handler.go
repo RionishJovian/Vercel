@@ -37,17 +37,8 @@ func NewIncidentHandler(
 // withTenantTx runs fn in a transaction with the tenant RLS context set via
 // database.WithTenant, committing on success and rolling back on error. Mirrors
 // the money-path helper so every operational-alerting query is tenant-scoped.
-func (h *IncidentHandler) withTenantTx(businessID string, fn func(tx *sql.Tx) error) error {
-	tx, err := h.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	if err := database.WithTenant(tx, businessID, func() error { return fn(tx) }); err != nil {
-		return err
-	}
-	return tx.Commit()
+func (h *IncidentHandler) withTenantTx(c *gin.Context, businessID string, fn func(tx *sql.Tx) error) error {
+	return runInTenant(c, h.db, businessID, fn)
 }
 
 // respondErr renders an error produced inside a tenant tx, honouring a carried
@@ -76,7 +67,7 @@ func (h *IncidentHandler) ListOpen(c *gin.Context) {
 	}
 
 	var incidents []model.Incident
-	err := h.withTenantTx(businessID, func(tx *sql.Tx) error {
+	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
 		xs, err := h.incidentRepo.ListOpenByBusinessTXN(tx, businessID)
 		if err != nil {
 			return err
@@ -101,7 +92,7 @@ func (h *IncidentHandler) ListByDevice(c *gin.Context) {
 
 	deviceID := c.Param("deviceId")
 	var incidents []model.Incident
-	err := h.withTenantTx(businessID, func(tx *sql.Tx) error {
+	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
 		xs, err := h.incidentRepo.ListByDeviceTXN(tx, businessID, deviceID)
 		if err != nil {
 			return err
@@ -158,7 +149,7 @@ func (h *IncidentHandler) Create(c *gin.Context) {
 	}
 
 	var created *model.Incident
-	err := h.withTenantTx(businessID, func(tx *sql.Tx) error {
+	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
 		cr, err := h.incidentRepo.CreateTXN(tx, inc)
 		if err != nil {
 			return err
@@ -184,7 +175,7 @@ func (h *IncidentHandler) Acknowledge(c *gin.Context) {
 	userID := auth.GetUserID(c)
 
 	id := c.Param("id")
-	err := h.withTenantTx(businessID, func(tx *sql.Tx) error {
+	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
 		inc, err := h.incidentRepo.GetByIDTXN(tx, id)
 		if err != nil {
 			return &httpError{status: http.StatusInternalServerError, msg: "database error"}
@@ -218,7 +209,7 @@ func (h *IncidentHandler) Resolve(c *gin.Context) {
 
 	id := c.Param("id")
 	var resolved *model.Incident
-	err := h.withTenantTx(businessID, func(tx *sql.Tx) error {
+	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
 		inc, err := h.incidentRepo.GetByIDTXN(tx, id)
 		if err != nil {
 			return &httpError{status: http.StatusInternalServerError, msg: "database error"}
@@ -270,7 +261,7 @@ func (h *IncidentHandler) ListPolicies(c *gin.Context) {
 	}
 
 	var policies []*model.AlertPolicy
-	err := h.withTenantTx(businessID, func(tx *sql.Tx) error {
+	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
 		ps, err := h.policyRepo.ListByBusinessTXN(tx, businessID)
 		if err != nil {
 			return err
@@ -315,7 +306,7 @@ func (h *IncidentHandler) CreatePolicy(c *gin.Context) {
 	}
 
 	var created *model.AlertPolicy
-	err := h.withTenantTx(businessID, func(tx *sql.Tx) error {
+	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
 		cr, err := h.policyRepo.CreateTXN(tx, policy)
 		if err != nil {
 			return err
@@ -349,7 +340,7 @@ func (h *IncidentHandler) UpdatePolicy(c *gin.Context) {
 
 	id := c.Param("id")
 	var updated *model.AlertPolicy
-	err := h.withTenantTx(businessID, func(tx *sql.Tx) error {
+	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
 		existing, err := h.policyRepo.GetByIDTXN(tx, id)
 		if err != nil {
 			return &httpError{status: http.StatusInternalServerError, msg: "database error"}
@@ -410,7 +401,7 @@ func (h *IncidentHandler) DeletePolicy(c *gin.Context) {
 	}
 
 	id := c.Param("id")
-	err := h.withTenantTx(businessID, func(tx *sql.Tx) error {
+	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
 		existing, err := h.policyRepo.GetByIDTXN(tx, id)
 		if err != nil {
 			return &httpError{status: http.StatusInternalServerError, msg: "database error"}

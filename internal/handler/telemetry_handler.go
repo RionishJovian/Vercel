@@ -30,17 +30,8 @@ func NewTelemetryHandler(db *database.DB, tr *database.TelemetrySampleRepository
 // withTenantTx runs fn in a transaction with the tenant RLS context set via
 // database.WithTenant, committing on success and rolling back on error. Mirrors
 // the money-path/alerting helpers so telemetry queries are tenant-scoped.
-func (h *TelemetryHandler) withTenantTx(businessID string, fn func(tx *sql.Tx) error) error {
-	tx, err := h.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	if err := database.WithTenant(tx, businessID, func() error { return fn(tx) }); err != nil {
-		return err
-	}
-	return tx.Commit()
+func (h *TelemetryHandler) withTenantTx(c *gin.Context, businessID string, fn func(tx *sql.Tx) error) error {
+	return runInTenant(c, h.db, businessID, fn)
 }
 
 // Ingest receives a telemetry sample (from the collector or edge agent) and stores it.
@@ -86,7 +77,7 @@ func (h *TelemetryHandler) Ingest(c *gin.Context) {
 		TunnelState:    req.TunnelState,
 		ObservedAt:     time.Now().UTC(),
 	}
-	if err := h.withTenantTx(businessID, func(tx *sql.Tx) error {
+	if err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
 		_, err := h.telemetryRepo.InsertTXN(tx, sample)
 		return err
 	}); err != nil {
@@ -141,7 +132,7 @@ func (h *TelemetryHandler) List(c *gin.Context) {
 	since := time.Now().UTC().Add(-time.Duration(days) * 24 * time.Hour)
 
 	var samples []*model.TelemetrySample
-	err := h.withTenantTx(businessID, func(tx *sql.Tx) error {
+	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
 		var e error
 		if deviceID != "" {
 			samples, e = h.telemetryRepo.ListByDeviceTXN(tx, deviceID, &since, nil)
@@ -180,7 +171,7 @@ func (h *TelemetryHandler) Latest(c *gin.Context) {
 
 	// DB fallback and re-warm the cache.
 	var sample *model.TelemetrySample
-	err := h.withTenantTx(businessID, func(tx *sql.Tx) error {
+	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
 		s, e := h.telemetryRepo.GetLatestByDeviceTXN(tx, deviceID)
 		if e != nil {
 			return e

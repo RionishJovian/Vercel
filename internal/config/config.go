@@ -42,6 +42,11 @@ type DatabaseConfig struct {
 	MaxOpenConns    int           `mapstructure:"max_open_conns"`
 	MaxIdleConns    int           `mapstructure:"max_idle_conns"`
 	ConnMaxLifetime time.Duration `mapstructure:"conn_max_lifetime"`
+	// RLSEnforce, when true, activates the restricted tenant pool + the
+	// tenant-pinning middleware so protected requests run on a connection bound
+	// to `authenticated` + app.current_business_id. Default FALSE: behaviour is
+	// byte-identical to an owner pool until an operator flips it.
+	RLSEnforce bool `mapstructure:"rls_enforce"`
 }
 
 type RedisConfig struct {
@@ -212,6 +217,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("database.max_open_conns", 25)
 	v.SetDefault("database.max_idle_conns", 5)
 	v.SetDefault("database.conn_max_lifetime", "300s")
+	v.SetDefault("database.rls_enforce", false)
 
 	v.SetDefault("redis.host", "localhost")
 	v.SetDefault("redis.port", 6379)

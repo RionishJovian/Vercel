@@ -1,6 +1,7 @@
 package database
 
 import (
+	"context"
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
@@ -31,11 +32,12 @@ import (
 // load) is a real failure, not a skip.
 
 var (
-	harnessDB    *DB    // throwaway DB under test
-	harnessAdmin *DB    // admin connection (creates/drops the throwaway)
-	harnessName  string // throwaway database name
-	harnessSkip  error  // connect-level problem => SKIP
-	harnessFatal error  // setup problem after connect => FAIL
+	harnessDB    *DB                   // throwaway DB under test
+	harnessAdmin *DB                   // admin connection (creates/drops the throwaway)
+	harnessName  string                // throwaway database name
+	harnessCfg   config.DatabaseConfig // throwaway DB config (restricted pools)
+	harnessSkip  error                 // connect-level problem => SKIP
+	harnessFatal error                 // setup problem after connect => FAIL
 	harnessOnce  sync.Once
 )
 
@@ -93,6 +95,7 @@ func setupHarness(base string) {
 		return
 	}
 	harnessDB = db
+	harnessCfg = tcfg
 
 	sqlBytes, err := os.ReadFile("../../database/init.sql")
 	if err != nil {
@@ -1150,4 +1153,79 @@ func TestDB_Telemetry_isolation(t *testing.T) {
 		}
 		return nil
 	})
+}
+
+// TestDB_RestrictedConn_isolation proves the KEYSTONE mechanism at CONNECTION
+// level: a restricted pool's TenantConn pins ONE connection to the tenant, so
+// every query on it (not merely a single transaction) is RLS-bound. This is what
+// the tenant-pinning middleware relies on (flag ON).
+func TestDB_RestrictedConn_isolation(t *testing.T) {
+	requireHarness(t)
+	pool, err := NewRestricted(harnessCfg)
+	if err != nil {
+		t.Fatalf("NewRestricted: %v", err)
+	}
+	defer pool.Close()
+
+	repo := NewVoucherRepository(harnessDB)
+	bizA := insertBusiness(t, harnessDB)
+	bizB := insertBusiness(t, harnessDB)
+	vA := newActiveVoucher(t, repo, bizA, 60, nil)
+	vB := newActiveVoucher(t, repo, bizB, 60, nil)
+	ctx := context.Background()
+
+	// Tenant A pinned connection: own rows visible, cross-business invisible, and
+	// it stays scoped across MULTIPLE statements (connection-level, not per-tx).
+	connA, err := pool.TenantConn(ctx, bizA)
+	if err != nil {
+		t.Fatalf("TenantConn A: %v", err)
+	}
+	var aSeen int
+	if err := connA.QueryRowContext(ctx, `SELECT count(*) FROM vouchers WHERE business_id IN ($1, $2)`, bizA, bizB).Scan(&aSeen); err != nil {
+		t.Fatalf("query A: %v", err)
+	}
+	if aSeen != 1 {
+		t.Fatalf("pinned A saw %d rows, want 1", aSeen)
+	}
+	var aCross int
+	if err := connA.QueryRowContext(ctx, `SELECT count(*) FROM vouchers WHERE code = $1`, vB.Code).Scan(&aCross); err != nil {
+		t.Fatalf("cross A: %v", err)
+	}
+	if aCross != 0 {
+		t.Fatal("cross-business row visible on pinned A connection")
+	}
+	var aSeen2 int
+	if err := connA.QueryRowContext(ctx, `SELECT count(*) FROM vouchers`).Scan(&aSeen2); err != nil {
+		t.Fatalf("query A2: %v", err)
+	}
+	if aSeen2 != 1 {
+		t.Fatalf("pinned A second statement saw %d rows, want 1 (connection-level scoping)", aSeen2)
+	}
+	ReleaseTenantConn(ctx, connA)
+
+	// Tenant B pinned connection: symmetric.
+	connB, err := pool.TenantConn(ctx, bizB)
+	if err != nil {
+		t.Fatalf("TenantConn B: %v", err)
+	}
+	var bCross int
+	if err := connB.QueryRowContext(ctx, `SELECT count(*) FROM vouchers WHERE code = $1`, vA.Code).Scan(&bCross); err != nil {
+		t.Fatalf("cross B: %v", err)
+	}
+	if bCross != 0 {
+		t.Fatal("cross-business row visible on pinned B connection")
+	}
+	var bSeen int
+	if err := connB.QueryRowContext(ctx, `SELECT count(*) FROM vouchers`).Scan(&bSeen); err != nil {
+		t.Fatalf("query B: %v", err)
+	}
+	if bSeen != 1 {
+		t.Fatalf("pinned B saw %d rows, want 1", bSeen)
+	}
+	ReleaseTenantConn(ctx, connB)
+
+	// Fail-closed: a malformed tenant id is refused before any role change.
+	if _, err := pool.TenantConn(ctx, "not-a-uuid"); err == nil {
+		t.Fatal("TenantConn must refuse a malformed business id")
+	}
 }

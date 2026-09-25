@@ -41,6 +41,7 @@ type Server struct {
 	monitorHandler *handler.MonitorHandler
 	sweep          *monitoring.Sweep
 	recovery       *recovery.RecoveryService
+	restricted     *database.DB
 }
 
 func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
@@ -130,7 +131,23 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	r.Use(gin.Recovery())
 	r.Use(loggerMiddleware(sugar))
 
-	setupRoutes(r, authService, authHandler, routerHandler, telemetryHandler, incidentHandler, webhookHandler, voucherHandler, monitorHandler, fleetHandler, messagingClient, cacheClient, db)
+	// Keystone: RLS enforcement is OFF by default. When on, protected requests run
+	// on a restricted tenant connection bound to `authenticated`.
+	var tenantMW gin.HandlerFunc
+	var restrictedPool *database.DB
+	if cfg.Database.RLSEnforce {
+		rp, err := database.NewRestricted(cfg.Database)
+		if err != nil {
+			return nil, fmt.Errorf("restricted tenant pool: %w", err)
+		}
+		restrictedPool = rp
+		tenantMW = auth.TenantConnMiddleware(rp)
+		sugar.Warn("RLS enforcement ENABLED — protected requests use tenant-bound connections")
+	} else {
+		sugar.Info("RLS enforcement disabled — owner pool, no connection pinning (default)")
+	}
+
+	setupRoutes(r, authService, authHandler, routerHandler, telemetryHandler, incidentHandler, webhookHandler, voucherHandler, monitorHandler, fleetHandler, messagingClient, cacheClient, db, tenantMW)
 
 	// Start the policy evaluator: watches NATS telemetry and auto-opens incidents.
 	evaluator := evaluator.New(
@@ -189,10 +206,11 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		voucherHandler: voucherHandler,
 		sweep:          sweepWorker,
 		recovery:       recoveryService,
+		restricted:     restrictedPool,
 	}, nil
 }
 
-func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.AuthHandler, routerHandler *handler.RouterHandler, telemetryHandler *handler.TelemetryHandler, incidentHandler *handler.IncidentHandler, webhookHandler *handler.WebhookHandler, voucherHandler *handler.VoucherHandler, monitorHandler *handler.MonitorHandler, fleetHandler *handler.FleetHandler, msg *messaging.Client, cache *cache.Client, db *database.DB) {
+func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.AuthHandler, routerHandler *handler.RouterHandler, telemetryHandler *handler.TelemetryHandler, incidentHandler *handler.IncidentHandler, webhookHandler *handler.WebhookHandler, voucherHandler *handler.VoucherHandler, monitorHandler *handler.MonitorHandler, fleetHandler *handler.FleetHandler, msg *messaging.Client, cache *cache.Client, db *database.DB, tenantMW gin.HandlerFunc) {
 	r.GET("/health", healthCheck)
 	r.GET("/ready", readinessCheck(&Server{cache: cache, db: db, messaging: msg}))
 
@@ -209,6 +227,9 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 
 		protected := v1.Group("")
 		protected.Use(auth.Middleware(authService))
+		if tenantMW != nil {
+			protected.Use(tenantMW)
+		}
 		{
 			protected.GET("/me", authHandler.Me)
 
@@ -325,6 +346,9 @@ func (s *Server) Start() error {
 
 func (s *Server) Shutdown(ctx context.Context) error {
 	s.sugar.Info("Shutting down HTTP server")
+	if s.restricted != nil {
+		_ = s.restricted.Close()
+	}
 	if s.messaging != nil {
 		s.messaging.Close()
 	}

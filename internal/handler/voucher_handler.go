@@ -55,17 +55,8 @@ func (e *httpError) Error() string { return e.msg }
 // database.WithTenant (SET LOCAL ROLE authenticated + app.current_business_id),
 // committing on success and rolling back on any error. Every money-path query
 // runs through here so it is reliably tenant-scoped.
-func (h *VoucherHandler) withTenantTx(businessID string, fn func(tx *sql.Tx) error) error {
-	tx, err := h.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	if err := database.WithTenant(tx, businessID, func() error { return fn(tx) }); err != nil {
-		return err
-	}
-	return tx.Commit()
+func (h *VoucherHandler) withTenantTx(c *gin.Context, businessID string, fn func(tx *sql.Tx) error) error {
+	return runInTenant(c, h.db, businessID, fn)
 }
 
 // CreateVoucher generates new voucher codes for a business.
@@ -107,7 +98,7 @@ func (h *VoucherHandler) CreateVoucher(c *gin.Context) {
 	expiresAt := voucher.ComputeExpiry(now, req.DurationMinutes)
 
 	vouchers := make([]*model.Voucher, 0, count)
-	err := h.withTenantTx(businessID, func(tx *sql.Tx) error {
+	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
 		for i := 0; i < count; i++ {
 			created, err := h.createOneVoucher(tx, businessID, req.PlanKey, req.PlanLabel, req.PriceMMK,
 				req.DurationMinutes, req.DeviceMAC, req.DeviceID, req.Status, expiresAt, now)
@@ -182,7 +173,7 @@ func (h *VoucherHandler) GetVoucherByCode(c *gin.Context) {
 
 	code := c.Param("code")
 	var found *model.Voucher
-	err := h.withTenantTx(businessID, func(tx *sql.Tx) error {
+	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
 		v, err := h.voucherRepo.GetVoucherByCodeTXN(tx, businessID, code)
 		if err != nil {
 			return err
@@ -211,7 +202,7 @@ func (h *VoucherHandler) ListVouchers(c *gin.Context) {
 	}
 
 	var vouchers []*model.Voucher
-	err := h.withTenantTx(businessID, func(tx *sql.Tx) error {
+	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
 		vs, err := h.voucherRepo.ListVouchersByBusinessTXN(tx, businessID)
 		if err != nil {
 			return err
@@ -246,7 +237,7 @@ func (h *VoucherHandler) UpdateVoucherStatus(c *gin.Context) {
 	}
 
 	var updated *model.Voucher
-	err := h.withTenantTx(businessID, func(tx *sql.Tx) error {
+	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
 		// Ownership check inside the tenant scope: never allow a cross-tenant
 		// edit by id.
 		existing, err := h.voucherRepo.GetVoucherByIDTXN(tx, id)
@@ -293,7 +284,7 @@ func (h *VoucherHandler) DeleteVoucher(c *gin.Context) {
 	}
 
 	id := c.Param("id")
-	err := h.withTenantTx(businessID, func(tx *sql.Tx) error {
+	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
 		deleted, err := h.voucherRepo.DeleteVoucherIfUnusedTXN(tx, businessID, id)
 		if err != nil {
 			return err
@@ -339,7 +330,7 @@ func (h *VoucherHandler) RedeemVoucher(c *gin.Context) {
 	code := c.Param("code")
 	now := time.Now().UTC()
 
-	tx, err := h.db.Begin()
+	tx, err := beginTenantTx(c, h.db)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
 		return
