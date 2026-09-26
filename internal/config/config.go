@@ -23,6 +23,17 @@ type Config struct {
 	Recovery    RecoveryConfig    `mapstructure:"recovery"`
 	Provisioner ProvisionerConfig `mapstructure:"provisioner"`
 	Billing     BillingConfig     `mapstructure:"billing"`
+	GuestWifi   GuestWifiConfig   `mapstructure:"guest_wifi"`
+}
+
+// GuestWifiConfig controls the Option C owner-bot loops. Enabled off by
+// default; when off the supervisor stays still and owners decide on the web
+// endpoint (the shared core either way). BridgeScanInterval sets how often the
+// supervisor re-scans for newly-enabled/disabled owner bots.
+type GuestWifiConfig struct {
+	Enabled             bool          `mapstructure:"enabled"`
+	BridgeScanInterval  time.Duration `mapstructure:"bridge_scan_interval"`
+	ReceiptDir          string        `mapstructure:"receipt_dir"`
 }
 
 // BillingConfig configures the billing module. ReceiptDir is the tenant-scoped

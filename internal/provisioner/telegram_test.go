@@ -30,6 +30,8 @@ func (f *fakeMessenger) SendMessage(target, text string) error {
 	return nil
 }
 
+func (f *fakeMessenger) VerifyToken() (bool, string) { return true, "" }
+
 func (f *fakeMessenger) AwaitReply(requestID string, _ time.Duration) (string, string, bool) {
 	f.awaitedID = requestID
 	if f.bindID {

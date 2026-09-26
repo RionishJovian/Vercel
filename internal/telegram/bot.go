@@ -106,6 +106,24 @@ func (b *Bot) SendMessage(target, text string) error {
 	return nil
 }
 
+// VerifyToken implements a token-sanity probe used by the owner bot-binding
+// "test" endpoint: GET me returns ok when the token is live, 401 otherwise.
+func (b *Bot) VerifyToken() (bool, string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	var resp struct {
+		OK          bool   `json:"ok"`
+		Description string `json:"description"`
+	}
+	if err := b.do(ctx, "getMe", url.Values{}, &resp); err != nil {
+		return false, err.Error()
+	}
+	if !resp.OK {
+		return false, resp.Description
+	}
+	return true, ""
+}
+
 // AwaitReply implements Messenger: long-polls getUpdates until a message whose
 // text mentions requestID arrives, or the timeout elapses.
 func (b *Bot) AwaitReply(requestID string, timeout time.Duration) (string, string, bool) {

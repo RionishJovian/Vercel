@@ -14,6 +14,8 @@ import (
 type Messenger interface {
 	// SendMessage delivers text to target (a chat/channel id).
 	SendMessage(target, text string) error
+	// VerifyToken probes the token (Telegram getMe): ok=true when live.
+	VerifyToken() (ok bool, detail string)
 	// AwaitReply waits for the inbound reply correlated with requestID and
 	// returns the reply text, the request id it was actually correlated with,
 	// and ok=false on timeout/no reply.

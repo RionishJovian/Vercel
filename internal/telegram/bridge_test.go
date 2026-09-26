@@ -198,6 +198,7 @@ type fakeMsg struct{ sent []string }
 
 func (f *fakeMsg) SendMessage(target, text string) error                   { f.sent = append(f.sent, text); return nil }
 func (f *fakeMsg) AwaitReply(string, time.Duration) (string, string, bool) { return "", "", false }
+func (f *fakeMsg) VerifyToken() (bool, string)                             { return true, "" }
 
 func TestPurchaseBridge_decidesApprove(t *testing.T) {
 	src := &fakeSource{msgs: []InboundMessage{{ChatID: 1, Text: "approve pur-1"}}}

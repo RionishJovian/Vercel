@@ -155,6 +155,26 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		cfg.Billing.ReceiptDir,
 	)
 
+	// Guest wifi (Option C): each business binds its OWN Telegram bot to receive
+	// and approve/reject guest wifi purchases. The supervisor runs one bridge per
+	// ENABLED owner bot; with the feature off, owners decide on the web endpoint.
+	var guestWifiHandler *handler.GuestWifiHandler
+	if cfg.GuestWifi.Enabled {
+		// Build an owner messenger from just a token (ConfigMessenger takes
+		// chat+timeout too; we default them from the guest feature config).
+		guestSvcFmt := func(token string) (telegram.Messenger, bool) {
+			return telegram.ConfigMessenger(token, "", 30*time.Second)
+		}
+		guestWifiHandler = handler.NewGuestWifiHandler(
+			db,
+			database.NewBusinessTelegramBotRepository(db),
+			database.NewGuestPurchaseRequestRepository(db),
+			database.NewPortalConfigRepository(db),
+			guestSvcFmt,
+		)
+		sugar.Infow("Guest wifi owner-bot supervisor enabled", "scan", cfg.GuestWifi.BridgeScanInterval.String())
+	}
+
 	// Probe + monitoring: peer reachability classification and state fan-out.
 	probeService := probe.NewProbeService(cacheClient, 5*time.Minute)
 	monitoringService := monitoring.NewMonitoringService(
@@ -206,7 +226,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		sugar.Info("RLS enforcement disabled — owner pool, no connection pinning (default)")
 	}
 
-	setupRoutes(r, authService, authHandler, routerHandler, telemetryHandler, incidentHandler, webhookHandler, voucherHandler, portalHandler, billingHandler, monitorHandler, fleetHandler, topologyHandler, vpsHandler, messagingClient, cacheClient, db, tenantMW)
+	setupRoutes(r, authService, authHandler, routerHandler, telemetryHandler, incidentHandler, webhookHandler, voucherHandler, portalHandler, billingHandler, guestWifiHandler, monitorHandler, fleetHandler, topologyHandler, vpsHandler, messagingClient, cacheClient, db, tenantMW)
 
 	// Start the policy evaluator: watches NATS telemetry and auto-opens incidents.
 	evaluator := evaluator.New(
@@ -244,6 +264,28 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		bridge := telegram.NewPurchaseBridge(bm, billingMessenger, target, billingHandler)
 		go func() { _ = bridge.Run(context.Background()) }()
 		sugar.Info("Telegram purchase approve/reject bridge started (inbound loop)")
+	}
+
+	// Guest wifi owner-bot supervisor: one inbound loop per ENABLED owner bot,
+	// re-scanned on the configured interval. Off by default (feature disabled).
+	if guestWifiHandler != nil {
+		supervisor := NewGuestWifiBridgeSupervisor(
+			db,
+			database.NewBusinessTelegramBotRepository(db),
+			guestWifiHandler,
+			func(token string) (telegram.Messenger, bool) {
+				return telegram.ConfigMessenger(token, "", 30*time.Second)
+			},
+		)
+		_ = supervisor // retained: loop runs in background below
+		go func() {
+			supervisor.Bump() // immediate first scan
+			for {
+				time.Sleep(cfg.GuestWifi.BridgeScanInterval)
+				supervisor.Bump()
+			}
+		}()
+		sugar.Infow("Guest wifi owner-bot supervisor started", "interval", cfg.GuestWifi.BridgeScanInterval.String())
 	}
 
 	// Start the recovery worker: consumes peer.recover (from the evaluator),
@@ -289,7 +331,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	}, nil
 }
 
-func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.AuthHandler, routerHandler *handler.RouterHandler, telemetryHandler *handler.TelemetryHandler, incidentHandler *handler.IncidentHandler, webhookHandler *handler.WebhookHandler, voucherHandler *handler.VoucherHandler, portalHandler *handler.PortalHandler, billingHandler *handler.BillingHandler, monitorHandler *handler.MonitorHandler, fleetHandler *handler.FleetHandler, topologyHandler *handler.TopologyHandler, vpsHandler *handler.VPSHandler, msg *messaging.Client, cache *cache.Client, db *database.DB, tenantMW gin.HandlerFunc) {
+func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.AuthHandler, routerHandler *handler.RouterHandler, telemetryHandler *handler.TelemetryHandler, incidentHandler *handler.IncidentHandler, webhookHandler *handler.WebhookHandler, voucherHandler *handler.VoucherHandler, portalHandler *handler.PortalHandler, billingHandler *handler.BillingHandler, guestWifiHandler *handler.GuestWifiHandler, monitorHandler *handler.MonitorHandler, fleetHandler *handler.FleetHandler, topologyHandler *handler.TopologyHandler, vpsHandler *handler.VPSHandler, msg *messaging.Client, cache *cache.Client, db *database.DB, tenantMW gin.HandlerFunc) {
 	r.GET("/health", healthCheck)
 	r.GET("/ready", readinessCheck(&Server{cache: cache, db: db, messaging: msg}))
 
@@ -398,6 +440,20 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 				billing.GET("/requests", billingHandler.ListRequests)
 				billing.POST("/approve/:requestId", billingHandler.ApprovePurchase)
 				billing.POST("/reject/:requestId", billingHandler.RejectPurchase)
+			}
+
+			// Guest wifi (Option C): owner-facing loop. Only present when the
+			// feature is enabled (guestWifiHandler non-nil).
+			if guestWifiHandler != nil {
+				gw := protected.Group("/guest-wifi")
+				{
+					gw.GET("/telegram-bot", guestWifiHandler.GetBotBinding)
+					gw.PUT("/telegram-bot", guestWifiHandler.PutBotBinding)
+					gw.POST("/telegram-bot/test", guestWifiHandler.TestBotBinding)
+					gw.GET("/requests", guestWifiHandler.ListGuestRequests)
+					gw.POST("/approve/:requestId", guestWifiHandler.ApproveGuest)
+					gw.POST("/reject/:requestId", guestWifiHandler.RejectGuest)
+				}
 			}
 
 			webhooks := protected.Group("/webhooks")
