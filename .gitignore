@@ -15,6 +15,7 @@ tmp/
 *.prof
 mm-*
 /build/
+/server
 
 # Dependencies & node
 node_modules/
