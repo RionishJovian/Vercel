@@ -301,13 +301,15 @@ func sanitizeRule(rule string) string {
 	return out
 }
 
-// normalizeSeverity maps an empty/unknown severity to "info".
+// normalizeSeverity maps a finding severity to the incidents.severity CHECK
+// values ('info','warning','critical'). Empty/unknown -> "info"; "warn" ->
+// "warning" (the DB's spelling — the finding vocabulary says "warn").
 func normalizeSeverity(s string) string {
 	switch strings.ToLower(strings.TrimSpace(s)) {
 	case "critical":
 		return "critical"
 	case "warn", "warning":
-		return "warn"
+		return "warning"
 	case "info":
 		return "info"
 	default:
