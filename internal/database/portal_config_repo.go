@@ -2,6 +2,7 @@ package database
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -24,12 +25,12 @@ func strOrNil(s string) interface{} {
 	return s
 }
 
-const portalConfigCols = `business_id, business_name, welcome_text, terms_text, primary_hex, glass_tint_hex, consent_required, consent_text, bank_name, bank_account, bank_holder, updated_at`
+const portalConfigCols = `business_id, business_name, welcome_text, terms_text, primary_hex, glass_tint_hex, consent_required, consent_text, bank_name, bank_account, bank_holder, guest_grace_minutes, guest_plans, updated_at`
 
 func portalConfigUpsertSQL() string {
-	return `INSERT INTO portal_configs (business_id, business_name, welcome_text, terms_text, primary_hex, glass_tint_hex, consent_required, consent_text, bank_name, bank_account, bank_holder, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-		 ON CONFLICT (business_id) DO UPDATE SET
+	return `INSERT INTO portal_configs (business_id, business_name, welcome_text, terms_text, primary_hex, glass_tint_hex, consent_required, consent_text, bank_name, bank_account, bank_holder, guest_grace_minutes, guest_plans, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+		ON CONFLICT (business_id) DO UPDATE SET
 		   business_name = EXCLUDED.business_name,
 		   welcome_text = EXCLUDED.welcome_text,
 		   terms_text = EXCLUDED.terms_text,
@@ -40,14 +41,18 @@ func portalConfigUpsertSQL() string {
 		   bank_name = EXCLUDED.bank_name,
 		   bank_account = EXCLUDED.bank_account,
 		   bank_holder = EXCLUDED.bank_holder,
+		   guest_grace_minutes = EXCLUDED.guest_grace_minutes,
+		   guest_plans = EXCLUDED.guest_plans,
 		   updated_at = EXCLUDED.updated_at`
 }
 
 func scanPortalConfig(row interface{ Scan(...interface{}) error }) (*model.PortalConfig, error) {
 	p := &model.PortalConfig{}
 	var welcome, terms, primary, glass, consentText, bankName, bankAccount, bankHolder sql.NullString
+	var guestPlans []byte
 	err := row.Scan(&p.BusinessID, &p.BusinessName, &welcome, &terms, &primary, &glass,
-		&p.ConsentRequired, &consentText, &bankName, &bankAccount, &bankHolder, &p.UpdatedAt)
+		&p.ConsentRequired, &consentText, &bankName, &bankAccount, &bankHolder,
+		&p.GuestGraceMinutes, &guestPlans, &p.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -62,6 +67,10 @@ func scanPortalConfig(row interface{ Scan(...interface{}) error }) (*model.Porta
 	p.BankName = nullStr(bankName)
 	p.BankAccount = nullStr(bankAccount)
 	p.BankHolder = nullStr(bankHolder)
+	if len(guestPlans) > 0 {
+		// jsonb arrives as []byte; decode into the typed slice (tolerant on no-op).
+		_ = json.Unmarshal(guestPlans, &p.GuestPlans)
+	}
 	return p, nil
 }
 
@@ -70,11 +79,15 @@ func (r *PortalConfigRepository) GetByBusiness(businessID string) (*model.Portal
 }
 
 func (r *PortalConfigRepository) Upsert(cfg *model.PortalConfig) error {
-	_, err := r.db.Exec(portalConfigUpsertSQL(),
+	guestPlans, err := json.Marshal(cfg.GuestPlans)
+	if err != nil {
+		return err
+	}
+	_, err = r.db.Exec(portalConfigUpsertSQL(),
 		cfg.BusinessID, cfg.BusinessName, cfg.WelcomeText, cfg.TermsText,
 		cfg.PrimaryHex, cfg.GlassTintHex, cfg.ConsentRequired, cfg.ConsentText,
 		strOrNil(cfg.BankName), strOrNil(cfg.BankAccount), strOrNil(cfg.BankHolder),
-		time.Now().UTC())
+		cfg.GuestGraceMinutes, guestPlans, time.Now().UTC())
 	return err
 }
 
@@ -103,11 +116,15 @@ func (r *PortalConfigRepository) GetByBusinessTXN(tx *sql.Tx, businessID string)
 
 // UpsertTXN is the transaction-scoped variant of Upsert.
 func (r *PortalConfigRepository) UpsertTXN(tx *sql.Tx, cfg *model.PortalConfig) error {
-	_, err := tx.Exec(portalConfigUpsertSQL(),
+	guestPlans, err := json.Marshal(cfg.GuestPlans)
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec(portalConfigUpsertSQL(),
 		cfg.BusinessID, cfg.BusinessName, cfg.WelcomeText, cfg.TermsText,
 		cfg.PrimaryHex, cfg.GlassTintHex, cfg.ConsentRequired, cfg.ConsentText,
 		strOrNil(cfg.BankName), strOrNil(cfg.BankAccount), strOrNil(cfg.BankHolder),
-		time.Now().UTC())
+		cfg.GuestGraceMinutes, guestPlans, time.Now().UTC())
 	return err
 }
 

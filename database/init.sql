@@ -168,6 +168,10 @@ CREATE TABLE portal_configs (
     bank_name text,
     bank_account text,
     bank_holder text,
+    -- Guest wifi (Option C): the free online-payment window (minutes) and the
+    -- data plans the owner sets on the portal (JSON: [{key,label,minutes,amount}]).
+    guest_grace_minutes integer NOT NULL DEFAULT 10,
+    guest_plans jsonb NOT NULL DEFAULT '[]'::jsonb,
     updated_at timestamptz NOT NULL DEFAULT now()
 );
 
@@ -335,6 +339,46 @@ CREATE INDEX idx_webhook_deliveries_status ON webhook_deliveries(status);
 CREATE INDEX idx_webhook_deliveries_webhook ON webhook_deliveries(webhook_id);
 
 -- ============================================================================
+-- GUEST WIFI (Option C)
+-- ============================================================================
+-- Each business owns the Telegram bot that carries their GUEST wifi loop
+-- (notify + approve/reject), bound by the owner under their platform account.
+CREATE TABLE IF NOT EXISTS business_telegram_bots (
+    business_id uuid PRIMARY KEY REFERENCES businesses(business_id) ON DELETE CASCADE,
+    bot_token text,                 -- stored masked/redacted on read-back
+    target_chat_id bigint,          -- operator chat for this bot
+    enabled boolean NOT NULL DEFAULT false,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- Guest online-banking purchase submit: a guest on the captive portal picks a
+-- data plan, gets a free grace window to pay, attaches a receipt, and the
+-- owner's bot carries the approve/reject. Approved => wifi time extension per
+-- the portal guest plan.
+CREATE TABLE IF NOT EXISTS guest_purchase_requests (
+    id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+    business_id uuid NOT NULL REFERENCES businesses(business_id) ON DELETE CASCADE,
+    device_id uuid,                 -- device the guest is attached to
+    client_mac text,
+    client_ip inet,
+    plan_key text NOT NULL,
+    amount integer NOT NULL DEFAULT 0,
+    bank_reference text,
+    receipt_path text,              -- uploaded successful-payment receipt
+    grace_started_at timestamptz,
+    grace_expires_at timestamptz,
+    status text NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'approved', 'rejected')),
+    decided_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_guest_requests_business ON guest_purchase_requests(business_id);
+CREATE INDEX idx_guest_requests_status ON guest_purchase_requests(status);
+
+-- ============================================================================
 -- ROW LEVEL SECURITY POLICIES
 -- ============================================================================
 
@@ -354,6 +398,8 @@ ALTER TABLE audit_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE webhook_endpoints ENABLE ROW LEVEL SECURITY;
 ALTER TABLE webhook_deliveries ENABLE ROW LEVEL SECURITY;
 ALTER TABLE purchase_requests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE business_telegram_bots ENABLE ROW LEVEL SECURITY;
+ALTER TABLE guest_purchase_requests ENABLE ROW LEVEL SECURITY;
 
 -- The `authenticated` role must exist BEFORE the policies that reference it.
 -- `CREATE ROLE` has no native IF NOT EXISTS, so guard it with a DO block.
@@ -460,6 +506,18 @@ CREATE POLICY purchase_requests_tenant_isolation ON purchase_requests
     USING (business_id = current_setting('app.current_business_id')::uuid)
     WITH CHECK (business_id = current_setting('app.current_business_id')::uuid);
 
+-- Guest wifi (Option C): owner bot binding + guest purchase requests, both
+-- tenant-scoped so each owner sees/decides only their own guest loop.
+CREATE POLICY business_telegram_bots_tenant_isolation ON business_telegram_bots
+    FOR ALL TO authenticated
+    USING (business_id = current_setting('app.current_business_id')::uuid)
+    WITH CHECK (business_id = current_setting('app.current_business_id')::uuid);
+
+CREATE POLICY guest_requests_tenant_isolation ON guest_purchase_requests
+    FOR ALL TO authenticated
+    USING (business_id = current_setting('app.current_business_id')::uuid)
+    WITH CHECK (business_id = current_setting('app.current_business_id')::uuid);
+
 -- ============================================================================
 -- TRIGGERS FOR UPDATED_AT
 -- ============================================================================
@@ -540,3 +598,5 @@ ON CONFLICT (business_id) DO NOTHING;
 -- Grant permissions (the authenticated role is created above, before the policies)
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO authenticated;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON business_telegram_bots TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON guest_purchase_requests TO authenticated;
