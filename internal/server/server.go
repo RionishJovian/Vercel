@@ -213,8 +213,14 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		monitoringService,
 	))
 
-	// Topology: read-only per-tenant network map (parent/child, orphans, cycles).
-	topologyHandler := handler.NewTopologyHandler(db, database.NewDeviceRepository(db))
+	// Topology: read-only per-tenant network map + explicit device actions
+	// (reboot). Plan-gated; the reboot endpoint only queues an intent.
+	topologyHandler := handler.NewTopologyHandler(
+		db,
+		database.NewDeviceRepository(db),
+		database.NewBusinessMeteredQuotaRepository(db),
+		messagingClient,
+	)
 
 	// VPS: read-only WireGuard peer-provisioning (hub config, per-device peer,
 	// reachability). Endpoint host comes from config; empty => omitted from JSON.
@@ -427,8 +433,10 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 			protected.GET("/fleet/health", fleetHandler.FleetHealth)
 			protected.GET("/fleet/health/offline", fleetHandler.OfflineHealth)
 
-			// Read-only per-tenant network topology map.
+			// Read-only per-tenant network topology map + explicit device action
+			// (reboot, plan-gated — queues an intent for the flag-gated consumer).
 			protected.GET("/topology/map", topologyHandler.Map)
+			protected.POST("/topology/:deviceId/reboot", topologyHandler.Reboot)
 
 			// VPS: read-only WireGuard peer-provisioning (plan-gated).
 			vpsg := protected.Group("/vps")

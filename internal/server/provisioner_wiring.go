@@ -64,6 +64,14 @@ func startLiveApplier(cfg *config.Config, client *messaging.Client, sugar *zap.S
 		return fmt.Errorf("live applier consumer start: %w", err)
 	}
 
+	// Topology explicit device actions (reboot) on the same apply-core + gate:
+	// fire-and-validate, no config rollback. Same flag — live router writes for
+	// owner-initiated commands are only ever wired when the applier is enabled.
+	topoConsumer := recovery.NewTopologyActionConsumer(svc, prober, approver, otp, client, sugar)
+	if err := topoConsumer.Start(client); err != nil {
+		return fmt.Errorf("topology action consumer start: %w", err)
+	}
+
 	sugar.Infow("Live apply consumer started (flag-gated)",
 		"host", appCfg.Host, "interface", appCfg.Interface)
 
