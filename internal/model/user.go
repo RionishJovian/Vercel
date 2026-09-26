@@ -5,22 +5,23 @@ import "time"
 type UserRole string
 
 const (
-	RoleOwner     UserRole = "OWNER"
-	RoleAdmin     UserRole = "ADMIN"
-	RoleOperator  UserRole = "OPERATOR"
+	RoleOwner      UserRole = "OWNER"
+	RoleAdmin      UserRole = "ADMIN"
+	RoleOperator   UserRole = "OPERATOR"
 	RoleTechnician UserRole = "TECHNICIAN"
-	RoleViewer    UserRole = "VIEWER"
-	RoleSupport   UserRole = "SUPPORT"
+	RoleViewer     UserRole = "VIEWER"
+	RoleSupport    UserRole = "SUPPORT"
+	RoleDeveloper  UserRole = "DEVELOPER"
 )
 
 type User struct {
-	UserID       string    `json:"user_id" db:"user_id"`
-	BusinessID   string    `json:"business_id" db:"business_id"`
-	FullName     string    `json:"full_name" db:"full_name"`
-	Email        string    `json:"email" db:"email"`
-	PasswordHash string    `json:"-" db:"password_hash"`
-	UserRole     UserRole  `json:"user_role" db:"user_role"`
-	IsActive     bool      `json:"is_active" db:"is_active"`
+	UserID       string     `json:"user_id" db:"user_id"`
+	BusinessID   string     `json:"business_id" db:"business_id"`
+	FullName     string     `json:"full_name" db:"full_name"`
+	Email        string     `json:"email" db:"email"`
+	PasswordHash string     `json:"-" db:"password_hash"`
+	UserRole     UserRole   `json:"user_role" db:"user_role"`
+	IsActive     bool       `json:"is_active" db:"is_active"`
 	LastLoginAt  *time.Time `json:"last_login_at,omitempty" db:"last_login_at"`
 	CreatedAt    time.Time  `json:"created_at" db:"created_at"`
 	UpdatedAt    time.Time  `json:"updated_at" db:"updated_at"`
@@ -42,6 +43,13 @@ type LoginRequest struct {
 	Password string `json:"password" binding:"required,min=6"`
 }
 
+// PlatformIncidentCounts is the cross-tenant incident summary for the DEVELOPER
+// platform window.
+type PlatformIncidentCounts struct {
+	Open     int `json:"open"`
+	Resolved int `json:"resolved"`
+}
+
 type RegisterRequest struct {
 	CompanyName string `json:"company_name" binding:"required,min=1,max=255"`
 	Email       string `json:"email" binding:"required,email"`
@@ -50,9 +58,9 @@ type RegisterRequest struct {
 }
 
 type AuthResponse struct {
-	Token        string `json:"token"`
-	RefreshToken string `json:"refresh_token,omitempty"`
-	User         User   `json:"user"`
+	Token        string   `json:"token"`
+	RefreshToken string   `json:"refresh_token,omitempty"`
+	User         User     `json:"user"`
 	Business     Business `json:"business"`
 }
 

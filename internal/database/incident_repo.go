@@ -1,12 +1,24 @@
 package database
 
 import (
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"fmt"
+	"strings"
 	"time"
 
 	"mega-magic/internal/model"
 )
+
+// newIncidentID returns a fresh 32-char hex id (UUID-compatible column) for
+// incidents created without a caller-supplied ID. Matches the evaluator/handler
+// generator so an empty ID is never written.
+func newIncidentID() string {
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
+}
 
 // IncidentRepository handles incident database operations
 type IncidentRepository struct {
@@ -20,6 +32,9 @@ func NewIncidentRepository(db *DB) *IncidentRepository {
 
 // Create inserts a new incident record
 func (r *IncidentRepository) Create(inc *model.Incident) (*model.Incident, error) {
+	if strings.TrimSpace(inc.ID) == "" {
+		inc.ID = newIncidentID()
+	}
 	query := `
 		INSERT INTO incidents (id, business_id, device_id, policy_id, kind, severity,
 		                       subject_id, subject_label, detail, opened_at,

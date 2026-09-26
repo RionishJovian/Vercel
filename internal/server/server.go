@@ -21,6 +21,7 @@ import (
 	"mega-magic/internal/fleet"
 	"mega-magic/internal/handler"
 	"mega-magic/internal/messaging"
+	"mega-magic/internal/model"
 	"mega-magic/internal/monitoring"
 	"mega-magic/internal/notifier"
 	"mega-magic/internal/probe"
@@ -115,6 +116,11 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		notifierr,
 	)
 	webhookHandler := handler.NewWebhookHandler(db, database.NewWebhookRepository(db))
+	// Platform (DEVELOPER) cross-tenant window — the platform operator's lens.
+	platformHandler := handler.NewPlatformHandler(
+		database.NewPlatformBusinessRepository(db),
+		database.NewPlatformIncidentRepository(db),
+	)
 	// Voucher management for vistors (revenue features)
 	voucherHandler := handler.NewVoucherHandler(db, database.NewVoucherRepository(db), database.NewBusinessMeteredQuotaRepository(db))
 	portalHandler := handler.NewPortalHandler(
@@ -254,7 +260,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		sugar.Info("RLS enforcement disabled — owner pool, no connection pinning (default)")
 	}
 
-	setupRoutes(r, authService, authHandler, routerHandler, telemetryHandler, incidentHandler, webhookHandler, voucherHandler, portalHandler, billingHandler, guestWifiHandler, monitorHandler, fleetHandler, topologyHandler, vpsHandler, messagingClient, cacheClient, db, tenantMW)
+	setupRoutes(r, authService, authHandler, routerHandler, telemetryHandler, incidentHandler, webhookHandler, voucherHandler, portalHandler, billingHandler, guestWifiHandler, monitorHandler, fleetHandler, topologyHandler, vpsHandler, platformHandler, messagingClient, cacheClient, db, tenantMW)
 
 	// Start the policy evaluator: watches NATS telemetry and auto-opens incidents.
 	evaluator := evaluator.New(
@@ -379,7 +385,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	}, nil
 }
 
-func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.AuthHandler, routerHandler *handler.RouterHandler, telemetryHandler *handler.TelemetryHandler, incidentHandler *handler.IncidentHandler, webhookHandler *handler.WebhookHandler, voucherHandler *handler.VoucherHandler, portalHandler *handler.PortalHandler, billingHandler *handler.BillingHandler, guestWifiHandler *handler.GuestWifiHandler, monitorHandler *handler.MonitorHandler, fleetHandler *handler.FleetHandler, topologyHandler *handler.TopologyHandler, vpsHandler *handler.VPSHandler, msg *messaging.Client, cache *cache.Client, db *database.DB, tenantMW gin.HandlerFunc) {
+func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.AuthHandler, routerHandler *handler.RouterHandler, telemetryHandler *handler.TelemetryHandler, incidentHandler *handler.IncidentHandler, webhookHandler *handler.WebhookHandler, voucherHandler *handler.VoucherHandler, portalHandler *handler.PortalHandler, billingHandler *handler.BillingHandler, guestWifiHandler *handler.GuestWifiHandler, monitorHandler *handler.MonitorHandler, fleetHandler *handler.FleetHandler, topologyHandler *handler.TopologyHandler, vpsHandler *handler.VPSHandler, platformHandler *handler.PlatformHandler, msg *messaging.Client, cache *cache.Client, db *database.DB, tenantMW gin.HandlerFunc) {
 	r.GET("/", indexPage)
 	r.GET("/health", healthCheck)
 	r.GET("/ready", readinessCheck(&Server{cache: cache, db: db, messaging: msg}))
@@ -519,6 +525,19 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 				webhooks.DELETE("/:id", webhookHandler.Delete)
 				webhooks.GET("/deliveries", webhookHandler.ListDeliveries)
 			}
+		}
+
+		// Platform (DEVELOPER) cross-tenant window. SYSTEM-LEVEL reads that see
+		// EVERY business — this is the platform operator's lens, not a tenant
+		// view. auth.Middleware FIRST (validates JWT, sets role context) then
+		// RequireRole(DEVELOPER) so no customer role (OWNER, VIEWER, etc.) can
+		// reach it. Deliberately does NOT use the tenant-scoped protected group
+		// or tenantMW.
+		platform := v1.Group("/platform", auth.Middleware(authService), auth.RequireRole(string(model.RoleDeveloper)))
+		{
+			platform.GET("/businesses", platformHandler.ListBusinesses)
+			platform.GET("/incidents", platformHandler.ListOpenIncidents)
+			platform.GET("/incidents/counts", platformHandler.CountIncidents)
 		}
 	}
 }

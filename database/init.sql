@@ -42,7 +42,7 @@ CREATE TABLE users (
     email text NOT NULL UNIQUE,
     password_hash text NOT NULL,
     user_role text NOT NULL DEFAULT 'VIEWER'
-        CHECK (user_role IN ('OWNER', 'ADMIN', 'OPERATOR', 'TECHNICIAN', 'VIEWER', 'SUPPORT')),
+        CHECK (user_role IN ('OWNER', 'ADMIN', 'OPERATOR', 'TECHNICIAN', 'VIEWER', 'SUPPORT', 'DEVELOPER')),
     is_active boolean NOT NULL DEFAULT true,
     last_login_at timestamptz,
     created_at timestamptz NOT NULL DEFAULT now(),
