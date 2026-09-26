@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Guest WiFi</title>
+<link rel="stylesheet" href="/assets/css/styles.css">
+<style>
+  body { background: #f7f3ea; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  .guest { max-width: 520px; margin: 40px auto; background: #fff; border: 1px solid #e2dccf; border-radius: 12px; padding: 24px; }
+  .guest h1 { font-size: 22px; margin: 0 0 6px; }
+  .guest .biz { color: #5a6b73; margin: 0 0 18px; }
+  .steps { color: #8a8577; font-size: 13px; margin: 0 0 16px; }
+  .plan { display: block; width: 100%; text-align: left; padding: 12px; margin: 0 0 8px;
+          background: #fff; border: 1px solid #e2dccf; border-radius: 8px; cursor: pointer; }
+  .plan .nm { font-weight: 600; } .plan .sub { color: #5a6b73; font-size: 13px; }
+  .btn { display: inline-block; background: #0e5a5a; color: #fff; border: 0; padding: 12px 18px;
+         border-radius: 8px; font-size: 15px; cursor: pointer; }
+  .btn:disabled { opacity: .5; }
+  .qr { text-align: center; margin: 16px 0; }
+  .qr img { width: 200px; height: 200px; border: 1px solid #e2dccf; }
+  .qr .bank { color: #5a6b73; font-size: 14px; margin-top: 8px; }
+  .timer { font-family: ui-monospace, monospace; font-size: 26px; color: #b45309; text-align: center; margin: 10px 0; }
+  .form-row { margin: 0 0 12px; } .form-row label { display: block; font-size: 13px; margin: 0 0 4px; }
+  .form-row input { width: 100%; padding: 10px; border: 1px solid #e2dccf; border-radius: 6px; font-size: 15px; }
+  .msg { color: #b45309; margin: 12px 0; }
+  .ok { color: #1e7d3e; }
+  .lang { position: fixed; top: 10px; right: 14px; background: #fff; border: 1px solid #e2dccf;
+          border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: 13px; color: #0e5a5a; }
+</style>
+</head>
+<body>
+<div class="lang" id="lang">မြန်မာ</div>
+<div class="guest" id="root"><div class="msg" id="load">…</div></div>
+<script>
+/* Guest captive portal — MMQR buy flow.
+   i18n: `mm` holds Burmese (my); when a key is absent or blank the English in
+   the T() call is used. Burmese strings below are a first-pass draft —
+   VERIFY each with a native speaker before shipping to customers. */
+var DEVICE = new URLSearchParams(location.search).get("deviceId") || "";
+var API = "/api/v1";
+
+var MM = {
+  buy:      "WiFi ဝယ်ယူမှု",                // Buy WiFi
+  pay:      "MMQR ဖြင့် ငွေပေးချေမှု",      // Pay by MMQR
+  steps:    "1) Plan ရွေးပါ  2) MMQR ငွေပေးချေပါ  3) ဖုနေးနံပါတာ ထည့်ပါ",
+  choose:   "Plan ရွေးပါ",
+  trial:    "MMQR ဖြင့် ငွေပေးချေပါ — free trial အတွင်း ပြီးအောင်",
+  expired:  "Trial အချိန်ကုန်သွားပါပြီ",
+  afterPay: "ငွေပေးချေပြီးနောက် အောက်ပါကို ဖြည့်ပါ",
+  phone:    "ငွေပေးချေခဲ့သော ဖုနေးနံပါတာ (paid phone)",
+  last6:    "Bank/transaction နံပါတာ နောက်ဆုံး ၆ လုံး",
+  receipt:  "Receipt ဓာတ်ပုံ (optional)",
+  verConfirm:"ငွေပေးချေပြီးပြီ — အတည်ပြပါ",
+  waiting:  "Owner က အတည်ပြစောင့်နေသည် — အချိန်နအခမြေနို WiFi သုံးနိုဈပါ",
+  requestRec:"လက်ခံရရှိပြီ — owner က မကြာခင် အတည်ပြပါလိမ့်မည်",
+};
+
+function t(en, key) {
+  var v = MM[key];
+  return v && v.trim() ? v : en;
+}
+function esc(s) {
+  return String(s==null?"":s).replace(/[&<>"']/g, function (ch) {
+    return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[ch];
+  });
+}
+function clientMac() {
+  return "00:00:00:00:00:00";
+}
+
+async function loadConfig() {
+  var root = document.getElementById("root");
+  try {
+    var res = await fetch(API + "/portal/" + DEVICE + "/config");
+    var d = await res.json();
+    renderPlans(d.config || d);
+  } catch (e) {
+    root.innerHTML = '<p class="msg">Could not load this hotspot.</p>';
+  }
+}
+
+function renderPlans(cfg) {
+  var plans = cfg.guest_plans || [];
+  var rows = plans.map(function (p) {
+    var dm = p.data_mb ? " · " + p.data_mb + " MB" : "";
+    var mins = p.minutes ? (p.minutes >= 60 ? (p.minutes/60) + " hr" : p.minutes + " min") : "";
+    var amt = p.amount ? " · " + p.amount.toLocaleString("en") + " MMK" : "";
+    return '<button class="plan" data-key="' + esc(p.key) + '">' +
+      '<div class="nm">' + esc(p.label) + '</div>' +
+      '<div class="sub">' + esc(mins) + esc(dm) + amt + '</div></button>';
+  }).join("");
+  document.getElementById("root").innerHTML =
+    '<h1>' + t("Buy WiFi", "buy") + '</h1>' +
+    '<p class="biz">' + esc(cfg.business_name || "") + '</p>' +
+    '<p class="steps">' + t("1) Choose a plan · 2) Pay by MMQR (free trial) · 3) Enter phone + last 6 digits", "steps") + '</p>' +
+    '<h3>' + t("Choose a plan", "choose") + '</h3>' + rows;
+  document.querySelectorAll(".plan").forEach(function (b) {
+    b.addEventListener("click", function () { buy(cfg, b.dataset.key); });
+  });
+}
+
+async function buy(cfg, key) {
+  var root = document.getElementById("root");
+  var fd = new FormData();
+  fd.append("plan_key", key);
+  fd.append("client_mac", clientMac());
+  try {
+    var res = await fetch(API + "/portal/" + DEVICE + "/guest-purchase", { method: "POST", body: fd });
+    var d = await res.json();
+    if (!res.ok) throw new Error(d.error || ("http-" + res.status));
+    renderPay(cfg, d.request_id, d.grace_expires_at);
+  } catch (e) {
+    root.innerHTML = '<p class="msg">' + esc(e.message) + '</p>';
+  }
+}
+
+function renderPay(cfg, reqId, graceExp) {
+  var end = new Date(graceExp).getTime();
+  document.getElementById("root").innerHTML =
+    '<h1>' + t("Pay by MMQR", "pay") + '</h1>' +
+    '<p class="steps">' + t("Scan the QR and complete the bank transfer before the trial ends.", "trial") + '</p>' +
+    '<div class="qr">' + (cfg.mmqr_url ? '<img src="' + esc(cfg.mmqr_url) + '">' : '') +
+      (cfg.bank_name || cfg.bank_holder || cfg.bank_account
+        ? '<div class="bank">' + esc(cfg.bank_name||"") + ' · ' + esc(cfg.bank_holder||"") + ' · ' + esc(cfg.bank_account||"") + '</div>' : '') +
+    '</div>' +
+    '<p class="timer" id="timer"></p>' +
+    '<h3>' + t("After paying, confirm here", "afterPay") + '</h3>' +
+    '<div class="form-row"><label>' + t("Phone number you paid from", "phone") + '</label><input id="phone" inputmode="tel"></div>' +
+    '<div class="form-row"><label>' + t("Last 6 digits of the bank / transaction number", "last6") + '</label><input id="last6" inputmode="numeric" maxlength="6"></div>' +
+    '<div class="form-row"><label>' + t("Receipt photo (optional)", "receipt") + '</label><input id="receipt" type="file" accept="image/*"></div>' +
+    '<button class="btn" id="confirm">' + t("I have paid — verify", "verConfirm") + '</button>' +
+    '<p class="msg" id="msg"></p>';
+  tickTimer(end);
+  document.getElementById("confirm").addEventListener("click", function () { confirm(reqId); });
+}
+
+function tickTimer(end) {
+  var timerEl = document.getElementById("timer");
+  var fn = function () {
+    var diff = end - Date.now();
+    if (diff <= 0) { timerEl.textContent = t("Trial expired", "expired"); return; }
+    var m = Math.floor(diff/60000), s = Math.floor(diff%60000/1000);
+    timerEl.textContent = (m<10?"0":"")+m+":"+(s<10?"0":"")+s;
+  };
+  fn(); setInterval(fn, 1000);
+}
+
+async function confirm(reqId) {
+  var msg = document.getElementById("msg");
+  var phone = document.getElementById("phone").value.trim();
+  var last6 = document.getElementById("last6").value.trim();
+  if (!phone || last6.length !== 6) {
+    msg.textContent = "Enter the phone and the 6-digit transaction number.";
+    return;
+  }
+  var fd = new FormData();
+  fd.append("paid_phone", phone);
+  fd.append("tx_last6", last6);
+  var rf = document.getElementById("receipt").files[0];
+  if (rf) fd.append("receipt", rf);
+  msg.textContent = "…";
+  try {
+    var res = await fetch(API + "/portal/guest-purchase/" + reqId + "/receipt", { method: "POST", body: fd });
+    var d = await res.json();
+    if (!res.ok) throw new Error(d.error || ("http-" + res.status));
+    document.getElementById("root").innerHTML =
+      '<h1 class="ok">' + t("Request received", "requestRec") + '</h1>' +
+      '<p class="ok">' + t("The owner has been notified and will approve your connection. You can use the free trial until then.", "waiting") + '</p>';
+  } catch (e) {
+    msg.textContent = t("Could not submit", "afterPay") + ": " + e.message;
+  }
+}
+
+if (!DEVICE) {
+  document.getElementById("root").innerHTML = '<p class="msg">Missing deviceId in the URL.</p>';
+} else {
+  loadConfig();
+}
+</script>
+</body>
+</html>

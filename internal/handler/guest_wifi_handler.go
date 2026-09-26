@@ -237,6 +237,15 @@ func (h *GuestWifiHandler) PublicAttachReceipt(c *gin.Context) {
 		}
 	}
 
+	// Capture the payer's phone + last-6 (MMQR) so the OWNER can verify.
+	phone := strings.TrimSpace(c.PostForm("paid_phone"))
+	last6 := strings.TrimSpace(c.PostForm("tx_last6"))
+	if phone != "" || last6 != "" {
+		_ = withDeviceTenant(h.db, req.BusinessID, func(ptx *sql.Tx) error {
+			return h.reqRepo.SetMMQRDetailsTXN(ptx, req.BusinessID, req.ID, phone, last6)
+		})
+	}
+
 	c.JSON(http.StatusOK, gin.H{"request_id": req.ID, "status": req.Status, "receipt_attached": true})
 }
 

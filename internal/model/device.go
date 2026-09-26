@@ -163,6 +163,9 @@ type PortalConfig struct {
 	BankName        string `json:"bank_name,omitempty"`
 	BankAccount     string `json:"bank_account,omitempty"`
 	BankHolder      string `json:"bank_holder,omitempty"`
+	// MMQRURL is the owner's MMQR payment QR image (Myanmar QR) guests scan to
+	// make the bank transfer. Served path or https URL.
+	MMQRURL string `json:"mmqr_url,omitempty"`
 	// Guest wifi (Option C): free online-payment window (minutes) and the data
 	// plans the owner sets on the portal.
 	GuestGraceMinutes int         `json:"guest_grace_minutes"`
@@ -198,14 +201,18 @@ type BusinessTelegramBot struct {
 // GuestPurchaseRequest is an owner-approved online-banking wifi submit from a
 // guest on the captive portal. pending -> approved|rejected, exactly once.
 type GuestPurchaseRequest struct {
-	ID             string     `json:"id"`
-	BusinessID     string     `json:"business_id"`
-	DeviceID       *string    `json:"device_id,omitempty"`
-	ClientMAC      string     `json:"client_mac"`
-	ClientIP       *net.IP    `json:"client_ip,omitempty"`
-	PlanKey        string     `json:"plan_key"`
-	Amount         int        `json:"amount"`
-	DataMB         int        `json:"data_mb,omitempty"`
+	ID         string  `json:"id"`
+	BusinessID string  `json:"business_id"`
+	DeviceID   *string `json:"device_id,omitempty"`
+	ClientMAC  string  `json:"client_mac"`
+	ClientIP   *net.IP `json:"client_ip,omitempty"`
+	PlanKey    string  `json:"plan_key"`
+	Amount     int     `json:"amount"`
+	DataMB     int     `json:"data_mb,omitempty"`
+	// MMQR flow: the payer's phone number and last 6 digits of the bank/MMQR
+	// transaction number, submitted after paying so the owner can verify.
+	PaidPhone      string     `json:"paid_phone,omitempty"`
+	TxLast6        string     `json:"tx_last6,omitempty"`
 	BankReference  *string    `json:"bank_reference,omitempty"`
 	ReceiptPath    *string    `json:"receipt_path,omitempty"`
 	GraceStartedAt *time.Time `json:"grace_started_at,omitempty"`

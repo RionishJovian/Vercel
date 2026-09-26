@@ -288,6 +288,8 @@ func (h *PortalHandler) StaffUpdateConfig(c *gin.Context) {
 		GlassTintHex    *string            `json:"glass_tint_hex"`
 		ConsentRequired *bool              `json:"consent_required"`
 		ConsentText     *string            `json:"consent_text"`
+		GraceMinutes    *int               `json:"guest_grace_minutes"`
+		MMQRURL         *string            `json:"mmqr_url"`
 		GuestPlans      *[]model.GuestPlan `json:"guest_plans"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -310,6 +312,12 @@ func (h *PortalHandler) StaffUpdateConfig(c *gin.Context) {
 	}
 	if req.GlassTintHex != nil {
 		cfg.GlassTintHex = *req.GlassTintHex
+	}
+	if req.MMQRURL != nil {
+		cfg.MMQRURL = *req.MMQRURL
+	}
+	if req.GraceMinutes != nil {
+		cfg.GuestGraceMinutes = *req.GraceMinutes
 	}
 	if req.ConsentRequired != nil {
 		cfg.ConsentRequired = *req.ConsentRequired

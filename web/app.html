@@ -248,6 +248,9 @@ async function renderPortal(main) {
   // Guest data plans — owner-set price (MMK) + data per location. Editable so
   // each hotspot owner prices their own market (no global pricing rule).
   const plans = (cfg && cfg.guest_plans) || [];
+  html += `<h3 class="small" style="margin:14px 0 6px">MMQR payment QR<span class="muted"> — image URL guests scan to pay by bank</span></h3>`;
+  html += `<input id="mmqr-url" value="${esc((cfg&&cfg.mmqr_url)||"")}" placeholder="https://…/mmqr.jpg or /assets/mmqr.jpg" style="width:100%">`;
+  html += `<div class="form-row" style="margin-top:10px"><label>Trial window (minutes guests get to pay)</label><input id="grace-min" type="number" min="0" value="${(cfg&&cfg.guest_grace_minutes)||10}" style="width:120px"></div>`;
   html += `<h3 class="small" style="margin:14px 0 6px">Guest data plans</h3>`;
   html += `<table id="plans-table"><thead><tr><th>Key</th><th>Label</th><th>Minutes</th><th>Price (MMK)</th><th>Data (MB)</th><th></th></tr></thead><tbody>`;
   plans.forEach((p, i) => {
@@ -267,8 +270,8 @@ async function renderPortal(main) {
   html += `<div class="panel" style="margin-top:14px"><div class="panel-head"><h2 class="panel-title">Guest purchase requests</h2></div><div class="panel-body">`;
   if (reqErr) html += `<p class="muted small">${esc(reqErr)}</p>`;
   else if (!reqs.length) html += `<div class="empty"><div class="empty-title">No requests</div>Guest purchases and redemptions will appear here.</div>`;
-  else html += `<table><thead><tr><th>MAC</th><th>Plan</th><th>Status</th><th>Submitted</th></tr></thead><tbody>` +
-    reqs.slice(0, 30).map(r => `<tr><td class="mono">${esc(r.client_mac||"—")}</td><td class="num">${esc(r.plan_key||"—")}</td><td>${badge((r.status||"unknown").toLowerCase())}</td><td>${ts(r.created_at)}</td></tr>`).join("") +
+  else html += `<table><thead><tr><th>MAC</th><th>Plan</th><th>Phone</th><th>Last 6</th><th>Status</th><th>Submitted</th></tr></thead><tbody>` +
+    reqs.slice(0, 30).map(r => `<tr><td class="mono">${esc(r.client_mac||"—")}</td><td class="num">${esc(r.plan_key||"—")}</td><td class="mono">${esc(r.paid_phone||"—")}</td><td class="mono">${esc(r.tx_last6||"—")}</td><td>${badge((r.status||"unknown").toLowerCase())}</td><td>${ts(r.created_at)}</td></tr>`).join("") +
     `</tbody></table>`;
   html += `</div></div>`;
 
@@ -290,8 +293,12 @@ async function renderPortal(main) {
     msgEl().textContent = "Saving…";
     try {
       const plans = collect();
-      // Preserve every existing portal field; only plans change here.
-      const body = Object.assign({}, cfg, { guest_plans: plans });
+      // Preserve every existing portal field; only plans/QR change here.
+      const body = Object.assign({}, cfg, {
+        guest_plans: plans,
+        mmqr_url: (main.querySelector("#mmqr-url")?.value || String(cfg.mmqr_url||"")).trim(),
+        guest_grace_minutes: parseInt(main.querySelector("#grace-min")?.value || cfg.guest_grace_minutes || "10", 10),
+      });
       await MM.put("/portal/config", body);
       msgEl().textContent = "Saved.";
       await loadView("portal", main, ME);

@@ -89,7 +89,7 @@ func NewGuestPurchaseRequestRepository(db *DB) *GuestPurchaseRequestRepository {
 }
 
 const guestRequestCols = `id, business_id, device_id, client_mac, client_ip, plan_key, amount,
-	data_mb, bank_reference, receipt_path, grace_started_at, grace_expires_at, status,
+	data_mb, paid_phone, tx_last6, bank_reference, receipt_path, grace_started_at, grace_expires_at, status,
 	decided_at, created_at, updated_at`
 
 // scanGuestRequest is a shared row-scanner for guest purchase requests.
@@ -99,11 +99,11 @@ type guestRequestScan interface {
 
 func scanGuestRequest(row guestRequestScan) (*model.GuestPurchaseRequest, error) {
 	r := &model.GuestPurchaseRequest{}
-	var deviceID, planKey, bankRef, receipt, status, clientIP sql.NullString
+	var deviceID, planKey, paidPhone, txLast6, bankRef, receipt, status, clientIP sql.NullString
 	var graceStart, graceExpire, decided sql.NullTime
 	var amount, dataMB int
 	if err := row.Scan(&r.ID, &r.BusinessID, &deviceID, &r.ClientMAC, &clientIP, &planKey,
-		&amount, &dataMB, &bankRef, &receipt, &graceStart, &graceExpire, &status, &decided,
+		&amount, &dataMB, &paidPhone, &txLast6, &bankRef, &receipt, &graceStart, &graceExpire, &status, &decided,
 		&r.CreatedAt, &r.UpdatedAt); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
@@ -114,6 +114,8 @@ func scanGuestRequest(row guestRequestScan) (*model.GuestPurchaseRequest, error)
 	r.PlanKey = planKey.String
 	r.Amount = amount
 	r.DataMB = dataMB
+	r.PaidPhone = paidPhone.String
+	r.TxLast6 = txLast6.String
 	r.BankReference = scanNullableString(bankRef)
 	r.ReceiptPath = scanNullableString(receipt)
 	r.ClientIP = scanIP(clientIP)
@@ -184,6 +186,13 @@ func (r *GuestPurchaseRequestRepository) RejectRequestTXN(tx *sql.Tx, businessID
 
 func (r *GuestPurchaseRequestRepository) SetReceiptPathTXN(tx *sql.Tx, businessID, id, path string) error {
 	_, err := tx.Exec(`UPDATE guest_purchase_requests SET receipt_path=$3, updated_at=now() WHERE id=$1 AND business_id=$2`, id, businessID, path)
+	return err
+}
+
+// SetMMQRDetailsTXN records the payer's phone + last-6 transaction digits after
+// they complete the MMQR bank transfer, so the OWNER can verify before deciding.
+func (r *GuestPurchaseRequestRepository) SetMMQRDetailsTXN(tx *sql.Tx, businessID, id, phone, last6 string) error {
+	_, err := tx.Exec(`UPDATE guest_purchase_requests SET paid_phone=$3, tx_last6=$4, updated_at=now() WHERE id=$1 AND business_id=$2`, id, businessID, phone, last6)
 	return err
 }
 

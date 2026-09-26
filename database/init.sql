@@ -168,6 +168,7 @@ CREATE TABLE portal_configs (
     bank_name text,
     bank_account text,
     bank_holder text,
+    mmqr_url text,                -- owner's MMQR payment QR image (Myanmar QR)
     -- Guest wifi (Option C): the free online-payment window (minutes) and the
     -- data plans the owner sets on the portal (JSON: [{key,label,minutes,amount}]).
     guest_grace_minutes integer NOT NULL DEFAULT 10,
@@ -365,6 +366,8 @@ CREATE TABLE IF NOT EXISTS guest_purchase_requests (
     plan_key text NOT NULL,
     amount integer NOT NULL DEFAULT 0,
     data_mb integer NOT NULL DEFAULT 0,   -- plan data allowance (MB); 0 = time-only
+    paid_phone text,                     -- MMQR: payer phone submitted after payment
+    tx_last6 text,                       -- MMQR: last 6 digits of bank/tx number
     bank_reference text,
     receipt_path text,              -- uploaded successful-payment receipt
     grace_started_at timestamptz,
