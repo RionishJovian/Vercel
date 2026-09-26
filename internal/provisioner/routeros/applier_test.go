@@ -49,6 +49,7 @@ func TestTranslate_actions(t *testing.T) {
 		{provisioner.ActionResetPeer, []string{"disable [find interface=wg-magichub]", "enable [find interface=wg-magichub]"}, false},
 		{provisioner.ActionReprobe, nil, true},
 		{provisioner.ActionEscalate, nil, true},
+		{provisioner.ActionReboot, []string{"/system reboot"}, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.action, func(t *testing.T) {

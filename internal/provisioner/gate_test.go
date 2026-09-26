@@ -17,7 +17,7 @@ func highRiskPlan() []Change {
 }
 
 func TestIsHighRisk_rule(t *testing.T) {
-	high := []string{ActionRotateListenPort, ActionEscalate}
+	high := []string{ActionRotateListenPort, ActionEscalate, ActionReboot}
 	low := []string{ActionReprobe, ActionResetPeer, ActionEnsureKeepalive}
 	for _, a := range high {
 		if !IsHighRisk(a) {

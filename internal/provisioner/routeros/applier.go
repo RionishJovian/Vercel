@@ -145,6 +145,14 @@ func (a *Applier) Translate(c provisioner.Change) ([]Step, error) {
 		}}, nil
 	case provisioner.ActionReprobe:
 		return []Step{{Note: "re-probe handled by the verifier; no device change"}}, nil
+	case provisioner.ActionReboot:
+		// Fire-and-verify: reboot is destructive and cannot be config-rolled
+		// back. The explicit-action consumer handles approval + post-boot
+		// re-verification; this step just issues the device command.
+		return []Step{{
+			Command: "/system reboot",
+			Note:    "force remote reboot (explicit owner action)",
+		}}, nil
 	case provisioner.ActionEscalate:
 		return []Step{{Note: "incident escalation; no device change"}}, nil
 	default:

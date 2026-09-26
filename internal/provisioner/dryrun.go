@@ -37,6 +37,11 @@ const (
 	ActionResetPeer        = "reset_peer"
 	ActionRotateListenPort = "rotate_listen_port"
 	ActionEscalate         = "escalate"
+	// ActionReboot is a topology explicit action: a remote force-reboot of a
+	// device. Distinct from the recovery ladder actions (those fix peer/tunnel
+	// state); reboot is a direct destructive device command for an owner who
+	// clicked "reboot" on the topology map. High-risk by definition (OTP-gated).
+	ActionReboot = "reboot"
 )
 
 // ExpectedKeepalive is the keepalive every provisioned peer must carry

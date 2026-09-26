@@ -16,6 +16,7 @@ import (
 var highRiskActions = map[string]bool{
 	ActionRotateListenPort: true,
 	ActionEscalate:         true,
+	ActionReboot:           true,
 }
 
 // IsHighRisk reports whether a single recovery action is high-risk.
