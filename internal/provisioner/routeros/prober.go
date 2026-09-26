@@ -3,6 +3,7 @@ package routeros
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"mega-magic/internal/provisioner"
@@ -85,6 +86,82 @@ func (p *Prober) Observe(ctx context.Context, peerID string) (provisioner.Observ
 	conn.Detail = fmt.Sprintf("iface=%s listen=%d keepalive=%s rx=%s tx=%s handshake_fresh(proxy)=%v ping={%s}",
 		p.iface, obs.ListenPort, pkv["persistent-keepalive"], pkv["rx"], pkv["tx"], fresh, pingDetail)
 	return obs, conn, nil
+}
+
+// GuestQuotaState is the read-back of one hotspot user's enforced caps.
+type GuestQuotaState struct {
+	Identity    string
+	Exists      bool
+	LimitBytes  int
+	LimitUptime int
+	Profile     string
+}
+
+// ObserveGuestQuota reads a hotspot user back (by name) so the apply path can
+// verify a guest plan's caps are actually on the router. It is read-only. A
+// missing user has Exists=false (no caps applied) — verification of an enforce
+// must require Exists && non-zero limits.
+func (p *Prober) ObserveGuestQuota(ctx context.Context, identity string) (GuestQuotaState, error) {
+	if p.run == nil {
+		return GuestQuotaState{}, fmt.Errorf("routeros: nil command runner")
+	}
+	name := guestUserName(identity)
+	out, err := p.run.Run(ctx, fmt.Sprintf("/ip hotspot user print value-list detail where name=%s", name))
+	if err != nil {
+		return GuestQuotaState{}, fmt.Errorf("routeros: probe hotspot user: %w", err)
+	}
+	kv := parseValueList(out)
+	if len(kv) == 0 {
+		return GuestQuotaState{Identity: identity, Exists: false}, nil
+	}
+	return GuestQuotaState{
+		Identity:    identity,
+		Exists:      true,
+		LimitBytes:  atoiOr(kv["limit-bytes-total"], 0),
+		LimitUptime: parseUptimeSeconds(kv["limit-uptime"]),
+		Profile:     kv["profile"],
+	}, nil
+}
+
+// parseUptimeSeconds converts a RouterOS uptime duration ("1h", "2h30m", "45s")
+// to seconds. RouterOS prints uptime values as human durations, not raw
+// seconds, so atoi would read them as 0. Returns 0 on an unparseable string.
+func parseUptimeSeconds(s string) int {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0
+	}
+	if n := atoiOr(s, 0); n > 0 {
+		return n // already numeric
+	}
+	return parseDurationSeconds(s)
+}
+
+// parseDurationSeconds handles RouterOS compact durations like 1h / 2h30m / 45s.
+func parseDurationSeconds(s string) int {
+	var total int
+	num := 0
+	haveNum := false
+	for _, r := range s {
+		switch {
+		case r >= '0' && r <= '9':
+			num = num*10 + int(r-'0')
+			haveNum = true
+		case r == 'h':
+			total += num * 3600
+			num, haveNum = 0, false
+		case r == 'm':
+			total += num * 60
+			num, haveNum = 0, false
+		case r == 's':
+			total += num
+			num, haveNum = 0, false
+		}
+	}
+	if haveNum {
+		total += num // bare seconds
+	}
+	return total
 }
 
 // classifyState mirrors the probe classifier's decision table.

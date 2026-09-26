@@ -145,6 +145,48 @@ func (a *Applier) Translate(c provisioner.Change) ([]Step, error) {
 		}}, nil
 	case provisioner.ActionReprobe:
 		return []Step{{Note: "re-probe handled by the verifier; no device change"}}, nil
+	case provisioner.ActionEnforceGuestQuota:
+		// Apply (or refresh) a guest's bought-plan hotspot-user caps. Target =
+		// the guest identity (MAC / phone); Proposed = JSON GuestQuota. Fail
+		// closed on a missing identity or malformed/empty limits.
+		identity := strings.TrimSpace(c.Target)
+		if identity == "" {
+			return nil, fmt.Errorf("routeros: enforce_guest_quota needs a guest identity in Target; refusing")
+		}
+		q, err := parseGuestQuota(c.Proposed)
+		if err != nil {
+			return nil, err
+		}
+		if q.DataBytes < 0 || q.UptimeSeconds < 0 {
+			return nil, fmt.Errorf("routeros: enforce_guest_quota has negative limit; refusing")
+		}
+		if q.DataBytes == 0 && q.UptimeSeconds == 0 {
+			return nil, fmt.Errorf("routeros: enforce_guest_quota with zero data and zero time caps nothing; refusing")
+		}
+		user := guestUserName(identity)
+		profile := "default"
+		if q.Profile != "" {
+			profile = q.Profile
+		}
+		// RouterOS limit-uptime is in SECONDS (not a duration string), and
+		// limit-bytes-total is in bytes. Both converge regardless of prior state:
+		// /set on a missing user no-ops, /add on an existing name fails — so we
+		// add then set, which is idempotent.
+		return []Step{
+			{Command: fmt.Sprintf("/ip hotspot user add name=%s profile=%s", user, profile), Note: "ensure hotspot user exists"},
+			{Command: fmt.Sprintf("/ip hotspot user set [find name=%s] limit-uptime=%d limit-bytes-total=%d", user, q.UptimeSeconds, q.DataBytes), Note: "enforce data+time caps on the guest"},
+		}, nil
+	case provisioner.ActionRevokeGuestQuota:
+		identity := strings.TrimSpace(c.Target)
+		if identity == "" {
+			return nil, fmt.Errorf("routeros: revoke_guest_quota needs a guest identity; refusing")
+		}
+		// Remove the SAME sanitized name enforce created (guestUserName), not the
+		// raw identity — otherwise revoke misses the user it added.
+		return []Step{{
+			Command: fmt.Sprintf("/ip hotspot user remove [find name=%s]", guestUserName(identity)),
+			Note:    "remove the guest hotspot user (release caps)",
+		}}, nil
 	case provisioner.ActionReboot:
 		// Fire-and-verify: reboot is destructive and cannot be config-rolled
 		// back. The explicit-action consumer handles approval + post-boot

@@ -42,6 +42,17 @@ const (
 	// state); reboot is a direct destructive device command for an owner who
 	// clicked "reboot" on the topology map. High-risk by definition (OTP-gated).
 	ActionReboot = "reboot"
+	// ActionEnforceGuestQuota applies a guest's bought-plan limits to a hotspot
+	// user on the router: a data cap (limit-bytes-total) and a time cap
+	// (limit-uptime, i.e. "1GB for 60 minutes"). Carried as Action fields: Target =
+	// the guest identity (MAC), Proposed = JSON {"data_bytes", "uptime_seconds"}.
+	// This is the enforcement wiring that makes a bought "1GB" actually cap on
+	// hardware (Phase B2, ref ROADMAP B2).
+	ActionEnforceGuestQuota = "enforce_guest_quota"
+	// ActionRevokeGuestQuota removes the hotspot user created by the enforce
+	// action, releasing the guest's data/time limits when their plan lapses or
+	// is rejected/cancelled.
+	ActionRevokeGuestQuota = "revoke_guest_quota"
 )
 
 // ExpectedKeepalive is the keepalive every provisioned peer must carry

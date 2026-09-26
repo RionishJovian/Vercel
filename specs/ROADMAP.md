@@ -73,6 +73,8 @@
 All become LIVE by flipping flags AFTER a live smoke — Lead-gated, deliberate.
 
 ## ADVANCE DECISIONS (ANSWERED 2026-09-26 — do not re-ask)
+- **OPTION 1 — ENFORCEMENT FIRST (ANSWERED 2026-09-27).** Sequence decided in advance, Lead executes autonomously with NO further permission stalls: B1 real-RouterOS enforcement live smoke (lab CHR = approved smoke target, OTP-gated, rollback-safe) → B2 wire data-limit + time-expiry through the applier (bought "1GB" caps at 1GB + time-expires on hardware) → native Burmese verification → C1 security-posture scan → C2 config backups + one-click restore + change timeline → C3 role enforcement on tenant routes → E2 full regression + scripted public E2E → E3 written "run a business on Mega Magic" guide → SELF-ANNOUNCE fully developed. AI chain turns ON (D4) once B1/B2 land.
+
 - D1. Payment = **owner-bot only, MMQR flow**. Guest sees the owner's MMQR
   payment QR + bank info, gets a **free grace trial** (guest_grace_minutes,
   set ~10) to complete the bank transfer — essential where only Starlink /

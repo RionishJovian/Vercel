@@ -160,7 +160,7 @@ func TestLab_SnapshotApplyVerifyRollback(t *testing.T) {
 	}
 }
 
-// TestLab_ProdGuardNeverConnects documents, on the live box, that a prod-shaped
+// TestLab_ProdGuardRefusesProd documents, on the live box, that a prod-shaped
 // target is refused before any connection is attempted.
 func TestLab_ProdGuardRefusesProd(t *testing.T) {
 	if os.Getenv("MM_LAB_SSH_ADDR") == "" {
@@ -168,5 +168,62 @@ func TestLab_ProdGuardRefusesProd(t *testing.T) {
 	}
 	if _, _, err := NewLive(LiveConfig{Enabled: true, Host: "10.77.0.4", Port: 22, User: "admin", AllowEmptyPassword: true}); err == nil {
 		t.Fatal("prod target must be refused even with the live flag on")
+	}
+}
+
+// TestLab_EnforceGuestQuotaLive proves Phase B2 enforcement on real hardware:
+// it creates a hotspot user with a data+time cap, verifies the caps are applied
+// (via the real Prober), then revokes the user and verifies it's gone. Restores
+// the lab to its pre-test state regardless of failure. Sandbox 10.99.0.0/30.
+func TestLab_EnforceGuestQuotaLive(t *testing.T) {
+	tr := labTransport(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	const identity = "B2LAB:00:11:22:33:44:55"
+	name := guestUserName(identity)
+	pr := NewProber(tr, "wg-magichub", "", 0)
+	ap := NewApplier(tr, "wg-magichub", 0, 0)
+
+	// Clean guarantee: start from a known-empty state.
+	if err := ap.Apply(ctx, name, []provisioner.Change{{Action: provisioner.ActionRevokeGuestQuota, Target: identity}}); err != nil {
+		t.Fatalf("pre-clean revoke: %v", err)
+	}
+	if st, err := pr.ObserveGuestQuota(ctx, identity); err != nil || st.Exists {
+		t.Fatalf("pre-test user must not exist: exists=%v err=%v", st.Exists, err)
+	}
+
+	// 1) Enforce: a bought "1GB / 60min" plan.
+	err := ap.Apply(ctx, name, []provisioner.Change{{
+		Action:   provisioner.ActionEnforceGuestQuota,
+		Target:   identity,
+		Proposed: `{"data_bytes":1073741824,"uptime_seconds":3600}`,
+	}})
+	if err != nil {
+		t.Fatalf("enforce: %v", err)
+	}
+
+	// 2) Verify the caps are ACTUALLY on the router.
+	mid, err := pr.ObserveGuestQuota(ctx, identity)
+	if err != nil {
+		t.Fatalf("observe after enforce: %v", err)
+	}
+	if !mid.Exists {
+		t.Fatalf("enforcement user missing after apply: %+v", mid)
+	}
+	if mid.LimitBytes != 1073741824 || mid.LimitUptime != 3600 {
+		t.Fatalf("caps not enforced: got %+v, want data=1GiB uptime=3600s", mid)
+	}
+
+	// 3) Revoke (plan lapsed / rejected) and verify it's gone.
+	if err := ap.Apply(ctx, name, []provisioner.Change{{Action: provisioner.ActionRevokeGuestQuota, Target: identity}}); err != nil {
+		t.Fatalf("revoke: %v", err)
+	}
+	final, err := pr.ObserveGuestQuota(ctx, identity)
+	if err != nil {
+		t.Fatalf("observe after revoke: %v", err)
+	}
+	if final.Exists {
+		t.Fatalf("user must be removed after revoke: %+v", final)
 	}
 }
