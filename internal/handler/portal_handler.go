@@ -25,6 +25,7 @@ type PortalHandler struct {
 	sessionRepo *database.PortalSessionRepository
 	voucherRepo *database.VoucherRepository
 	quotaRepo   *database.BusinessMeteredQuotaRepository
+	notifyGuestRedeemed func(businessID, planLabel string)
 }
 
 func NewPortalHandler(
@@ -34,14 +35,16 @@ func NewPortalHandler(
 	sessionRepo *database.PortalSessionRepository,
 	voucherRepo *database.VoucherRepository,
 	quotaRepo *database.BusinessMeteredQuotaRepository,
+	notifyGuestRedeemed func(businessID, planLabel string),
 ) *PortalHandler {
 	return &PortalHandler{
-		db:          db,
-		deviceRepo:  deviceRepo,
-		configRepo:  configRepo,
-		sessionRepo: sessionRepo,
-		voucherRepo: voucherRepo,
-		quotaRepo:   quotaRepo,
+		db:                 db,
+		deviceRepo:         deviceRepo,
+		configRepo:         configRepo,
+		sessionRepo:        sessionRepo,
+		voucherRepo:        voucherRepo,
+		quotaRepo:          quotaRepo,
+		notifyGuestRedeemed: notifyGuestRedeemed,
 	}
 }
 
@@ -168,6 +171,14 @@ func (h *PortalHandler) PublicRedeem(c *gin.Context) {
 	if err := tx.Commit(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to finalize redemption"})
 		return
+	}
+
+	// Option C: notify the OWNER's own bot that a guest redeemed a printed
+	// voucher (informational — the voucher is pre-paid, so no approval needed).
+	// Fail closed: nil notifier (feature off / no owner bot) means no message,
+	// and a failed send never fails the redemption.
+	if h.notifyGuestRedeemed != nil {
+		h.notifyGuestRedeemed(dev.BusinessID, "guest redeemed a voucher on the captive portal")
 	}
 
 	c.JSON(http.StatusCreated, gin.H{

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -122,7 +123,28 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		database.NewPortalSessionRepository(db),
 		database.NewVoucherRepository(db),
 		database.NewBusinessMeteredQuotaRepository(db),
+		// Option C: on voucher redemption, notify that business's OWN enabled
+		// Telegram bot (informational). Fail closed: no binding / disabled /
+		// feature off / send error => no notification, never fails the redeem.
+		func(businessID, text string) {
+			if !cfg.GuestWifi.Enabled {
+				return
+			}
+			botRepo := database.NewBusinessTelegramBotRepository(db)
+			bot, err := botRepo.GetByBusiness(businessID)
+			if err != nil || bot == nil || !bot.Enabled || strings.TrimSpace(bot.BotToken) == "" {
+				return
+			}
+			target := "0"
+			if bot.TargetChatID != 0 {
+				target = strconv.FormatInt(bot.TargetChatID, 10)
+			}
+			if msg, ok := telegram.ConfigMessenger(bot.BotToken, target, 30*time.Second); ok {
+				_ = msg.SendMessage(target, text)
+			}
+		},
 	)
+
 	// Billing operator loop: a Telegram bot carries BOTH the outbound purchase
 	// notification and the inbound approve/reject reply. It is flag-gated and
 	// default-off; with no token the messenger is nil and the operator decides
