@@ -52,6 +52,12 @@ ai:
   openrouter_url: https://openrouter.ai/api/v1
   openrouter_api_key: ""
   openrouter_model: nvidia/nemotron-3-super-120b-a12b:free
+  # Operator incident DM (Telegram). Off by default; ADDITIVE to webhooks. The
+  # bot token is a SECRET — inject via config/env, never commit. Empty token or
+  # chat id degrades to no-op (webhooks only).
+  notify_telegram_enabled: false
+  notify_telegram_bot_token: ""
+  notify_telegram_chat_id: 0
 
 # Redis Cache
 redis:

@@ -285,16 +285,16 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	// ai.finding. Construction is unconditional; the worker only subscribes when
 	// ai.enabled=true (Start is a no-op otherwise).
 	aiConfig := ai.Config{
-		Enabled:           cfg.AI.Enabled,
-		Mode:              cfg.AI.Mode,
-		OllamaURL:         cfg.AI.OllamaURL,
-		CostPerAnalysis:   cfg.AI.CostPerAnalysis,
-		OpenRouterURL:     cfg.AI.OpenRouterURL,
-		OpenRouterAPIKey:  cfg.AI.OpenRouterAPIKey,
-		OpenRouterModel:   cfg.AI.OpenRouterModel,
+		Enabled:          cfg.AI.Enabled,
+		Mode:             cfg.AI.Mode,
+		OllamaURL:        cfg.AI.OllamaURL,
+		CostPerAnalysis:  cfg.AI.CostPerAnalysis,
+		OpenRouterURL:    cfg.AI.OpenRouterURL,
+		OpenRouterAPIKey: cfg.AI.OpenRouterAPIKey,
+		OpenRouterModel:  cfg.AI.OpenRouterModel,
 	}
 	aiService := ai.New(messagingClient, database.NewBusinessMeteredQuotaRepository(db), db, ai.NewClient(aiConfig), aiConfig, sugar).
-		WithNotifier(notifierr)
+		WithNotifier(aiIncidentNotifier(cfg, notifierr, sugar))
 	if err := aiService.Start(); err != nil {
 		return nil, fmt.Errorf("ai service start: %w", err)
 	}
@@ -627,4 +627,28 @@ func loggerMiddleware(log *zap.SugaredLogger) gin.HandlerFunc {
 			"user_agent", c.Request.UserAgent(),
 		)
 	}
+}
+
+// aiIncidentNotifier assembles the AI incident notifier: the existing webhook
+// notifier PLUS an additive Telegram operator DM when explicitly configured
+// (Note-1 compose — webhooks are never replaced). A mis-setup (enabled but empty
+// bot_token/chat_id, or an unbuildable messenger) degrades to webhooks-only with
+// a single warning. Default-off: with the flag unset this returns the webhook
+// notifier unchanged.
+func aiIncidentNotifier(cfg *config.Config, webhooks ai.IncidentNotifier, sugar *zap.SugaredLogger) ai.IncidentNotifier {
+	if !cfg.AI.NotifyTelegramEnabled {
+		return webhooks
+	}
+	if cfg.AI.NotifyTelegramBotToken == "" || cfg.AI.NotifyTelegramChatID == 0 {
+		sugar.Warn("AI telegram notify enabled but bot_token/chat_id missing — degrading to webhooks only")
+		return webhooks
+	}
+	target := strconv.FormatInt(cfg.AI.NotifyTelegramChatID, 10)
+	msg, ok := telegram.ConfigMessenger(cfg.AI.NotifyTelegramBotToken, target, 30*time.Second)
+	if !ok {
+		sugar.Warn("AI telegram notify enabled but messenger not configured — degrading to webhooks only")
+		return webhooks
+	}
+	sugar.Infow("AI incident Telegram notification configured", "enabled", true)
+	return ai.NewFanout(webhooks, ai.NewTelegramNotifier(msg, target, sugar))
 }

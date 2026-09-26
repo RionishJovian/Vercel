@@ -38,6 +38,11 @@ type AIConfig struct {
 	OpenRouterURL    string `mapstructure:"openrouter_url"`
 	OpenRouterAPIKey string `mapstructure:"openrouter_api_key"`
 	OpenRouterModel  string `mapstructure:"openrouter_model"`
+	// Operator incident notification (Telegram). Disabled by default; the bot
+	// token is a secret — inject via config/env, never commit.
+	NotifyTelegramEnabled  bool   `mapstructure:"notify_telegram_enabled"`
+	NotifyTelegramBotToken string `mapstructure:"notify_telegram_bot_token"`
+	NotifyTelegramChatID   int64  `mapstructure:"notify_telegram_chat_id"`
 }
 
 // GuestWifiConfig controls the Option C owner-bot loops. Enabled off by
@@ -286,6 +291,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("ai.cost_per_analysis", 1)
 	v.SetDefault("ai.openrouter_url", "https://openrouter.ai/api/v1")
 	v.SetDefault("ai.openrouter_model", "nvidia/nemotron-3-super-120b-a12b:free")
+	v.SetDefault("ai.notify_telegram_enabled", false)
 	v.SetDefault("database.name", "mega_magic_dev")
 	v.SetDefault("database.sslmode", "disable")
 	v.SetDefault("database.max_open_conns", 25)
