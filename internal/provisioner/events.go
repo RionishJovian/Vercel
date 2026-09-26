@@ -15,6 +15,10 @@ const (
 	SubjectApplyResult = "provision.apply.result"
 	// SubjectRollbackResult reports an auto-revert after a verification failure.
 	SubjectRollbackResult = "provision.rollback.result"
+	// SubjectTopologyAction is the explicit device-action intent an owner
+	// triggers from the topology map (e.g. force-reboot). Consumed by the
+	// topology action consumer; distinct from recovery's peer.recover.cmd.
+	SubjectTopologyAction = "topology.action"
 )
 
 // Publisher emits provisioner events onto the message bus. It is deliberately

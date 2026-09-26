@@ -83,11 +83,13 @@ func (p *seqProber) Observe(_ context.Context, peerID string) (provisioner.Obser
 }
 
 type fakeApplier struct {
+	snapped  int
 	applied  int
 	restored int
 }
 
 func (a *fakeApplier) Snapshot(_ context.Context, peerID string, changes []provisioner.Change) (provisioner.RollbackSnapshot, error) {
+	a.snapped++
 	return provisioner.RollbackSnapshot{PeerID: peerID, CapturedAt: time.Now().UTC(), Protecting: changes}, nil
 }
 func (a *fakeApplier) Apply(_ context.Context, _ string, _ []provisioner.Change) error {
