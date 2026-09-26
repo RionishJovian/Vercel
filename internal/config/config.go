@@ -13,6 +13,7 @@ type Config struct {
 	Redis       RedisConfig       `mapstructure:"redis"`
 	NATS        NATSConfig        `mapstructure:"nats"`
 	WireGuard   WireGuardConfig   `mapstructure:"wireguard"`
+	VPS         VPSConfig         `mapstructure:"vps"`
 	Telemetry   TelemetryConfig   `mapstructure:"telemetry"`
 	Quotas      QuotasConfig      `mapstructure:"quotas"`
 	Security    SecurityConfig    `mapstructure:"security"`
@@ -94,6 +95,13 @@ type WireGuardConfig struct {
 	AllowedIPs       []string      `mapstructure:"allowed_ips"`
 	ManagementVLAN   int           `mapstructure:"management_vlan"`
 	ManagementSubnet string        `mapstructure:"management_subnet"`
+}
+
+// VPSConfig configures the read-only peer-provisioning surface. EndpointHost is
+// the public address routers connect to for the tunnel; empty omits the
+// endpoint from responses (operator hasn't pinned one yet).
+type VPSConfig struct {
+	EndpointHost string `mapstructure:"endpoint_host"`
 }
 
 type TelemetryConfig struct {

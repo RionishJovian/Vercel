@@ -39,3 +39,17 @@ func TestLoad_provisionerApplierDefaultsOff(t *testing.T) {
 		t.Fatalf("host must default empty, got %q", ap.Host)
 	}
 }
+
+// TestLoad_vpsConfigParses proves the real config.yaml's vps section loads.
+func TestLoad_vpsConfigParses(t *testing.T) {
+	cfg, err := Load("../../config.yaml")
+	if err != nil {
+		t.Fatalf("Load config.yaml: %v", err)
+	}
+	if cfg.VPS.EndpointHost != "" {
+		t.Fatalf("vps.endpoint_host should default empty, got %q", cfg.VPS.EndpointHost)
+	}
+	if cfg.WireGuard.Interface != "wg-magichub" || cfg.WireGuard.ListenPort != 13231 {
+		t.Fatalf("wireguard config not loaded: %+v", cfg.WireGuard)
+	}
+}

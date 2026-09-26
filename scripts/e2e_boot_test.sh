@@ -98,6 +98,32 @@ else
   fail "topology map" "no token (skip ran before login)"
 fi
 
+echo "== 6. vps peer-provisioning plan gate over live HTTP =="
+if [ -n "$TOKEN" ]; then
+  code="$(curl -s -o /tmp/e2e_vps.json -w "%{http_code}" "$BASE/api/v1/vps/config" -H "Authorization: Bearer $TOKEN")"
+  case "$code" in
+    200)
+      if python3 -c 'import json;d=json.load(open("/tmp/e2e_vps.json"));assert "interface" in d and "listen_port" in d' 2>/dev/null; then
+        pass "vps hub config 200 (active pass)"
+      else
+        fail "vps hub config" "200 but malformed payload"
+      fi
+      ;;
+    403)
+      if grep -qi "plan_required" /tmp/e2e_vps.json 2>/dev/null; then
+        pass "vps plan gate 403 (no active Sovereign pass)"
+      else
+        fail "vps hub config" "403 without plan_required code"
+      fi
+      ;;
+    *)
+      fail "vps hub config" "http $code (expected 200 or 403)"
+      ;;
+  esac
+else
+  fail "vps hub config" "no token (skip ran before login)"
+fi
+
 echo
 echo "RESULT: pass=$PASS fail=$FAIL"
 [ "$FAIL" -eq 0 ]

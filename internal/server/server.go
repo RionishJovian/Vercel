@@ -160,6 +160,17 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	// Topology: read-only per-tenant network map (parent/child, orphans, cycles).
 	topologyHandler := handler.NewTopologyHandler(db, database.NewDeviceRepository(db))
 
+	// VPS: read-only WireGuard peer-provisioning (hub config, per-device peer,
+	// reachability). Endpoint host comes from config; empty => omitted from JSON.
+	vpsHandler := handler.NewVPSHandler(
+		db,
+		database.NewDeviceRepository(db),
+		database.NewBusinessMeteredQuotaRepository(db),
+		monitoringService,
+		cfg.WireGuard,
+		cfg.VPS.EndpointHost,
+	)
+
 	r := gin.New()
 	r.Use(gin.Recovery())
 	r.Use(loggerMiddleware(sugar))
@@ -180,7 +191,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		sugar.Info("RLS enforcement disabled — owner pool, no connection pinning (default)")
 	}
 
-	setupRoutes(r, authService, authHandler, routerHandler, telemetryHandler, incidentHandler, webhookHandler, voucherHandler, portalHandler, billingHandler, monitorHandler, fleetHandler, topologyHandler, messagingClient, cacheClient, db, tenantMW)
+	setupRoutes(r, authService, authHandler, routerHandler, telemetryHandler, incidentHandler, webhookHandler, voucherHandler, portalHandler, billingHandler, monitorHandler, fleetHandler, topologyHandler, vpsHandler, messagingClient, cacheClient, db, tenantMW)
 
 	// Start the policy evaluator: watches NATS telemetry and auto-opens incidents.
 	evaluator := evaluator.New(
@@ -250,7 +261,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	}, nil
 }
 
-func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.AuthHandler, routerHandler *handler.RouterHandler, telemetryHandler *handler.TelemetryHandler, incidentHandler *handler.IncidentHandler, webhookHandler *handler.WebhookHandler, voucherHandler *handler.VoucherHandler, portalHandler *handler.PortalHandler, billingHandler *handler.BillingHandler, monitorHandler *handler.MonitorHandler, fleetHandler *handler.FleetHandler, topologyHandler *handler.TopologyHandler, msg *messaging.Client, cache *cache.Client, db *database.DB, tenantMW gin.HandlerFunc) {
+func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.AuthHandler, routerHandler *handler.RouterHandler, telemetryHandler *handler.TelemetryHandler, incidentHandler *handler.IncidentHandler, webhookHandler *handler.WebhookHandler, voucherHandler *handler.VoucherHandler, portalHandler *handler.PortalHandler, billingHandler *handler.BillingHandler, monitorHandler *handler.MonitorHandler, fleetHandler *handler.FleetHandler, topologyHandler *handler.TopologyHandler, vpsHandler *handler.VPSHandler, msg *messaging.Client, cache *cache.Client, db *database.DB, tenantMW gin.HandlerFunc) {
 	r.GET("/health", healthCheck)
 	r.GET("/ready", readinessCheck(&Server{cache: cache, db: db, messaging: msg}))
 
@@ -321,6 +332,14 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 
 			// Read-only per-tenant network topology map.
 			protected.GET("/topology/map", topologyHandler.Map)
+
+			// VPS: read-only WireGuard peer-provisioning (plan-gated).
+			vpsg := protected.Group("/vps")
+			{
+				vpsg.GET("/config", vpsHandler.HubConfig)
+				vpsg.GET("/peers/:deviceId", vpsHandler.Peer)
+				vpsg.GET("/peers/:deviceId/health", vpsHandler.Health)
+			}
 
 			policies := protected.Group("/alert-policies")
 			{
