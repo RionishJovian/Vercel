@@ -360,6 +360,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 }
 
 func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.AuthHandler, routerHandler *handler.RouterHandler, telemetryHandler *handler.TelemetryHandler, incidentHandler *handler.IncidentHandler, webhookHandler *handler.WebhookHandler, voucherHandler *handler.VoucherHandler, portalHandler *handler.PortalHandler, billingHandler *handler.BillingHandler, guestWifiHandler *handler.GuestWifiHandler, monitorHandler *handler.MonitorHandler, fleetHandler *handler.FleetHandler, topologyHandler *handler.TopologyHandler, vpsHandler *handler.VPSHandler, msg *messaging.Client, cache *cache.Client, db *database.DB, tenantMW gin.HandlerFunc) {
+	r.GET("/", indexPage)
 	r.GET("/health", healthCheck)
 	r.GET("/ready", readinessCheck(&Server{cache: cache, db: db, messaging: msg}))
 
@@ -500,6 +501,24 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 			}
 		}
 	}
+}
+
+// indexPage gives the bare domain root a friendly landing: a human-readable
+// pointer that this is the Mega Magic API and where the health/version
+// endpoints live. Without it a browser hitting `mikromagic.com/` gets a 404.
+func indexPage(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"service":      "mega-magic",
+		"status":       "ok",
+		"description":  "Mega Magic API — mesh hardening, provisioning, recovery, billing and guest-wifi platform",
+		"info":         gin.H{
+			"health":  "/health",
+			"ready":   "/ready",
+			"version": "/api/v1/version",
+			"api_base": "/api/v1",
+		},
+		"timestamp":    time.Now().UTC().Format(time.RFC3339),
+	})
 }
 
 func healthCheck(c *gin.Context) {
