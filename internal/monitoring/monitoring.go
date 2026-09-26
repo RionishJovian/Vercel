@@ -10,6 +10,7 @@ import (
 	"mega-magic/internal/messaging"
 	"mega-magic/internal/model"
 	"mega-magic/internal/probe"
+	"mega-magic/internal/security"
 )
 
 type MonitoringService struct {
@@ -18,6 +19,27 @@ type MonitoringService struct {
 	cache      *cache.Client
 	msg        *messaging.Client
 	probe      *probe.ProbeService
+
+	// Optional security-posture capture (C1): when wired, each peer evaluation
+	// best-effort reads the RouterOS version and records its posture. Off by
+	// default (nil) — nothing changes until wired.
+	versionObserver VersionObserver
+	devices         *database.DeviceRepository
+	db              *database.DB
+}
+
+// VersionObserver reads a peer's RouterOS version + channel (satisfied by
+// *routeros.Prober). Implemented as a narrow seam so monitoring stays decoupled.
+type VersionObserver interface {
+	ObserveVersion(ctx context.Context, peerID string) (version, channel string, err error)
+}
+
+// WithVersionCapture enables best-effort RouterOS version capture on the
+// peer-evaluation path. Nil-safe: unwired, evaluation is unchanged.
+func (s *MonitoringService) WithVersionCapture(db *database.DB, devices *database.DeviceRepository, obs VersionObserver) {
+	s.db = db
+	s.devices = devices
+	s.versionObserver = obs
 }
 
 func NewMonitoringService(heartbeats *database.PeerHeartbeatRepository, telemetry *database.TelemetrySampleRepository, c *cache.Client, msg *messaging.Client, p *probe.ProbeService) *MonitoringService {
@@ -59,7 +81,35 @@ func (s *MonitoringService) EvaluatePeer(ctx context.Context, businessID, peerID
 		}
 	}
 
+	// Best-effort security-posture capture (C1). Never affects the state result.
+	s.captureVersion(ctx, businessID, peerID)
+
 	return state, nil
+}
+
+// captureVersion best-effort records a device's RouterOS version + posture,
+// tenant-scoped. Fail-soft: any failure (unreachable device, nil deps) is
+// ignored and never fabricates a value.
+func (s *MonitoringService) captureVersion(ctx context.Context, businessID, peerID string) {
+	if s.versionObserver == nil || s.devices == nil || s.db == nil {
+		return
+	}
+	version, channel, err := s.versionObserver.ObserveVersion(ctx, peerID)
+	if err != nil || version == "" {
+		return
+	}
+	posture := security.ClassifyPosture(version, channel)
+	tx, err := s.db.Begin()
+	if err != nil {
+		return
+	}
+	defer tx.Rollback()
+	if err := database.WithTenant(tx, businessID, func() error {
+		return s.devices.SavePostureTXN(tx, businessID, peerID, version, channel, posture, time.Now().UTC())
+	}); err != nil {
+		return
+	}
+	_ = tx.Commit()
 }
 
 func (s *MonitoringService) StateForPeer(ctx context.Context, businessID, peerID string) (string, error) {

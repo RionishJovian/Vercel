@@ -260,7 +260,9 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		sugar.Info("RLS enforcement disabled — owner pool, no connection pinning (default)")
 	}
 
-	setupRoutes(r, authService, authHandler, routerHandler, telemetryHandler, incidentHandler, webhookHandler, voucherHandler, portalHandler, billingHandler, guestWifiHandler, monitorHandler, fleetHandler, topologyHandler, vpsHandler, platformHandler, messagingClient, cacheClient, db, tenantMW)
+	securityHandler := handler.NewSecurityHandler(db, database.NewDeviceRepository(db))
+
+	setupRoutes(r, authService, authHandler, routerHandler, telemetryHandler, incidentHandler, webhookHandler, voucherHandler, portalHandler, billingHandler, guestWifiHandler, monitorHandler, fleetHandler, topologyHandler, vpsHandler, platformHandler, securityHandler, messagingClient, cacheClient, db, tenantMW)
 
 	// Start the policy evaluator: watches NATS telemetry and auto-opens incidents.
 	evaluator := evaluator.New(
@@ -354,7 +356,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	// When enabled, peer.recover intents reach the real RouterOS Applier through
 	// the approve -> apply -> verify -> rollback gate. A failure here must fail
 	// startup loudly.
-	if err := startLiveApplier(cfg, messagingClient, sugar); err != nil {
+	if err := startLiveApplier(cfg, messagingClient, sugar, monitoringService, db); err != nil {
 		return nil, err
 	}
 
@@ -385,7 +387,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	}, nil
 }
 
-func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.AuthHandler, routerHandler *handler.RouterHandler, telemetryHandler *handler.TelemetryHandler, incidentHandler *handler.IncidentHandler, webhookHandler *handler.WebhookHandler, voucherHandler *handler.VoucherHandler, portalHandler *handler.PortalHandler, billingHandler *handler.BillingHandler, guestWifiHandler *handler.GuestWifiHandler, monitorHandler *handler.MonitorHandler, fleetHandler *handler.FleetHandler, topologyHandler *handler.TopologyHandler, vpsHandler *handler.VPSHandler, platformHandler *handler.PlatformHandler, msg *messaging.Client, cache *cache.Client, db *database.DB, tenantMW gin.HandlerFunc) {
+func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.AuthHandler, routerHandler *handler.RouterHandler, telemetryHandler *handler.TelemetryHandler, incidentHandler *handler.IncidentHandler, webhookHandler *handler.WebhookHandler, voucherHandler *handler.VoucherHandler, portalHandler *handler.PortalHandler, billingHandler *handler.BillingHandler, guestWifiHandler *handler.GuestWifiHandler, monitorHandler *handler.MonitorHandler, fleetHandler *handler.FleetHandler, topologyHandler *handler.TopologyHandler, vpsHandler *handler.VPSHandler, platformHandler *handler.PlatformHandler, securityHandler *handler.SecurityHandler, msg *messaging.Client, cache *cache.Client, db *database.DB, tenantMW gin.HandlerFunc) {
 	r.GET("/", indexPage)
 	r.GET("/health", healthCheck)
 	r.GET("/ready", readinessCheck(&Server{cache: cache, db: db, messaging: msg}))
@@ -525,6 +527,13 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 				webhooks.DELETE("/:id", webhookHandler.Delete)
 				webhooks.GET("/deliveries", webhookHandler.ListDeliveries)
 			}
+
+			// Security posture (C1): tenant-scoped RouterOS version audit.
+			security := protected.Group("/security")
+			{
+				security.GET("/posture", securityHandler.FleetPosture)
+			}
+			protected.GET("/devices/:id/security", securityHandler.DeviceSecurity)
 		}
 
 		// Platform (DEVELOPER) cross-tenant window. SYSTEM-LEVEL reads that see

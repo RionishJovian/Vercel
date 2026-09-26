@@ -75,6 +75,13 @@ CREATE TABLE devices (
     management_ip inet,
     is_online boolean NOT NULL DEFAULT false,
     last_seen_at timestamptz,
+    -- Security-posture audit (C1): RouterOS version captured from the device by
+    -- the prober; NULL until first observed. security_posture is
+    -- safe|affected|unknown (fail-safe unknown).
+    routeros_version text,
+    routeros_channel text,
+    version_checked_at timestamptz,
+    security_posture text,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now()
 );

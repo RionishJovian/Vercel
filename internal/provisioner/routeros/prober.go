@@ -123,6 +123,21 @@ func (p *Prober) ObserveGuestQuota(ctx context.Context, identity string) (GuestQ
 	}, nil
 }
 
+// ObserveVersion reads the RouterOS version + release channel from
+// /system/resource. Read-only. (peerID is accepted to match the monitoring
+// VersionObserver seam; the SSH transport is already bound to the peer.)
+func (p *Prober) ObserveVersion(ctx context.Context, _ string) (version, channel string, err error) {
+	if p.run == nil {
+		return "", "", fmt.Errorf("routeros: nil command runner")
+	}
+	out, err := p.run.Run(ctx, "/system/resource print value-list detail")
+	if err != nil {
+		return "", "", fmt.Errorf("routeros: probe version: %w", err)
+	}
+	kv := parseValueList(out)
+	return strings.TrimSpace(kv["version"]), strings.TrimSpace(kv["channel"]), nil
+}
+
 // parseUptimeSeconds converts a RouterOS uptime duration ("1h", "2h30m", "45s")
 // to seconds. RouterOS prints uptime values as human durations, not raw
 // seconds, so atoi would read them as 0. Returns 0 on an unparseable string.

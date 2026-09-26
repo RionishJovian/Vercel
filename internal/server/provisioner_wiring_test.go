@@ -48,7 +48,7 @@ func TestStartLiveApplier_disabledIsNoOp(t *testing.T) {
 	// Default posture: flag OFF -> no error, no live path, no transport.
 	cfg := &config.Config{}
 	cfg.Provisioner.Applier.Enabled = false
-	if err := startLiveApplier(cfg, nil, zap.NewNop().Sugar()); err != nil {
+	if err := startLiveApplier(cfg, nil, zap.NewNop().Sugar(), nil, nil); err != nil {
 		t.Fatalf("disabled live applier must be a no-op, got %v", err)
 	}
 }
@@ -62,7 +62,7 @@ func TestStartLiveApplier_enabledProdTargetFailsLoudly(t *testing.T) {
 		User:               "admin",
 		AllowEmptyPassword: true,
 	}
-	err := startLiveApplier(cfg, nil, zap.NewNop().Sugar())
+	err := startLiveApplier(cfg, nil, zap.NewNop().Sugar(), nil, nil)
 	if err == nil {
 		t.Fatal("enabled + prod-shaped target must fail startup loudly")
 	}
@@ -75,7 +75,7 @@ func TestStartLiveApplier_enabledMissingCredsFailsLoudly(t *testing.T) {
 		Host:    "172.20.0.250", // lab-shaped, but no credentials
 		Port:    22,
 	}
-	if err := startLiveApplier(cfg, nil, zap.NewNop().Sugar()); err == nil {
+	if err := startLiveApplier(cfg, nil, zap.NewNop().Sugar(), nil, nil); err == nil {
 		t.Fatal("enabled + missing credentials must fail loudly")
 	}
 }
@@ -93,7 +93,7 @@ func TestStartLiveApplier_enabledButNoClientFailsLoudly(t *testing.T) {
 		InsecureIgnoreHostKey: true,
 		Interface:             "wg-magichub",
 	}
-	if err := startLiveApplier(cfg, nil, zap.NewNop().Sugar()); err == nil {
+	if err := startLiveApplier(cfg, nil, zap.NewNop().Sugar(), nil, nil); err == nil {
 		t.Fatal("enabled live path without a messaging client must fail loudly")
 	}
 }

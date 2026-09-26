@@ -22,6 +22,7 @@
     <button class="nav-item" data-view="sites">Sites</button>
     <button class="nav-item" data-view="topology">Topology</button>
     <button class="nav-item" data-view="incidents">Incidents</button>
+    <button class="nav-item" data-view="security">Security</button>
     <div class="rail-section">Account</div>
     <button class="nav-item" data-view="vouchers">Vouchers</button>
     <button class="nav-item" data-view="portal">Captive portal</button>
@@ -43,6 +44,7 @@ const VIEWS = {
   sites:    { title: "Sites", lead: "Routers and gateways by layer." },
   topology: { title: "Topology", lead: "The live network map." },
   incidents:{ title: "Incidents", lead: "Problems detected across the fleet." },
+  security: { title: "Security", lead: "RouterOS version posture — affected vs safe." },
   vouchers: { title: "Vouchers", lead: "Credit codes for the captive portal." },
   portal:   { title: "Captive portal", lead: "Guest Wi-Fi config and requests." },
   platform: { title: "Platform", lead: "Cross-tenant operator view — every business, one lens." },
@@ -59,6 +61,7 @@ async function loadView(name, main, me) {
     else if (name === "sites") await renderSites(main);
     else if (name === "topology") await renderTopology(main);
     else if (name === "incidents") await renderIncidents(main);
+    else if (name === "security") await renderSecurity(main);
     else if (name === "vouchers") await renderVouchers(main);
     else if (name === "portal") await renderPortal(main);
     else if (name === "platform") await renderPlatform(main);
@@ -313,6 +316,46 @@ async function renderPortal(main) {
   const saveBtn = main.querySelector("#plan-save");
   if (saveBtn) saveBtn.addEventListener("click", save);
   plansTbl.querySelectorAll("button[data-act=del]").forEach(b => b.addEventListener("click", () => b.closest("tr").remove()));
+}
+
+/* ---------- Security (C1 posture) ---------- */
+async function renderSecurity(main) {
+  const data = await MM.get("/security/posture");
+  const devices = data.devices || [];
+  const content = main.querySelector("#content");
+
+  if (!devices.length) {
+    content.innerHTML = `<div class="empty"><div class="empty-title">No posture data yet</div>RouterOS versions are captured on each device's next evaluation.</div>`;
+    return;
+  }
+
+  const rank = { affected: 0, unknown: 1, safe: 2 };
+  const sorted = devices.slice().sort((a, b) => (rank[a.posture] ?? 9) - (rank[b.posture] ?? 9));
+  const postureBadge = (p) => {
+    const m = { affected: "bad", safe: "ok", unknown: "unknown" }[p] || "unknown";
+    const label = { affected: "Affected", safe: "Safe", unknown: "Unknown" }[p] || "Unknown";
+    return `<span class="status ${m}">${label}</span>`;
+  };
+
+  const rows = sorted.map(d => `
+    <tr>
+      <td>${postureBadge(d.posture)}</td>
+      <td><span class="num">${esc(d.hardware_name)}</span></td>
+      <td class="mono">${d.routeros_version ? esc(d.routeros_version) : "—"}</td>
+      <td class="muted small">${d.routeros_channel ? esc(d.routeros_channel) : "—"}</td>
+      <td>${ts(d.version_checked_at)}</td>
+    </tr>`).join("");
+
+  content.innerHTML = `
+    <div class="stat-cluster" style="margin-top:18px">
+      <div class="stat"><div class="stat-label">Affected</div><div class="stat-value">${data.affected ?? 0}</div></div>
+      <div class="stat"><div class="stat-label">Safe</div><div class="stat-value">${data.safe ?? 0}</div></div>
+      <div class="stat"><div class="stat-label">Unknown</div><div class="stat-value">${data.unknown ?? 0}</div></div>
+    </div>
+    <hr class="rule">
+    <table>
+      <thead><tr><th>Posture</th><th>Device</th><th>RouterOS</th><th>Channel</th><th>Checked</th></tr></thead>
+      <tbody>${rows}</tbody></table>`;
 }
 
 /* ---------- Platform (DEVELOPER) ---------- */

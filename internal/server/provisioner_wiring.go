@@ -7,7 +7,9 @@ import (
 	"go.uber.org/zap"
 
 	"mega-magic/internal/config"
+	"mega-magic/internal/database"
 	"mega-magic/internal/messaging"
+	"mega-magic/internal/monitoring"
 	"mega-magic/internal/provisioner"
 	"mega-magic/internal/provisioner/routeros"
 	"mega-magic/internal/recovery"
@@ -30,7 +32,7 @@ func shouldEnableLiveApplier(flagEnabled bool, applier provisioner.Applier, prob
 // fails closed on prod-shaped targets or missing credentials) and starts the
 // consumer. Any error fails server startup loudly — a mis-config must never
 // silently look "enabled".
-func startLiveApplier(cfg *config.Config, client *messaging.Client, sugar *zap.SugaredLogger) error {
+func startLiveApplier(cfg *config.Config, client *messaging.Client, sugar *zap.SugaredLogger, monitor *monitoring.MonitoringService, db *database.DB) error {
 	appCfg := cfg.Provisioner.Applier
 	if !appCfg.Enabled {
 		sugar.Info("live applier disabled — recovery ladder stays plan-only")
@@ -46,6 +48,13 @@ func startLiveApplier(cfg *config.Config, client *messaging.Client, sugar *zap.S
 	}
 
 	svc := provisioner.NewApplyService(applier, prober)
+
+	// Security-posture capture (C1): the live prober can read the RouterOS
+	// version; wire it into the peer-evaluation path (best-effort, fail-soft).
+	if monitor != nil && db != nil {
+		monitor.WithVersionCapture(db, database.NewDeviceRepository(db), prober)
+		sugar.Info("security-posture capture wired (RouterOS version via live prober)")
+	}
 
 	// Real RFC 6238 TOTP gate for HIGH-RISK actions (Slice 2). Until a base32
 	// secret is configured (provisioner.applier.otp_secret), the verifier DENIES
