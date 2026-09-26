@@ -1,6 +1,6 @@
 # Mega Magic — Progress Status
 
-**Updated:** 2026-09-25 · **Repo:** `mega-magic-project` (V-language VSL, ~11,600 LOC) · **Tree:** clean, vet+build green
+**Updated:** 2026-09-26 · **Repo:** `mega-magic-project` (V-language VSL, ~11,600 LOC) · **Tree:** clean, vet+build green
 
 This file is the canonical, git-tracked status snapshot. Re-run it after any significant milestone. It survives context compaction — treat it as source of truth for "where the project stands."
 
@@ -42,6 +42,10 @@ This file is the canonical, git-tracked status snapshot. Re-run it after any sig
 | `0647664` | **feat(quota)** — enforcement sweep: detect lapsed Sovereign passes, emit quota.pass.expired |
 | `ae9893e` | **feat(auth)** — tenant-scope the Me profile read; document user-repo system-level exclusions |
 | `e1d61a6` | **test(e2e)** — HTTP boot test (4/4 real-HTTP PASS), fix RLS + billing schema drift via migrations (authenticated grants were missing from persistent DB) |
+| `83647b2` | **feat(guest-wifi)** — Option C schema: `business_telegram_bots` + `guest_purchase_requests` (tenant RLS-isolated), portal `guest_plans` + `guest_grace_minutes`, idempotent migration |
+| `cf1993f` | **feat(guest-wifi)** — owner bot binding (GET/PUT/test, masked token, tenant-scoped) + per-business bridge supervisor (one getUpdates stream per ENABLED owner, flag-gated off) |
+| `b059ae8` | **feat(guest-wifi)** — guest online-banking purchase (grace window + receipt attach, fail-closed) + approve grants wifi extension single-wind / reject grants nothing (handler DB harness, 3 tests, 33→91 total) |
+| `98c9589` | **feat(guest-wifi)** — notify owner's own bot on printed-voucher redemption (informational, fail-closed) |
 
 ---
 
@@ -100,7 +104,7 @@ Rough module health:
 
 **Voucher redemption is DONE** (`28ef5ee`): real code gen, atomic single-transaction claim + Sovereign tier grant, fail-closed unknown plan, race-guard (409), and a fixed base schema bug. Full gate green (9 modules). **This is the first revenue path in the rewrite** — a paid voucher now actually grants the Sovereign pass.
 
-Remaining product modules: `ai` (most speculative; needs a model contract + token-metering), plus `topology relay/reboot` and `vps apply` (both gated behind the live RouterOS applier). **Billing + quota + portal + topology-map + vps-provisioning + operator Telegram loop are DONE**: the operator loop ships a real Bot-API transport + inbound approve/reply bridge on the SHARED money core (one grant path, HTTP and Telegram identical) — flag-gated OFF by default. **vps peer-provisioning** (read-only WireGuard config + deterministic peer block + reachability, Sovereign-gated) is write-free with an explicit ownership guard (404 cross-tenant even with RLS off).
+Remaining product modules: `ai` (most speculative; needs a model contract + token-metering), plus `topology relay/reboot` and `vps apply` (both gated behind the live RouterOS applier). **Billing + quota + portal + topology-map + vps-provisioning + operator Telegram loop + guest-wifi (Option C) are DONE**: the operator loop ships a real Bot-API transport + inbound approve/reply bridge on the SHARED money core (one grant path, HTTP and Telegram identical) — flag-gated OFF by default. **guest-wifi (Option C)** adds a per-owner loop: each business binds its OWN bot token (DB-stored, tenant-scoped, masked on read), guests buy wifi by online banking (free grace window → receipt, fail-closed), the owner approves/rejects on their own bot (approve grants a single-wind wifi extension from the portal plan; reject grants nothing), and printed-voucher redemptions notify the owner's bot — all flag-gated OFF by default (`guest_wifi.enabled`, purchases decided on the web endpoint when off). **vps peer-provisioning** (read-only WireGuard config + deterministic peer block + reachability, Sovereign-gated) is write-free with an explicit ownership guard (404 cross-tenant even with RLS off).
 
 The **RLS tail resolved via real audit**: `user` (Me read scoped), `heartbeat` (already param-scoped, no live hole), `audit` (unwired — build when needed). Enforcement story complete. **HTTP boot test (`e1d61a6`)** proved the real server serves all four live-HTTP checks and caught RLS/billing schema drift (authenticated grants missing from persistent DB — fixed via idempotent migrations).
 
