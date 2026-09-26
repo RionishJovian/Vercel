@@ -108,6 +108,8 @@ Remaining product modules: `ai` (most speculative; needs a model contract + toke
 
 **Public test URL live (2026-09-26):** `mega.mikromagic.com` serves the Mega Magic API on this VPS — Cloudflare-proxied → nginx vhost (`/etc/nginx/sites-available/mega-magic`) → `127.0.0.1:8080`. Served by a new **systemd unit `mega-magic-api.service`** (enabled, restart-on-failure) running the freshly-built gitignored binary `/home/ubuntu/mega-magic-project/server`. Rebuild+restart: `/usr/bin/go build -o server cmd/server/main.go && sudo systemctl restart mega-magic-api`. Verified live: `/ready` → 200 all-ok over http+https, login → 200 real token. Production MikroMagic apex (`mikromagic.com`/`www` → :8000) untouched.
 
+**APEX FLIPPED to Mega Magic (2026-09-26):** `mikromagic.com` AND `www.mikromagic.com` now serve the Mega Magic Go API (`/ready` 200, login 200, through Cloudflare). New nginx vhost `mega-magic-apex` (port 80 → 301 https; 443 → :8080, reused LE cert). The MikroMagic apex vhost (`mikromagic-app`) is UNLINKED from sites-enabled, **not deleted** — MikroMagic still runs (:3000 frontend 200, :8000 backend 401-auth, systemd active). Revert: `sudo rm /etc/nginx/sites-enabled/mega-magic-apex.conf && sudo ln -sf /etc/nginx/sites-available/mikromagic-app /etc/nginx/sites-enabled/mikromagic-app && sudo nginx -t && sudo systemctl reload nginx`.
+
 ### §7.1 · guest-wifi (Option C) — activation checklist
 
 Built but **OFF by default**. Everything below is a deliberate, Lead-gated action to go live; nothing is required until you decide to turn it on.
