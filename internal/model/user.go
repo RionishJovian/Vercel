@@ -14,6 +14,38 @@ const (
 	RoleDeveloper  UserRole = "DEVELOPER"
 )
 
+// roleRank orders roles by capability. DEVELOPER is system-level (highest).
+var roleRank = map[UserRole]int{
+	RoleViewer:     10,
+	RoleSupport:    20,
+	RoleTechnician: 30,
+	RoleOperator:   40,
+	RoleAdmin:      50,
+	RoleOwner:      60,
+	RoleDeveloper:  100,
+}
+
+// RoleRank returns a role's capability rank (0 for unknown roles).
+func RoleRank(r UserRole) int { return roleRank[r] }
+
+// HasAtLeastRole reports whether role meets or exceeds min in the hierarchy.
+func HasAtLeastRole(role, min UserRole) bool {
+	return RoleRank(role) != 0 && RoleRank(role) >= RoleRank(min)
+}
+
+// TenantRoles are the roles an OWNER may grant to staff (never DEVELOPER).
+var TenantRoles = []UserRole{RoleOwner, RoleAdmin, RoleOperator, RoleTechnician, RoleViewer, RoleSupport}
+
+// IsTenantRole reports whether r is a grantable tenant role.
+func IsTenantRole(r UserRole) bool {
+	for _, t := range TenantRoles {
+		if t == r {
+			return true
+		}
+	}
+	return false
+}
+
 type User struct {
 	UserID       string     `json:"user_id" db:"user_id"`
 	BusinessID   string     `json:"business_id" db:"business_id"`

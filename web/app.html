@@ -27,6 +27,7 @@
     <div class="rail-section">Account</div>
     <button class="nav-item" data-view="vouchers">Vouchers</button>
     <button class="nav-item" data-view="portal">Captive portal</button>
+    <button class="nav-item" data-view="team">Team</button>
     <div class="rail-section">Operator</div>
     <button class="nav-item" data-view="platform" id="nav-platform" hidden>Platform</button>
     <div style="flex:1"></div>
@@ -49,6 +50,7 @@ const VIEWS = {
   backups:  { title: "Backups", lead: "Config snapshots, change history and one-click restore." },
   vouchers: { title: "Vouchers", lead: "Credit codes for the captive portal." },
   portal:   { title: "Captive portal", lead: "Guest Wi-Fi config and requests." },
+  team:     { title: "Team", lead: "Who can access this business, and with which role." },
   platform: { title: "Platform", lead: "Cross-tenant operator view — every business, one lens." },
 };
 
@@ -67,6 +69,7 @@ async function loadView(name, main, me) {
     else if (name === "backups") await renderBackups(main);
     else if (name === "vouchers") await renderVouchers(main);
     else if (name === "portal") await renderPortal(main);
+    else if (name === "team") await renderTeam(main);
     else if (name === "platform") await renderPlatform(main);
   } catch (err) {
     main.querySelector("#content").innerHTML = `<div class="alert" role="alert">${esc(err.message)}</div>`;
@@ -359,6 +362,72 @@ async function renderSecurity(main) {
     <table>
       <thead><tr><th>Posture</th><th>Device</th><th>RouterOS</th><th>Channel</th><th>Checked</th></tr></thead>
       <tbody>${rows}</tbody></table>`;
+}
+
+/* ---------- Team (C3) ---------- */
+const TEAM_ROLES = ["OWNER", "ADMIN", "OPERATOR", "TECHNICIAN", "VIEWER", "SUPPORT"];
+
+async function renderTeam(main) {
+  const content = main.querySelector("#content");
+  let team = [];
+  try {
+    const r = await MM.get("/team");
+    team = r.team || [];
+  } catch (e) {
+    if (e.status === 403) {
+      content.innerHTML = `<div class="panel"><div class="panel-body"><div class="empty"><div class="empty-title">Owner access required</div>Only the business owner can manage team roles.</div></div></div>`;
+      return;
+    }
+    throw e;
+  }
+
+  const roleOpts = (sel) => TEAM_ROLES.map(r => `<option value="${r}"${r === sel ? " selected" : ""}>${r}</option>`).join("");
+  const rows = team.map(u => `
+    <tr>
+      <td><span class="num">${esc(u.full_name)}</span></td>
+      <td class="mono">${esc(u.email)}</td>
+      <td><select class="input" data-role="${esc(u.user_id)}" style="width:auto;padding:3px 6px">${roleOpts(u.user_role)}</select></td>
+      <td>${u.is_active ? `<span class="status ok">Active</span>` : `<span class="status unknown">Disabled</span>`}</td>
+      <td><button class="btn btn-sm" data-save="${esc(u.user_id)}">Save</button>
+          <button class="btn btn-sm" data-disable="${esc(u.user_id)}"${u.is_active ? "" : " disabled"}>Disable</button></td>
+    </tr>`).join("");
+
+  content.innerHTML = `
+    <div class="panel"><div class="panel-head"><h2 class="panel-title">Team</h2></div>
+      <div class="panel-body">${team.length ? `<table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody></table>` : `<div class="empty"><div class="empty-title">No team members</div>Add a staff user below.</div>`}</div></div>
+    <div class="panel" style="margin-top:14px"><div class="panel-head"><h2 class="panel-title">Add team member</h2></div>
+      <div class="panel-body">
+        <div class="field"><label>Full name</label><input class="input" id="tm-name"></div>
+        <div class="field"><label>Email</label><input class="input" id="tm-email" type="email"></div>
+        <div class="field"><label>Password (8+ chars)</label><input class="input" id="tm-pass" type="password"></div>
+        <div class="field"><label>Role</label><select class="input" id="tm-role">${roleOpts("OPERATOR")}</select></div>
+        <button class="btn btn-primary" id="tm-add">Add member</button>
+        <span id="tm-msg" class="muted small"></span>
+      </div></div>`;
+
+  const msg = (t) => { document.getElementById("tm-msg").textContent = t; };
+  const fail = (e) => { content.prepend(Object.assign(document.createElement("div"), { className: "alert", textContent: (e.data && e.data.error) ? e.data.error : e.message })); };
+
+  content.querySelectorAll("button[data-save]").forEach(btn => btn.addEventListener("click", async () => {
+    const id = btn.dataset.save;
+    const role = content.querySelector(`select[data-role="${id}"]`).value;
+    try { await MM.put(`/team/${encodeURIComponent(id)}`, { user_role: role }); await renderTeam(main); }
+    catch (e) { btn.disabled = false; fail(e); }
+  }));
+  content.querySelectorAll("button[data-disable]").forEach(btn => btn.addEventListener("click", async () => {
+    try { await MM.del(`/team/${encodeURIComponent(btn.dataset.disable)}`); await renderTeam(main); }
+    catch (e) { fail(e); }
+  }));
+  document.getElementById("tm-add").addEventListener("click", async () => {
+    const body = {
+      full_name: document.getElementById("tm-name").value,
+      email: document.getElementById("tm-email").value,
+      password: document.getElementById("tm-pass").value,
+      user_role: document.getElementById("tm-role").value,
+    };
+    try { await MM.post("/team", body); await renderTeam(main); }
+    catch (e) { fail(e); }
+  });
 }
 
 /* ---------- Backups (C2) ---------- */

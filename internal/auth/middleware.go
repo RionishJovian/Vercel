@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+
+	"mega-magic/internal/model"
 )
 
 const (
@@ -125,5 +127,25 @@ func RequireRole(roles ...string) gin.HandlerFunc {
 		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
 			"error": "insufficient permissions",
 		})
+	}
+}
+
+// RequireMinRole returns a middleware that admits a user whose role meets or
+// exceeds min in the model hierarchy (DEVELOPER passes everything). Anything
+// below min is 403. This is how tenant routes are scoped per role.
+func RequireMinRole(min model.UserRole) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		roleStr, exists := c.Get(ContextKeyUserRole)
+		if !exists {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+			return
+		}
+		if !model.HasAtLeastRole(model.UserRole(roleStr.(string)), min) {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+				"error": "insufficient permissions: requires " + string(min) + " or higher",
+			})
+			return
+		}
+		c.Next()
 	}
 }

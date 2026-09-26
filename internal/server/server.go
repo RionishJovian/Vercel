@@ -262,8 +262,9 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 
 	securityHandler := handler.NewSecurityHandler(db, database.NewDeviceRepository(db))
 	backupHandler := handler.NewBackupHandler(db, database.NewDeviceRepository(db))
+	teamHandler := handler.NewTeamHandler(db, database.NewUserRepository(db), authService)
 
-	setupRoutes(r, authService, authHandler, routerHandler, telemetryHandler, incidentHandler, webhookHandler, voucherHandler, portalHandler, billingHandler, guestWifiHandler, monitorHandler, fleetHandler, topologyHandler, vpsHandler, platformHandler, securityHandler, backupHandler, messagingClient, cacheClient, db, tenantMW)
+	setupRoutes(r, authService, authHandler, routerHandler, telemetryHandler, incidentHandler, webhookHandler, voucherHandler, portalHandler, billingHandler, guestWifiHandler, monitorHandler, fleetHandler, topologyHandler, vpsHandler, platformHandler, securityHandler, backupHandler, teamHandler, messagingClient, cacheClient, db, tenantMW)
 
 	// Start the policy evaluator: watches NATS telemetry and auto-opens incidents.
 	evaluator := evaluator.New(
@@ -388,7 +389,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	}, nil
 }
 
-func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.AuthHandler, routerHandler *handler.RouterHandler, telemetryHandler *handler.TelemetryHandler, incidentHandler *handler.IncidentHandler, webhookHandler *handler.WebhookHandler, voucherHandler *handler.VoucherHandler, portalHandler *handler.PortalHandler, billingHandler *handler.BillingHandler, guestWifiHandler *handler.GuestWifiHandler, monitorHandler *handler.MonitorHandler, fleetHandler *handler.FleetHandler, topologyHandler *handler.TopologyHandler, vpsHandler *handler.VPSHandler, platformHandler *handler.PlatformHandler, securityHandler *handler.SecurityHandler, backupHandler *handler.BackupHandler, msg *messaging.Client, cache *cache.Client, db *database.DB, tenantMW gin.HandlerFunc) {
+func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.AuthHandler, routerHandler *handler.RouterHandler, telemetryHandler *handler.TelemetryHandler, incidentHandler *handler.IncidentHandler, webhookHandler *handler.WebhookHandler, voucherHandler *handler.VoucherHandler, portalHandler *handler.PortalHandler, billingHandler *handler.BillingHandler, guestWifiHandler *handler.GuestWifiHandler, monitorHandler *handler.MonitorHandler, fleetHandler *handler.FleetHandler, topologyHandler *handler.TopologyHandler, vpsHandler *handler.VPSHandler, platformHandler *handler.PlatformHandler, securityHandler *handler.SecurityHandler, backupHandler *handler.BackupHandler, teamHandler *handler.TeamHandler, msg *messaging.Client, cache *cache.Client, db *database.DB, tenantMW gin.HandlerFunc) {
 	r.GET("/", indexPage)
 	r.GET("/health", healthCheck)
 	r.GET("/ready", readinessCheck(&Server{cache: cache, db: db, messaging: msg}))
@@ -426,6 +427,9 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 		if tenantMW != nil {
 			protected.Use(tenantMW)
 		}
+		// C3 baseline: every tenant route requires at least VIEWER in the role
+		// hierarchy (unknown roles are refused). Stricter per-group minimums below.
+		protected.Use(auth.RequireMinRole(model.RoleViewer))
 		{
 			protected.GET("/me", authHandler.Me)
 
@@ -500,7 +504,7 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 				portalStaff.PUT("/config", portalHandler.StaffUpdateConfig)
 			}
 
-			billing := protected.Group("/billing")
+			billing := protected.Group("/billing", auth.RequireMinRole(model.RoleOperator))
 			{
 				billing.GET("/requests", billingHandler.ListRequests)
 				billing.POST("/approve/:requestId", billingHandler.ApprovePurchase)
@@ -520,7 +524,7 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 				gw.POST("/reject/:requestId", guestWifiHandler.RejectGuest)
 			}
 
-			webhooks := protected.Group("/webhooks")
+			webhooks := protected.Group("/webhooks", auth.RequireMinRole(model.RoleAdmin))
 			{
 				webhooks.GET("", webhookHandler.List)
 				webhooks.POST("", webhookHandler.Create)
@@ -538,10 +542,19 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 
 			// Config backups + change-history timeline + one-click restore (C2).
 			protected.GET("/devices/:id/backups", backupHandler.ListBackups)
-			protected.POST("/devices/:id/backups", backupHandler.CreateBackup)
-			protected.DELETE("/devices/:id/backups/:backupId", backupHandler.DeleteBackup)
+			protected.POST("/devices/:id/backups", auth.RequireMinRole(model.RoleAdmin), backupHandler.CreateBackup)
+			protected.DELETE("/devices/:id/backups/:backupId", auth.RequireMinRole(model.RoleAdmin), backupHandler.DeleteBackup)
 			protected.GET("/devices/:id/changes", backupHandler.Changes)
-			protected.POST("/devices/:id/restore/:backupId", backupHandler.Restore)
+			protected.POST("/devices/:id/restore/:backupId", auth.RequireMinRole(model.RoleAdmin), backupHandler.Restore)
+
+			// Team management (C3): OWNER-only role grants, tenant-scoped.
+			team := protected.Group("/team", auth.RequireMinRole(model.RoleOwner))
+			{
+				team.GET("", teamHandler.List)
+				team.POST("", teamHandler.Create)
+				team.PUT("/:userId", teamHandler.Update)
+				team.DELETE("/:userId", teamHandler.Delete)
+			}
 		}
 
 		// Platform (DEVELOPER) cross-tenant window. SYSTEM-LEVEL reads that see
