@@ -100,7 +100,7 @@ Rough module health:
 
 **Voucher redemption is DONE** (`28ef5ee`): real code gen, atomic single-transaction claim + Sovereign tier grant, fail-closed unknown plan, race-guard (409), and a fixed base schema bug. Full gate green (9 modules). **This is the first revenue path in the rewrite** — a paid voucher now actually grants the Sovereign pass.
 
-Remaining product modules by dependency order: `topology` (network map), then `ai`/`vps`. **Billing + quota enforcement + portal are DONE** through billing (device-anchored approve-gate, hardened money path) + quota enforcement sweep (lapsed pass → `quota.pass.expired`).
+Remaining product modules by dependency order: `ai`/`vps`. **Billing + quota enforcement + portal + topology-map are DONE**: billing (device-anchored approve-gate, hardened money path), quota enforcement sweep (lapsed pass → `quota.pass.expired`), portal (public config/redeem + staff CRUD), and the **topology map** (read-only per-tenant parent/child tree, orphan + cycle detection, real-DB + live-HTTP proven). **Topology relay/reboot stays gated** behind the live RouterOS applier (`provisioner.applier.enabled`) — same rule as every other live-router write.
 
 The **RLS tail resolved via real audit**: `user` (Me read scoped), `heartbeat` (already param-scoped, no live hole), `audit` (unwired — build when needed). Enforcement story complete. **HTTP boot test (`e1d61a6`)** proved the real server serves all four live-HTTP checks and caught RLS/billing schema drift (authenticated grants missing from persistent DB — fixed via idempotent migrations).
 
