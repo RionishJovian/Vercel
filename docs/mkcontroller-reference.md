@@ -1,6 +1,16 @@
 # MKController Competitive Reference — Mega Magic builds better
 
-> **DIRECTION (2026-09-26, user decision):** MKController's reach surface is
+> **MARKET (2026-09-26, user decision):** target market = **Myanmar**, timezone
+> **UTC+6:30**, currency = **MMK (Myanmar Kyat)**. All money is `price_mmk`
+> (already the schema's unit). Where a product decision touches price, date, or
+> locale, default to Myanmar's market not a generic Western default.
+>
+> **DIRECTION (2026-09-26, user decision):** MKController is a REFERENCE to
+> study and EXCEED, never a template to copy. Goal = **better than MKController**,
+> on the same surfaces but friendlier + deeper + tuned to Myanmar. This doc maps
+> their features so we know what to beat; every build must carry its own identity.
+>
+> **UX (2026-09-26, user decision):** MKController's reach surface is
 > MikroTik's OWN WebFig/Winbox — a raw, technical, router-expert interface. Mega
 > Magic deliberately DIFFERS there: we are NOT "WebFig on the web." Our core
 > position is a **user-friendly, senior-human-designed operator UX** (the
