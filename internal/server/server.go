@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	"mega-magic/internal/ai"
 	"mega-magic/internal/auth"
 	"mega-magic/internal/billing"
 	"mega-magic/internal/cache"
@@ -280,6 +281,21 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	quotaSweep.Start()
 	sugar.Infow("Quota enforcement sweep started", "interval", cfg.Billing.QuotaEnforcementInterval)
 
+	// AI/scanning service: consumes telemetry.ingest, meters AI tokens, emits
+	// ai.finding. Construction is unconditional; the worker only subscribes when
+	// ai.enabled=true (Start is a no-op otherwise).
+	aiConfig := ai.Config{
+		Enabled:         cfg.AI.Enabled,
+		Mode:            cfg.AI.Mode,
+		OllamaURL:       cfg.AI.OllamaURL,
+		CostPerAnalysis: cfg.AI.CostPerAnalysis,
+	}
+	aiService := ai.New(messagingClient, database.NewBusinessMeteredQuotaRepository(db), db, ai.NewClient(aiConfig), aiConfig, sugar)
+	if err := aiService.Start(); err != nil {
+		return nil, fmt.Errorf("ai service start: %w", err)
+	}
+	sugar.Infow("AI service wired", "enabled", cfg.AI.Enabled, "mode", cfg.AI.Mode)
+
 	// Telegram operator purchase bridge: continuous inbound loop that answers
 	// operator "approve <id>" / "reject <id>" replies against the shared money
 	// core. Only starts when the billing telegram bot is configured.
@@ -508,16 +524,16 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 // endpoints live. Without it a browser hitting `mikromagic.com/` gets a 404.
 func indexPage(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
-		"service":      "mega-magic",
-		"status":       "ok",
-		"description":  "Mega Magic API — mesh hardening, provisioning, recovery, billing and guest-wifi platform",
-		"info":         gin.H{
-			"health":  "/health",
-			"ready":   "/ready",
-			"version": "/api/v1/version",
+		"service":     "mega-magic",
+		"status":      "ok",
+		"description": "Mega Magic API — mesh hardening, provisioning, recovery, billing and guest-wifi platform",
+		"info": gin.H{
+			"health":   "/health",
+			"ready":    "/ready",
+			"version":  "/api/v1/version",
 			"api_base": "/api/v1",
 		},
-		"timestamp":    time.Now().UTC().Format(time.RFC3339),
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
 	})
 }
 

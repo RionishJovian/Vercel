@@ -36,6 +36,13 @@ billing:
     sovereign:
       duration_minutes: 43200  # 30 days — Lead-set (30 × 24 × 60)
 
+# AI / scanning service (gated off by default).
+ai:
+  enabled: false
+  mode: auto            # "auto" | "fallback" | "ollama" (auto = ollama, fallback on unreachable)
+  ollama_url: http://127.0.0.1:11434
+  cost_per_analysis: 1
+
 # Redis Cache
 redis:
   host: "localhost"
