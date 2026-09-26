@@ -3,6 +3,7 @@ package handler
 import (
 	"database/sql"
 	"errors"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -10,9 +11,11 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"mega-magic/internal/auth"
+	"mega-magic/internal/billing"
 	"mega-magic/internal/database"
 	"mega-magic/internal/model"
 	"mega-magic/internal/telegram"
+	"mega-magic/internal/voucher"
 )
 
 // errGuestNotFound signals a guest purchase request that cannot be resolved.
@@ -28,6 +31,18 @@ func maskToken(token string) string {
 	return "••••••••" + t[len(t)-4:len(t)]
 }
 
+// findGuestPlan returns the owner-defined guest plan with the given key, or nil
+// when it is not one of the plans the owner has listed for sale.
+func findGuestPlan(plans []model.GuestPlan, key string) *model.GuestPlan {
+	key = strings.TrimSpace(key)
+	for _, p := range plans {
+		if p.Key == key {
+			return &p
+		}
+	}
+	return nil
+}
+
 // GuestWifiHandler serves the OWNER-facing guest wifi surface:
 //   - PROTECTED (operator-authenticated, tenant-scoped): the owner binds/test
 //     their OWN Telegram bot token under their account, lists/decides their
@@ -36,9 +51,12 @@ func maskToken(token string) string {
 //     Telegram bot so HTTP and bot act identically (single money path).
 type GuestWifiHandler struct {
 	db         *database.DB
+	deviceRepo *database.DeviceRepository
 	botRepo    *database.BusinessTelegramBotRepository
 	reqRepo    *database.GuestPurchaseRequestRepository
 	configRepo *database.PortalConfigRepository
+	quotaRepo  *database.BusinessMeteredQuotaRepository
+	receiptRoot string
 	svcFmt     func(token string) (telegram.Messenger, bool) // build messenger from an owner token
 }
 
@@ -46,16 +64,22 @@ type GuestWifiHandler struct {
 // per-owner token so the handler never holds other people's secrets.
 func NewGuestWifiHandler(
 	db *database.DB,
+	deviceRepo *database.DeviceRepository,
 	botRepo *database.BusinessTelegramBotRepository,
 	reqRepo *database.GuestPurchaseRequestRepository,
 	configRepo *database.PortalConfigRepository,
+	quotaRepo *database.BusinessMeteredQuotaRepository,
+	receiptRoot string,
 	svcFmt func(token string) (telegram.Messenger, bool),
 ) *GuestWifiHandler {
 	return &GuestWifiHandler{
 		db:         db,
+		deviceRepo: deviceRepo,
 		botRepo:    botRepo,
 		reqRepo:    reqRepo,
 		configRepo: configRepo,
+		quotaRepo:  quotaRepo,
+		receiptRoot: receiptRoot,
 		svcFmt:     svcFmt,
 	}
 }
@@ -67,8 +91,153 @@ func (h *GuestWifiHandler) withTenantTx(c *gin.Context, businessID string, fn fu
 }
 
 // ---------------------------------------------------------------------------
-// Owner bot binding (d2)
+// Guest-facing public purchase (d3) — anonymous, device-anchored
 // ---------------------------------------------------------------------------
+
+// PublicGuestPurchase: POST /api/v1/portal/:deviceId/guest-purchase.
+// A guest on a device picks a wifi data plan sold via online banking. They get
+// a free grace window (configurable per business) to make the bank transfer
+// and attach the receipt. The request is created pending; the owner decides.
+func (h *GuestWifiHandler) PublicGuestPurchase(c *gin.Context) {
+	deviceID := c.Param("deviceId")
+	dev, err := h.deviceRepo.GetDeviceByID(deviceID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
+		return
+	}
+	if dev == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "device not found"})
+		return
+	}
+	// Resolve the device's business and read its portal config (grace + plans)
+	// in the device-derived tenant before ANY state change.
+	var cfg *model.PortalConfig
+	err = withDeviceTenant(h.db, dev.BusinessID, func(tx *sql.Tx) error {
+		pc, e := h.configRepo.GetByBusinessTXN(tx, dev.BusinessID)
+		if e != nil {
+			return e
+		}
+		cfg = pc
+		return nil
+	})
+	if err != nil || cfg == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "portal config unavailable"})
+		return
+	}
+
+	planKey := strings.TrimSpace(c.PostForm("plan_key"))
+	if planKey == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "plan_key required"})
+		return
+	}
+	// Fail closed: the plan must be one the OWNER listed in guest_plans.
+	plan := findGuestPlan(cfg.GuestPlans, planKey)
+	if plan == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "plan not available"})
+		return
+	}
+	// Fail closed: no grace window => refuse (a guest needs the free session).
+	graceMinutes := cfg.GuestGraceMinutes
+	if graceMinutes <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "online purchase disabled for this business"})
+		return
+	}
+
+	now := time.Now().UTC()
+	graceStart := now
+	graceExpires := voucher.ExtendExpiry(nil, now, graceMinutes)
+
+	var req *model.GuestPurchaseRequest
+	err = withDeviceTenant(h.db, dev.BusinessID, func(tx *sql.Tx) error {
+		r, e := h.reqRepo.CreateTXN(tx, &model.GuestPurchaseRequest{
+			BusinessID:     dev.BusinessID,
+			DeviceID:       &deviceID,
+			ClientMAC:      strings.TrimSpace(c.PostForm("client_mac")),
+			PlanKey:        plan.Key,
+			Amount:         plan.Amount,
+			GraceStartedAt: &graceStart,
+			GraceExpiresAt: &graceExpires,
+			Status:         "pending",
+		})
+		if e != nil {
+			return e
+		}
+		req = r
+		return nil
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create guest purchase request"})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{
+		"request_id":        req.ID,
+		"status":            req.Status,
+		"plan":              plan.Label,
+		"amount":            plan.Amount,
+		"grace_expires_at":  graceExpires,
+		"message":           "attach your payment receipt within the grace window to request the time extension",
+	})
+}
+
+// PublicAttachReceipt: POST /api/v1/portal/guest-purchase/:requestId/receipt.
+// The guest attaches the successful payment receipt, but ONLY within the live
+// grace window (they had the free session to make the transfer). Outside the
+// window the attach is refused (fail closed) so a stale receipt cannot claim it.
+func (h *GuestWifiHandler) PublicAttachReceipt(c *gin.Context) {
+	requestID := strings.TrimSpace(c.Param("requestId"))
+	now := time.Now().UTC()
+
+	// Resolve the request's business + grace window on an owner read (the guest
+	// is anonymous; the request is device-anchored).
+	var req *model.GuestPurchaseRequest
+	tx, err := h.db.Begin()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
+		return
+	}
+	defer tx.Rollback()
+	r, err := h.reqRepo.GetByIDOwnerTXN(tx, requestID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
+		return
+	}
+	req = r
+	if req == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "request not found"})
+		return
+	}
+	if req.Status != "pending" {
+		c.JSON(http.StatusConflict, gin.H{"error": "request already decided"})
+		return
+	}
+	// Grace-window gate: the receipt must arrive while the free session is live.
+	if req.GraceExpiresAt == nil || now.After(*req.GraceExpiresAt) {
+		c.JSON(http.StatusGone, gin.H{"error": "grace window expired; contact the hotspot owner"})
+		return
+	}
+
+	// Capture the receipt (0600, tenant-scoped) then bind its path in-tenant.
+	if fileHeader, ferr := c.FormFile("receipt"); ferr == nil && fileHeader != nil {
+		if f, oerr := fileHeader.Open(); oerr == nil {
+			data, rerr := io.ReadAll(io.LimitReader(f, maxReceiptBytes))
+			_ = f.Close()
+			if rerr == nil {
+				var savedPath string
+				if path, serr := billing.SaveReceipt(h.receiptRoot, req.BusinessID, req.ID, data); serr == nil {
+					savedPath = path
+				}
+				if savedPath != "" {
+					_ = withDeviceTenant(h.db, req.BusinessID, func(rtx *sql.Tx) error {
+						return h.reqRepo.SetReceiptPathTXN(rtx, req.BusinessID, req.ID, savedPath)
+					})
+				}
+			}
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"request_id": req.ID, "status": req.Status, "receipt_attached": true})
+}
 
 // GetBotBinding: GET /api/v1/guest-wifi/telegram-bot — returns the owner's own
 // bot binding with the token MASKED. 200 with an enabled=false shell when none.
@@ -226,12 +395,35 @@ func (h *GuestWifiHandler) DecideGuest(txSrc func() (*sql.Tx, error), businessID
 			}
 			return nil
 		}
-		claimed, e := h.reqRepo.ApproveRequestTXN(tx, businessID, requestID, time.Now().UTC())
+		// Resolve the plan the guest bought from the OWNER's guest_plans config
+		// (fail closed: an unknown/unset-minutes plan cannot grant a pass).
+		pc, e := h.configRepo.GetByBusinessTXN(tx, businessID)
+		if e != nil {
+			return e
+		}
+		var minutes int
+		if pc != nil {
+			if g := findGuestPlan(pc.GuestPlans, r.PlanKey); g != nil {
+				minutes = g.Minutes
+			}
+		}
+		if minutes <= 0 {
+			return &httpError{status: http.StatusBadRequest, msg: "guest plan has no duration (fail closed)"}
+		}
+		now := time.Now().UTC()
+		claimed, e := h.reqRepo.ApproveRequestTXN(tx, businessID, requestID, now)
 		if e != nil {
 			return e
 		}
 		if claimed == nil {
 			return &httpError{status: http.StatusConflict, msg: "request already decided"}
+		}
+		// Grant the wifi time extension (same entitlement core as voucher redemption).
+		if h.quotaRepo == nil {
+			return &httpError{status: http.StatusInternalServerError, msg: "no quota repository configured"}
+		}
+		if err := extendGuestPassTx(tx, h.quotaRepo, businessID, minutes, now); err != nil {
+			return &httpError{status: http.StatusInternalServerError, msg: "failed to grant guest wifi extension: " + err.Error()}
 		}
 		return nil
 	})
@@ -239,6 +431,25 @@ func (h *GuestWifiHandler) DecideGuest(txSrc func() (*sql.Tx, error), businessID
 		return err
 	}
 	return tx.Commit()
+}
+
+// extendGuestPassTx extends the business's wifi entitlement expiry by minutes,
+// exactly mirroring applyPlanEffectTx from the voucher redemption path.
+func extendGuestPassTx(tx *sql.Tx, qrepo *database.BusinessMeteredQuotaRepository, businessID string, minutes int, now time.Time) error {
+	current, err := qrepo.GetByBusinessTXN(tx, businessID)
+	if err != nil {
+		return err
+	}
+	var currentExpiry *time.Time
+	if current != nil {
+		currentExpiry = current.WebfigPassExpiresAt
+	}
+	newExpiry := voucher.ExtendExpiry(currentExpiry, now, minutes)
+	if current == nil {
+		q := &model.BusinessMeteredQuota{BusinessID: businessID, WebfigPassExpiresAt: &newExpiry}
+		return qrepo.UpsertTXN(tx, q)
+	}
+	return qrepo.ExtendWebfigPassTXN(tx, businessID, newExpiry)
 }
 
 // DecidePurchaseRequest satisfies telegram.PurchaseDecider so the owner's own

@@ -167,9 +167,12 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		}
 		guestWifiHandler = handler.NewGuestWifiHandler(
 			db,
+			database.NewDeviceRepository(db),
 			database.NewBusinessTelegramBotRepository(db),
 			database.NewGuestPurchaseRequestRepository(db),
 			database.NewPortalConfigRepository(db),
+			database.NewBusinessMeteredQuotaRepository(db),
+			cfg.GuestWifi.ReceiptDir,
 			guestSvcFmt,
 		)
 		sugar.Infow("Guest wifi owner-bot supervisor enabled", "scan", cfg.GuestWifi.BridgeScanInterval.String())
@@ -349,6 +352,12 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 			portalPublic.GET("/status", portalHandler.PublicStatus)
 			// Billing: guest submits a purchase request (device-anchored).
 			portalPublic.POST("/:deviceId/purchase", billingHandler.PublicCreatePurchase)
+			// Guest wifi (Option C): online-banking purchase with a free grace
+			// window; the guest attaches the receipt within the window.
+			if guestWifiHandler != nil {
+				portalPublic.POST("/:deviceId/guest-purchase", guestWifiHandler.PublicGuestPurchase)
+				portalPublic.POST("/guest-purchase/:requestId/receipt", guestWifiHandler.PublicAttachReceipt)
+			}
 		}
 
 		authGroup := v1.Group("/auth")
