@@ -38,6 +38,10 @@ This file is the canonical, git-tracked status snapshot. Re-run it after any sig
 | `cf46329` | **feat(portal)** — **portal PRODUCT BUILT**: anonymous device-anchored captive-portal (config/redeem/status) + staff config, on shared RLS-proven redemption core |
 | `7238e8a` | **docs(progress)** — portal product built on RLS foundation |
 | `d39a553` | **feat(webhook)** — full slice: fix schema drift, enable RLS, tenant-wrap the notifier worker (outbound webhooks survive enforcement) |
+| `cf46329`→`49404ca` | **feat(billing)** — device-anchored purchase requests + operator approve-gate (Sovereign grant, single-wind, RLS-scoped) → hardened money path (required+unique bank-ref, plan-driven 30-day duration) |
+| `0647664` | **feat(quota)** — enforcement sweep: detect lapsed Sovereign passes, emit quota.pass.expired |
+| `ae9893e` | **feat(auth)** — tenant-scope the Me profile read; document user-repo system-level exclusions |
+| `e1d61a6` | **test(e2e)** — HTTP boot test (4/4 real-HTTP PASS), fix RLS + billing schema drift via migrations (authenticated grants were missing from persistent DB) |
 
 ---
 
@@ -96,7 +100,9 @@ Rough module health:
 
 **Voucher redemption is DONE** (`28ef5ee`): real code gen, atomic single-transaction claim + Sovereign tier grant, fail-closed unknown plan, race-guard (409), and a fixed base schema bug. Full gate green (9 modules). **This is the first revenue path in the rewrite** — a paid voucher now actually grants the Sovereign pass.
 
-Remaining product modules by dependency order: **`portal`** (customer self-service redemption — the next integration; depends on the now-live voucher + device repos), then `topology` (network map), then `ai`/`vps`. **Billing/quota enforcement** (sweep checking WebfigPassExpiresAt against actual usage) is queued as follow-up to voucher.
+Remaining product modules by dependency order: `topology` (network map), then `ai`/`vps`. **Billing + quota enforcement + portal are DONE** through billing (device-anchored approve-gate, hardened money path) + quota enforcement sweep (lapsed pass → `quota.pass.expired`).
+
+The **RLS tail resolved via real audit**: `user` (Me read scoped), `heartbeat` (already param-scoped, no live hole), `audit` (unwired — build when needed). Enforcement story complete. **HTTP boot test (`e1d61a6`)** proved the real server serves all four live-HTTP checks and caught RLS/billing schema drift (authenticated grants missing from persistent DB — fixed via idempotent migrations).
 
 Two queued follow-ups (require an explicit decision):
 1. **DB integration harness — DONE (`e5604c5`)** — money-path SQL (claim race → 409, rollback) now DB-proven, then reused to prove RLS isolation (`aa9ee10`).
