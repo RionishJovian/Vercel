@@ -152,17 +152,17 @@ type BusinessMeteredQuota struct {
 }
 
 type PortalConfig struct {
-	BusinessID      string    `json:"business_id"`
-	BusinessName    string    `json:"business_name"`
-	WelcomeText     string    `json:"welcome_text"`
-	TermsText       string    `json:"terms_text"`
-	PrimaryHex      string    `json:"primary_hex"`
-	GlassTintHex    string    `json:"glass_tint_hex"`
-	ConsentRequired bool      `json:"consent_required"`
-	ConsentText     string    `json:"consent_text"`
-	BankName        string    `json:"bank_name,omitempty"`
-	BankAccount     string    `json:"bank_account,omitempty"`
-	BankHolder      string    `json:"bank_holder,omitempty"`
+	BusinessID      string `json:"business_id"`
+	BusinessName    string `json:"business_name"`
+	WelcomeText     string `json:"welcome_text"`
+	TermsText       string `json:"terms_text"`
+	PrimaryHex      string `json:"primary_hex"`
+	GlassTintHex    string `json:"glass_tint_hex"`
+	ConsentRequired bool   `json:"consent_required"`
+	ConsentText     string `json:"consent_text"`
+	BankName        string `json:"bank_name,omitempty"`
+	BankAccount     string `json:"bank_account,omitempty"`
+	BankHolder      string `json:"bank_holder,omitempty"`
 	// Guest wifi (Option C): free online-payment window (minutes) and the data
 	// plans the owner sets on the portal.
 	GuestGraceMinutes int         `json:"guest_grace_minutes"`
@@ -171,44 +171,49 @@ type PortalConfig struct {
 }
 
 // GuestPlan is one wifi data plan the owner sets on the portal for guests to
-// buy via online banking. Approved requests grant `minutes` of data use.
+// buy via online banking. Approved requests grant `minutes` of data use and,
+// when DataMB > 0, a data allowance. DataMB is the plan's data limit in
+// megabytes (0 = time-only plan). Editable per hotspot owner (Myanmar market:
+// pricing and data vary by location, so this is owner-set, never global).
 type GuestPlan struct {
 	Key     string `json:"key"`
 	Label   string `json:"label"`
 	Minutes int    `json:"minutes"`
 	Amount  int    `json:"amount"`
+	DataMB  int    `json:"data_mb,omitempty"`
 }
 
 // BusinessTelegramBot is the Telegram bot that carries a business's GUEST wifi
 // loop (notify + approve/reject). The owner binds it under their platform
 // account; the platform never uses their token for anything else.
 type BusinessTelegramBot struct {
-	BusinessID    string    `json:"business_id"`
-	BotToken      string    `json:"bot_token,omitempty"` // masked on read-back
-	TargetChatID  int64     `json:"target_chat_id"`
-	Enabled       bool      `json:"enabled"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	BusinessID   string    `json:"business_id"`
+	BotToken     string    `json:"bot_token,omitempty"` // masked on read-back
+	TargetChatID int64     `json:"target_chat_id"`
+	Enabled      bool      `json:"enabled"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 // GuestPurchaseRequest is an owner-approved online-banking wifi submit from a
 // guest on the captive portal. pending -> approved|rejected, exactly once.
 type GuestPurchaseRequest struct {
-	ID              string     `json:"id"`
-	BusinessID      string     `json:"business_id"`
-	DeviceID        *string    `json:"device_id,omitempty"`
-	ClientMAC       string     `json:"client_mac"`
-	ClientIP        *net.IP    `json:"client_ip,omitempty"`
-	PlanKey         string     `json:"plan_key"`
-	Amount          int        `json:"amount"`
-	BankReference   *string    `json:"bank_reference,omitempty"`
-	ReceiptPath     *string    `json:"receipt_path,omitempty"`
-	GraceStartedAt  *time.Time `json:"grace_started_at,omitempty"`
-	GraceExpiresAt  *time.Time `json:"grace_expires_at,omitempty"`
-	Status          string     `json:"status"`
-	DecidedAt       *time.Time `json:"decided_at,omitempty"`
-	CreatedAt       time.Time  `json:"created_at"`
-	UpdatedAt       time.Time  `json:"updated_at"`
+	ID             string     `json:"id"`
+	BusinessID     string     `json:"business_id"`
+	DeviceID       *string    `json:"device_id,omitempty"`
+	ClientMAC      string     `json:"client_mac"`
+	ClientIP       *net.IP    `json:"client_ip,omitempty"`
+	PlanKey        string     `json:"plan_key"`
+	Amount         int        `json:"amount"`
+	DataMB         int        `json:"data_mb,omitempty"`
+	BankReference  *string    `json:"bank_reference,omitempty"`
+	ReceiptPath    *string    `json:"receipt_path,omitempty"`
+	GraceStartedAt *time.Time `json:"grace_started_at,omitempty"`
+	GraceExpiresAt *time.Time `json:"grace_expires_at,omitempty"`
+	Status         string     `json:"status"`
+	DecidedAt      *time.Time `json:"decided_at,omitempty"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
 }
 
 type WebhookEndpoint struct {

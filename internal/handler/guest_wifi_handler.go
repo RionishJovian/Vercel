@@ -50,14 +50,14 @@ func findGuestPlan(plans []model.GuestPlan, key string) *model.GuestPlan {
 //   - BRIDGE: the same shared decide-core is used by the owner's per-business
 //     Telegram bot so HTTP and bot act identically (single money path).
 type GuestWifiHandler struct {
-	db         *database.DB
-	deviceRepo *database.DeviceRepository
-	botRepo    *database.BusinessTelegramBotRepository
-	reqRepo    *database.GuestPurchaseRequestRepository
-	configRepo *database.PortalConfigRepository
-	quotaRepo  *database.BusinessMeteredQuotaRepository
+	db          *database.DB
+	deviceRepo  *database.DeviceRepository
+	botRepo     *database.BusinessTelegramBotRepository
+	reqRepo     *database.GuestPurchaseRequestRepository
+	configRepo  *database.PortalConfigRepository
+	quotaRepo   *database.BusinessMeteredQuotaRepository
 	receiptRoot string
-	svcFmt     func(token string) (telegram.Messenger, bool) // build messenger from an owner token
+	svcFmt      func(token string) (telegram.Messenger, bool) // build messenger from an owner token
 }
 
 // NewGuestWifiHandler wires the handler. svcFmt builds a Messenger lazily from a
@@ -73,14 +73,14 @@ func NewGuestWifiHandler(
 	svcFmt func(token string) (telegram.Messenger, bool),
 ) *GuestWifiHandler {
 	return &GuestWifiHandler{
-		db:         db,
-		deviceRepo: deviceRepo,
-		botRepo:    botRepo,
-		reqRepo:    reqRepo,
-		configRepo: configRepo,
-		quotaRepo:  quotaRepo,
+		db:          db,
+		deviceRepo:  deviceRepo,
+		botRepo:     botRepo,
+		reqRepo:     reqRepo,
+		configRepo:  configRepo,
+		quotaRepo:   quotaRepo,
 		receiptRoot: receiptRoot,
-		svcFmt:     svcFmt,
+		svcFmt:      svcFmt,
 	}
 }
 
@@ -155,6 +155,7 @@ func (h *GuestWifiHandler) PublicGuestPurchase(c *gin.Context) {
 			ClientMAC:      strings.TrimSpace(c.PostForm("client_mac")),
 			PlanKey:        plan.Key,
 			Amount:         plan.Amount,
+			DataMB:         plan.DataMB,
 			GraceStartedAt: &graceStart,
 			GraceExpiresAt: &graceExpires,
 			Status:         "pending",
@@ -171,12 +172,12 @@ func (h *GuestWifiHandler) PublicGuestPurchase(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, gin.H{
-		"request_id":        req.ID,
-		"status":            req.Status,
-		"plan":              plan.Label,
-		"amount":            plan.Amount,
-		"grace_expires_at":  graceExpires,
-		"message":           "attach your payment receipt within the grace window to request the time extension",
+		"request_id":       req.ID,
+		"status":           req.Status,
+		"plan":             plan.Label,
+		"amount":           plan.Amount,
+		"grace_expires_at": graceExpires,
+		"message":          "attach your payment receipt within the grace window to request the time extension",
 	})
 }
 

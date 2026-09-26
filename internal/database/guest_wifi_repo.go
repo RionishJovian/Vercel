@@ -61,7 +61,7 @@ func (r *BusinessTelegramBotRepository) Upsert(b *model.BusinessTelegramBot) err
 // ListEnabled returns every business that has an enabled bot — used by the
 // multi-tenant bridge supervisor to know which owner loops to spawn.
 func (r *BusinessTelegramBotRepository) ListEnabled() ([]*model.BusinessTelegramBot, error) {
-	rows, err := r.db.Query(`SELECT `+botCols+` FROM business_telegram_bots WHERE enabled = true`)
+	rows, err := r.db.Query(`SELECT ` + botCols + ` FROM business_telegram_bots WHERE enabled = true`)
 	if err != nil {
 		return nil, fmt.Errorf("list enabled bots: %w", err)
 	}
@@ -89,7 +89,7 @@ func NewGuestPurchaseRequestRepository(db *DB) *GuestPurchaseRequestRepository {
 }
 
 const guestRequestCols = `id, business_id, device_id, client_mac, client_ip, plan_key, amount,
-	bank_reference, receipt_path, grace_started_at, grace_expires_at, status,
+	data_mb, bank_reference, receipt_path, grace_started_at, grace_expires_at, status,
 	decided_at, created_at, updated_at`
 
 // scanGuestRequest is a shared row-scanner for guest purchase requests.
@@ -101,9 +101,9 @@ func scanGuestRequest(row guestRequestScan) (*model.GuestPurchaseRequest, error)
 	r := &model.GuestPurchaseRequest{}
 	var deviceID, planKey, bankRef, receipt, status, clientIP sql.NullString
 	var graceStart, graceExpire, decided sql.NullTime
-	var amount int
+	var amount, dataMB int
 	if err := row.Scan(&r.ID, &r.BusinessID, &deviceID, &r.ClientMAC, &clientIP, &planKey,
-		&amount, &bankRef, &receipt, &graceStart, &graceExpire, &status, &decided,
+		&amount, &dataMB, &bankRef, &receipt, &graceStart, &graceExpire, &status, &decided,
 		&r.CreatedAt, &r.UpdatedAt); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
@@ -113,6 +113,7 @@ func scanGuestRequest(row guestRequestScan) (*model.GuestPurchaseRequest, error)
 	r.DeviceID = scanNullableString(deviceID)
 	r.PlanKey = planKey.String
 	r.Amount = amount
+	r.DataMB = dataMB
 	r.BankReference = scanNullableString(bankRef)
 	r.ReceiptPath = scanNullableString(receipt)
 	r.ClientIP = scanIP(clientIP)
@@ -127,11 +128,11 @@ func (r *GuestPurchaseRequestRepository) CreateTXN(tx *sql.Tx, req *model.GuestP
 	row := tx.QueryRow(
 		`INSERT INTO guest_purchase_requests
 		   (business_id, device_id, client_mac, client_ip, plan_key, amount,
-			bank_reference, receipt_path, grace_started_at, grace_expires_at, status)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+			data_mb, bank_reference, receipt_path, grace_started_at, grace_expires_at, status)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 		 RETURNING `+guestRequestCols,
 		req.BusinessID, req.DeviceID, req.ClientMAC, ipString(req.ClientIP), req.PlanKey,
-		req.Amount, req.BankReference, req.ReceiptPath, req.GraceStartedAt, req.GraceExpiresAt,
+		req.Amount, req.DataMB, req.BankReference, req.ReceiptPath, req.GraceStartedAt, req.GraceExpiresAt,
 		req.Status)
 	return scanGuestRequest(row)
 }

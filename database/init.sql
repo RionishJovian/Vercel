@@ -364,6 +364,7 @@ CREATE TABLE IF NOT EXISTS guest_purchase_requests (
     client_ip inet,
     plan_key text NOT NULL,
     amount integer NOT NULL DEFAULT 0,
+    data_mb integer NOT NULL DEFAULT 0,   -- plan data allowance (MB); 0 = time-only
     bank_reference text,
     receipt_path text,              -- uploaded successful-payment receipt
     grace_started_at timestamptz,

@@ -244,6 +244,24 @@ async function renderPortal(main) {
       `<tr><td>Grace window</td><td class="num">${esc(cfg.guest_grace_minutes||"—")} min</td></tr>` +
       `</tbody></table>`;
   } else if (cfgErr) { html += `<p class="muted small">${esc(cfgErr)}</p>`; }
+
+  // Guest data plans — owner-set price (MMK) + data per location. Editable so
+  // each hotspot owner prices their own market (no global pricing rule).
+  const plans = (cfg && cfg.guest_plans) || [];
+  html += `<h3 class="small" style="margin:14px 0 6px">Guest data plans</h3>`;
+  html += `<table id="plans-table"><thead><tr><th>Key</th><th>Label</th><th>Minutes</th><th>Price (MMK)</th><th>Data (MB)</th><th></th></tr></thead><tbody>`;
+  plans.forEach((p, i) => {
+    html += `<tr id="plan-${i}">` +
+      `<td><input data-k="key" value="${esc(p.key||"")}"></td>` +
+      `<td><input data-k="label" value="${esc(p.label||"")}"></td>` +
+      `<td><input type="number" data-k="minutes" min="0" value="${p.minutes||0}"></td>` +
+      `<td><input type="number" data-k="amount" min="0" value="${p.amount||0}"></td>` +
+      `<td><input type="number" data-k="data_mb" min="0" value="${p.data_mb||0}"></td>` +
+      `<td><button class="btn-sm" data-act="del" data-i="${i}">Remove</button></td></tr>`;
+  });
+  html += `</tbody></table>`;
+  html += `<div style="margin-top:8px;display:flex;gap:8px"><button class="btn-sm" id="plan-add">+ Add plan</button>` +
+    `<button class="btn-sm" id="plan-save">Save plans</button><span id="plan-msg" class="muted small"></span></div>`;
   html += `</div></div>`;
 
   html += `<div class="panel" style="margin-top:14px"><div class="panel-head"><h2 class="panel-title">Guest purchase requests</h2></div><div class="panel-body">`;
@@ -255,6 +273,39 @@ async function renderPortal(main) {
   html += `</div></div>`;
 
   main.querySelector("#content").innerHTML = html;
+
+  // Plan editor wiring (add / remove / save).
+  const plansTbl = main.querySelector("#plans-table");
+  const msgEl = () => main.querySelector("#plan-msg");
+  const collect = () => {
+    const out = [];
+    plansTbl.querySelectorAll("tbody tr").forEach(tr => {
+      const o = {};
+      tr.querySelectorAll("input[data-k]").forEach(inp => { o[inp.dataset.k] = inp.type === "number" ? parseInt(inp.value||"0",10) : (inp.value||"").trim(); });
+      out.push(o);
+    });
+    return out;
+  };
+  const save = async () => {
+    msgEl().textContent = "Saving…";
+    try {
+      const plans = collect();
+      // Preserve every existing portal field; only plans change here.
+      const body = Object.assign({}, cfg, { guest_plans: plans });
+      await MM.put("/portal/config", body);
+      msgEl().textContent = "Saved.";
+      await loadView("portal", main, ME);
+    } catch (e) { msgEl().textContent = "Save failed: " + (e.message||""); }
+  };
+  const addBtn = main.querySelector("#plan-add");
+  if (addBtn) addBtn.addEventListener("click", () => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td><input data-k="key"></td><td><input data-k="label"></td><td><input type="number" data-k="minutes" min="0" value="0"></td><td><input type="number" data-k="amount" min="0" value="0"></td><td><input type="number" data-k="data_mb" min="0" value="0"></td><td><button class="btn-sm" data-act="del">Remove</button></td>`;
+    plansTbl.querySelector("tbody").appendChild(tr);
+  });
+  const saveBtn = main.querySelector("#plan-save");
+  if (saveBtn) saveBtn.addEventListener("click", save);
+  plansTbl.querySelectorAll("button[data-act=del]").forEach(b => b.addEventListener("click", () => b.closest("tr").remove()));
 }
 
 /* ---------- Platform (DEVELOPER) ---------- */

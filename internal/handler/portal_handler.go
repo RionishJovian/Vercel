@@ -3,6 +3,7 @@ package handler
 import (
 	"database/sql"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -19,12 +20,12 @@ import (
 // from the voucher code (codes are only business-scoped-unique). STAFF endpoints
 // are owner-authenticated and mounted under `protected`.
 type PortalHandler struct {
-	db          *database.DB
-	deviceRepo  *database.DeviceRepository
-	configRepo  *database.PortalConfigRepository
-	sessionRepo *database.PortalSessionRepository
-	voucherRepo *database.VoucherRepository
-	quotaRepo   *database.BusinessMeteredQuotaRepository
+	db                  *database.DB
+	deviceRepo          *database.DeviceRepository
+	configRepo          *database.PortalConfigRepository
+	sessionRepo         *database.PortalSessionRepository
+	voucherRepo         *database.VoucherRepository
+	quotaRepo           *database.BusinessMeteredQuotaRepository
 	notifyGuestRedeemed func(businessID, planLabel string)
 }
 
@@ -38,12 +39,12 @@ func NewPortalHandler(
 	notifyGuestRedeemed func(businessID, planLabel string),
 ) *PortalHandler {
 	return &PortalHandler{
-		db:                 db,
-		deviceRepo:         deviceRepo,
-		configRepo:         configRepo,
-		sessionRepo:        sessionRepo,
-		voucherRepo:        voucherRepo,
-		quotaRepo:          quotaRepo,
+		db:                  db,
+		deviceRepo:          deviceRepo,
+		configRepo:          configRepo,
+		sessionRepo:         sessionRepo,
+		voucherRepo:         voucherRepo,
+		quotaRepo:           quotaRepo,
 		notifyGuestRedeemed: notifyGuestRedeemed,
 	}
 }
@@ -280,13 +281,14 @@ func (h *PortalHandler) StaffUpdateConfig(c *gin.Context) {
 	}
 
 	var req struct {
-		BusinessName    string  `json:"business_name" binding:"required"`
-		WelcomeText     *string `json:"welcome_text"`
-		TermsText       *string `json:"terms_text"`
-		PrimaryHex      *string `json:"primary_hex"`
-		GlassTintHex    *string `json:"glass_tint_hex"`
-		ConsentRequired *bool   `json:"consent_required"`
-		ConsentText     *string `json:"consent_text"`
+		BusinessName    string             `json:"business_name" binding:"required"`
+		WelcomeText     *string            `json:"welcome_text"`
+		TermsText       *string            `json:"terms_text"`
+		PrimaryHex      *string            `json:"primary_hex"`
+		GlassTintHex    *string            `json:"glass_tint_hex"`
+		ConsentRequired *bool              `json:"consent_required"`
+		ConsentText     *string            `json:"consent_text"`
+		GuestPlans      *[]model.GuestPlan `json:"guest_plans"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -314,6 +316,23 @@ func (h *PortalHandler) StaffUpdateConfig(c *gin.Context) {
 	}
 	if req.ConsentText != nil {
 		cfg.ConsentText = *req.ConsentText
+	}
+	if req.GuestPlans != nil {
+		// Fail closed on malformed plans: each must be non-empty-ready
+		// (Key/Label non-blank) and non-negative in Minutes/Amount/DataMB.
+		// Owner-set pricing/data by location (Myanmar market) — validated,
+		// not trusted blindly.
+		for _, p := range *req.GuestPlans {
+			if strings.TrimSpace(p.Key) == "" || strings.TrimSpace(p.Label) == "" {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "each guest plan needs a key and a label"})
+				return
+			}
+			if p.Minutes < 0 || p.Amount < 0 || p.DataMB < 0 {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "guest plan minutes, price and data must be >= 0"})
+				return
+			}
+		}
+		cfg.GuestPlans = *req.GuestPlans
 	}
 
 	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
