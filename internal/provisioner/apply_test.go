@@ -3,6 +3,7 @@ package provisioner
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 )
@@ -194,7 +195,92 @@ func TestApplyFixes_noopAndValidation(t *testing.T) {
 	}
 
 	// No applier.
-	if _, err := NewApplyService(nil, upProber()).ApplyFixes(context.Background(), ApplyRequest{PeerID: "x", Changes: lowMedPlan()}); err == nil {
-		t.Fatal("nil applier must error")
+		if _, err := NewApplyService(nil, upProber()).ApplyFixes(context.Background(), ApplyRequest{PeerID: "x", Changes: lowMedPlan()}); err == nil {
+			t.Fatalf("nil applier must error")
+		}
 	}
-}
+
+	// --- ApplyAction: explicit fire-and-validate (reboot), NO snapshot/rollback ---
+
+	func TestApplyAction_successNoSnapshotNoRestore(t *testing.T) {
+		ap := &recordApplier{}
+		svc := NewApplyService(ap, upProber())
+		changes := []Change{{Action: ActionReboot, Target: "dev-1", Risk: "high"}}
+
+		res, err := svc.ApplyAction(context.Background(), ApplyRequest{PeerID: "dev-1", Changes: changes})
+		if err != nil {
+			t.Fatalf("ApplyAction: %v", err)
+		}
+		if !res.Verified || res.RolledBack || res.SnapshotCaptured {
+			t.Fatalf("ApplyAction result = %+v, want verified, no rollback, no snapshot", res)
+		}
+		if ap.called("snapshot") || ap.called("restore") {
+			t.Fatalf("fire-and-validate must not snapshot/restore, calls = %v", ap.calls)
+		}
+		if !ap.called("apply") {
+			t.Fatalf("expected apply, calls = %v", ap.calls)
+		}
+	}
+
+	func TestApplyAction_verifyFailNoRollback(t *testing.T) {
+		ap := &recordApplier{}
+		svc := NewApplyService(ap, downProber())
+		changes := []Change{{Action: ActionReboot, Target: "dev-1", Risk: "high"}}
+
+		res, err := svc.ApplyAction(context.Background(), ApplyRequest{PeerID: "dev-1", Changes: changes})
+		if err != nil {
+			t.Fatalf("ApplyAction: %v", err)
+		}
+		if res.Verified || res.RolledBack {
+			t.Fatalf("ApplyAction failed-verify = %+v, want unverified and NOT rolled back (no config to revert)", res)
+		}
+		if ap.called("restore") || ap.called("snapshot") {
+			t.Fatalf("fire-and-validate must never restore/snapshot, calls = %v", ap.calls)
+		}
+		if res.VerificationDetail == "" {
+			t.Fatal("failed verify must record a detail")
+		}
+	}
+
+	func TestApplyAction_applyErrorRecordsButNoRestore(t *testing.T) {
+		ap := &recordApplier{applyErr: errors.New("router unreachable")}
+		svc := NewApplyService(ap, upProber())
+		changes := []Change{{Action: ActionReboot, Target: "dev-1", Risk: "high"}}
+
+		res, err := svc.ApplyAction(context.Background(), ApplyRequest{PeerID: "dev-1", Changes: changes})
+		if err != nil {
+			t.Fatalf("ApplyAction: %v", err)
+		}
+		if res.Verified || res.RolledBack {
+			t.Fatalf("ApplyAction apply-error = %+v, want unverified/no rollback", res)
+		}
+		if ap.called("restore") {
+			t.Fatalf("a failed reboot must not attempt a config restore, calls = %v", ap.calls)
+		}
+		if !strings.Contains(res.VerificationDetail, "action failed") {
+			t.Fatalf("expected a failure detail, got %q", res.VerificationDetail)
+		}
+	}
+
+	func TestApplyAction_validation(t *testing.T) {
+		// Missing peer id.
+		if _, err := NewApplyService(&recordApplier{}, upProber()).ApplyAction(context.Background(), ApplyRequest{}); err == nil {
+			t.Fatal("missing peer id must error")
+		}
+		// No applier.
+		if _, err := NewApplyService(nil, upProber()).ApplyAction(context.Background(), ApplyRequest{PeerID: "x", Changes: []Change{{Action: ActionReboot}}}); err == nil {
+			t.Fatal("nil applier must error")
+		}
+		// Empty changes: no apply, not an error.
+		ap := &recordApplier{}
+		res, err := NewApplyService(ap, upProber()).ApplyAction(context.Background(), ApplyRequest{PeerID: "x"})
+		if err != nil {
+			t.Fatalf("empty ApplyAction should not error: %v", err)
+		}
+		if len(ap.calls) != 0 {
+			t.Fatalf("empty action must touch nothing, calls = %v", ap.calls)
+		}
+		if res.Verified {
+			t.Fatal("empty action cannot be verified")
+		}
+	}

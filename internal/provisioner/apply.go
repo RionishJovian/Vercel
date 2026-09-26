@@ -148,6 +148,50 @@ func (s *ApplyService) ApplyFixes(ctx context.Context, req ApplyRequest) (*Apply
 	return res, nil
 }
 
+// ApplyAction drives an EXPLICIT device action that is fire-and-validate: an
+// owner-initiated command (e.g. reboot) that is applied then verified but is
+// NOT a reversible config delta. Unlike ApplyFixes it takes no snapshot and can
+// never roll back — a reboot has no "un-reboot"; the contract is apply the
+// command, then confirm the device returns. Approval/OTP is the caller's
+// (the consumer) responsibility; this only issues and verifies.
+//
+// It returns a result (never a silent error) for every path except a missing
+// device id or a failed apply, which are pre-verify failures.
+func (s *ApplyService) ApplyAction(ctx context.Context, req ApplyRequest) (*ApplyResult, error) {
+	if req.PeerID == "" {
+		return nil, fmt.Errorf("provisioner: peer id is required")
+	}
+	if s.applier == nil {
+		return nil, fmt.Errorf("provisioner: no applier configured")
+	}
+
+	res := &ApplyResult{
+		PeerID:    req.PeerID,
+		Applied:   req.Changes,
+		AppliedAt: time.Now().UTC(),
+	}
+	if len(req.Changes) == 0 {
+		res.VerificationDetail = "no action to apply"
+		return res, nil
+	}
+
+	if err := s.applier.Apply(ctx, req.PeerID, req.Changes); err != nil {
+		res.VerificationDetail = "action failed: " + err.Error()
+		return res, nil
+	}
+
+	verified, vdetail, verr := s.verify(ctx, req.PeerID)
+	res.VerificationDetail = vdetail
+	if verr == nil && verified {
+		res.Verified = true
+		return res, nil
+	}
+	if verr != nil {
+		res.VerificationDetail = "verify error: " + verr.Error()
+	}
+	return res, nil
+}
+
 // verify confirms the tunnel is up AND the peer is reachable from the cloud,
 // reusing the same read-only Prober the dry-run path uses.
 func (s *ApplyService) verify(ctx context.Context, peerID string) (bool, string, error) {
