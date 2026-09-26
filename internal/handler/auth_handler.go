@@ -112,6 +112,8 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	}
 
 	// Create the owner user
+	// EXCLUSION (system-level): register creates the business ITSELF in this same
+	// tx — there is no tenant context until commit, so RLS here is self-defeating.
 	user, err := h.userRepo.CreateTXN(tx, business.BusinessID, req.FullName, req.Email, hash, string(model.RoleOwner))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create user"})
@@ -153,6 +155,8 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
+	// EXCLUSION (system-level): login runs BEFORE any tenant context exists;
+	// scoping this lookup to a business would lock every user out.
 	user, err := h.userRepo.FindByEmail(req.Email)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
@@ -168,7 +172,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	// Update last login
+	// Update last login (EXCLUSION: pre-tenant bootstrap write, owner-scoped by design).
 	_ = h.userRepo.UpdateLastLogin(user.UserID)
 
 	// Fetch business
@@ -224,6 +228,8 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 		return
 	}
 
+	// EXCLUSION (system-level): refresh runs BEFORE a fresh tenant context exists;
+	// the user.BusinessID != businessID cross-check below is the guard.
 	user, err := h.userRepo.FindByID(userID)
 	if err != nil || user == nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "user not found"})
@@ -253,14 +259,37 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 	})
 }
 
-// Me returns the current user's profile
+// Me returns the current user's profile.
+//
+// The session user's OWN profile read is genuinely tenant-scoped: it is
+// post-auth and businessID comes from the JWT. Login/refresh/register reads stay
+// SYSTEM-LEVEL by design (see the exclusion notes on those call sites).
 func (h *AuthHandler) Me(c *gin.Context) {
 	userID := auth.GetUserID(c)
 	businessID := auth.GetBusinessID(c)
 
-	user, err := h.userRepo.FindByID(userID)
+	tx, err := beginTenantTx(c, h.db)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
+		return
+	}
+	defer tx.Rollback()
+
+	var user *model.User
+	err = database.WithTenant(tx, businessID, func() error {
+		u, e := h.userRepo.FindByIDTXN(tx, userID)
+		if e != nil {
+			return e
+		}
+		user = u
+		return nil
+	})
 	if err != nil || user == nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
 		return
 	}
 

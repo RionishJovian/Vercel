@@ -155,6 +155,37 @@ func (r *UserRepository) FindByEmailTXN(tx *sql.Tx, email string) (*model.User, 
 	return u, nil
 }
 
+// FindByIDTXN looks up a user by ID using an existing transaction. It mirrors
+// FindByID's SQL (including the is_active filter) so the tenant-scoped Me read
+// behaves identically.
+func (r *UserRepository) FindByIDTXN(tx *sql.Tx, userID string) (*model.User, error) {
+	query := `
+		SELECT user_id, business_id, full_name, email, password_hash,
+		       user_role, is_active, last_login_at, created_at, updated_at
+		FROM users
+		WHERE user_id = $1 AND is_active = true`
+
+	u := &model.User{}
+	var lastLogin sql.NullTime
+
+	err := tx.QueryRow(query, userID).Scan(
+		&u.UserID, &u.BusinessID, &u.FullName, &u.Email, &u.PasswordHash,
+		&u.UserRole, &u.IsActive, &lastLogin, &u.CreatedAt, &u.UpdatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("find user by id txn: %w", err)
+	}
+
+	if lastLogin.Valid {
+		u.LastLoginAt = &lastLogin.Time
+	}
+
+	return u, nil
+}
+
 // BeginTx starts a transaction
 func (r *UserRepository) BeginTx() (*sql.Tx, error) {
 	return r.db.Begin()
