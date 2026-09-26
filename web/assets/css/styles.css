@@ -110,6 +110,7 @@ main { padding: 28px 36px; }
 .btn-danger { background: transparent; color: var(--bad); border-color: #e6c9c6; }
 .btn-danger:hover { background: var(--bad-wash); }
 .btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn-sm { padding: 3px 8px; font-size: 12.5px; }
 
 /* ---------- Forms ---------- */
 .field { display: block; margin-bottom: 14px; }

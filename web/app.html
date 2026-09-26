@@ -21,6 +21,7 @@
     <button class="nav-item" data-view="fleet">Fleet health</button>
     <button class="nav-item" data-view="sites">Sites</button>
     <button class="nav-item" data-view="topology">Topology</button>
+    <button class="nav-item" data-view="incidents">Incidents</button>
     <div class="rail-section">Account</div>
     <button class="nav-item" data-view="vouchers">Vouchers</button>
     <button class="nav-item" data-view="portal">Captive portal</button>
@@ -39,6 +40,7 @@ const VIEWS = {
   fleet:    { title: "Fleet health", lead: "Every peer and its tunnel state." },
   sites:    { title: "Sites", lead: "Routers and gateways by layer." },
   topology: { title: "Topology", lead: "The live network map." },
+  incidents:{ title: "Incidents", lead: "Problems detected across the fleet." },
   vouchers: { title: "Vouchers", lead: "Credit codes for the captive portal." },
   portal:   { title: "Captive portal", lead: "Guest Wi-Fi config and requests." },
 };
@@ -53,6 +55,7 @@ async function loadView(name, main, me) {
     else if (name === "fleet") await renderFleet(main);
     else if (name === "sites") await renderSites(main);
     else if (name === "topology") await renderTopology(main);
+    else if (name === "incidents") await renderIncidents(main);
     else if (name === "vouchers") await renderVouchers(main);
     else if (name === "portal") await renderPortal(main);
   } catch (err) {
@@ -158,7 +161,49 @@ function topologyTree(topo) {
   return `<div>${roots.map(r => render(r, 0)).join("")}</div>`;
 }
 
-/* ---------- Vouchers ---------- */
+/* ---------- Incidents ---------- */
+async function renderIncidents(main) {
+  const data = await MM.get("/incidents");
+  const list = data.incidents || data || [];
+  const content = main.querySelector("#content");
+  if (!list.length) {
+    content.innerHTML = `<div class="empty"><div class="empty-title">No open incidents</div>AI-detected problems and policy alerts will appear here.</div>`;
+    return;
+  }
+  const sevBadge = (s) => {
+    const m = { critical: "bad", warning: "warn" }[String(s).toLowerCase()] || "unknown";
+    return `<span class="status ${m}">${esc(s)}</span>`;
+  };
+  const rows = list.map(inc => `
+    <tr>
+      <td>${sevBadge(inc.severity || "info")}</td>
+      <td><span class="mono">${esc(inc.kind)}</span></td>
+      <td><span class="num">${esc(inc.subject_label || inc.subject_id || "—")}</span></td>
+      <td class="muted small">${esc((inc.detail && inc.detail.replace(/\s+/g," ")) ? inc.detail.slice(0,80) : "—")}</td>
+      <td>${ts(inc.opened_at)}</td>
+      <td>
+        <button class="btn btn-sm" data-act="ack" data-id="${esc(inc.id)}">Acknowledge</button>
+        <button class="btn btn-sm" data-act="resolve" data-id="${esc(inc.id)}">Resolve</button>
+      </td>
+    </tr>`).join("");
+  content.innerHTML = `<table>
+    <thead><tr><th>Severity</th><th>Kind</th><th>Subject</th><th>Detail</th><th>Opened</th><th></th></tr></thead>
+    <tbody>${rows}</tbody></table>`;
+  content.querySelectorAll("button[data-act]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const id = btn.dataset.id, act = btn.dataset.act;
+      btn.disabled = true; btn.textContent = "…";
+      try {
+        await MM.post(`/incidents/${encodeURIComponent(id)}/${act}`);
+        await renderIncidents(main);
+      } catch (e) {
+        btn.disabled = false; btn.textContent = "Retry";
+        content.appendChild(Object.assign(document.createElement("div"), { className: "alert", textContent: e.message }));
+      }
+    });
+  });
+}
+
 async function renderVouchers(main) {
   const data = await MM.get("/vouchers");
   const list = data.vouchers || data || [];
