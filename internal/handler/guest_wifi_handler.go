@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -246,7 +247,53 @@ func (h *GuestWifiHandler) PublicAttachReceipt(c *gin.Context) {
 		})
 	}
 
+	// Ping the OWNER's own bot (per-business binding) so they know a guest
+	// finished paying and is asking for the wifi extension. Best-effort: a
+	// missing/inactive bot binding must NOT fail the guest's submission.
+	h.notifyOwnerPurchase(req, phone, last6)
+
 	c.JSON(http.StatusOK, gin.H{"request_id": req.ID, "status": req.Status, "receipt_attached": true})
+}
+
+// notifyOwnerPurchase sends the owner's bound bot a verification prompt for a
+// guest who submitted their MMQR payment details. Fail-open (never blocks the
+// guest on a bot problem): no binding or send error is swallowed with `_ =`.
+func (h *GuestWifiHandler) notifyOwnerPurchase(req *model.GuestPurchaseRequest, phone, last6 string) {
+	var bot *model.BusinessTelegramBot
+	err := withDeviceTenant(h.db, req.BusinessID, func(tx *sql.Tx) error {
+		b, e := h.botRepo.GetByBusinessTXN(tx, req.BusinessID)
+		if e != nil {
+			return e
+		}
+		bot = b
+		return nil
+	})
+	if err != nil || bot == nil || !bot.Enabled || strings.TrimSpace(bot.BotToken) == "" {
+		return // fail open: no usable owner bot
+	}
+	target := "0"
+	if bot.TargetChatID != 0 {
+		target = strconv.FormatInt(bot.TargetChatID, 10)
+	}
+	msg, ok := h.svcFmt(bot.BotToken)
+	if !ok || msg == nil {
+		return
+	}
+	text := "🛜 Guest paid — approve?"
+	text += "\nRequest: " + req.ID
+	if req.PlanKey != "" {
+		text += "\nPlan: " + req.PlanKey
+	}
+	if req.Amount > 0 {
+		text += "\nAmount: " + strconv.Itoa(req.Amount) + " MMK"
+	}
+	if phone != "" {
+		text += "\nPaid phone: " + phone
+	}
+	if last6 != "" {
+		text += "\nTx last 6: " + last6
+	}
+	_ = msg.SendMessage(target, text+"\n\nReply: approve "+req.ID+"  /  reject "+req.ID)
 }
 
 // GetBotBinding: GET /api/v1/guest-wifi/telegram-bot — returns the owner's own
