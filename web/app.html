@@ -25,6 +25,8 @@
     <div class="rail-section">Account</div>
     <button class="nav-item" data-view="vouchers">Vouchers</button>
     <button class="nav-item" data-view="portal">Captive portal</button>
+    <div class="rail-section">Operator</div>
+    <button class="nav-item" data-view="platform" id="nav-platform" hidden>Platform</button>
     <div style="flex:1"></div>
     <button class="nav-item" id="signout">Sign out</button>
   </nav>
@@ -43,6 +45,7 @@ const VIEWS = {
   incidents:{ title: "Incidents", lead: "Problems detected across the fleet." },
   vouchers: { title: "Vouchers", lead: "Credit codes for the captive portal." },
   portal:   { title: "Captive portal", lead: "Guest Wi-Fi config and requests." },
+  platform: { title: "Platform", lead: "Cross-tenant operator view — every business, one lens." },
 };
 
 let ME = null;
@@ -58,6 +61,7 @@ async function loadView(name, main, me) {
     else if (name === "incidents") await renderIncidents(main);
     else if (name === "vouchers") await renderVouchers(main);
     else if (name === "portal") await renderPortal(main);
+    else if (name === "platform") await renderPlatform(main);
   } catch (err) {
     main.querySelector("#content").innerHTML = `<div class="alert" role="alert">${esc(err.message)}</div>`;
   }
@@ -253,12 +257,90 @@ async function renderPortal(main) {
   main.querySelector("#content").innerHTML = html;
 }
 
+/* ---------- Platform (DEVELOPER) ---------- */
+function sevBadge(s) {
+  const m = { critical: "bad", warning: "warn", warn: "warn", info: "unknown" }[String(s).toLowerCase()] || "unknown";
+  return `<span class="status ${m}">${esc(s || "info")}</span>`;
+}
+
+function bizName(bizs, id) {
+  const b = (bizs || []).find(x => x.business_id === id);
+  return b ? b.company_name : (id || "—");
+}
+
+async function renderPlatform(main) {
+  const content = main.querySelector("#content");
+  let businesses = [], incidents = [], counts = {};
+  try {
+    const [b, c, i] = await Promise.all([
+      MM.get("/platform/businesses"),
+      MM.get("/platform/incidents/counts"),
+      MM.get("/platform/incidents"),
+    ]);
+    businesses = (b && (b.businesses || b)) || [];
+    counts = (c && c.counts) || {};
+    incidents = (i && (i.incidents || i)) || [];
+  } catch (e) {
+    if (e.status === 403) {
+      content.innerHTML = `<div class="panel"><div class="panel-body">
+        <div class="empty"><div class="empty-title">Developer access required</div>
+        This console is limited to platform operators. Ask the platform owner for a DEVELOPER token.</div></div></div>`;
+      return;
+    }
+    throw e;
+  }
+
+  content.innerHTML = `
+    <div class="stat-cluster" style="margin-top:18px">
+      <div class="stat"><div class="stat-label">Businesses</div><div class="stat-value">${businesses.length}</div></div>
+      <div class="stat"><div class="stat-label">Open incidents</div><div class="stat-value">${counts.open ?? 0}</div></div>
+      <div class="stat"><div class="stat-label">Resolved</div><div class="stat-value">${counts.resolved ?? 0}</div></div>
+    </div>
+    <hr class="rule">
+    <div class="panel"><div class="panel-head"><h2 class="panel-title">Businesses</h2></div>
+      <div class="panel-body">${platformBusinessTable(businesses)}</div></div>
+    <div class="panel" style="margin-top:14px"><div class="panel-head"><h2 class="panel-title">Open incidents</h2></div>
+      <div class="panel-body">${platformIncidentTable(incidents, businesses)}</div></div>`;
+}
+
+function platformBusinessTable(bizs) {
+  if (!bizs.length) return `<div class="empty"><div class="empty-title">No businesses</div>No tenants are registered yet.</div>`;
+  const rows = bizs.map(b => `
+    <tr>
+      <td><span class="num">${esc(b.company_name)}</span></td>
+      <td>${esc(b.owner_email)}</td>
+      <td><span class="mono">${esc(b.access_tier)}</span></td>
+      <td class="num">${esc(b.device_quota_limit)}</td>
+      <td>${b.is_active ? `<span class="status ok">Active</span>` : `<span class="status unknown">Inactive</span>`}</td>
+      <td>${ts(b.created_at)}</td>
+    </tr>`).join("");
+  return `<table><thead><tr><th>Company</th><th>Owner</th><th>Tier</th><th>Device limit</th><th>Status</th><th>Created</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function platformIncidentTable(list, bizs) {
+  if (!list.length) return `<div class="empty"><div class="empty-title">No open incidents</div>Cross-tenant incidents will appear here.</div>`;
+  const rows = list.map(inc => `
+    <tr>
+      <td>${sevBadge(inc.severity || "info")}</td>
+      <td><span class="mono">${esc(inc.kind)}</span></td>
+      <td><span class="num">${esc(bizName(bizs, inc.business_id))}</span></td>
+      <td><span class="num">${esc(inc.subject_label || inc.subject_id || "—")}</span></td>
+      <td>${ts(inc.opened_at)}</td>
+    </tr>`).join("");
+  return `<table><thead><tr><th>Severity</th><th>Kind</th><th>Business</th><th>Subject</th><th>Opened</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
 /* ---------- Boot ---------- */
 (async () => {
   const me = await whoami();
   if (!me) return;
   ME = me;
   document.querySelector("#rail-biz").textContent = (me.business && me.business.company_name) || "—";
+  // The Platform console is DEVELOPER-only: reveal the rail item only for that role.
+  if (me.user && me.user.user_role === "DEVELOPER") {
+    const navP = document.getElementById("nav-platform");
+    if (navP) navP.hidden = false;
+  }
   const main = document.getElementById("main");
 
   const go = async (name) => {
