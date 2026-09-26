@@ -30,9 +30,14 @@ type Config struct {
 // AIConfig configures the AI/scanning service. Disabled by default.
 type AIConfig struct {
 	Enabled         bool   `mapstructure:"enabled"`
-	Mode            string `mapstructure:"mode"` // "auto" | "fallback" | "ollama"
+	Mode            string `mapstructure:"mode"` // "auto" | "fallback" | "ollama" | "openrouter"
 	OllamaURL       string `mapstructure:"ollama_url"`
 	CostPerAnalysis int    `mapstructure:"cost_per_analysis"`
+	// OpenRouter (used only when mode: openrouter). The API key is a secret:
+	// never logged or echoed; supply via config/env, do not commit.
+	OpenRouterURL    string `mapstructure:"openrouter_url"`
+	OpenRouterAPIKey string `mapstructure:"openrouter_api_key"`
+	OpenRouterModel  string `mapstructure:"openrouter_model"`
 }
 
 // GuestWifiConfig controls the Option C owner-bot loops. Enabled off by
@@ -275,6 +280,12 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("billing.receipt_dir", "./data/receipts")
 	v.SetDefault("billing.quota_enforcement_interval", "60s")
 	v.SetDefault("billing.telegram.poll_timeout", "10s")
+	v.SetDefault("ai.enabled", false)
+	v.SetDefault("ai.mode", "auto")
+	v.SetDefault("ai.ollama_url", "http://127.0.0.1:11434")
+	v.SetDefault("ai.cost_per_analysis", 1)
+	v.SetDefault("ai.openrouter_url", "https://openrouter.ai/api/v1")
+	v.SetDefault("ai.openrouter_model", "nvidia/nemotron-3-super-120b-a12b:free")
 	v.SetDefault("database.name", "mega_magic_dev")
 	v.SetDefault("database.sslmode", "disable")
 	v.SetDefault("database.max_open_conns", 25)

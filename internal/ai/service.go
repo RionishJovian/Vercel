@@ -29,9 +29,13 @@ const (
 // Config controls the service. Built from config.AIConfig at the wiring site.
 type Config struct {
 	Enabled         bool
-	Mode            string // "auto" | "fallback" | "ollama"
+	Mode            string // "auto" | "fallback" | "ollama" | "openrouter"
 	OllamaURL       string
 	CostPerAnalysis int
+	// OpenRouter fields are only used when Mode == "openrouter".
+	OpenRouterURL    string
+	OpenRouterAPIKey string
+	OpenRouterModel  string
 }
 
 // Publisher / Subscriber are the messaging seams (satisfied by

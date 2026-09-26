@@ -39,9 +39,19 @@ billing:
 # AI / scanning service (gated off by default).
 ai:
   enabled: false
-  mode: auto            # "auto" | "fallback" | "ollama" (auto = ollama, fallback on unreachable)
+  mode: auto            # "auto" | "fallback" | "ollama" | "openrouter"
+                        #   auto       = ollama, fallback on unreachable (never calls OpenRouter)
+                        #   fallback   = deterministic rules only
+                        #   ollama     = local Ollama
+                        #   openrouter = OpenRouter free completion model
   ollama_url: http://127.0.0.1:11434
   cost_per_analysis: 1
+  # OpenRouter (only used when mode: openrouter). API key is a SECRET — inject via
+  # config/env; never commit. Default model was probed live (2026-09-26) and is the
+  # only candidate returning parseable finding JSON with response_format=json_object.
+  openrouter_url: https://openrouter.ai/api/v1
+  openrouter_api_key: ""
+  openrouter_model: nvidia/nemotron-3-super-120b-a12b:free
 
 # Redis Cache
 redis:

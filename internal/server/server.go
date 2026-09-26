@@ -285,10 +285,13 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	// ai.finding. Construction is unconditional; the worker only subscribes when
 	// ai.enabled=true (Start is a no-op otherwise).
 	aiConfig := ai.Config{
-		Enabled:         cfg.AI.Enabled,
-		Mode:            cfg.AI.Mode,
-		OllamaURL:       cfg.AI.OllamaURL,
-		CostPerAnalysis: cfg.AI.CostPerAnalysis,
+		Enabled:           cfg.AI.Enabled,
+		Mode:              cfg.AI.Mode,
+		OllamaURL:         cfg.AI.OllamaURL,
+		CostPerAnalysis:   cfg.AI.CostPerAnalysis,
+		OpenRouterURL:     cfg.AI.OpenRouterURL,
+		OpenRouterAPIKey:  cfg.AI.OpenRouterAPIKey,
+		OpenRouterModel:   cfg.AI.OpenRouterModel,
 	}
 	aiService := ai.New(messagingClient, database.NewBusinessMeteredQuotaRepository(db), db, ai.NewClient(aiConfig), aiConfig, sugar).
 		WithNotifier(notifierr)

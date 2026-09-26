@@ -200,6 +200,8 @@ func NewClient(cfg Config) ModelClient {
 		return NewRuleFallbackClient()
 	case "ollama":
 		return NewOllamaClient(cfg.OllamaURL)
+	case "openrouter":
+		return NewOpenRouterClient(cfg.OpenRouterURL, cfg.OpenRouterAPIKey, cfg.OpenRouterModel)
 	default:
 		return NewChainClient(NewOllamaClient(cfg.OllamaURL), NewRuleFallbackClient())
 	}
