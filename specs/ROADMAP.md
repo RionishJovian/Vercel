@@ -72,11 +72,25 @@
 - Keystone RLS restricted pool: built, used by money path.
 All become LIVE by flipping flags AFTER a live smoke — Lead-gated, deliberate.
 
-## ADVANCE DECISIONS (pre-answer once here)
-- D1. In-portal card checkout or owner-bot-only? (Owner-bot recommended for Myanmar;
-  card only if a gateway is reachable.) → [owner-bot]
-- D2. Burmese default-on or en-default-with-toggle? → [my-MM default]
-- D3. Priority when Phase A lands: B (enforcement) or C (governance/trust)?
-     → [ ]
-- D4. AI chain: turn live when applier is live, or keep OFF till a model is paid?
-     → [ ]
+## ADVANCE DECISIONS (ANSWERED 2026-09-26 — do not re-ask)
+- D1. Payment = **owner-bot only, MMQR flow**. Guest sees the owner's MMQR
+  payment QR + bank info, gets a **free grace trial** (guest_grace_minutes,
+  set ~10) to complete the bank transfer — essential where only Starlink /
+  limited mobile data exists. After paying, guest submits **paid phone number
+  + last 6 digits of the bank/transaction number**; owner approves/rejects on
+  their own Telegram bot. Card checkout is NOT in scope (strict Myanmar rails).
+  → Requires: MMQR QR photo field on portal config + paid-phone + last-6 on
+  GuestPurchaseRequest + the guest captive page.
+- D2. Burmese **default-on** (my-MM); where a word has no clean Burmese
+  equivalent, keep English (no bad machine transliteration).
+- D3. Owner can add **at least 4–5 plan options**; guest picks the one to buy.
+- D4. AI chain stays **OFF until Phase B (enforcement/applier) lands.**
+
+## Phase A build order (accepted, in progress)
+1. Guest captive portal HTML page (the missing buy surface).
+2. Add MMQR QR photo field to portal config + owner-dashboard editor.
+3. Add paid-phone + last-6-of-tx to GuestPurchaseRequest (schema + repo +
+   handler capture), shown to owner for approval.
+4. Burmese localization of the captive page (my-MM default, en fallback).
+5. 10-min trial countdown surfaces grace on the guest page.
+6. Wire owner-bot approve/reject display of phone+last-6.
