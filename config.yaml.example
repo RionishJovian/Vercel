@@ -31,6 +31,7 @@ database:
 # purchasable (fail closed). The Lead sets the real numbers here.
 billing:
   receipt_dir: ./data/receipts
+  quota_enforcement_interval: 60s   # periodic sweep emitting quota.pass.expired
   plans:
     sovereign:
       duration_minutes: 43200  # 30 days — Lead-set (30 × 24 × 60)

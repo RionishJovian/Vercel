@@ -21,6 +21,7 @@ import (
 	"mega-magic/internal/monitoring"
 	"mega-magic/internal/notifier"
 	"mega-magic/internal/probe"
+	"mega-magic/internal/quota"
 	"mega-magic/internal/recovery"
 	"mega-magic/pkg/logger"
 )
@@ -41,6 +42,7 @@ type Server struct {
 	voucherHandler *handler.VoucherHandler
 	monitorHandler *handler.MonitorHandler
 	sweep          *monitoring.Sweep
+	quotaSweep     *quota.Sweep
 	recovery       *recovery.RecoveryService
 	restricted     *database.DB
 }
@@ -196,6 +198,12 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	sweepWorker.Start()
 	sugar.Infow("State sweep started", "interval", cfg.Monitoring.StateSweepInterval)
 
+	// Quota-ENFORCEMENT sweep: detects lapsed Sovereign passes and emits
+	// quota.pass.expired. Started once here; it never touches HTTP.
+	quotaSweep := quota.NewSweep(database.NewBusinessMeteredQuotaRepository(db), messagingClient, sugar, cfg.Billing.QuotaEnforcementInterval)
+	quotaSweep.Start()
+	sugar.Infow("Quota enforcement sweep started", "interval", cfg.Billing.QuotaEnforcementInterval)
+
 	// Start the recovery worker: consumes peer.recover (from the evaluator),
 	// runs the a/b/c self-healing ladder, emits recovery.result / escalate.
 	recoveryService := recovery.New(messagingClient, cacheClient, monitoringService, cfg.Recovery, sugar)
@@ -233,6 +241,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		evaluator:      evaluator,
 		voucherHandler: voucherHandler,
 		sweep:          sweepWorker,
+		quotaSweep:     quotaSweep,
 		recovery:       recoveryService,
 		restricted:     restrictedPool,
 	}, nil

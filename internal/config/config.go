@@ -29,8 +29,9 @@ type Config struct {
 // the plan -> duration source (plan.<planKey>.duration_minutes); a plan with no
 // duration FAILS CLOSED at request time.
 type BillingConfig struct {
-	ReceiptDir string                `mapstructure:"receipt_dir"`
-	Plans      map[string]PlanConfig `mapstructure:"plans"`
+	ReceiptDir               string                `mapstructure:"receipt_dir"`
+	Plans                    map[string]PlanConfig `mapstructure:"plans"`
+	QuotaEnforcementInterval time.Duration         `mapstructure:"quota_enforcement_interval"`
 }
 
 // PlanConfig holds per-plan billing metadata. DurationMinutes is REQUIRED for a
@@ -229,6 +230,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("database.user", "mega_admin")
 	v.SetDefault("database.password", "MegaSecurePass123")
 	v.SetDefault("billing.receipt_dir", "./data/receipts")
+	v.SetDefault("billing.quota_enforcement_interval", "60s")
 	v.SetDefault("database.name", "mega_magic_dev")
 	v.SetDefault("database.sslmode", "disable")
 	v.SetDefault("database.max_open_conns", 25)

@@ -124,6 +124,41 @@ func (r *BusinessMeteredQuotaRepository) ExtendWebfigPass(businessID string, exp
 	return err
 }
 
+// PassExpiry is a lean row for the quota-enforcement sweep: just the tenant and
+// its Sovereign pass expiry (do not pull every column).
+type PassExpiry struct {
+	BusinessID string
+	ExpiresAt  *time.Time
+}
+
+// ListAllQuotas returns every business's pass expiry across ALL tenants. This is
+// the QUOTA ENFORCEMENT SWEEP's system-level (owner) path — deliberately NOT
+// RLS-converted and deliberately cross-tenant: the sweep must see every tenant to
+// detect lapsed passes, exactly like ListAllPeerKeys for the state sweep. It is
+// NOT a tenant-facing read.
+func (r *BusinessMeteredQuotaRepository) ListAllQuotas() ([]PassExpiry, error) {
+	rows, err := r.db.Query(`SELECT business_id, webfig_pass_expires_at FROM business_metered_quotas`)
+	if err != nil {
+		return nil, fmt.Errorf("list all quotas: %w", err)
+	}
+	defer rows.Close()
+
+	var out []PassExpiry
+	for rows.Next() {
+		var p PassExpiry
+		var exp sql.NullTime
+		if err := rows.Scan(&p.BusinessID, &exp); err != nil {
+			return nil, fmt.Errorf("scan quota row: %w", err)
+		}
+		if exp.Valid {
+			t := exp.Time
+			p.ExpiresAt = &t
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
 func quotableTime(t *time.Time) interface{} {
 	if t == nil {
 		return nil
