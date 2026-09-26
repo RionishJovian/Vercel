@@ -8,6 +8,7 @@ import (
 
 	"mega-magic/internal/config"
 	"mega-magic/internal/database"
+	"mega-magic/internal/handler"
 	"mega-magic/internal/messaging"
 	"mega-magic/internal/monitoring"
 	"mega-magic/internal/provisioner"
@@ -32,7 +33,7 @@ func shouldEnableLiveApplier(flagEnabled bool, applier provisioner.Applier, prob
 // fails closed on prod-shaped targets or missing credentials) and starts the
 // consumer. Any error fails server startup loudly — a mis-config must never
 // silently look "enabled".
-func startLiveApplier(cfg *config.Config, client *messaging.Client, sugar *zap.SugaredLogger, monitor *monitoring.MonitoringService, db *database.DB) error {
+func startLiveApplier(cfg *config.Config, client *messaging.Client, sugar *zap.SugaredLogger, monitor *monitoring.MonitoringService, db *database.DB, backup *handler.BackupHandler) error {
 	appCfg := cfg.Provisioner.Applier
 	if !appCfg.Enabled {
 		sugar.Info("live applier disabled — recovery ladder stays plan-only")
@@ -54,6 +55,19 @@ func startLiveApplier(cfg *config.Config, client *messaging.Client, sugar *zap.S
 	if monitor != nil && db != nil {
 		monitor.WithVersionCapture(db, database.NewDeviceRepository(db), prober)
 		sugar.Info("security-posture capture wired (RouterOS version via live prober)")
+	}
+
+	// C2: attach the live applier + OTP verifier to the backup/restore handler so
+	// capture/restore stop failing closed. Same flag gates both.
+	if backup != nil {
+		backupOTP := provisioner.NewTOTPVerifier(provisioner.TOTPConfig{
+			Secret: appCfg.OtpSecret,
+			Digits: appCfg.OtpDigits,
+			Step:   appCfg.OtpStep,
+			Skew:   appCfg.OtpSkew,
+		})
+		backup.EnableLive(applier, backupOTP)
+		sugar.Info("config backup/restore wired to the live applier")
 	}
 
 	// Real RFC 6238 TOTP gate for HIGH-RISK actions (Slice 2). Until a base32

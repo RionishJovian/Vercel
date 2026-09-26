@@ -23,6 +23,7 @@
     <button class="nav-item" data-view="topology">Topology</button>
     <button class="nav-item" data-view="incidents">Incidents</button>
     <button class="nav-item" data-view="security">Security</button>
+    <button class="nav-item" data-view="backups">Backups</button>
     <div class="rail-section">Account</div>
     <button class="nav-item" data-view="vouchers">Vouchers</button>
     <button class="nav-item" data-view="portal">Captive portal</button>
@@ -45,6 +46,7 @@ const VIEWS = {
   topology: { title: "Topology", lead: "The live network map." },
   incidents:{ title: "Incidents", lead: "Problems detected across the fleet." },
   security: { title: "Security", lead: "RouterOS version posture — affected vs safe." },
+  backups:  { title: "Backups", lead: "Config snapshots, change history and one-click restore." },
   vouchers: { title: "Vouchers", lead: "Credit codes for the captive portal." },
   portal:   { title: "Captive portal", lead: "Guest Wi-Fi config and requests." },
   platform: { title: "Platform", lead: "Cross-tenant operator view — every business, one lens." },
@@ -62,6 +64,7 @@ async function loadView(name, main, me) {
     else if (name === "topology") await renderTopology(main);
     else if (name === "incidents") await renderIncidents(main);
     else if (name === "security") await renderSecurity(main);
+    else if (name === "backups") await renderBackups(main);
     else if (name === "vouchers") await renderVouchers(main);
     else if (name === "portal") await renderPortal(main);
     else if (name === "platform") await renderPlatform(main);
@@ -356,6 +359,90 @@ async function renderSecurity(main) {
     <table>
       <thead><tr><th>Posture</th><th>Device</th><th>RouterOS</th><th>Channel</th><th>Checked</th></tr></thead>
       <tbody>${rows}</tbody></table>`;
+}
+
+/* ---------- Backups (C2) ---------- */
+async function renderBackups(main) {
+  const content = main.querySelector("#content");
+  const data = await MM.get("/routers");
+  const devices = data.routers || data || [];
+  if (!devices.length) {
+    content.innerHTML = `<div class="empty"><div class="empty-title">No devices</div>Add a router to enable backups.</div>`;
+    return;
+  }
+  content.innerHTML = `
+    <div class="panel"><div class="panel-head"><h2 class="panel-title">Device</h2></div>
+      <div class="panel-body">
+        <select class="input" id="bk-dev">${devices.map(d => `<option value="${esc(d.device_id)}">${esc(d.hardware_name || d.device_id)}</option>`).join("")}</select>
+        <div style="margin-top:12px;display:flex;gap:8px">
+          <button class="btn btn-primary" id="bk-capture">Capture backup</button>
+        </div>
+      </div>
+    </div>
+    <div class="panel" style="margin-top:14px"><div class="panel-head"><h2 class="panel-title">Backups</h2></div>
+      <div class="panel-body" id="bk-list">${loading()}</div></div>
+    <div class="panel" style="margin-top:14px"><div class="panel-head"><h2 class="panel-title">Change history</h2></div>
+      <div class="panel-body" id="bk-hist">${loading()}</div></div>`;
+
+  const dev = () => document.getElementById("bk-dev").value;
+  const refresh = async () => {
+    document.getElementById("bk-list").innerHTML = loading();
+    document.getElementById("bk-hist").innerHTML = loading();
+    let backups = [], changes = [];
+    try { const r = await MM.get(`/devices/${encodeURIComponent(dev())}/backups`); backups = r.backups || []; }
+    catch (e) { document.getElementById("bk-list").innerHTML = `<p class="muted small">${esc(e.data && e.data.error ? e.data.error : e.message)}</p>`; }
+    try { const r = await MM.get(`/devices/${encodeURIComponent(dev())}/changes`); changes = r.changes || []; }
+    catch (_) {}
+
+    const list = document.getElementById("bk-list");
+    if (backups && backups.length) {
+      list.innerHTML = `<table><thead><tr><th>Label</th><th>Kind</th><th>Size</th><th>Created</th><th></th></tr></thead><tbody>` +
+        backups.map(b => `<tr>
+          <td><span class="num">${esc(b.label || "—")}</span></td>
+          <td class="mono">${esc(b.kind)}</td>
+          <td class="num">${esc(b.size_bytes)}</td>
+          <td>${ts(b.created_at)}</td>
+          <td><button class="btn btn-sm" data-restore="${esc(b.id)}">Restore</button></td>
+        </tr>`).join("") + `</tbody></table>`;
+      list.querySelectorAll("button[data-restore]").forEach(btn => {
+        btn.addEventListener("click", async () => {
+          const otp = prompt("Enter OTP for this high-risk restore:");
+          if (otp === null) return;
+          btn.disabled = true; btn.textContent = "…";
+          try {
+            await MM.post(`/devices/${encodeURIComponent(dev())}/restore/${encodeURIComponent(btn.dataset.restore)}`, { otp });
+            btn.textContent = "Restored";
+          } catch (e) {
+            btn.disabled = false; btn.textContent = "Restore";
+            list.appendChild(Object.assign(document.createElement("div"), { className: "alert", textContent: (e.data && e.data.error) ? e.data.error : e.message }));
+          }
+        });
+      });
+    } else if (list) {
+      list.innerHTML = `<div class="empty"><div class="empty-title">No backups</div>Capture a backup to snapshot this device's config.</div>`;
+    }
+
+    const hist = document.getElementById("bk-hist");
+    if (changes && changes.length) {
+      hist.innerHTML = `<table><thead><tr><th>When</th><th>Role</th><th>Action</th><th>Reason</th></tr></thead><tbody>` +
+        changes.map(ch => `<tr><td>${ts(ch.timestamp)}</td><td class="mono">${esc(ch.user_role)}</td><td class="mono">${esc(ch.action)}</td><td class="muted small">${esc(ch.reason)}</td></tr>`).join("") +
+        `</tbody></table>`;
+    } else if (hist) {
+      hist.innerHTML = `<div class="empty"><div class="empty-title">No changes yet</div>Backups and restores will appear here.</div>`;
+    }
+  };
+
+  document.getElementById("bk-dev").addEventListener("change", refresh);
+  document.getElementById("bk-capture").addEventListener("click", async () => {
+    const btn = document.getElementById("bk-capture");
+    btn.disabled = true; btn.textContent = "Capturing…";
+    try { await MM.post(`/devices/${encodeURIComponent(dev())}/backups`, {}); }
+    catch (e) { main.querySelector("#content").prepend(Object.assign(document.createElement("div"), { className: "alert", textContent: (e.data && e.data.error) ? e.data.error : e.message })); }
+    btn.disabled = false; btn.textContent = "Capture backup";
+    await refresh();
+  });
+
+  await refresh();
 }
 
 /* ---------- Platform (DEVELOPER) ---------- */

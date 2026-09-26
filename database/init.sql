@@ -205,6 +205,39 @@ CREATE TABLE IF NOT EXISTS purchase_requests (
 
 CREATE INDEX idx_purchase_requests_business ON purchase_requests(business_id, status, created_at DESC);
 
+-- ============================================================================
+-- C2: device config backups (per-device, tenant-scoped snapshots)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS device_config_backups (
+    id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+    business_id uuid NOT NULL REFERENCES businesses(business_id) ON DELETE CASCADE,
+    device_id uuid NOT NULL REFERENCES devices(device_id) ON DELETE CASCADE,
+    label text NOT NULL DEFAULT '',
+    kind text NOT NULL DEFAULT 'snapshot'
+        CHECK (kind IN ('export', 'snapshot')),
+    content text NOT NULL DEFAULT '',
+    size_bytes integer NOT NULL DEFAULT 0,
+    created_by uuid REFERENCES users(user_id) ON DELETE SET NULL,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_device_backups_business_device ON device_config_backups(business_id, device_id, created_at DESC);
+
+-- C2: per-device change-history timeline (tenant-scoped; the audit_events table
+-- is a system-append trail with its own policy and is not the tenant timeline).
+CREATE TABLE IF NOT EXISTS device_change_events (
+    id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+    business_id uuid NOT NULL REFERENCES businesses(business_id) ON DELETE CASCADE,
+    device_id uuid NOT NULL REFERENCES devices(device_id) ON DELETE CASCADE,
+    user_role text NOT NULL DEFAULT '',
+    action text NOT NULL,
+    reason text NOT NULL DEFAULT '',
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_device_change_events_business_device ON device_change_events(business_id, device_id, created_at DESC);
+
 -- One bank transfer (per business) may fund at most ONE live pass: a duplicate
 -- bank reference on a non-rejected request is rejected at the DB level.
 CREATE UNIQUE INDEX idx_purchase_requests_bank_ref_unique
@@ -409,6 +442,8 @@ ALTER TABLE audit_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE webhook_endpoints ENABLE ROW LEVEL SECURITY;
 ALTER TABLE webhook_deliveries ENABLE ROW LEVEL SECURITY;
 ALTER TABLE purchase_requests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE device_config_backups ENABLE ROW LEVEL SECURITY;
+ALTER TABLE device_change_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE business_telegram_bots ENABLE ROW LEVEL SECURITY;
 ALTER TABLE guest_purchase_requests ENABLE ROW LEVEL SECURITY;
 
@@ -513,6 +548,18 @@ CREATE POLICY webhook_deliveries_tenant_isolation ON webhook_deliveries
 
 -- Billing: tenant-scoped purchase requests.
 CREATE POLICY purchase_requests_tenant_isolation ON purchase_requests
+    FOR ALL TO authenticated
+    USING (business_id = current_setting('app.current_business_id')::uuid)
+    WITH CHECK (business_id = current_setting('app.current_business_id')::uuid);
+
+-- C2: tenant-scoped device config backups.
+CREATE POLICY device_config_backups_tenant_isolation ON device_config_backups
+    FOR ALL TO authenticated
+    USING (business_id = current_setting('app.current_business_id')::uuid)
+    WITH CHECK (business_id = current_setting('app.current_business_id')::uuid);
+
+-- C2: tenant-scoped device change history.
+CREATE POLICY device_change_events_tenant_isolation ON device_change_events
     FOR ALL TO authenticated
     USING (business_id = current_setting('app.current_business_id')::uuid)
     WITH CHECK (business_id = current_setting('app.current_business_id')::uuid);
