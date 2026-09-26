@@ -106,6 +106,21 @@ Rough module health:
 
 Remaining product modules: `ai` (most speculative; needs a model contract + token-metering), plus `topology relay/reboot` and `vps apply` (both gated behind the live RouterOS applier). **Billing + quota + portal + topology-map + vps-provisioning + operator Telegram loop + guest-wifi (Option C) are DONE**: the operator loop ships a real Bot-API transport + inbound approve/reply bridge on the SHARED money core (one grant path, HTTP and Telegram identical) — flag-gated OFF by default. **guest-wifi (Option C)** adds a per-owner loop: each business binds its OWN bot token (DB-stored, tenant-scoped, masked on read), guests buy wifi by online banking (free grace window → receipt, fail-closed), the owner approves/rejects on their own bot (approve grants a single-wind wifi extension from the portal plan; reject grants nothing), and printed-voucher redemptions notify the owner's bot — all flag-gated OFF by default (`guest_wifi.enabled`, purchases decided on the web endpoint when off). **vps peer-provisioning** (read-only WireGuard config + deterministic peer block + reachability, Sovereign-gated) is write-free with an explicit ownership guard (404 cross-tenant even with RLS off).
 
+### §7.1 · guest-wifi (Option C) — activation checklist
+
+Built but **OFF by default**. Everything below is a deliberate, Lead-gated action to go live; nothing is required until you decide to turn it on.
+
+1. **Feature flag** — set `config.yaml` `guest_wifi.enabled: true` (and tune `bridge_scan_interval`; `receipt_dir` stores guest payment receipts — keep it non-world-readable). Restart the server.
+2. **Per-business guest plans (owner + tooling)** — for each business, populate `portal_configs.guest_plans` (JSON `[{key,label,minutes,amount}]`) and set `guest_grace_minutes` (the free payment window, default 10). Guardrails already enforced at runtime: a guest purchase against a business with no plans → 400 `plan not available`; a plan with no/minutes ≤ 0 → approve fails closed ("no duration"); grace ≤ 0 → online purchase refused for that business. No DB writes here until Phase 3 below if you want to dogfood first.
+3. **Owner bot binding (self-serve)** — each hotspot owner binds their **own** Telegram bot token under their platform account (`PUT /api/v1/guest-wifi/telegram-bot`, test with `POST .../telegram-bot/test`). Their token is DB-stored, tenant-scoped, masked on read, and used ONLY for their own guest loop — never for your SaaS token, never cross-tenant.
+4. **Verify the loop live** (your choice of path; both hit the SAME approve core):
+   - `guest_wifi.enabled: true` → the supervisor starts one bridge per **enabled** owner bot (notify + `approve <id>` / `reject <id>` inbound replies); or keep it off and owners approve/reject on the protected **web endpoint** (`POST /api/v1/guest-wifi/approve/:id`, `reject/:id`).
+   - Fail-closed by construction: no binding / disabled / no token / feature off / send error ⇒ no notification and no decision; malformed or unknown bot replies are ignored (never acted on).
+5. **Parallel flows confirmed in the build**:
+   - Guest **online-banking** purchase: pick plan → free grace window → attach receipt only within the window → owner approve grants the wifi extension single-wind / reject grants nothing.
+   - **Printed-voucher** redemption: stays instant; the owner's bot is notified (informational, non-blocking).
+6. **Safe-rollback** — flip `guest_wifi.enabled` back to `false`; purchases are then decided on the web endpoint alone. Binding rows remain but are inert.
+
 The **RLS tail resolved via real audit**: `user` (Me read scoped), `heartbeat` (already param-scoped, no live hole), `audit` (unwired — build when needed). Enforcement story complete. **HTTP boot test (`e1d61a6`)** proved the real server serves all four live-HTTP checks and caught RLS/billing schema drift (authenticated grants missing from persistent DB — fixed via idempotent migrations).
 
 Two queued follow-ups (require an explicit decision):
