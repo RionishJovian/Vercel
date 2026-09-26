@@ -110,6 +110,8 @@ Remaining product modules: `ai` (most speculative; needs a model contract + toke
 
 **APEX FLIPPED to Mega Magic (2026-09-26):** `mikromagic.com` AND `www.mikromagic.com` now serve the Mega Magic Go API (`/ready` 200, login 200, through Cloudflare). New nginx vhost `mega-magic-apex` (port 80 → 301 https; 443 → :8080, reused LE cert). The MikroMagic apex vhost (`mikromagic-app`) is UNLINKED from sites-enabled, **not deleted** — MikroMagic still runs (:3000 frontend 200, :8000 backend 401-auth, systemd active). Revert: `sudo rm /etc/nginx/sites-enabled/mega-magic-apex.conf && sudo ln -sf /etc/nginx/sites-available/mikromagic-app /etc/nginx/sites-enabled/mikromagic-app && sudo nginx -t && sudo systemctl reload nginx`.
 
+**MIKROMAGIC SHUT DOWN (2026-09-26):** no active users on the old project → `mikromagic-app.service` disabled+inactive; all MikroMagic timers/services (health-monitor, i18n-audit, telegram-webhook-keep, mm-gate, mm-model-watchdog) disabled+inactive; Supabase stack containers stopped. Ports 3000/8000 free. MicroTik Supabase data preserved (not deleted). `mega-magic-api.service` + `chr-lab` + all `mega_magic_*` containers untouched and running. Domain `mikromagic.com` (apex/www/mega) serves only Mega Magic. Reversible: `sudo systemctl enable --now mikromagic-app` + restart Supabase containers + `sudo ln -sf /etc/nginx/sites-available/mikromagic-app /etc/nginx/sites-enabled/ && sudo systemctl reload nginx`.
+
 ### §7.1 · guest-wifi (Option C) — activation checklist
 
 Built but **OFF by default**. Everything below is a deliberate, Lead-gated action to go live; nothing is required until you decide to turn it on.
