@@ -33,6 +33,17 @@ type BillingConfig struct {
 	ReceiptDir               string                `mapstructure:"receipt_dir"`
 	Plans                    map[string]PlanConfig `mapstructure:"plans"`
 	QuotaEnforcementInterval time.Duration         `mapstructure:"quota_enforcement_interval"`
+	// Telegram carries the operator purchase loop (outbound notify + inbound
+	// approve/reject). Disabled by default; live only when Enabled + BotToken set.
+	Telegram BillingTelegramConfig `mapstructure:"telegram"`
+}
+
+// BillingTelegramConfig configures the operator purchase-approval bot.
+type BillingTelegramConfig struct {
+	Enabled     bool          `mapstructure:"enabled"`
+	BotToken    string        `mapstructure:"bot_token"`
+	ChatID      int64         `mapstructure:"chat_id"`
+	PollTimeout time.Duration `mapstructure:"poll_timeout"`
 }
 
 // PlanConfig holds per-plan billing metadata. DurationMinutes is REQUIRED for a
@@ -202,6 +213,10 @@ type ApplierConfig struct {
 	// (not implemented yet); with no messenger the bridge stays inert and
 	// approvals time out to DENY.
 	TelegramChatID string `mapstructure:"telegram_chat_id"`
+
+	// TelegramBotToken gates the real Bot-API transport for the approve bridge
+	// and billing notify. Empty => no live bot (fail closed, inert).
+	TelegramBotToken string `mapstructure:"telegram_bot_token"`
 }
 
 func Load(path string) (*Config, error) {
@@ -239,6 +254,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("database.password", "MegaSecurePass123")
 	v.SetDefault("billing.receipt_dir", "./data/receipts")
 	v.SetDefault("billing.quota_enforcement_interval", "60s")
+	v.SetDefault("billing.telegram.poll_timeout", "10s")
 	v.SetDefault("database.name", "mega_magic_dev")
 	v.SetDefault("database.sslmode", "disable")
 	v.SetDefault("database.max_open_conns", 25)

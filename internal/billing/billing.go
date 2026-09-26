@@ -24,6 +24,9 @@ var ErrUnknownPlan = errors.New("billing: unknown plan")
 // ErrAlreadyDecided is returned when a request is no longer pending.
 var ErrAlreadyDecided = errors.New("billing: request already decided")
 
+// ErrNotFound is returned when no request exists for the given id.
+var ErrNotFound = errors.New("billing: request not found")
+
 // ErrNoDuration is returned when a plan has no configured duration. Fail closed:
 // a paid pass must never inherit a magic default.
 var ErrNoDuration = errors.New("billing: plan has no duration configured")

@@ -1,10 +1,14 @@
-// Package telegram holds the shared, injectable Telegram transport seam used by
-// BOTH the provisioner approve-gate and the billing notify path — a single seam,
-// so a later real Bot-API transport is wired once. Nothing here touches a real
-// bot; tests inject fakes.
+// Package telegram holds the shared Telegram transport seam used by BOTH the
+// provisioner approve-gate and the billing notify/bridge path — a single seam,
+// so the real Bot-API transport (Bot) is wired in one place and both callers
+// depend only on the interface. Tests inject fakes.
 package telegram
 
-import "time"
+import (
+	"strconv"
+	"strings"
+	"time"
+)
 
 // Messenger is the injectable transport seam for the bot.
 type Messenger interface {
@@ -16,9 +20,16 @@ type Messenger interface {
 	AwaitReply(requestID string, timeout time.Duration) (text, replyID string, ok bool)
 }
 
-// ConfigMessenger is the documented seam for the REAL bot transport. It
-// deliberately returns ok=false (no token, no inbound routing) so callers stay
-// inert until a later explicit step injects a real Messenger. Fail closed.
-func ConfigMessenger(chatID string) (Messenger, bool) {
-	return nil, false
+// ConfigMessenger builds the real Bot transport when a token is configured,
+// returning ok=false (inert) when the feature is disabled. Fail closed: no
+// token => no bot => callers stay inert.
+func ConfigMessenger(token string, chatID string, poolTimeout time.Duration) (Messenger, bool) {
+	if strings.TrimSpace(token) == "" {
+		return nil, false
+	}
+	opts := []BotOption{WithPollTimeout(poolTimeout)}
+	if id, err := strconv.ParseInt(strings.TrimSpace(chatID), 10, 64); err == nil && id > 0 {
+		opts = append(opts, WithAllowChat(id))
+	}
+	return NewBot(strings.TrimSpace(token), opts...), true
 }

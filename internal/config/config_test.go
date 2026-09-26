@@ -53,3 +53,23 @@ func TestLoad_vpsConfigParses(t *testing.T) {
 		t.Fatalf("wireguard config not loaded: %+v", cfg.WireGuard)
 	}
 }
+
+// TestLoad_billingTelegramDefaultsOff proves the operator-purchase bot is
+// DISABLED by default (fail closed): no token, no chat, so the bridge stays
+// inert until explicitly enabled.
+func TestLoad_billingTelegramDefaultsOff(t *testing.T) {
+	cfg, err := Load("../../config.yaml")
+	if err != nil {
+		t.Fatalf("Load config.yaml: %v", err)
+	}
+	tg := cfg.Billing.Telegram
+	if tg.Enabled {
+		t.Fatal("billing.telegram.enabled must default to false")
+	}
+	if tg.BotToken != "" {
+		t.Fatal("billing.telegram.bot_token must default empty")
+	}
+	if tg.ChatID != 0 {
+		t.Fatalf("billing.telegram.chat_id must default 0, got %d", tg.ChatID)
+	}
+}

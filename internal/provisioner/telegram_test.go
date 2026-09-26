@@ -183,8 +183,9 @@ func TestTelegramApprover_missingMessengerDenies(t *testing.T) {
 }
 
 func TestConfigTelegramMessenger_noLiveBot(t *testing.T) {
-	if _, ok := ConfigTelegramMessenger("chat"); ok {
-		t.Fatal("Slice 3 must not wire a live bot messenger")
+	// No token => inert (fail closed). Live-bot mounting is gated on a token.
+	if _, ok := ConfigTelegramMessenger("", "12345", time.Minute); ok {
+		t.Fatal("empty token must not wire a live bot messenger")
 	}
 }
 

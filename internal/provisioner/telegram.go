@@ -31,11 +31,12 @@ type TelegramMessenger = telegram.Messenger
 
 // ConfigTelegramMessenger is the documented seam for the REAL bot transport.
 //
-// It deliberately does NOT implement a live telegram bot (no token, no inbound
-// routing): this returns ok=false so the bridge stays inert until a later
-// explicit step injects a real Messenger. Fail closed.
-func ConfigTelegramMessenger(chatID string) (TelegramMessenger, bool) {
-	return telegram.ConfigMessenger(chatID)
+// It configures the live mount when a bot token is present (this mirrors the
+// shared internal/telegram seam). With no token it returns ok=false so the
+// bridge stays inert — the live-telegram mount is a later explicit step. Fail
+// closed.
+func ConfigTelegramMessenger(token string, chatID string, timeout time.Duration) (TelegramMessenger, bool) {
+	return telegram.ConfigMessenger(token, chatID, timeout)
 }
 
 // TelegramApprover implements provisioner.Approver over a TelegramMessenger.

@@ -84,6 +84,15 @@ func (r *PurchaseRequestRepository) GetRequestByIDTXN(tx *sql.Tx, businessID, id
 		`SELECT `+purchaseRequestCols+` FROM purchase_requests WHERE id = $1 AND business_id = $2`, id, businessID))
 }
 
+// GetRequestByIDOwnerTXN looks up a request by id WITHOUT a business filter —
+// used by the Telegram bridge (and any non-tenant ingress) to resolve the real
+// owning business before declaring a decision. RLS prevents a tenant-pinned
+// caller from crossing businesses; the bridge runs it on an owner tx.
+func (r *PurchaseRequestRepository) GetRequestByIDOwnerTXN(tx *sql.Tx, id string) (*model.PurchaseRequest, error) {
+	return scanPurchaseRequest(tx.QueryRow(
+		`SELECT `+purchaseRequestCols+` FROM purchase_requests WHERE id = $1`, id))
+}
+
 // ListRequestsByBusinessTXN lists a tenant's requests.
 func (r *PurchaseRequestRepository) ListRequestsByBusinessTXN(tx *sql.Tx, businessID string) ([]*model.PurchaseRequest, error) {
 	rows, err := tx.Query(

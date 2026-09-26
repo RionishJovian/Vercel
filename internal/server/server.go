@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -23,6 +24,7 @@ import (
 	"mega-magic/internal/probe"
 	"mega-magic/internal/quota"
 	"mega-magic/internal/recovery"
+	"mega-magic/internal/telegram"
 	"mega-magic/pkg/logger"
 )
 
@@ -121,12 +123,25 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		database.NewVoucherRepository(db),
 		database.NewBusinessMeteredQuotaRepository(db),
 	)
-	// Billing notify seam: no live Telegram transport yet (ConfigMessenger returns
-	// ok=false), so the messenger is nil and Telegram is notification-only. The
-	// operator approves/rejects on the protected web endpoint.
+	// Billing operator loop: a Telegram bot carries BOTH the outbound purchase
+	// notification and the inbound approve/reject reply. It is flag-gated and
+	// default-off; with no token the messenger is nil and the operator decides
+	// on the protected web endpoint (the shared core either way).
 	planDurations := billing.PlanDurations{}
 	for k, pc := range cfg.Billing.Plans {
 		planDurations[k] = pc.DurationMinutes
+	}
+	var billingMessenger telegram.Messenger
+	if cfg.Billing.Telegram.Enabled && cfg.Billing.Telegram.BotToken != "" {
+		baseOpt := telegram.WithPollTimeout(cfg.Billing.Telegram.PollTimeout)
+		if cfg.Billing.Telegram.ChatID != 0 {
+			baseOpt = func(b *telegram.Bot) {
+				telegram.WithPollTimeout(cfg.Billing.Telegram.PollTimeout)(b)
+				telegram.WithAllowChat(cfg.Billing.Telegram.ChatID)(b)
+			}
+		}
+		billingMessenger = telegram.NewBot(cfg.Billing.Telegram.BotToken, baseOpt)
+		sugar.Infow("Telegram billing bot configured", "enabled", true)
 	}
 	billingHandler := handler.NewBillingHandler(
 		db,
@@ -135,7 +150,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		database.NewPurchaseRequestRepository(db),
 		database.NewVoucherRepository(db),
 		database.NewBusinessMeteredQuotaRepository(db),
-		nil,
+		billingMessenger,
 		planDurations,
 		cfg.Billing.ReceiptDir,
 	)
@@ -217,6 +232,19 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	quotaSweep := quota.NewSweep(database.NewBusinessMeteredQuotaRepository(db), messagingClient, sugar, cfg.Billing.QuotaEnforcementInterval)
 	quotaSweep.Start()
 	sugar.Infow("Quota enforcement sweep started", "interval", cfg.Billing.QuotaEnforcementInterval)
+
+	// Telegram operator purchase bridge: continuous inbound loop that answers
+	// operator "approve <id>" / "reject <id>" replies against the shared money
+	// core. Only starts when the billing telegram bot is configured.
+	if bm, ok := billingMessenger.(*telegram.Bot); ok {
+		target := ""
+		if cfg.Billing.Telegram.ChatID != 0 {
+			target = strconv.FormatInt(cfg.Billing.Telegram.ChatID, 10)
+		}
+		bridge := telegram.NewPurchaseBridge(bm, billingMessenger, target, billingHandler)
+		go func() { _ = bridge.Run(context.Background()) }()
+		sugar.Info("Telegram purchase approve/reject bridge started (inbound loop)")
+	}
 
 	// Start the recovery worker: consumes peer.recover (from the evaluator),
 	// runs the a/b/c self-healing ladder, emits recovery.result / escalate.
