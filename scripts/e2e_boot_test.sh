@@ -124,6 +124,29 @@ else
   fail "vps hub config" "no token (skip ran before login)"
 fi
 
+echo "== 7. topology reboot (explicit device action) gate over live HTTP =="
+if [ -n "$TOKEN" ]; then
+  if [ -n "$DEVID" ]; then
+    code="$(curl -s -o /tmp/e2e_reboot.json -w "%{http_code}" -X POST \
+      "$BASE/api/v1/topology/$DEVID/reboot" -H "Authorization: Bearer $TOKEN")"
+    case "$code" in
+      202) pass "reboot intent queued 202 (active pass)";;
+      403) if grep -qi "plan_required" /tmp/e2e_reboot.json 2>/dev/null; then
+             pass "reboot plan gate 403 (no active Sovereign pass)"
+           else
+             fail "reboot gate" "403 without plan_required code"
+           fi
+           ;;
+      404) pass "reboot 404 (device not in this tenant)";;
+      *)   fail "reboot gate" "http $code (expected 202/403/404)";;
+    esac
+  else
+    fail "reboot gate" "no device id (skip ran before device lookup)"
+  fi
+else
+  fail "reboot gate" "no token (skip ran before login)"
+fi
+
 echo
 echo "RESULT: pass=$PASS fail=$FAIL"
 [ "$FAIL" -eq 0 ]
