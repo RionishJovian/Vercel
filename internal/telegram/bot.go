@@ -27,6 +27,9 @@ type InboundMessage struct {
 	FromID    int64
 	Text      string
 	MessageID int64
+	// CallbackID is set when the update was an inline-button tap (Telegram
+	// callback_query); the bridge answers it so the spinner clears.
+	CallbackID string
 }
 
 // InboundSource yields inbound messages (long-polling). Next blocks until a
@@ -84,6 +87,7 @@ func NewBot(token string, opts ...BotOption) *Bot {
 
 var _ Messenger = (*Bot)(nil)
 var _ InboundSource = (*Bot)(nil)
+var _ ButtonMessenger = (*Bot)(nil)
 
 // SendMessage implements Messenger.
 func (b *Bot) SendMessage(target, text string) error {
@@ -103,6 +107,83 @@ func (b *Bot) SendMessage(target, text string) error {
 	if !resp.OK {
 		return fmt.Errorf("telegram sendMessage: %s", resp.Description)
 	}
+	return nil
+}
+
+// SendButtons implements ButtonMessenger: posts text with an inline
+// Approve/Reject keyboard. callback_data carries the request id so the bridge's
+// existing ParsePurchaseReply path acts on a press. The callback is answered by
+// the bridge (Bot.AnswerCallback) after it acts, clearing the spinner.
+func (b *Bot) SendButtons(target, text, requestID string) error {
+	markup := fmt.Sprintf(
+		`{"inline_keyboard":[[{"text":"Approve","callback_data":"approve %s"},{"text":"Reject","callback_data":"reject %s"}]]}`,
+		requestID, requestID)
+	vals := url.Values{}
+	vals.Set("chat_id", target)
+	vals.Set("text", text)
+	vals.Set("reply_markup", markup)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	var resp struct {
+		OK          bool   `json:"ok"`
+		Description string `json:"description"`
+		Result      *struct {
+			Message *struct {
+				MessageID int64 `json:"message_id"`
+			} `json:"message"`
+		} `json:"result"`
+	}
+	if err := b.do(ctx, "sendMessage", vals, &resp); err != nil {
+		return err
+	}
+	if !resp.OK {
+		return fmt.Errorf("telegram sendMessage: %s", resp.Description)
+	}
+	return nil
+}
+
+// AnswerCallback tells Telegram a button tap was handled, clearing the loading
+// spinner. Best-effort: an already-answered or expired callback is a no-op.
+func (b *Bot) AnswerCallback(callbackID, text string) error {
+	if strings.TrimSpace(callbackID) == "" {
+		return nil
+	}
+	vals := url.Values{}
+	vals.Set("callback_query_id", callbackID)
+	if text != "" {
+		vals.Set("text", text)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	var resp struct {
+		OK          bool   `json:"ok"`
+		Description string `json:"description"`
+	}
+	if err := b.do(ctx, "answerCallbackQuery", vals, &resp); err != nil {
+		return err
+	}
+	return nil
+}
+
+// RemoveButtons replaces the inline keyboard on a notify message with an empty
+// one (editMessageReplyMarkup + empty inline_keyboard), so there are no buttons
+// left to tap after the owner has decided. Best-effort no-op on failure.
+func (b *Bot) RemoveButtons(chatID, messageID int64) error {
+	if chatID == 0 || messageID == 0 {
+		return nil
+	}
+	vals := url.Values{}
+	vals.Set("chat_id", strconv.FormatInt(chatID, 10))
+	vals.Set("message_id", strconv.FormatInt(messageID, 10))
+	vals.Set("reply_markup", `{"inline_keyboard":[]}`)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	// editMessageReplyMarkup drops the buttons and keeps the original text.
+	var resp struct {
+		OK          bool   `json:"ok"`
+		Description string `json:"description"`
+	}
+	_ = b.do(ctx, "editMessageReplyMarkup", vals, &resp)
 	return nil
 }
 
@@ -175,7 +256,7 @@ func (b *Bot) nextBatch(ctx context.Context) ([]InboundMessage, error) {
 
 	vals := url.Values{}
 	vals.Set("timeout", strconv.Itoa(int(b.pollTimeout.Seconds())))
-	vals.Set("allowed_updates", "[\"message\"]")
+	vals.Set("allowed_updates", `["message","callback_query"]`)
 	if b.offset > 0 {
 		vals.Set("offset", strconv.FormatInt(b.offset, 10))
 	}
@@ -194,6 +275,19 @@ func (b *Bot) nextBatch(ctx context.Context) ([]InboundMessage, error) {
 				} `json:"from"`
 				Text string `json:"text"`
 			} `json:"message"`
+			CallbackQuery *struct {
+				ID   string `json:"id"`
+				From *struct {
+					ID int64 `json:"id"`
+				} `json:"from"`
+				Message *struct {
+					MessageID int64 `json:"message_id"`
+					Chat      *struct {
+						ID int64 `json:"id"`
+					} `json:"chat"`
+				} `json:"message"`
+				Data string `json:"data"`
+			} `json:"callback_query"`
 		} `json:"result"`
 		Description string `json:"description"`
 	}
@@ -209,17 +303,35 @@ func (b *Bot) nextBatch(ctx context.Context) ([]InboundMessage, error) {
 		if u.UpdateID >= b.offset {
 			b.offset = u.UpdateID + 1
 		}
-		if u.Message == nil {
-			continue
-		}
 		m := InboundMessage{
 			UpdateID:  u.UpdateID,
-			ChatID:    u.Message.Chat.ID,
-			MessageID: u.Message.MessageID,
-			Text:      u.Message.Text,
+			ChatID:    -1,
+			MessageID: 0,
 		}
-		if u.Message.From != nil {
-			m.FromID = u.Message.From.ID
+		if u.Message != nil {
+			m.ChatID = u.Message.Chat.ID
+			m.MessageID = u.Message.MessageID
+			m.Text = u.Message.Text
+			if u.Message.From != nil {
+				m.FromID = u.Message.From.ID
+			}
+		} else if u.CallbackQuery != nil {
+			// A button tap: surface callback_data as the "text" so the bridge's
+			// ParsePurchaseReply ("approve <id>") handles it identically to typed
+			// text, record the message id, and keep the callback id so the bridge
+			// can answer it (clearing Telegram's loading spinner).
+			m.ChatID = -1
+			if u.CallbackQuery.Message != nil {
+				m.ChatID = u.CallbackQuery.Message.Chat.ID
+				m.MessageID = u.CallbackQuery.Message.MessageID
+			}
+			if u.CallbackQuery.From != nil {
+				m.FromID = u.CallbackQuery.From.ID
+			}
+			m.Text = u.CallbackQuery.Data
+			m.CallbackID = u.CallbackQuery.ID
+		} else {
+			continue
 		}
 		if b.allowChat > 0 && (m.ChatID != b.allowChat) {
 			continue

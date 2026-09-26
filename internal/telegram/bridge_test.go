@@ -58,9 +58,15 @@ func newFakeAPI() *fakeAPI {
 		}
 		_ = r.ParseForm()
 		switch {
+		case strings.HasSuffix(r.URL.Path, "/editMessageReplyMarkup"):
+			f.sendLog = append(f.sendLog, "EDIT:"+r.PostFormValue("chat_id")+":"+r.PostFormValue("message_id"))
+			fmt.Fprint(w, `{"ok":true,"result":true}`)
 		case strings.HasSuffix(r.URL.Path, "/sendMessage"):
 			f.sendLog = append(f.sendLog, r.PostFormValue("chat_id")+"|"+r.PostFormValue("text"))
 			fmt.Fprint(w, `{"ok":true,"result":{}}`)
+		case strings.HasSuffix(r.URL.Path, "/answerCallbackQuery"):
+			f.sendLog = append(f.sendLog, "CB:"+r.PostFormValue("callback_query_id")+":"+r.PostFormValue("text"))
+			fmt.Fprint(w, `{"ok":true,"result":true}`)
 		case strings.HasSuffix(r.URL.Path, "/getUpdates"):
 			resp := map[string]any{"ok": true, "result": []any{}}
 			if len(f.updates) > 0 {
@@ -83,6 +89,24 @@ func update(id int64, chatID int64, text string) []byte {
 			"chat":       map[string]any{"id": chatID},
 			"from":       map[string]any{"id": chatID * 7},
 			"text":       text,
+		},
+	})
+	return b
+}
+
+// callbackUpdate builds a Telegram callback_query update (an inline-button tap)
+// whose data is "approve <id>" / "reject <id>".
+func callbackUpdate(id int64, chatID int64, data string) []byte {
+	b, _ := json.Marshal(map[string]any{
+		"update_id": id,
+		"callback_query": map[string]any{
+			"id":   "cbid",
+			"from": map[string]any{"id": chatID * 7},
+			"message": map[string]any{
+				"message_id": id*10 + 1,
+				"chat":       map[string]any{"id": chatID},
+			},
+			"data": data,
 		},
 	})
 	return b
@@ -138,6 +162,28 @@ func TestBot_Next_filtersChat(t *testing.T) {
 	}
 	if m.ChatID != 123 || m.Text != "approve xyz9" {
 		t.Fatalf("Next = %+v, want operator-chat approve xyz9", m)
+	}
+}
+
+func TestBot_Next_callbackButtonTap(t *testing.T) {
+	fake := newFakeAPI()
+	defer fake.srv.Close()
+	// An inline Approve/Reject tap arrives as callback_query with the data.
+	fake.updates = [][]byte{batchOf(callbackUpdate(5, 123, "approve a1b2c3"))}
+	b := NewBot("TOK", WithBase(fake.srv.URL), WithAllowChat(123), WithPollTimeout(time.Millisecond))
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	m, err := b.Next(ctx)
+	if err != nil {
+		t.Fatalf("Next: %v", err)
+	}
+	// The tap must surface as parseable decision text for the bridge.
+	requestID, approve, ok := ParsePurchaseReply(m.Text)
+	if !ok || !approve || requestID != "a1b2c3" {
+		t.Fatalf("callback data %q did not parse as approve a1b2c3 (%q,%v)", m.Text, requestID, ok)
+	}
+	if m.ChatID != 123 {
+		t.Fatalf("callback chat = %d, want 123", m.ChatID)
 	}
 }
 
@@ -214,6 +260,45 @@ func TestPurchaseBridge_decidesApprove(t *testing.T) {
 	// ack sent
 	if len(msgr.sent) != 1 || !strings.Contains(msgr.sent[0], "pur-1 approved") {
 		t.Fatalf("acks = %v, want success ack", msgr.sent)
+	}
+}
+
+func TestPurchaseBridge_callbackTapAnswersSpinner(t *testing.T) {
+	// The bridge, when driven with a real Bot as messenger, must BOTH act on the
+	// button tap AND answer the callback so Telegram clears the loading spinner.
+	fake := newFakeAPI()
+	defer fake.srv.Close()
+	// Source yields the tap (callback data); Bot is the ack messenger.
+	src := &fakeSource{msgs: []InboundMessage{{ChatID: 123, MessageID: 777, Text: "approve pur-9", CallbackID: "cbid1"}}}
+	dec := &fakeDecider{resolved: map[string]string{"pur-9": "bizA"}}
+	bot := NewBot("TOK", WithBase(fake.srv.URL), WithPollTimeout(time.Millisecond))
+	b := NewPurchaseBridge(src, bot, "123", dec)
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() { time.Sleep(300 * time.Millisecond); cancel() }()
+	_ = b.Run(ctx)
+	// decision acted
+	if len(dec.decisions) != 1 || dec.decisions[0] != "bizA|pur-9|true" {
+		t.Fatalf("decisions = %v, want one approve", dec.decisions)
+	}
+	// callback answered (spinner cleared) — answerCallbackQuery was called
+	answered := false
+	for _, s := range fake.sendLog {
+		if strings.HasPrefix(s, "CB:") && strings.Contains(s, "cbid1") {
+			answered = true
+		}
+	}
+	if !answered {
+		t.Fatalf("callback was not answered; sendLog = %v", fake.sendLog)
+	}
+	// buttons dropped — editMessageReplyMarkup was called on the notify msg
+	dropped := false
+	for _, s := range fake.sendLog {
+		if strings.HasPrefix(s, "EDIT:") {
+			dropped = true
+		}
+	}
+	if !dropped {
+		t.Fatalf("inline keyboard was not dropped; sendLog = %v", fake.sendLog)
 	}
 }
 

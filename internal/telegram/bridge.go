@@ -55,22 +55,46 @@ func (b *PurchaseBridge) Run(ctx context.Context) error {
 func (b *PurchaseBridge) handle(m InboundMessage) {
 	requestID, approve, ok := ParsePurchaseReply(m.Text)
 	if !ok {
+		// Unparseable (or an inline tap we already consumed): ack so the tap
+		// spinner clears even on an unrecognised/skipped update.
+		if bot, down := b.msg.(*Bot); down && m.CallbackID != "" {
+			_ = bot.AnswerCallback(m.CallbackID, "Unknown request")
+		}
 		return // fail closed: never act on an unparseable reply
 	}
+	verdict := "unreadable"
 	businessID, err := b.decider.ResolveRequestBusiness(requestID)
 	if err != nil {
 		b.ack("request not found or unreadable: " + m.Text)
+		if bot, down := b.msg.(*Bot); down && m.CallbackID != "" {
+			_ = bot.AnswerCallback(m.CallbackID, "Request not found")
+		}
 		return
 	}
 	if err := b.decider.DecidePurchaseRequest(businessID, requestID, approve); err != nil {
 		b.ack("decision failed for " + requestID)
+		if bot, down := b.msg.(*Bot); down && m.CallbackID != "" {
+			_ = bot.AnswerCallback(m.CallbackID, "Decision failed")
+		}
 		return
 	}
-	verdict := "approved"
+	verdict = "approved"
 	if !approve {
 		verdict = "rejected"
 	}
 	b.ack("MEGA MAGIC: purchase " + requestID + " " + verdict)
+	// Answer the button tap so Telegram clears the loading spinner, then drop
+	// the inline keyboard so there are no buttons left to tap (idempotent UI).
+	if bot, down := b.msg.(*Bot); down {
+		shown := "Approved"
+		if !approve {
+			shown = "Rejected"
+		}
+		if m.CallbackID != "" {
+			_ = bot.AnswerCallback(m.CallbackID, shown)
+		}
+		_ = bot.RemoveButtons(m.ChatID, m.MessageID)
+	}
 }
 
 func (b *PurchaseBridge) ack(text string) {

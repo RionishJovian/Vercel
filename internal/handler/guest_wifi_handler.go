@@ -293,6 +293,12 @@ func (h *GuestWifiHandler) notifyOwnerPurchase(req *model.GuestPurchaseRequest, 
 	if last6 != "" {
 		text += "\nTx last 6: " + last6
 	}
+	// Prefer inline Approve/Reject buttons when the transport is the real Bot;
+	// fall back to typed-text instructions otherwise (e.g. test fakes).
+	if bot, okb := msg.(*telegram.Bot); okb {
+		_ = bot.SendButtons(target, text, req.ID)
+		return
+	}
 	_ = msg.SendMessage(target, text+"\n\nReply: approve "+req.ID+"  /  reject "+req.ID)
 }
 

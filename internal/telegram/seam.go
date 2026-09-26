@@ -22,6 +22,18 @@ type Messenger interface {
 	AwaitReply(requestID string, timeout time.Duration) (text, replyID string, ok bool)
 }
 
+// ButtonMessenger extends Messenger with inline Approve/Reject buttons. The Bot
+// implements it; the guest-wifi owner-notify casts down when the transport
+// supports buttons (falling back to plain SendMessage otherwise). Button
+// presses arrive as callback_query updates with callback_data = "approve <id>"
+// / "reject <id>", which the purchase bridge already parses like typed text.
+type ButtonMessenger interface {
+	Messenger
+	// SendButtons posts text with an inline two-button keyboard and answers the
+	// callback so Telegram clears the loading spinner on tap.
+	SendButtons(target, text string, requestID string) error
+}
+
 // ConfigMessenger builds the real Bot transport when a token is configured,
 // returning ok=false (inert) when the feature is disabled. Fail closed: no
 // token => no bot => callers stay inert.
