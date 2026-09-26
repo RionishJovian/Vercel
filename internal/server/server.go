@@ -290,7 +290,8 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		OllamaURL:       cfg.AI.OllamaURL,
 		CostPerAnalysis: cfg.AI.CostPerAnalysis,
 	}
-	aiService := ai.New(messagingClient, database.NewBusinessMeteredQuotaRepository(db), db, ai.NewClient(aiConfig), aiConfig, sugar)
+	aiService := ai.New(messagingClient, database.NewBusinessMeteredQuotaRepository(db), db, ai.NewClient(aiConfig), aiConfig, sugar).
+		WithNotifier(notifierr)
 	if err := aiService.Start(); err != nil {
 		return nil, fmt.Errorf("ai service start: %w", err)
 	}
