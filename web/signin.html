@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in — Mega Magic</title>
+  <meta name="robots" content="noindex">
+  <link rel="stylesheet" href="/assets/css/styles.css">
+  <script src="/assets/js/api.js" defer></script>
+</head>
+<body>
+<div class="signin-wrap">
+  <div class="signin-left">
+    <div class="rail-brand"><span class="dot"></span>Mega Magic</div>
+    <h1>Back to the network.</h1>
+    <p>Sign in to watch fleet health, run recovery, approve purchases, and manage your sites. One console for the whole business.</p>
+    <p class="muted small">Access is tenant-scoped. Every destructive action is gated for a human approval.</p>
+  </div>
+  <div class="signin-card">
+    <h2>Sign in</h2>
+    <div id="alert" class="alert" hidden></div>
+    <form id="login-form">
+      <div class="field">
+        <label for="email">Email</label>
+        <input class="input" id="email" name="email" type="email" autocomplete="username" required autofocus>
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <input class="input" id="password" name="password" type="password" autocomplete="current-password" required>
+      </div>
+      <button class="btn btn-primary" type="submit" style="width:100%" id="submit">Sign in</button>
+    </form>
+    <p class="small muted" style="margin-top:18px">No account? Resources are provisioned per business by an administrator.</p>
+  </div>
+</div>
+
+<script>
+document.getElementById("login-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const alert = document.getElementById("alert");
+  const submit = document.getElementById("submit");
+  alert.hidden = true;
+  submit.disabled = true;
+  submit.textContent = "Signing in…";
+  try {
+    const data = await MM.post("/auth/login", {
+      email: document.getElementById("email").value.trim(),
+      password: document.getElementById("password").value,
+    });
+    localStorage.setItem("mm_token", data.token);
+    if (data.refresh_token) localStorage.setItem("mm_refresh", data.refresh_token);
+    location.href = "/app.html";
+  } catch (err) {
+    alert.hidden = false;
+    alert.textContent = err.message === "network-unreachable"
+      ? "Could not reach the server. Try again."
+      : "Sign-in failed: " + err.message;
+    submit.disabled = false;
+    submit.textContent = "Sign in";
+  }
+});
+</script>
+</body>
+</html>

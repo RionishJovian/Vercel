@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mega Magic</title>
+  <meta name="robots" content="noindex">
+  <link rel="stylesheet" href="/assets/css/styles.css">
+  <script src="/assets/js/api.js" defer></script>
+  <script src="/assets/js/app.js" defer></script>
+</head>
+<body>
+<div class="layout">
+  <nav class="rail" aria-label="Primary">
+    <div>
+      <div class="rail-brand"><span class="dot"></span>Mega Magic</div>
+      <div class="rail-sub" id="rail-biz">—</div>
+    </div>
+    <div class="rail-section">Operations</div>
+    <button class="nav-item" data-view="overview" aria-current="page">Overview</button>
+    <button class="nav-item" data-view="fleet">Fleet health</button>
+    <button class="nav-item" data-view="sites">Sites</button>
+    <button class="nav-item" data-view="topology">Topology</button>
+    <div class="rail-section">Account</div>
+    <button class="nav-item" data-view="vouchers">Vouchers</button>
+    <button class="nav-item" data-view="portal">Captive portal</button>
+    <div style="flex:1"></div>
+    <button class="nav-item" id="signout">Sign out</button>
+  </nav>
+
+  <main id="main">
+    <noscript>Mega Magic needs JavaScript to run.</noscript>
+  </main>
+</div>
+
+<script>
+const VIEWS = {
+  overview: { title: "Overview", lead: "How the fleet is doing, at a glance." },
+  fleet:    { title: "Fleet health", lead: "Every peer and its tunnel state." },
+  sites:    { title: "Sites", lead: "Routers and gateways by layer." },
+  topology: { title: "Topology", lead: "The live network map." },
+  vouchers: { title: "Vouchers", lead: "Credit codes for the captive portal." },
+  portal:   { title: "Captive portal", lead: "Guest Wi-Fi config and requests." },
+};
+
+let ME = null;
+
+async function loadView(name, main, me) {
+  const v = VIEWS[name] || VIEWS.overview;
+  main.innerHTML = `<div class="page-head"><div><h1 class="page-title">${v.title}</h1><p class="page-lead">${v.lead}</p></div></div><div id="content">${loading()}</div>`;
+  try {
+    if (name === "overview") await renderOverview(main);
+    else if (name === "fleet") await renderFleet(main);
+    else if (name === "sites") await renderSites(main);
+    else if (name === "topology") await renderTopology(main);
+    else if (name === "vouchers") await renderVouchers(main);
+    else if (name === "portal") await renderPortal(main);
+  } catch (err) {
+    main.querySelector("#content").innerHTML = `<div class="alert" role="alert">${esc(err.message)}</div>`;
+  }
+}
+
+function loading() { return `<p class="muted small">Loading…</p>`; }
+
+/* ---------- Overview ---------- */
+async function renderOverview(main) {
+  const fleet = await MM.get("/fleet/health");
+  const topo = await MM.get("/topology/map");
+  const content = main.querySelector("#content");
+  content.innerHTML = `
+    <div class="stat-cluster" style="margin-top:18px">
+      <div class="stat"><div class="stat-label">Peers</div><div class="stat-value">${fleet.total_peers}</div></div>
+      <div class="stat"><div class="stat-label">Up</div><div class="stat-value">${fleet.up}</div></div>
+      <div class="stat"><div class="stat-label">Stale</div><div class="stat-value">${fleet.stale}</div></div>
+      <div class="stat"><div class="stat-label">Offline</div><div class="stat-value">${fleet.offline}</div></div>
+      <div class="stat"><div class="stat-label">Unknown</div><div class="stat-value">${fleet.unknown}</div></div>
+    </div>
+    <hr class="rule">
+    <div class="panel"><div class="panel-head"><h2 class="panel-title">Fleet state</h2></div>
+      <div class="panel-body" id="ov-fleet">${loading()}</div>
+    </div>
+    <div class="panel" style="margin-top:14px"><div class="panel-head"><h2 class="panel-title">Network map</h2></div>
+      <div class="panel-body" id="ov-topo">${loading()}</div>
+    </div>`;
+  document.querySelector("#ov-fleet").innerHTML = fleetTable(fleet);
+  document.querySelector("#ov-topo").innerHTML = topologySummary(topo);
+}
+
+/* ---------- Fleet ---------- */
+async function renderFleet(main) {
+  const fleet = await MM.get("/fleet/health");
+  main.querySelector("#content").innerHTML = fleetTable(fleet);
+}
+
+function fleetTable(fleet) {
+  if (!fleet.peers || !fleet.peers.length) return `<div class="empty"><div class="empty-title">No peers yet</div>Provision a router to see it here.</div>`;
+  const rows = fleet.peers.map(p => `
+    <tr>
+      <td><span class="num">${esc(p.hardware_name)}</span></td>
+      <td>${badge(p.state)}</td>
+      <td class="mono">${esc(p.device_id)}</td>
+    </tr>`).join("");
+  return `<table>
+    <thead><tr><th>Device</th><th>State</th><th>ID</th></tr></thead>
+    <tbody>${rows}</tbody></table>`;
+}
+
+/* ---------- Sites (routers) ---------- */
+async function renderSites(main) {
+  const data = await MM.get("/routers");
+  const routers = data.routers || data || [];
+  if (!routers.length) {
+    main.querySelector("#content").innerHTML = `<div class="empty"><div class="empty-title">No sites</div>Add a router to start mapping sites.</div>`;
+    return;
+  }
+  const rows = routers.map(r => `
+    <tr>
+      <td><span class="num">${esc(r.hardware_name)}</span></td>
+      <td><span class="mono">${esc(r.deployment_layer)}</span></td>
+      <td>${esc(r.vendor)}</td>
+      <td>${badge(r.is_online ? "up" : "offline")}</td>
+      <td class="mono">${esc(r.device_id)}</td>
+    </tr>`).join("");
+  main.querySelector("#content").innerHTML = `<table>
+    <thead><tr><th>Device</th><th>Layer</th><th>Vendor</th><th>Status</th><th>ID</th></tr></thead>
+    <tbody>${rows}</tbody></table>`;
+}
+
+/* ---------- Topology ---------- */
+async function renderTopology(main) {
+  const topo = await MM.get("/topology/map");
+  const content = main.querySelector("#content");
+  content.innerHTML = `<div id="topo-tree">${loading()}</div>`;
+  content.querySelector("#topo-tree").innerHTML = topologyTree(topo);
+}
+
+function deviceLabel(d) {
+  const st = d.is_online ? "up" : "offline";
+  return `<div class="dev ${st}" title="${esc(d.device_id)}">${esc((d.hardware_name||"D")[0])}</div>`;
+}
+
+function topologySummary(topo) {
+  const count = (topo.roots ? topo.roots.length : 0) + (topo.orphans ? topo.orphans.length : 0);
+  const s = topo.summary || {};
+  return `<div class="muted small">${count} device${count === 1 ? "" : "s"} · ${esc(topo.business_id)}</div>`;
+}
+
+function topologyTree(topo) {
+  const roots = topo.roots || [];
+  if (!roots.length) return `<div class="empty"><div class="empty-title">Empty map</div>No devices have reported a topology yet.</div>`;
+  const render = (node, depth) => {
+    const d = node.device || {};
+    const kids = (node.children || []).map(c => render(c, depth + 1)).join("");
+    const pad = "&nbsp;".repeat(depth * 4);
+    const caret = node.children && node.children.length ? (node.expanded ? "▾" : "▸") : "·";
+    return `<div style="display:flex;gap:8px;align-items:center;margin-bottom:4px"><span class="mono small">${pad}${caret}</span>${deviceLabel(d)}<span class="num" style="flex:1">${esc(d.hardware_name||"(device)")}</span><span class="muted small">${esc(d.deployment_layer||"")}</span>${node.children && node.children.length ? `<span class="muted small">${node.children.length} child${node.children.length===1?"":"ren"}</span>` : ""}</div>${kids}`;
+  };
+  return `<div>${roots.map(r => render(r, 0)).join("")}</div>`;
+}
+
+/* ---------- Vouchers ---------- */
+async function renderVouchers(main) {
+  const data = await MM.get("/vouchers");
+  const list = data.vouchers || data || [];
+  if (!list.length) {
+    main.querySelector("#content").innerHTML = `<div class="empty"><div class="empty-title">No vouchers</div>Create a voucher batch to sell portal access.</div>`;
+    return;
+  }
+  const rows = list.slice(0, 50).map(v => `
+    <tr>
+      <td class="mono">${esc(v.code)}</td>
+      <td>${v.plan_key ? esc(v.plan_key) : "—"}</td>
+      <td class="num">${esc(v.amount)}</td>
+      <td>${badge((v.status||"unknown").toLowerCase())}</td>
+      <td>${ts(v.created_at)}</td>
+    </tr>`).join("");
+  main.querySelector("#content").innerHTML = `<table>
+    <thead><tr><th>Code</th><th>Plan</th><th>Amount</th><th>Status</th><th>Created</th></tr></thead>
+    <tbody>${rows}</tbody></table>`;
+}
+
+/* ---------- Captive portal ---------- */
+async function renderPortal(main) {
+  let cfg = null, cfgErr = null;
+  try { cfg = await MM.get("/portal/config"); } catch (e) { cfgErr = e.data || e.message; }
+  let reqs = [], reqErr = null;
+  try {
+    const r = await MM.get("/billing/requests"); reqs = r.requests || r || [];
+  } catch (e) { reqErr = e.data || e.message; }
+
+  let html = `<div class="panel"><div class="panel-head"><h2 class="panel-title">Portal configuration</h2></div><div class="panel-body">`;
+  if (cfg) {
+    html += `<table><tbody>` +
+      `<tr><td>Business</td><td class="num">${esc(cfg.business_name||"—")}</td></tr>` +
+      `<tr><td>Grace window</td><td class="num">${esc(cfg.guest_grace_minutes||"—")} min</td></tr>` +
+      `</tbody></table>`;
+  } else if (cfgErr) { html += `<p class="muted small">${esc(cfgErr)}</p>`; }
+  html += `</div></div>`;
+
+  html += `<div class="panel" style="margin-top:14px"><div class="panel-head"><h2 class="panel-title">Guest purchase requests</h2></div><div class="panel-body">`;
+  if (reqErr) html += `<p class="muted small">${esc(reqErr)}</p>`;
+  else if (!reqs.length) html += `<div class="empty"><div class="empty-title">No requests</div>Guest purchases and redemptions will appear here.</div>`;
+  else html += `<table><thead><tr><th>MAC</th><th>Plan</th><th>Status</th><th>Submitted</th></tr></thead><tbody>` +
+    reqs.slice(0, 30).map(r => `<tr><td class="mono">${esc(r.client_mac||"—")}</td><td class="num">${esc(r.plan_key||"—")}</td><td>${badge((r.status||"unknown").toLowerCase())}</td><td>${ts(r.created_at)}</td></tr>`).join("") +
+    `</tbody></table>`;
+  html += `</div></div>`;
+
+  main.querySelector("#content").innerHTML = html;
+}
+
+/* ---------- Boot ---------- */
+(async () => {
+  const me = await whoami();
+  if (!me) return;
+  ME = me;
+  document.querySelector("#rail-biz").textContent = (me.business && me.business.company_name) || "—";
+  const main = document.getElementById("main");
+
+  const go = async (name) => {
+    document.querySelectorAll(".nav-item[data-view]").forEach(b => b.removeAttribute("aria-current"));
+    const btn = document.querySelector(`.nav-item[data-view="${name}"]`);
+    if (btn) btn.setAttribute("aria-current", "page");
+    history.pushState({}, "", "/#" + name);
+    await loadView(name, main, ME);
+  };
+
+  document.querySelectorAll(".nav-item[data-view]").forEach(b => {
+    b.addEventListener("click", () => go(b.dataset.view));
+  });
+  document.getElementById("signout").addEventListener("click", () => { MM.clear(); location.href = "/"; });
+  window.addEventListener("popstate", () => {
+    const v = location.hash.slice(1);
+    loadView(VIEWS[v] ? v : "overview", main, ME);
+  });
+
+  const initial = location.hash.slice(1);
+  await loadView(VIEWS[initial] ? initial : "overview", main, ME);
+})();
+</script>
+</body>
+</html>

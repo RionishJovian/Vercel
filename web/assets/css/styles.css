@@ -1,0 +1,219 @@
+/* ============================================================================
+   Mega Magic — design system (professional, restrained; no AI slop)
+   ----------------------------------------------------------------------------
+   Tokens, base, buttons, forms, tables, status, layout, nav, dashboard atoms.
+   Light theme. One accent. Hairline borders. Tabular numerics.
+   ============================================================================ */
+
+/* ---------- Tokens ---------- */
+:root {
+  /* neutrals: warm paper + ink (chosen, not default) */
+  --bg:        #f6f5f2;
+  --bg-subtle: #fbfaf7;
+  --surface:   #ffffff;
+  --ink:       #1d1b16;
+  --ink-soft:  #56524b;
+  --ink-muted: #8a857c;
+  --line:      #ddd9d1;
+  --line-soft: #e9e6e0;
+
+  /* ONE accent: deep signal-teal (connectivity, chosen for the brand) */
+  --accent:    #10645b;
+  --accent-hover: #0e554d;
+  --accent-wash:  #e6efe9;
+
+  /* status */
+  --ok:       #1f7a43;
+  --warn:     #b7791f;
+  --bad:      #c13b41;
+  --unknown:  #7e7a72;
+  --ok-wash:     #e7f2e7;
+  --warn-wash:   #f6ecdc;
+  --bad-wash:    #fae9e8;
+  --unknown-wash:#f1efe9;
+
+  /* sung: focus ring */
+  --focus: #0f5c51;
+
+  --radius: 7px;
+  --shadow-sm: 0 1px 2px rgba(29,27,22,.08);
+  --shadow-md: 0 2px 6px rgba(29,27,22,.10);
+
+  --font-ui: system-ui, "Segoe UI", "Helvetica Neue", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Mono", monospace;
+}
+
+* { box-sizing: border-box; }
+
+html { color-scheme: light; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 15px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection { background: #d8e4db; }
+
+h1, h2, h3, h4 { font-weight: 650; letter-spacing: -0.01em; }
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+/* ---------- Layout scaffold ---------- */
+.layout { display: grid; grid-template-columns: 232px 1fr; min-height: 100vh; }
+
+/* Left rail — thin, calm, no cards */
+.rail {
+  background: var(--bg-subtle);
+  border-right: 1px solid var(--line-soft);
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 20px 18px;
+}
+.rail-brand { font-weight: 720; font-size: 16px; letter-spacing: .2px; display:flex; align-items:center; gap:9px; }
+.rail-brand .dot { width: 12px; height: 12px; border-radius: 3px; background: var(--accent); }
+.rail-sub { font-size: 12px; color: var(--ink-muted); margin-top: 3px; }
+
+.rail-section { font-size: 11px; text-transform: uppercase; letter-spacing: .14em; color: var(--ink-muted); padding-top: 18px; }
+
+.nav-item {
+  display: block; width: 100%; text-align: left;
+  padding: 8px 12px; border-radius: 6px; background: transparent;
+  color: var(--ink-soft); font-size: 14px; font-weight: 550; cursor: pointer;
+  border: none;
+}
+.nav-item:hover { background: var(--accent-wash); color: var(--ink); }
+.nav-item[aria-current="page"], .nav-item.active { background: #edeae4; color: var(--ink); font-weight: 650; }
+
+main { padding: 28px 36px; }
+
+.page-head { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; }
+.page-title { font-size: 20px; }
+.page-lead { color: var(--ink-soft); font-size: 14px; margin-top: 2px; }
+
+/* ---------- Buttons ---------- */
+.btn {
+  font: inherit; display: inline-flex; align-items: center; gap: 7px;
+  padding: 7px 14px; border-radius: var(--radius); border: 1px solid var(--line);
+  background: transparent; color: var(--ink); cursor: pointer;
+  text-decoration: none;
+}
+.btn:hover { background: #f0eeea; }
+.btn-primary { background: var(--accent); color: #fff; border-color: transparent; }
+.btn-primary:hover { background: var(--accent-hover); }
+.btn-danger { background: transparent; color: var(--bad); border-color: #e6c9c6; }
+.btn-danger:hover { background: var(--bad-wash); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+
+/* ---------- Forms ---------- */
+.field { display: block; margin-bottom: 14px; }
+.field label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: var(--ink-soft); }
+.input {
+  width: 100%; padding: 9px 11px; border: 1px solid var(--line); border-radius: var(--radius);
+  font: inherit; color: var(--ink); background: var(--surface);
+}
+.input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-wash); }
+
+/* ---------- Tables (dense, real data, mono numerics) ---------- */
+table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+thead th {
+  text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .1em;
+  color: var(--ink-soft); padding: 9px 12px; border-bottom: 1px solid var(--line);
+}
+tbody td { padding: 10px 12px; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
+tbody tr:hover { background: #f3f1ec; }
+.num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.mono { font-family: var(--font-mono); font-size: 12.5px; color: var(--ink-soft); }
+
+/* ---------- Status ---------- */
+.status {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600;
+}
+.status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; }
+.status.ok      { background: var(--ok-wash);      color: var(--ok); }
+.status.warn    { background: var(--warn-wash);    color: var(--warn); }
+.status.bad     { background: var(--bad-wash);     color: var(--bad); }
+.status.unknown { background: var(--unknown-wash); color: var(--unknown); }
+.status.ok::before      { background: var(--ok); }
+.status.warn::before    { background: var(--warn); }
+.status.bad::before     { background: var(--bad); }
+.status.unknown::before { background: var(--unknown); }
+
+/* ---------- Dashboard atoms ---------- */
+/* Stat cluster: small labels over one big figure, no fake cards */
+.stat-cluster { display: grid; grid-auto-flow: column; gap: 34px; margin: 4px 0 0; }
+.stat .stat-label { font-size: 12px; color: var(--ink-soft); font-weight: 600; }
+.stat .stat-value { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 26px; font-weight: 650; margin-top: 2px; }
+
+.panel {
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+}
+.panel-head { display: flex; justify-content: space-between; align-items: baseline; padding: 12px 16px; }
+.panel-title { font-weight: 640; font-size: 14px; }
+.panel-body { padding: 4px 16px 14px; }
+
+/* Device marker (topology): calm, circular, status-colored */
+.dev {
+  width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 700; color: #fff; border: 2px solid transparent;
+}
+.dev.up      { background: var(--ok); }
+.dev.stale   { background: var(--warn); }
+.dev.offline { background: var(--bad); }
+.dev.unknown { background: var(--unknown); color: #fff; }
+.dev.node { width: 16px; height: 16px; border-radius: 50%; background: var(--ink-soft); }
+
+/* ---------- Empty state ---------- */
+.empty { padding: 34px 20px; text-align: left; color: var(--ink-soft); font-size: 14px; }
+.empty .empty-title { font-weight: 650; color: var(--ink); }
+
+/* ---------- Landing (Decide surface: one idea per section) ---------- */
+.landing { max-width: 1080px; margin: 0 auto; padding: 0 24px 120px; }
+.land-hero { padding: 92px 24px 60px; border-bottom: 1px solid var(--line-soft); }
+.land-hero h1 { font-size: 44px; line-height: 1.08; letter-spacing: -0.02em; font-weight: 720; }
+.land-hero p  { font-size: 18px; color: var(--ink-soft); max-width: 620px; margin-top: 14px; }
+.land-cta { display: flex; gap: 12px; margin-top: 26px; }
+.land-section { padding: 64px 24px; }
+.land-section h2 { font-size: 26px; font-weight: 680; }
+.land-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 26px; margin-top: 22px; }
+.land-grid .cell h3 { font-size: 16px; font-weight: 640; }
+.land-grid .cell p { font-size: 14px; color: var(--ink-soft); line-height: 1.55; }
+.land-nav { display: flex; align-items: center; justify-content: space-between; padding: 22px 24px; border-bottom: 1px solid var(--line-soft); }
+.land-signin { font-weight: 600; }
+
+/* ---------- Sign-in ---------- */
+.signin-wrap { min-height: 100vh; display: grid; grid-template-columns: 1fr 400px; }
+.signin-left { background: var(--bg); padding: 80px 72px; display: flex; flex-direction: column; gap: 20px; }
+.signin-left h1 { font-size: 32px; font-weight: 720; letter-spacing: -0.015em; }
+.signin-left p { color: var(--ink-soft); font-size: 15px; line-height: 1.6; }
+.signin-card {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+  padding: 34px; align-self: start; width: 360px; box-shadow: var(--shadow-md);
+}
+.signin-card h2 { font-size: 18px; font-weight: 680; margin-bottom: 18px; }
+.alert { padding: 11px 13px; border-radius: var(--radius); font-size: 13.5px; background: var(--bad-wash); color: var(--bad); }
+
+/* ---------- Misc ---------- */
+.muted { color: var(--ink-muted); }
+.small { font-size: 12px; }
+.stack:not(:empty) { display: none; } /* placeholder no-op kept out */
+hr.rule { border: 0; border-top: 1px solid var(--line); margin: 20px 0; }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+@media (max-width: 900px) {
+  .layout { grid-template-columns: 1fr; }
+  .rail { flex-direction: row; overflow-x: auto; gap: 12px; padding: 12px 14px; }
+  main { padding: 18px 20px; }
+  .stat-cluster { gap: 18px; }
+  .land-grid { grid-template-columns: 1fr; }
+  .signin-wrap { grid-template-columns: 1fr; }
+}
