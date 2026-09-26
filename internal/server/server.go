@@ -177,28 +177,24 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		cfg.Billing.ReceiptDir,
 	)
 
-	// Guest wifi (Option C): each business binds its OWN Telegram bot to receive
-	// and approve/reject guest wifi purchases. The supervisor runs one bridge per
-	// ENABLED owner bot; with the feature off, owners decide on the web endpoint.
-	var guestWifiHandler *handler.GuestWifiHandler
-	if cfg.GuestWifi.Enabled {
-		// Build an owner messenger from just a token (ConfigMessenger takes
-		// chat+timeout too; we default them from the guest feature config).
-		guestSvcFmt := func(token string) (telegram.Messenger, bool) {
-			return telegram.ConfigMessenger(token, "", 30*time.Second)
-		}
-		guestWifiHandler = handler.NewGuestWifiHandler(
-			db,
-			database.NewDeviceRepository(db),
-			database.NewBusinessTelegramBotRepository(db),
-			database.NewGuestPurchaseRequestRepository(db),
-			database.NewPortalConfigRepository(db),
-			database.NewBusinessMeteredQuotaRepository(db),
-			cfg.GuestWifi.ReceiptDir,
-			guestSvcFmt,
-		)
-		sugar.Infow("Guest wifi owner-bot supervisor enabled", "scan", cfg.GuestWifi.BridgeScanInterval.String())
+	// Guest wifi (Option C): the handler serves the WEB surface (guest purchase,
+	// owner approve/reject, owner bot binding) which is ALWAYS available — shop
+	// owners can run the whole flow from the web, no flag. The per-owner Telegram
+	// bot bridge (the "second apple") is the ONLY piece gated on the flag below.
+	// Two apples: web + bot both work; neither is forced on the user.
+	guestSvcFmt := func(token string) (telegram.Messenger, bool) {
+		return telegram.ConfigMessenger(token, "", 30*time.Second)
 	}
+	guestWifiHandler := handler.NewGuestWifiHandler(
+		db,
+		database.NewDeviceRepository(db),
+		database.NewBusinessTelegramBotRepository(db),
+		database.NewGuestPurchaseRequestRepository(db),
+		database.NewPortalConfigRepository(db),
+		database.NewBusinessMeteredQuotaRepository(db),
+		cfg.GuestWifi.ReceiptDir,
+		guestSvcFmt,
+	)
 
 	// Probe + monitoring: peer reachability classification and state fan-out.
 	probeService := probe.NewProbeService(cacheClient, 5*time.Minute)
@@ -291,9 +287,10 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		sugar.Info("Telegram purchase approve/reject bridge started (inbound loop)")
 	}
 
-	// Guest wifi owner-bot supervisor: one inbound loop per ENABLED owner bot,
-	// re-scanned on the configured interval. Off by default (feature disabled).
-	if guestWifiHandler != nil {
+	// Guest wifi owner-bot supervisor (the "second apple"): one inbound loop per
+	// ENABLED owner bot, re-scanned on the configured interval. THE ONLY guest-wifi
+	// piece gated on the flag — the web surface above is always on. Off by default.
+	if cfg.GuestWifi.Enabled {
 		supervisor := NewGuestWifiBridgeSupervisor(
 			db,
 			database.NewBusinessTelegramBotRepository(db),
@@ -375,11 +372,10 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 			// Billing: guest submits a purchase request (device-anchored).
 			portalPublic.POST("/:deviceId/purchase", billingHandler.PublicCreatePurchase)
 			// Guest wifi (Option C): online-banking purchase with a free grace
-			// window; the guest attaches the receipt within the window.
-			if guestWifiHandler != nil {
-				portalPublic.POST("/:deviceId/guest-purchase", guestWifiHandler.PublicGuestPurchase)
-				portalPublic.POST("/guest-purchase/:requestId/receipt", guestWifiHandler.PublicAttachReceipt)
-			}
+			// window; the guest attaches the receipt within the window. Web path
+			// is ALWAYS available (the Telegram bot is the separately-gated extra).
+			portalPublic.POST("/:deviceId/guest-purchase", guestWifiHandler.PublicGuestPurchase)
+			portalPublic.POST("/guest-purchase/:requestId/receipt", guestWifiHandler.PublicAttachReceipt)
 		}
 
 		authGroup := v1.Group("/auth")
@@ -473,18 +469,17 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 				billing.POST("/reject/:requestId", billingHandler.RejectPurchase)
 			}
 
-			// Guest wifi (Option C): owner-facing loop. Only present when the
-			// feature is enabled (guestWifiHandler non-nil).
-			if guestWifiHandler != nil {
-				gw := protected.Group("/guest-wifi")
-				{
-					gw.GET("/telegram-bot", guestWifiHandler.GetBotBinding)
-					gw.PUT("/telegram-bot", guestWifiHandler.PutBotBinding)
-					gw.POST("/telegram-bot/test", guestWifiHandler.TestBotBinding)
-					gw.GET("/requests", guestWifiHandler.ListGuestRequests)
-					gw.POST("/approve/:requestId", guestWifiHandler.ApproveGuest)
-					gw.POST("/reject/:requestId", guestWifiHandler.RejectGuest)
-				}
+			// Guest wifi (Option C): owner-facing WEB loop — approve/reject, list,
+			// and bind their own bot. Always on (web is the always-available apple;
+			// the Telegram bot bridge uses the same approve core, gated separately).
+			gw := protected.Group("/guest-wifi")
+			{
+				gw.GET("/telegram-bot", guestWifiHandler.GetBotBinding)
+				gw.PUT("/telegram-bot", guestWifiHandler.PutBotBinding)
+				gw.POST("/telegram-bot/test", guestWifiHandler.TestBotBinding)
+				gw.GET("/requests", guestWifiHandler.ListGuestRequests)
+				gw.POST("/approve/:requestId", guestWifiHandler.ApproveGuest)
+				gw.POST("/reject/:requestId", guestWifiHandler.RejectGuest)
 			}
 
 			webhooks := protected.Group("/webhooks")
