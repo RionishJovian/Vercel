@@ -157,6 +157,9 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		monitoringService,
 	))
 
+	// Topology: read-only per-tenant network map (parent/child, orphans, cycles).
+	topologyHandler := handler.NewTopologyHandler(db, database.NewDeviceRepository(db))
+
 	r := gin.New()
 	r.Use(gin.Recovery())
 	r.Use(loggerMiddleware(sugar))
@@ -177,7 +180,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		sugar.Info("RLS enforcement disabled — owner pool, no connection pinning (default)")
 	}
 
-	setupRoutes(r, authService, authHandler, routerHandler, telemetryHandler, incidentHandler, webhookHandler, voucherHandler, portalHandler, billingHandler, monitorHandler, fleetHandler, messagingClient, cacheClient, db, tenantMW)
+	setupRoutes(r, authService, authHandler, routerHandler, telemetryHandler, incidentHandler, webhookHandler, voucherHandler, portalHandler, billingHandler, monitorHandler, fleetHandler, topologyHandler, messagingClient, cacheClient, db, tenantMW)
 
 	// Start the policy evaluator: watches NATS telemetry and auto-opens incidents.
 	evaluator := evaluator.New(
@@ -247,7 +250,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	}, nil
 }
 
-func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.AuthHandler, routerHandler *handler.RouterHandler, telemetryHandler *handler.TelemetryHandler, incidentHandler *handler.IncidentHandler, webhookHandler *handler.WebhookHandler, voucherHandler *handler.VoucherHandler, portalHandler *handler.PortalHandler, billingHandler *handler.BillingHandler, monitorHandler *handler.MonitorHandler, fleetHandler *handler.FleetHandler, msg *messaging.Client, cache *cache.Client, db *database.DB, tenantMW gin.HandlerFunc) {
+func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.AuthHandler, routerHandler *handler.RouterHandler, telemetryHandler *handler.TelemetryHandler, incidentHandler *handler.IncidentHandler, webhookHandler *handler.WebhookHandler, voucherHandler *handler.VoucherHandler, portalHandler *handler.PortalHandler, billingHandler *handler.BillingHandler, monitorHandler *handler.MonitorHandler, fleetHandler *handler.FleetHandler, topologyHandler *handler.TopologyHandler, msg *messaging.Client, cache *cache.Client, db *database.DB, tenantMW gin.HandlerFunc) {
 	r.GET("/health", healthCheck)
 	r.GET("/ready", readinessCheck(&Server{cache: cache, db: db, messaging: msg}))
 
@@ -315,6 +318,9 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 			// Read-only per-tenant fleet aggregate (peer-health overview).
 			protected.GET("/fleet/health", fleetHandler.FleetHealth)
 			protected.GET("/fleet/health/offline", fleetHandler.OfflineHealth)
+
+			// Read-only per-tenant network topology map.
+			protected.GET("/topology/map", topologyHandler.Map)
 
 			policies := protected.Group("/alert-policies")
 			{

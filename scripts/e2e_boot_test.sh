@@ -19,8 +19,10 @@ pass() { PASS=$((PASS+1)); printf "  ok   %s\n" "$1"; }
 fail() { FAIL=$((FAIL+1)); printf "  FAIL %s  -> %s\n" "$1" "$2"; }
 
 echo "== booting server on :$PORT (log $LOG) =="
-(cd "$ROOT" && go run ./cmd/server >"$LOG" 2>&1) &
+# Launch in a dedicated process group so cleanup can kill the whole tree.
+setsid bash -c "cd \"$ROOT\" && go run ./cmd/server" >"$LOG" 2>&1 &
 SRV=$!
+SRV_PGID="$SRV"
 # wait for listen
 for i in $(seq 1 40); do
   if sudo ss -ltn 2>/dev/null | grep -q ":$PORT "; then break; fi
@@ -31,7 +33,17 @@ if ! sudo ss -ltn 2>/dev/null | grep -q ":$PORT "; then
 fi
 echo "server listening"
 
-cleanup() { kill "$SRV" 2>/dev/null; pkill -9 -f "/home/ubuntu/.cache/go-build" 2>/dev/null; rm -f "$LOG"; }
+cleanup() {
+  # Kill the whole `go run` process group so the compiled child can't be orphaned.
+  # `go run` may place the exe under $TMPDIR (e.g. hermes scratch) on top of the
+  # default cache, so by-PID group-kill (not a name/cache match) is authoritative.
+  if [ -n "${SRV_PGID:-}" ]; then
+    kill -9 -- "-$SRV_PGID" 2>/dev/null
+  fi
+  kill "$SRV" 2>/dev/null
+  pkill -9 -f "/home/ubuntu/.cache/go-build" 2>/dev/null
+  rm -f "$LOG"
+}
 trap cleanup EXIT
 
 echo "== 1. anonymous portal public config (real HTTP) =="
@@ -67,6 +79,23 @@ if [ "$code" = "401" ] || [ "$code" = "403" ]; then
   pass "unauthenticated denied ($code)"
 else
   fail "unauthenticated denied" "expected 401/403, got $code"
+fi
+
+echo "== 5. authenticated topology map over live HTTP =="
+if [ -n "$TOKEN" ]; then
+  code="$(curl -s -o /tmp/e2e_topo.json -w "%{http_code}" "$BASE/api/v1/topology/map" -H "Authorization: Bearer $TOKEN")"
+  if [ "$code" = "200" ]; then
+    # must be valid JSON with a business-scoped roots array
+    if python3 -c 'import json;d=json.load(open("/tmp/e2e_topo.json"));assert "roots" in d and "summary" in d' 2>/dev/null; then
+      pass "topology map 200 (roots+summary)"
+    else
+      fail "topology map" "200 but malformed payload"
+    fi
+  else
+    fail "topology map" "http $code"
+  fi
+else
+  fail "topology map" "no token (skip ran before login)"
 fi
 
 echo
