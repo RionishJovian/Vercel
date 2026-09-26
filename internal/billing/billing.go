@@ -24,6 +24,10 @@ var ErrUnknownPlan = errors.New("billing: unknown plan")
 // ErrAlreadyDecided is returned when a request is no longer pending.
 var ErrAlreadyDecided = errors.New("billing: request already decided")
 
+// ErrNoDuration is returned when a plan has no configured duration. Fail closed:
+// a paid pass must never inherit a magic default.
+var ErrNoDuration = errors.New("billing: plan has no duration configured")
+
 // Decision is a parsed operator verdict.
 type Decision struct {
 	Approve bool
@@ -60,13 +64,20 @@ func ResolvePlan(planKey string) (voucher.PlanEffect, error) {
 	return eff, nil
 }
 
-// PlanDurationMinutes returns the pass duration a plan grants. Product default:
-// the Sovereign pass is 30 days.
-func PlanDurationMinutes(planKey string) (int, error) {
-	if _, err := ResolvePlan(planKey); err != nil {
-		return 0, err
+// PlanDurations is the config-driven plan -> duration (minutes) source. It is
+// supplied by the operator's config (plan.<planKey>.duration_minutes), so the
+// real number is set by the Lead, not a Go constant. A plan that is absent or
+// whose duration is <= 0 FAILS CLOSED.
+type PlanDurations map[string]int
+
+// DurationMinutes returns the configured duration for a plan, failing closed on
+// an unknown plan or an unset/zero duration.
+func (p PlanDurations) DurationMinutes(planKey string) (int, error) {
+	d, ok := p[planKey]
+	if !ok || d <= 0 {
+		return 0, fmt.Errorf("%w: %q", ErrNoDuration, planKey)
 	}
-	return 30 * 24 * 60, nil
+	return d, nil
 }
 
 // NextStatus applies a decision to a current status. pending -> approved|rejected.

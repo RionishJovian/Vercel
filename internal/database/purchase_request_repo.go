@@ -3,6 +3,7 @@ package database
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"mega-magic/internal/model"
@@ -19,13 +20,13 @@ func NewPurchaseRequestRepository(db *DB) *PurchaseRequestRepository {
 	return &PurchaseRequestRepository{db: db}
 }
 
-const purchaseRequestCols = `id, business_id, device_id, plan_key, amount, bank_reference, receipt_path, status, decided_at, created_at, updated_at`
+const purchaseRequestCols = `id, business_id, device_id, plan_key, amount, bank_reference, duration_minutes, receipt_path, status, decided_at, created_at, updated_at`
 
 func scanPurchaseRequest(row interface{ Scan(...interface{}) error }) (*model.PurchaseRequest, error) {
 	p := &model.PurchaseRequest{}
-	var deviceID, bankRef, receipt sql.NullString
+	var deviceID, receipt sql.NullString
 	var decided sql.NullTime
-	err := row.Scan(&p.ID, &p.BusinessID, &deviceID, &p.PlanKey, &p.Amount, &bankRef, &receipt, &p.Status, &decided, &p.CreatedAt, &p.UpdatedAt)
+	err := row.Scan(&p.ID, &p.BusinessID, &deviceID, &p.PlanKey, &p.Amount, &p.BankReference, &p.DurationMinutes, &receipt, &p.Status, &decided, &p.CreatedAt, &p.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -34,9 +35,6 @@ func scanPurchaseRequest(row interface{ Scan(...interface{}) error }) (*model.Pu
 	}
 	if deviceID.Valid {
 		p.DeviceID = &deviceID.String
-	}
-	if bankRef.Valid {
-		p.BankReference = &bankRef.String
 	}
 	if receipt.Valid {
 		p.ReceiptPath = &receipt.String
@@ -47,13 +45,26 @@ func scanPurchaseRequest(row interface{ Scan(...interface{}) error }) (*model.Pu
 	return p, nil
 }
 
-// CreateRequestTXN inserts a pending purchase request.
+// CreateRequestTXN inserts a pending purchase request. bank_reference and
+// duration_minutes are required (NOT NULL); the per-business bank-reference
+// uniqueness index rejects a duplicate live reference (23505) at INSERT.
 func (r *PurchaseRequestRepository) CreateRequestTXN(tx *sql.Tx, req *model.PurchaseRequest) (*model.PurchaseRequest, error) {
 	return scanPurchaseRequest(tx.QueryRow(
-		`INSERT INTO purchase_requests (business_id, device_id, plan_key, amount, bank_reference, status)
-		 VALUES ($1, $2, $3, $4, $5, $6)
+		`INSERT INTO purchase_requests (business_id, device_id, plan_key, amount, bank_reference, duration_minutes, status)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)
 		 RETURNING `+purchaseRequestCols,
-		req.BusinessID, req.DeviceID, req.PlanKey, req.Amount, req.BankReference, req.Status))
+		req.BusinessID, req.DeviceID, req.PlanKey, req.Amount,
+		strings.ToLower(strings.TrimSpace(req.BankReference)), req.DurationMinutes, req.Status))
+}
+
+// FindLiveByBankReferenceTXN returns a non-rejected request with the same
+// (business_id, lower(bank_reference)), or nil — the guarded pre-check that lets
+// the handler return a clear 409 before attempting the INSERT.
+func (r *PurchaseRequestRepository) FindLiveByBankReferenceTXN(tx *sql.Tx, businessID, bankReference string) (*model.PurchaseRequest, error) {
+	return scanPurchaseRequest(tx.QueryRow(
+		`SELECT `+purchaseRequestCols+` FROM purchase_requests
+		 WHERE business_id = $1 AND lower(bank_reference) = lower($2) AND status <> 'rejected'
+		 LIMIT 1`, businessID, strings.TrimSpace(bankReference)))
 }
 
 // SetReceiptPathTXN binds a stored receipt to its request.

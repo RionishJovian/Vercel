@@ -25,9 +25,18 @@ type Config struct {
 }
 
 // BillingConfig configures the billing module. ReceiptDir is the tenant-scoped
-// root where guest payment receipts are stored (never world-readable).
+// root where guest payment receipts are stored (never world-readable). Plans is
+// the plan -> duration source (plan.<planKey>.duration_minutes); a plan with no
+// duration FAILS CLOSED at request time.
 type BillingConfig struct {
-	ReceiptDir string `mapstructure:"receipt_dir"`
+	ReceiptDir string                `mapstructure:"receipt_dir"`
+	Plans      map[string]PlanConfig `mapstructure:"plans"`
+}
+
+// PlanConfig holds per-plan billing metadata. DurationMinutes is REQUIRED for a
+// plan to be purchasable (0/unset = fail closed).
+type PlanConfig struct {
+	DurationMinutes int `mapstructure:"duration_minutes"`
 }
 
 type ServerConfig struct {

@@ -27,6 +27,14 @@ database:
   # provisioned (see docs) and the conversion rollout is complete.
   rls_enforce: false
 
+# Billing: plan-driven pass durations (minutes). A plan with no duration is NOT
+# purchasable (fail closed). The Lead sets the real numbers here.
+billing:
+  receipt_dir: ./data/receipts
+  plans:
+    sovereign:
+      duration_minutes: 43200  # 30 days — Lead-set (30 × 24 × 60)
+
 # Redis Cache
 redis:
   host: "localhost"

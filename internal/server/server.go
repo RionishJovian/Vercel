@@ -10,6 +10,7 @@ import (
 	"go.uber.org/zap"
 
 	"mega-magic/internal/auth"
+	"mega-magic/internal/billing"
 	"mega-magic/internal/cache"
 	"mega-magic/internal/config"
 	"mega-magic/internal/database"
@@ -121,6 +122,10 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	// Billing notify seam: no live Telegram transport yet (ConfigMessenger returns
 	// ok=false), so the messenger is nil and Telegram is notification-only. The
 	// operator approves/rejects on the protected web endpoint.
+	planDurations := billing.PlanDurations{}
+	for k, pc := range cfg.Billing.Plans {
+		planDurations[k] = pc.DurationMinutes
+	}
 	billingHandler := handler.NewBillingHandler(
 		db,
 		database.NewDeviceRepository(db),
@@ -129,6 +134,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		database.NewVoucherRepository(db),
 		database.NewBusinessMeteredQuotaRepository(db),
 		nil,
+		planDurations,
 		cfg.Billing.ReceiptDir,
 	)
 

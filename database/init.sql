@@ -181,7 +181,8 @@ CREATE TABLE IF NOT EXISTS purchase_requests (
     device_id uuid REFERENCES devices(device_id) ON DELETE SET NULL,
     plan_key text NOT NULL,
     amount integer NOT NULL DEFAULT 0,
-    bank_reference text,
+    bank_reference text NOT NULL CHECK (length(btrim(bank_reference)) > 0),
+    duration_minutes integer NOT NULL CHECK (duration_minutes > 0),
     receipt_path text,
     status text NOT NULL DEFAULT 'pending'
         CHECK (status IN ('pending', 'approved', 'rejected')),
@@ -191,6 +192,12 @@ CREATE TABLE IF NOT EXISTS purchase_requests (
 );
 
 CREATE INDEX idx_purchase_requests_business ON purchase_requests(business_id, status, created_at DESC);
+
+-- One bank transfer (per business) may fund at most ONE live pass: a duplicate
+-- bank reference on a non-rejected request is rejected at the DB level.
+CREATE UNIQUE INDEX idx_purchase_requests_bank_ref_unique
+    ON purchase_requests (business_id, lower(bank_reference))
+    WHERE status <> 'rejected';
 
 CREATE TABLE portal_sessions (
     id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),

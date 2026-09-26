@@ -2,9 +2,11 @@ package handler
 
 import (
 	"database/sql"
+	"errors"
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -15,6 +17,9 @@ import (
 	"mega-magic/internal/model"
 	"mega-magic/internal/telegram"
 )
+
+// errBankRefDuplicate signals a bank reference already used by a live request.
+var errBankRefDuplicate = errors.New("bank reference already used for a live purchase")
 
 // maxReceiptBytes caps an uploaded receipt photo.
 const maxReceiptBytes = 5 << 20 // 5 MiB
@@ -37,6 +42,7 @@ type BillingHandler struct {
 	quotaRepo   *database.BusinessMeteredQuotaRepository
 	messenger   telegram.Messenger
 	receiptRoot string
+	plans       billing.PlanDurations
 }
 
 func NewBillingHandler(
@@ -47,6 +53,7 @@ func NewBillingHandler(
 	voucherRepo *database.VoucherRepository,
 	quotaRepo *database.BusinessMeteredQuotaRepository,
 	messenger telegram.Messenger,
+	plans billing.PlanDurations,
 	receiptRoot string,
 ) *BillingHandler {
 	return &BillingHandler{
@@ -57,6 +64,7 @@ func NewBillingHandler(
 		voucherRepo: voucherRepo,
 		quotaRepo:   quotaRepo,
 		messenger:   messenger,
+		plans:       plans,
 		receiptRoot: receiptRoot,
 	}
 }
@@ -101,6 +109,19 @@ func (h *BillingHandler) PublicCreatePurchase(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	// Plan-driven duration, REQUIRED (no magic default): resolved from config.
+	duration, err := h.plans.DurationMinutes(planKey)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// bank_reference is REQUIRED: a real paid transfer must identify the purchase.
+	bankRef := strings.TrimSpace(c.PostForm("bank_reference"))
+	if bankRef == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "bank_reference required"})
+		return
+	}
 
 	amount := 0
 	if v := c.PostForm("amount"); v != "" {
@@ -108,21 +129,25 @@ func (h *BillingHandler) PublicCreatePurchase(c *gin.Context) {
 			amount = n
 		}
 	}
-	bankRef := c.PostForm("bank_reference")
 
 	var req *model.PurchaseRequest
 	err = withDeviceTenant(h.db, dev.BusinessID, func(tx *sql.Tx) error {
-		var bank *string
-		if bankRef != "" {
-			bank = &bankRef
+		// Guarded uniqueness: one live (non-rejected) request per bank reference.
+		existing, e := h.requestRepo.FindLiveByBankReferenceTXN(tx, dev.BusinessID, bankRef)
+		if e != nil {
+			return e
+		}
+		if existing != nil {
+			return errBankRefDuplicate
 		}
 		r, e := h.requestRepo.CreateRequestTXN(tx, &model.PurchaseRequest{
-			BusinessID:    dev.BusinessID,
-			DeviceID:      &deviceID,
-			PlanKey:       planKey,
-			Amount:        amount,
-			BankReference: bank,
-			Status:        billing.StatusPending,
+			BusinessID:      dev.BusinessID,
+			DeviceID:        &deviceID,
+			PlanKey:         planKey,
+			Amount:          amount,
+			BankReference:   bankRef,
+			DurationMinutes: duration,
+			Status:          billing.StatusPending,
 		})
 		if e != nil {
 			return e
@@ -131,6 +156,10 @@ func (h *BillingHandler) PublicCreatePurchase(c *gin.Context) {
 		return nil
 	})
 	if err != nil {
+		if errors.Is(err, errBankRefDuplicate) || isUniqueViolation(err) {
+			c.JSON(http.StatusConflict, gin.H{"error": "bank_reference already used for a live purchase"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create purchase request"})
 		return
 	}
@@ -197,9 +226,10 @@ func (h *BillingHandler) ApprovePurchase(c *gin.Context) {
 		if e != nil {
 			return &httpError{status: http.StatusBadRequest, msg: e.Error()}
 		}
-		minutes, e := billing.PlanDurationMinutes(r.PlanKey)
-		if e != nil {
-			return &httpError{status: http.StatusBadRequest, msg: e.Error()}
+		// Duration is taken from the REQUEST (captured at creation from plan
+		// config) — NOT a constant. Fail closed if absent.
+		if r.DurationMinutes <= 0 {
+			return &httpError{status: http.StatusBadRequest, msg: "request has no duration (fail closed)"}
 		}
 
 		// Single-wind transition: only one approve can flip pending -> approved.
@@ -211,8 +241,9 @@ func (h *BillingHandler) ApprovePurchase(c *gin.Context) {
 			return &httpError{status: http.StatusConflict, msg: "request already decided"}
 		}
 
-		// Grant via the SHARED money-path core (no second grant path).
-		ap, e := applyPlanEffectTx(tx, h.quotaRepo, businessID, effect, minutes, now)
+		// Grant via the SHARED money-path core (no second grant path), using the
+		// duration stored on THIS request.
+		ap, e := applyPlanEffectTx(tx, h.quotaRepo, businessID, effect, r.DurationMinutes, now)
 		if e != nil {
 			return &httpError{status: http.StatusInternalServerError, msg: "failed to grant entitlement: " + e.Error()}
 		}

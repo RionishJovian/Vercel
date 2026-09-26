@@ -47,13 +47,22 @@ func TestResolvePlan(t *testing.T) {
 	}
 }
 
-func TestPlanDurationMinutes(t *testing.T) {
-	d, err := PlanDurationMinutes("sovereign")
-	if err != nil || d != 30*24*60 {
-		t.Fatalf("sovereign duration = %d/%v, want 43200", d, err)
+func TestPlanDurations_failClosed(t *testing.T) {
+	p := PlanDurations{"sovereign": 43200}
+	d, err := p.DurationMinutes("sovereign")
+	if err != nil || d != 43200 {
+		t.Fatalf("sovereign = %d/%v, want 43200", d, err)
 	}
-	if _, err := PlanDurationMinutes("nope"); err == nil {
-		t.Fatal("unknown plan must error")
+	// Unknown plan fails closed.
+	if _, err := p.DurationMinutes("plus"); !errors.Is(err, ErrNoDuration) {
+		t.Fatalf("unknown plan must fail closed with ErrNoDuration, got %v", err)
+	}
+	// Zero / unset duration fails closed (no magic constant).
+	if _, err := (PlanDurations{"x": 0}).DurationMinutes("x"); !errors.Is(err, ErrNoDuration) {
+		t.Fatal("zero duration must fail closed")
+	}
+	if _, err := (PlanDurations{}).DurationMinutes("sovereign"); !errors.Is(err, ErrNoDuration) {
+		t.Fatal("unset duration must fail closed")
 	}
 }
 
