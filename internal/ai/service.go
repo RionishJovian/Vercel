@@ -252,18 +252,19 @@ func findingToIncident(sample model.TelemetrySample, finding *Finding, now time.
 		summary = "AI finding: " + finding.Rule
 	}
 	return model.Incident{
-		ID:           newID(),
-		BusinessID:   sample.BusinessID,
-		DeviceID:     sample.DeviceID,
-		PolicyID:     nil,
-		Kind:         "ai_" + sanitizeRule(finding.Rule),
-		Severity:     normalizeSeverity(finding.Severity),
-		SubjectID:    subjectIDFor(sample, finding),
-		SubjectLabel: subjectLabelFor(sample, finding),
-		Detail:       &summary,
-		OpenedAt:     now,
-		CreatedAt:    now,
-		UpdatedAt:    now,
+		ID:              newID(),
+		BusinessID:      sample.BusinessID,
+		DeviceID:        sample.DeviceID,
+		PolicyID:        nil,
+		Kind:            "ai_" + sanitizeRule(finding.Rule),
+		Severity:        normalizeSeverity(finding.Severity),
+		SubjectID:       subjectIDFor(sample, finding),
+		SubjectLabel:    subjectLabelFor(sample, finding),
+		Detail:          &summary,
+		SuggestedAction: finding.SuggestedAction,
+		OpenedAt:        now,
+		CreatedAt:       now,
+		UpdatedAt:       now,
 	}
 }
 

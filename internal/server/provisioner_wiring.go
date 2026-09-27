@@ -33,7 +33,7 @@ func shouldEnableLiveApplier(flagEnabled bool, applier provisioner.Applier, prob
 // fails closed on prod-shaped targets or missing credentials) and starts the
 // consumer. Any error fails server startup loudly — a mis-config must never
 // silently look "enabled".
-func startLiveApplier(cfg *config.Config, client *messaging.Client, sugar *zap.SugaredLogger, monitor *monitoring.MonitoringService, db *database.DB, backup *handler.BackupHandler) error {
+func startLiveApplier(cfg *config.Config, client *messaging.Client, sugar *zap.SugaredLogger, monitor *monitoring.MonitoringService, db *database.DB, backup *handler.BackupHandler, incidentAction *handler.IncidentActionHandler) error {
 	appCfg := cfg.Provisioner.Applier
 	if !appCfg.Enabled {
 		sugar.Info("live applier disabled — recovery ladder stays plan-only")
@@ -68,6 +68,11 @@ func startLiveApplier(cfg *config.Config, client *messaging.Client, sugar *zap.S
 		})
 		backup.EnableLive(applier, backupOTP)
 		sugar.Info("config backup/restore wired to the live applier")
+	}
+
+	// Stage 1A: attach the live applier to the incident-action handler too.
+	if incidentAction != nil {
+		incidentAction.EnableLive(applier)
 	}
 
 	// Real RFC 6238 TOTP gate for HIGH-RISK actions (Slice 2). Until a base32

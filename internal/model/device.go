@@ -89,23 +89,32 @@ type PeerHeartbeat struct {
 	ObservedAt  time.Time  `json:"observed_at"`
 }
 
+// SuggestedAction is the optional operator-remediation hint carried on an AI
+// finding / incident: what to do about it, in one tap.
+type SuggestedAction struct {
+	Kind       string `json:"kind"`                  // reboot|restore_backup|reprovision_peer|review|none
+	TargetHint string `json:"target_hint,omitempty"` // e.g. a device id or subject
+	OneLiner   string `json:"one_liner"`             // short human instruction
+}
+
 type Incident struct {
-	ID             string     `json:"id"`
-	BusinessID     string     `json:"business_id"`
-	DeviceID       *string    `json:"device_id,omitempty"`
-	PolicyID       *string    `json:"policy_id,omitempty"`
-	Kind           string     `json:"kind"`
-	Severity       string     `json:"severity"`
-	SubjectID      string     `json:"subject_id"`
-	SubjectLabel   string     `json:"subject_label"`
-	Detail         *string    `json:"detail,omitempty"`
-	OpenedAt       time.Time  `json:"opened_at"`
-	AcknowledgedAt *time.Time `json:"acknowledged_at,omitempty"`
-	AcknowledgedBy *string    `json:"acknowledged_by,omitempty"`
-	ResolvedAt     *time.Time `json:"resolved_at,omitempty"`
-	ResolvedBy     *string    `json:"resolved_by,omitempty"`
-	CreatedAt      time.Time  `json:"created_at"`
-	UpdatedAt      time.Time  `json:"updated_at"`
+	ID              string           `json:"id"`
+	BusinessID      string           `json:"business_id"`
+	DeviceID        *string          `json:"device_id,omitempty"`
+	PolicyID        *string          `json:"policy_id,omitempty"`
+	Kind            string           `json:"kind"`
+	Severity        string           `json:"severity"`
+	SubjectID       string           `json:"subject_id"`
+	SubjectLabel    string           `json:"subject_label"`
+	Detail          *string          `json:"detail,omitempty"`
+	SuggestedAction *SuggestedAction `json:"suggested_action,omitempty"`
+	OpenedAt        time.Time        `json:"opened_at"`
+	AcknowledgedAt  *time.Time       `json:"acknowledged_at,omitempty"`
+	AcknowledgedBy  *string          `json:"acknowledged_by,omitempty"`
+	ResolvedAt      *time.Time       `json:"resolved_at,omitempty"`
+	ResolvedBy      *string          `json:"resolved_by,omitempty"`
+	CreatedAt       time.Time        `json:"created_at"`
+	UpdatedAt       time.Time        `json:"updated_at"`
 }
 
 type AuditEvent struct {

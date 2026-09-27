@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -30,6 +31,28 @@ func NewIncidentRepository(db *DB) *IncidentRepository {
 	return &IncidentRepository{db: db}
 }
 
+// incidentCols is the single source of truth for the incident column list, so
+// every read path stays in lock-step with the positional Scan. suggested_action
+// sits immediately before created_at/updated_at.
+const incidentCols = `id, business_id, device_id, policy_id, kind, severity,
+		       subject_id, subject_label, detail, opened_at,
+		       acknowledged_at, acknowledged_by, resolved_at, resolved_by,
+		       suggested_action,
+		       created_at, updated_at`
+
+// suggestedActionArg converts a typed pointer to a JSON argument for the jsonb
+// column (nil when absent).
+func suggestedActionArg(sa *model.SuggestedAction) interface{} {
+	if sa == nil {
+		return nil
+	}
+	b, err := json.Marshal(sa)
+	if err != nil {
+		return nil
+	}
+	return string(b)
+}
+
 // Create inserts a new incident record
 func (r *IncidentRepository) Create(inc *model.Incident) (*model.Incident, error) {
 	if strings.TrimSpace(inc.ID) == "" {
@@ -38,15 +61,13 @@ func (r *IncidentRepository) Create(inc *model.Incident) (*model.Incident, error
 	query := `
 		INSERT INTO incidents (id, business_id, device_id, policy_id, kind, severity,
 		                       subject_id, subject_label, detail, opened_at,
-		                       acknowledged_at, acknowledged_by, resolved_at, resolved_by)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-		RETURNING id, business_id, device_id, policy_id, kind, severity,
-		          subject_id, subject_label, detail, opened_at,
-		          acknowledged_at, acknowledged_by, resolved_at, resolved_by,
-		          created_at, updated_at`
+		                       acknowledged_at, acknowledged_by, resolved_at, resolved_by,
+		                       suggested_action)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+		RETURNING ` + incidentCols
 
 	out := &model.Incident{}
-	var deviceID, policyID, detail, acknowledgedBy, resolvedBy sql.NullString
+	var deviceID, policyID, detail, acknowledgedBy, resolvedBy, suggested sql.NullString
 	var acknowledgedAt, resolvedAt sql.NullTime
 
 	err := r.db.QueryRow(query,
@@ -55,39 +76,36 @@ func (r *IncidentRepository) Create(inc *model.Incident) (*model.Incident, error
 		inc.OpenedAt,
 		inc.AcknowledgedAt, inc.AcknowledgedBy,
 		inc.ResolvedAt, inc.ResolvedBy,
+		suggestedActionArg(inc.SuggestedAction),
 	).Scan(
 		&out.ID, &out.BusinessID, &deviceID, &policyID,
 		&out.Kind, &out.Severity, &out.SubjectID, &out.SubjectLabel, &detail,
 		&out.OpenedAt, &acknowledgedAt, &acknowledgedBy, &resolvedAt, &resolvedBy,
+		&suggested,
 		&out.CreatedAt, &out.UpdatedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("create incident: %w", err)
 	}
 
-	scanIncidentNulls(out, deviceID, policyID, detail, acknowledgedAt, acknowledgedBy, resolvedAt, resolvedBy)
+	scanIncidentNulls(out, deviceID, policyID, detail, acknowledgedAt, acknowledgedBy, resolvedAt, resolvedBy, suggested)
 
 	return out, nil
 }
 
 // GetByID retrieves an incident by ID
 func (r *IncidentRepository) GetByID(id string) (*model.Incident, error) {
-	query := `
-		SELECT id, business_id, device_id, policy_id, kind, severity,
-		       subject_id, subject_label, detail, opened_at,
-		       acknowledged_at, acknowledged_by, resolved_at, resolved_by,
-		       created_at, updated_at
-		FROM incidents
-		WHERE id = $1`
+	query := `SELECT ` + incidentCols + ` FROM incidents WHERE id = $1`
 
 	inc := &model.Incident{}
-	var deviceID, policyID, detail, acknowledgedBy, resolvedBy sql.NullString
+	var deviceID, policyID, detail, acknowledgedBy, resolvedBy, suggested sql.NullString
 	var acknowledgedAt, resolvedAt sql.NullTime
 
 	err := r.db.QueryRow(query, id).Scan(
 		&inc.ID, &inc.BusinessID, &deviceID, &policyID,
 		&inc.Kind, &inc.Severity, &inc.SubjectID, &inc.SubjectLabel, &detail,
 		&inc.OpenedAt, &acknowledgedAt, &acknowledgedBy, &resolvedAt, &resolvedBy,
+		&suggested,
 		&inc.CreatedAt, &inc.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
@@ -97,8 +115,35 @@ func (r *IncidentRepository) GetByID(id string) (*model.Incident, error) {
 		return nil, fmt.Errorf("get incident by id: %w", err)
 	}
 
-	scanIncidentNulls(inc, deviceID, policyID, detail, acknowledgedAt, acknowledgedBy, resolvedAt, resolvedBy)
+	scanIncidentNulls(inc, deviceID, policyID, detail, acknowledgedAt, acknowledgedBy, resolvedAt, resolvedBy, suggested)
 
+	return inc, nil
+}
+
+// GetByIDTenant retrieves an incident scoped to a business (never a bare-id
+// cross-tenant read).
+func (r *IncidentRepository) GetByIDTenant(businessID, id string) (*model.Incident, error) {
+	query := `SELECT ` + incidentCols + ` FROM incidents WHERE id = $1 AND business_id = $2`
+
+	inc := &model.Incident{}
+	var deviceID, policyID, detail, acknowledgedBy, resolvedBy, suggested sql.NullString
+	var acknowledgedAt, resolvedAt sql.NullTime
+
+	err := r.db.QueryRow(query, id, businessID).Scan(
+		&inc.ID, &inc.BusinessID, &deviceID, &policyID,
+		&inc.Kind, &inc.Severity, &inc.SubjectID, &inc.SubjectLabel, &detail,
+		&inc.OpenedAt, &acknowledgedAt, &acknowledgedBy, &resolvedAt, &resolvedBy,
+		&suggested,
+		&inc.CreatedAt, &inc.UpdatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get incident by id (tenant): %w", err)
+	}
+
+	scanIncidentNulls(inc, deviceID, policyID, detail, acknowledgedAt, acknowledgedBy, resolvedAt, resolvedBy, suggested)
 	return inc, nil
 }
 
@@ -121,12 +166,7 @@ func (r *IncidentRepository) HasOpenIncidentBySubject(businessID, subjectID, kin
 
 // ListOpenByBusiness returns all open (unresolved) incidents for a business
 func (r *IncidentRepository) ListOpenByBusiness(businessID string) ([]model.Incident, error) {
-	query := `
-		SELECT id, business_id, device_id, policy_id, kind, severity,
-		       subject_id, subject_label, detail, opened_at,
-		       acknowledged_at, acknowledged_by, resolved_at, resolved_by,
-		       created_at, updated_at
-		FROM incidents
+	query := `SELECT ` + incidentCols + ` FROM incidents
 		WHERE business_id = $1 AND resolved_at IS NULL
 		ORDER BY opened_at DESC`
 
@@ -139,20 +179,21 @@ func (r *IncidentRepository) ListOpenByBusiness(businessID string) ([]model.Inci
 	var incidents []model.Incident
 	for rows.Next() {
 		var inc model.Incident
-		var devID, policyID, detail, acknowledgedBy, resolvedBy sql.NullString
+		var devID, policyID, detail, acknowledgedBy, resolvedBy, suggested sql.NullString
 		var acknowledgedAt, resolvedAt sql.NullTime
 
 		err := rows.Scan(
 			&inc.ID, &inc.BusinessID, &devID, &policyID,
 			&inc.Kind, &inc.Severity, &inc.SubjectID, &inc.SubjectLabel, &detail,
 			&inc.OpenedAt, &acknowledgedAt, &acknowledgedBy, &resolvedAt, &resolvedBy,
+			&suggested,
 			&inc.CreatedAt, &inc.UpdatedAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("scan incident: %w", err)
 		}
 
-		scanIncidentNulls(&inc, devID, policyID, detail, acknowledgedAt, acknowledgedBy, resolvedAt, resolvedBy)
+		scanIncidentNulls(&inc, devID, policyID, detail, acknowledgedAt, acknowledgedBy, resolvedAt, resolvedBy, suggested)
 		incidents = append(incidents, inc)
 	}
 	if err := rows.Err(); err != nil {
@@ -164,12 +205,7 @@ func (r *IncidentRepository) ListOpenByBusiness(businessID string) ([]model.Inci
 
 // ListByDevice returns all incidents for a specific device
 func (r *IncidentRepository) ListByDevice(businessID, deviceID string) ([]model.Incident, error) {
-	query := `
-		SELECT id, business_id, device_id, policy_id, kind, severity,
-		       subject_id, subject_label, detail, opened_at,
-		       acknowledged_at, acknowledged_by, resolved_at, resolved_by,
-		       created_at, updated_at
-		FROM incidents
+	query := `SELECT ` + incidentCols + ` FROM incidents
 		WHERE business_id = $1 AND device_id = $2
 		ORDER BY opened_at DESC`
 
@@ -182,20 +218,21 @@ func (r *IncidentRepository) ListByDevice(businessID, deviceID string) ([]model.
 	var incidents []model.Incident
 	for rows.Next() {
 		var inc model.Incident
-		var devID, policyID, detail, acknowledgedBy, resolvedBy sql.NullString
+		var devID, policyID, detail, acknowledgedBy, resolvedBy, suggested sql.NullString
 		var acknowledgedAt, resolvedAt sql.NullTime
 
 		err := rows.Scan(
 			&inc.ID, &inc.BusinessID, &devID, &policyID,
 			&inc.Kind, &inc.Severity, &inc.SubjectID, &inc.SubjectLabel, &detail,
 			&inc.OpenedAt, &acknowledgedAt, &acknowledgedBy, &resolvedAt, &resolvedBy,
+			&suggested,
 			&inc.CreatedAt, &inc.UpdatedAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("scan incident: %w", err)
 		}
 
-		scanIncidentNulls(&inc, devID, policyID, detail, acknowledgedAt, acknowledgedBy, resolvedAt, resolvedBy)
+		scanIncidentNulls(&inc, devID, policyID, detail, acknowledgedAt, acknowledgedBy, resolvedAt, resolvedBy, suggested)
 		incidents = append(incidents, inc)
 	}
 	if err := rows.Err(); err != nil {
@@ -239,8 +276,10 @@ func (r *IncidentRepository) Resolve(id, resolvedBy string) error {
 	return nil
 }
 
-// scanIncidentNulls populates nullable Incident fields from sql scan targets
-func scanIncidentNulls(inc *model.Incident, deviceID, policyID, detail sql.NullString, acknowledgedAt sql.NullTime, acknowledgedBy sql.NullString, resolvedAt sql.NullTime, resolvedBy sql.NullString) {
+// scanIncidentNulls populates nullable Incident fields from sql scan targets —
+// the single place all read paths funnel through, so suggested_action cannot
+// desync between them.
+func scanIncidentNulls(inc *model.Incident, deviceID, policyID, detail sql.NullString, acknowledgedAt sql.NullTime, acknowledgedBy sql.NullString, resolvedAt sql.NullTime, resolvedBy sql.NullString, suggestedAction sql.NullString) {
 	if deviceID.Valid {
 		inc.DeviceID = &deviceID.String
 	}
@@ -262,6 +301,12 @@ func scanIncidentNulls(inc *model.Incident, deviceID, policyID, detail sql.NullS
 	if resolvedBy.Valid {
 		inc.ResolvedBy = &resolvedBy.String
 	}
+	if suggestedAction.Valid && strings.TrimSpace(suggestedAction.String) != "" {
+		var sa model.SuggestedAction
+		if err := json.Unmarshal([]byte(suggestedAction.String), &sa); err == nil {
+			inc.SuggestedAction = &sa
+		}
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -275,52 +320,47 @@ func (r *IncidentRepository) CreateTXN(tx *sql.Tx, inc *model.Incident) (*model.
 	query := `
 		INSERT INTO incidents (id, business_id, device_id, policy_id, kind, severity,
 		                       subject_id, subject_label, detail, opened_at,
-		                       acknowledged_at, acknowledged_by, resolved_at, resolved_by)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-		RETURNING id, business_id, device_id, policy_id, kind, severity,
-		          subject_id, subject_label, detail, opened_at,
-		          acknowledged_at, acknowledged_by, resolved_at, resolved_by,
-		          created_at, updated_at`
+		                       acknowledged_at, acknowledged_by, resolved_at, resolved_by,
+		                       suggested_action)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+		RETURNING ` + incidentCols
 
 	out := &model.Incident{}
-	var deviceID, policyID, detail, acknowledgedBy, resolvedBy sql.NullString
+	var deviceID, policyID, detail, acknowledgedBy, resolvedBy, suggested sql.NullString
 	var acknowledgedAt, resolvedAt sql.NullTime
 
 	err := tx.QueryRow(query,
 		inc.ID, inc.BusinessID, inc.DeviceID, inc.PolicyID,
 		inc.Kind, inc.Severity, inc.SubjectID, inc.SubjectLabel, inc.Detail,
 		inc.OpenedAt, inc.AcknowledgedAt, inc.AcknowledgedBy, inc.ResolvedAt, inc.ResolvedBy,
+		suggestedActionArg(inc.SuggestedAction),
 	).Scan(
 		&out.ID, &out.BusinessID, &deviceID, &policyID,
 		&out.Kind, &out.Severity, &out.SubjectID, &out.SubjectLabel, &detail,
 		&out.OpenedAt, &acknowledgedAt, &acknowledgedBy, &resolvedAt, &resolvedBy,
+		&suggested,
 		&out.CreatedAt, &out.UpdatedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("create incident: %w", err)
 	}
-	scanIncidentNulls(out, deviceID, policyID, detail, acknowledgedAt, acknowledgedBy, resolvedAt, resolvedBy)
+	scanIncidentNulls(out, deviceID, policyID, detail, acknowledgedAt, acknowledgedBy, resolvedAt, resolvedBy, suggested)
 	return out, nil
 }
 
 // GetByIDTXN is the transaction-scoped variant of GetByID.
 func (r *IncidentRepository) GetByIDTXN(tx *sql.Tx, id string) (*model.Incident, error) {
-	query := `
-		SELECT id, business_id, device_id, policy_id, kind, severity,
-		       subject_id, subject_label, detail, opened_at,
-		       acknowledged_at, acknowledged_by, resolved_at, resolved_by,
-		       created_at, updated_at
-		FROM incidents
-		WHERE id = $1`
+	query := `SELECT ` + incidentCols + ` FROM incidents WHERE id = $1`
 
 	inc := &model.Incident{}
-	var deviceID, policyID, detail, acknowledgedBy, resolvedBy sql.NullString
+	var deviceID, policyID, detail, acknowledgedBy, resolvedBy, suggested sql.NullString
 	var acknowledgedAt, resolvedAt sql.NullTime
 
 	err := tx.QueryRow(query, id).Scan(
 		&inc.ID, &inc.BusinessID, &deviceID, &policyID,
 		&inc.Kind, &inc.Severity, &inc.SubjectID, &inc.SubjectLabel, &detail,
 		&inc.OpenedAt, &acknowledgedAt, &acknowledgedBy, &resolvedAt, &resolvedBy,
+		&suggested,
 		&inc.CreatedAt, &inc.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
@@ -329,7 +369,33 @@ func (r *IncidentRepository) GetByIDTXN(tx *sql.Tx, id string) (*model.Incident,
 	if err != nil {
 		return nil, fmt.Errorf("get incident by id: %w", err)
 	}
-	scanIncidentNulls(inc, deviceID, policyID, detail, acknowledgedAt, acknowledgedBy, resolvedAt, resolvedBy)
+	scanIncidentNulls(inc, deviceID, policyID, detail, acknowledgedAt, acknowledgedBy, resolvedAt, resolvedBy, suggested)
+	return inc, nil
+}
+
+// GetByIDTenantTXN is the tenant-scoped, transaction-scoped read used by the
+// incident-action endpoint (business_id in the WHERE, never a bare-id read).
+func (r *IncidentRepository) GetByIDTenantTXN(tx *sql.Tx, businessID, id string) (*model.Incident, error) {
+	query := `SELECT ` + incidentCols + ` FROM incidents WHERE id = $1 AND business_id = $2`
+
+	inc := &model.Incident{}
+	var deviceID, policyID, detail, acknowledgedBy, resolvedBy, suggested sql.NullString
+	var acknowledgedAt, resolvedAt sql.NullTime
+
+	err := tx.QueryRow(query, id, businessID).Scan(
+		&inc.ID, &inc.BusinessID, &deviceID, &policyID,
+		&inc.Kind, &inc.Severity, &inc.SubjectID, &inc.SubjectLabel, &detail,
+		&inc.OpenedAt, &acknowledgedAt, &acknowledgedBy, &resolvedAt, &resolvedBy,
+		&suggested,
+		&inc.CreatedAt, &inc.UpdatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get incident by id (tenant): %w", err)
+	}
+	scanIncidentNulls(inc, deviceID, policyID, detail, acknowledgedAt, acknowledgedBy, resolvedAt, resolvedBy, suggested)
 	return inc, nil
 }
 
@@ -352,12 +418,7 @@ func (r *IncidentRepository) HasOpenIncidentBySubjectTXN(tx *sql.Tx, businessID,
 
 // ListOpenByBusinessTXN is the transaction-scoped variant of ListOpenByBusiness.
 func (r *IncidentRepository) ListOpenByBusinessTXN(tx *sql.Tx, businessID string) ([]model.Incident, error) {
-	query := `
-		SELECT id, business_id, device_id, policy_id, kind, severity,
-		       subject_id, subject_label, detail, opened_at,
-		       acknowledged_at, acknowledged_by, resolved_at, resolved_by,
-		       created_at, updated_at
-		FROM incidents
+	query := `SELECT ` + incidentCols + ` FROM incidents
 		WHERE business_id = $1 AND resolved_at IS NULL
 		ORDER BY opened_at DESC`
 
@@ -370,17 +431,18 @@ func (r *IncidentRepository) ListOpenByBusinessTXN(tx *sql.Tx, businessID string
 	var incidents []model.Incident
 	for rows.Next() {
 		var inc model.Incident
-		var devID, policyID, detail, acknowledgedBy, resolvedBy sql.NullString
+		var devID, policyID, detail, acknowledgedBy, resolvedBy, suggested sql.NullString
 		var acknowledgedAt, resolvedAt sql.NullTime
 		if err := rows.Scan(
 			&inc.ID, &inc.BusinessID, &devID, &policyID,
 			&inc.Kind, &inc.Severity, &inc.SubjectID, &inc.SubjectLabel, &detail,
 			&inc.OpenedAt, &acknowledgedAt, &acknowledgedBy, &resolvedAt, &resolvedBy,
+			&suggested,
 			&inc.CreatedAt, &inc.UpdatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scan incident: %w", err)
 		}
-		scanIncidentNulls(&inc, devID, policyID, detail, acknowledgedAt, acknowledgedBy, resolvedAt, resolvedBy)
+		scanIncidentNulls(&inc, devID, policyID, detail, acknowledgedAt, acknowledgedBy, resolvedAt, resolvedBy, suggested)
 		incidents = append(incidents, inc)
 	}
 	if err := rows.Err(); err != nil {
@@ -391,12 +453,7 @@ func (r *IncidentRepository) ListOpenByBusinessTXN(tx *sql.Tx, businessID string
 
 // ListByDeviceTXN is the transaction-scoped variant of ListByDevice.
 func (r *IncidentRepository) ListByDeviceTXN(tx *sql.Tx, businessID, deviceID string) ([]model.Incident, error) {
-	query := `
-		SELECT id, business_id, device_id, policy_id, kind, severity,
-		       subject_id, subject_label, detail, opened_at,
-		       acknowledged_at, acknowledged_by, resolved_at, resolved_by,
-		       created_at, updated_at
-		FROM incidents
+	query := `SELECT ` + incidentCols + ` FROM incidents
 		WHERE business_id = $1 AND device_id = $2
 		ORDER BY opened_at DESC`
 
@@ -409,17 +466,18 @@ func (r *IncidentRepository) ListByDeviceTXN(tx *sql.Tx, businessID, deviceID st
 	var incidents []model.Incident
 	for rows.Next() {
 		var inc model.Incident
-		var devID, policyID, detail, acknowledgedBy, resolvedBy sql.NullString
+		var devID, policyID, detail, acknowledgedBy, resolvedBy, suggested sql.NullString
 		var acknowledgedAt, resolvedAt sql.NullTime
 		if err := rows.Scan(
 			&inc.ID, &inc.BusinessID, &devID, &policyID,
 			&inc.Kind, &inc.Severity, &inc.SubjectID, &inc.SubjectLabel, &detail,
 			&inc.OpenedAt, &acknowledgedAt, &acknowledgedBy, &resolvedAt, &resolvedBy,
+			&suggested,
 			&inc.CreatedAt, &inc.UpdatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scan incident: %w", err)
 		}
-		scanIncidentNulls(&inc, devID, policyID, detail, acknowledgedAt, acknowledgedBy, resolvedAt, resolvedBy)
+		scanIncidentNulls(&inc, devID, policyID, detail, acknowledgedAt, acknowledgedBy, resolvedAt, resolvedBy, suggested)
 		incidents = append(incidents, inc)
 	}
 	if err := rows.Err(); err != nil {

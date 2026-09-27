@@ -19,6 +19,8 @@ type Finding struct {
 	Severity   string  `json:"severity"`   // "info"|"warn"|"critical"|"" (empty = healthy)
 	Summary    string  `json:"summary"`    //
 	Confidence float64 `json:"confidence"` //
+	// SuggestedAction is an optional operator-remediation hint (Stage 1A).
+	SuggestedAction *model.SuggestedAction `json:"suggested_action,omitempty"`
 }
 
 // ModelClient is the pluggable model contract. Analyze classifies one sample and

@@ -85,6 +85,7 @@ func (r *PlatformIncidentRepository) ListOpenAll() ([]model.Incident, error) {
 		`SELECT id, business_id, device_id, policy_id, kind, severity,
 		        subject_id, subject_label, detail, opened_at,
 		        acknowledged_at, acknowledged_by, resolved_at, resolved_by,
+		        suggested_action,
 		        created_at, updated_at
 		 FROM incidents
 		 WHERE resolved_at IS NULL
@@ -97,14 +98,15 @@ func (r *PlatformIncidentRepository) ListOpenAll() ([]model.Incident, error) {
 	var out []model.Incident
 	for rows.Next() {
 		var inc model.Incident
-		var deviceID, policyID, detail, ackdBy, resBy sql.NullString
+		var deviceID, policyID, detail, ackdBy, resBy, suggested sql.NullString
 		var ackdAt, resAt sql.NullTime
 		if err := rows.Scan(&inc.ID, &inc.BusinessID, &deviceID, &policyID,
 			&inc.Kind, &inc.Severity, &inc.SubjectID, &inc.SubjectLabel, &detail,
-			&inc.OpenedAt, &ackdAt, &ackdBy, &resAt, &resBy, &inc.CreatedAt, &inc.UpdatedAt); err != nil {
+			&inc.OpenedAt, &ackdAt, &ackdBy, &resAt, &resBy, &suggested,
+			&inc.CreatedAt, &inc.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan incident: %w", err)
 		}
-		scanIncidentNulls(&inc, deviceID, policyID, detail, ackdAt, ackdBy, resAt, resBy)
+		scanIncidentNulls(&inc, deviceID, policyID, detail, ackdAt, ackdBy, resAt, resBy, suggested)
 		out = append(out, inc)
 	}
 	return out, rows.Err()

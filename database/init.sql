@@ -243,6 +243,7 @@ CREATE INDEX idx_device_change_events_business_device ON device_change_events(bu
 -- incremental migration never leaves the backups/change APIs without access.
 GRANT SELECT, INSERT, UPDATE, DELETE ON device_config_backups TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON device_change_events TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON incidents TO authenticated;
 
 -- One bank transfer (per business) may fund at most ONE live pass: a duplicate
 -- bank reference on a non-rejected request is rejected at the DB level.
@@ -299,6 +300,7 @@ CREATE TABLE incidents (
     subject_id text NOT NULL,
     subject_label text NOT NULL,
     detail text,
+    suggested_action jsonb,
     opened_at timestamptz NOT NULL DEFAULT now(),
     acknowledged_at timestamptz,
     acknowledged_by uuid REFERENCES users(user_id) ON DELETE SET NULL,

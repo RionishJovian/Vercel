@@ -264,8 +264,9 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	backupHandler := handler.NewBackupHandler(db, database.NewDeviceRepository(db))
 	teamHandler := handler.NewTeamHandler(db, database.NewUserRepository(db), authService)
 	pulseHandler := handler.NewPulseHandler(db, database.NewDeviceRepository(db), database.NewIncidentRepository(db))
+	incidentActionHandler := handler.NewIncidentActionHandler(db, database.NewIncidentRepository(db), database.NewDeviceRepository(db), messagingClient)
 
-	setupRoutes(r, authService, authHandler, routerHandler, telemetryHandler, incidentHandler, webhookHandler, voucherHandler, portalHandler, billingHandler, guestWifiHandler, monitorHandler, fleetHandler, topologyHandler, vpsHandler, platformHandler, securityHandler, backupHandler, teamHandler, pulseHandler, messagingClient, cacheClient, db, tenantMW)
+	setupRoutes(r, authService, authHandler, routerHandler, telemetryHandler, incidentHandler, webhookHandler, voucherHandler, portalHandler, billingHandler, guestWifiHandler, monitorHandler, fleetHandler, topologyHandler, vpsHandler, platformHandler, securityHandler, backupHandler, teamHandler, pulseHandler, incidentActionHandler, messagingClient, cacheClient, db, tenantMW)
 
 	// Start the policy evaluator: watches NATS telemetry and auto-opens incidents.
 	evaluator := evaluator.New(
@@ -359,7 +360,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	// When enabled, peer.recover intents reach the real RouterOS Applier through
 	// the approve -> apply -> verify -> rollback gate. A failure here must fail
 	// startup loudly.
-	if err := startLiveApplier(cfg, messagingClient, sugar, monitoringService, db, backupHandler); err != nil {
+	if err := startLiveApplier(cfg, messagingClient, sugar, monitoringService, db, backupHandler, incidentActionHandler); err != nil {
 		return nil, err
 	}
 
@@ -390,7 +391,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	}, nil
 }
 
-func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.AuthHandler, routerHandler *handler.RouterHandler, telemetryHandler *handler.TelemetryHandler, incidentHandler *handler.IncidentHandler, webhookHandler *handler.WebhookHandler, voucherHandler *handler.VoucherHandler, portalHandler *handler.PortalHandler, billingHandler *handler.BillingHandler, guestWifiHandler *handler.GuestWifiHandler, monitorHandler *handler.MonitorHandler, fleetHandler *handler.FleetHandler, topologyHandler *handler.TopologyHandler, vpsHandler *handler.VPSHandler, platformHandler *handler.PlatformHandler, securityHandler *handler.SecurityHandler, backupHandler *handler.BackupHandler, teamHandler *handler.TeamHandler, pulseHandler *handler.PulseHandler, msg *messaging.Client, cache *cache.Client, db *database.DB, tenantMW gin.HandlerFunc) {
+func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.AuthHandler, routerHandler *handler.RouterHandler, telemetryHandler *handler.TelemetryHandler, incidentHandler *handler.IncidentHandler, webhookHandler *handler.WebhookHandler, voucherHandler *handler.VoucherHandler, portalHandler *handler.PortalHandler, billingHandler *handler.BillingHandler, guestWifiHandler *handler.GuestWifiHandler, monitorHandler *handler.MonitorHandler, fleetHandler *handler.FleetHandler, topologyHandler *handler.TopologyHandler, vpsHandler *handler.VPSHandler, platformHandler *handler.PlatformHandler, securityHandler *handler.SecurityHandler, backupHandler *handler.BackupHandler, teamHandler *handler.TeamHandler, pulseHandler *handler.PulseHandler, incidentActionHandler *handler.IncidentActionHandler, msg *messaging.Client, cache *cache.Client, db *database.DB, tenantMW gin.HandlerFunc) {
 	r.GET("/", indexPage)
 	r.GET("/health", healthCheck)
 	r.GET("/ready", readinessCheck(&Server{cache: cache, db: db, messaging: msg}))
@@ -458,6 +459,8 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 				incidents.POST("", incidentHandler.Create)
 				incidents.POST("/:id/acknowledge", incidentHandler.Acknowledge)
 				incidents.POST("/:id/resolve", incidentHandler.Resolve)
+				// Stage 1A: apply an incident's suggested_action (high-risk => ADMIN).
+				incidents.POST("/:id/action", auth.RequireMinRole(model.RoleAdmin), incidentActionHandler.Apply)
 			}
 
 			peers := protected.Group("/peers")
