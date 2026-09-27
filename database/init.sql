@@ -238,6 +238,12 @@ CREATE TABLE IF NOT EXISTS device_change_events (
 
 CREATE INDEX idx_device_change_events_business_device ON device_change_events(business_id, device_id, created_at DESC);
 
+-- C2: explicit grants to the authenticated role. These are idempotent and cover
+-- the C2 tables independently of the generic ALL-TABLES grant below, so an
+-- incremental migration never leaves the backups/change APIs without access.
+GRANT SELECT, INSERT, UPDATE, DELETE ON device_config_backups TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON device_change_events TO authenticated;
+
 -- One bank transfer (per business) may fund at most ONE live pass: a duplicate
 -- bank reference on a non-rejected request is rejected at the DB level.
 CREATE UNIQUE INDEX idx_purchase_requests_bank_ref_unique
