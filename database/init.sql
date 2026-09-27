@@ -243,7 +243,9 @@ CREATE INDEX idx_device_change_events_business_device ON device_change_events(bu
 -- incremental migration never leaves the backups/change APIs without access.
 GRANT SELECT, INSERT, UPDATE, DELETE ON device_config_backups TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON device_change_events TO authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON incidents TO authenticated;
+-- NOTE: the incidents grant intentionally lives in the incidents schema section
+-- (after CREATE TABLE incidents) so a fresh init.sql load does not fail on a
+-- grant-to-nonexistent-table.
 
 -- One bank transfer (per business) may fund at most ONE live pass: a duplicate
 -- bank reference on a non-rejected request is rejected at the DB level.
@@ -312,6 +314,7 @@ CREATE TABLE incidents (
 
 CREATE INDEX idx_incidents_business_open ON incidents(business_id, resolved_at) WHERE resolved_at IS NULL;
 CREATE INDEX idx_incidents_device ON incidents(device_id, opened_at DESC);
+GRANT SELECT, INSERT, UPDATE, DELETE ON incidents TO authenticated;
 
 -- ============================================================================
 -- AUDIT LOGGING (Immutable)
