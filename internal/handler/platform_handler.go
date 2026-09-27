@@ -124,6 +124,13 @@ func (h *PlatformHandler) UnsuspendBusiness(c *gin.Context) {
 
 func (h *PlatformHandler) setActive(c *gin.Context, active bool) {
 	businessID := c.Param("businessId")
+	// Never allow an admin to suspend their own tenant — that self-locks the
+	// account (is_active=false on the business cascades to all its users,
+	// including the DEVELOPER) and there is then no route back in to unsuspend.
+	if !active && businessID != "" && businessID == c.GetString(auth.ContextKeyBusinessID) {
+		c.JSON(http.StatusConflict, gin.H{"error": "cannot suspend your own tenant"})
+		return
+	}
 	if err := h.businessRepo.SetBusinessActive(businessID, active); err != nil {
 		if err == database.ErrTenantNotFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": "tenant not found"})
