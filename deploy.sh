@@ -47,8 +47,25 @@ deploy_web() {
 
 deploy_api() {
   echo ">> Building Go binary"
-  /usr/bin/go build -o server cmd/server/main.go
-  cp -f server server.prev   # keep previous for instant rollback
+  # Build to a TEMPORARY file first. Two reasons:
+  #   1. A failed build must not touch the binary the service is running.
+  #   2. The backup must be taken while `server` is still the OLD binary.
+  # This previously read `go build -o server` then `cp server server.prev`,
+  # which copied the NEW binary over the backup — so the "previous" file was
+  # never the previous anything, and the rollback path it claims to keep did
+  # not exist. Verified on the live host: server and server.prev had identical
+  # md5sums.
+  local tmpserver="server.new.$$"
+  if ! /usr/bin/go build -o "$tmpserver" cmd/server/main.go; then
+    echo ">> BUILD FAILED — leaving the running binary untouched" >&2
+    rm -f "$tmpserver"
+    return 1
+  fi
+  # `server` is still the old binary here, so this is a REAL rollback point.
+  if [ -f server ]; then
+    cp -f server server.prev
+  fi
+  mv -f "$tmpserver" server
   echo ">> Restarting mega-magic-api"
   sudo systemctl restart mega-magic-api
   sleep 3
