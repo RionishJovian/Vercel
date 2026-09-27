@@ -68,6 +68,10 @@ a:hover { text-decoration: underline; }
 
 /* ---------- Layout scaffold ---------- */
 .layout { display: grid; grid-template-columns: 232px 1fr; min-height: 100vh; }
+/* Grid/flex children default to min-width:auto, so one wide child (a data
+   table) widens the whole track and pushes the layout past the screen edge.
+   This is what made the app overflow horizontally on phones. */
+.layout > * { min-width: 0; }
 
 /* Left rail — thin, calm, no cards */
 .rail {
@@ -81,6 +85,16 @@ a:hover { text-decoration: underline; }
 .rail-sub { font-size: 12px; color: var(--ink-muted); margin-top: 3px; }
 
 .rail-section { font-size: 11px; text-transform: uppercase; letter-spacing: .14em; color: var(--ink-muted); padding-top: 18px; }
+
+/* Rail head + collapse scaffolding. These wrappers are inert on desktop so the
+   rail renders exactly as before; below 900px they become a top bar + menu. */
+.rail-head { display: block; }
+.rail-menu { display: flex; flex-direction: column; gap: 6px; flex: 1 1 auto; min-height: 0; }
+.rail-toggle { display: none; }
+.rail-open { position: absolute; width: 0; height: 0; opacity: 0; pointer-events: none; }
+
+/* Wide data tables get wrapped at runtime so they can scroll rather than clip */
+.tablewrap { max-width: 100%; }
 
 .nav-item {
   display: block; width: 100%; text-align: left;
@@ -211,10 +225,67 @@ hr.rule { border: 0; border-top: 1px solid var(--line); margin: 20px 0; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 
 @media (max-width: 900px) {
-  .layout { grid-template-columns: 1fr; }
-  .rail { flex-direction: row; overflow-x: auto; gap: 12px; padding: 12px 14px; }
-  main { padding: 18px 20px; }
-  .stat-cluster { gap: 18px; }
+  .layout { grid-template-columns: minmax(0, 1fr); }
+
+  /* The rail becomes a sticky top bar. Twenty nav items in one endless
+     horizontal strip are unreachable on a phone, so they collapse into a
+     tap-to-open menu (pure CSS: the .rail-open checkbox + this label). */
+  .rail {
+    position: sticky; top: 0; z-index: 30;
+    padding: 10px 14px; gap: 0;
+    border-right: 0; border-bottom: 1px solid var(--line-soft);
+  }
+  .rail-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .rail-toggle {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 42px; height: 42px; flex: 0 0 auto;
+    cursor: pointer; user-select: none;
+    border: 1px solid var(--line); border-radius: 10px;
+    color: var(--ink); font-size: 17px; line-height: 1;
+  }
+  .rail-toggle:active { background: var(--accent-wash); }
+  .rail-open:focus-visible ~ .rail-head .rail-toggle { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .rail-menu {
+    display: none;
+    position: absolute; left: 0; right: 0; top: 100%;
+    padding: 10px 14px 16px;
+    background: var(--bg-subtle);
+    border-bottom: 1px solid var(--line);
+    box-shadow: 0 26px 52px -26px rgba(0,0,0,.9);
+    max-height: min(72vh, 520px); overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .rail-open:checked ~ .rail-menu { display: flex; }
+  .rail-menu .rail-section { padding-top: 12px; }
+
+  main { padding: 18px 16px 48px; }
+  .page-head { flex-wrap: wrap; gap: 8px; }
+  .page-title { font-size: 19px; }
+
+  /* Wide data tables scroll inside their panel instead of running off-screen */
+  .tablewrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .tablewrap > table { min-width: 560px; }
+
+  /* Stat rows wrap into a 2-up grid instead of clipping the last figure */
+  .stat-cluster { grid-auto-flow: row; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 18px; }
+
+  /* Long unbroken strings (paths, messages, ids) must wrap, not overflow */
+  .alert, .panel-body, .mono, .page-lead { overflow-wrap: anywhere; }
+
   .land-grid { grid-template-columns: 1fr; }
+  .land-hero { padding: 52px 20px 36px; }
+  .land-hero h1 { font-size: 30px; }
+  .land-section { padding: 36px 20px; }
   .signin-wrap { grid-template-columns: 1fr; }
+  .signin-left { padding: 40px 22px; }
+  .signin-card { width: 100%; max-width: 420px; padding: 24px; }
+
+  .input, select, input, textarea { max-width: 100%; }
+}
+
+/* Narrow phones: single-column stats and slightly tighter chrome */
+@media (max-width: 420px) {
+  .stat-cluster { grid-template-columns: 1fr; }
+  .rail-toggle { width: 40px; height: 40px; }
+  main { padding: 16px 12px 44px; }
 }

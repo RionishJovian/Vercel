@@ -189,34 +189,40 @@
 <div class="lg-grain"></div>
 <div class="layout">
   <nav class="rail" aria-label="Primary">
-    <div>
-      <div class="rail-brand"><span class="dot"></span>Mega Magic</div>
-      <div class="rail-sub" id="rail-biz">—</div>
+    <input type="checkbox" id="rail-open" class="rail-open" aria-label="Toggle navigation menu">
+    <div class="rail-head">
+      <div>
+        <div class="rail-brand"><span class="dot"></span>Mega Magic</div>
+        <div class="rail-sub" id="rail-biz">—</div>
+      </div>
+      <label class="rail-toggle" for="rail-open" title="Menu" aria-hidden="true">☰</label>
     </div>
-    <div class="rail-section">Operations</div>
-    <button class="nav-item" data-view="overview" aria-current="page">Overview</button>
-    <button class="nav-item" data-view="fleet">Fleet health</button>
-    <button class="nav-item" data-view="sites">Sites</button>
-    <button class="nav-item" data-view="topology">Topology</button>
-    <button class="nav-item" data-view="incidents">Incidents</button>
-    <button class="nav-item" data-view="security">Security</button>
-    <button class="nav-item" data-view="backups">Backups</button>
-    <button class="nav-item" data-view="events">Event log</button>
-    <button class="nav-item" data-view="templates">Templates</button>
-    <button class="nav-item" data-view="termlog">Terminal log</button>
-    <button class="nav-item" data-view="scans">Fleet scans</button>
-    <button class="nav-item" data-view="aiusage">AI usage</button>
-    <button class="nav-item" data-view="i18n">Translations</button>
-    <div class="rail-section">Account</div>
-    <button class="nav-item" data-view="vouchers">Vouchers</button>
-    <button class="nav-item" data-view="coins">Magic Coins</button>
-    <button class="nav-item" data-view="unlockkeys">Unlock keys</button>
-    <button class="nav-item" data-view="portal">Captive portal</button>
-    <button class="nav-item" data-view="team">Team</button>
-    <div class="rail-section">Operator</div>
-    <button class="nav-item" data-view="platform" id="nav-platform" hidden>Platform</button>
-    <div style="flex:1"></div>
-    <button class="nav-item" id="signout">Sign out</button>
+    <div class="rail-menu">
+      <div class="rail-section">Operations</div>
+      <button class="nav-item" data-view="overview" aria-current="page">Overview</button>
+      <button class="nav-item" data-view="fleet">Fleet health</button>
+      <button class="nav-item" data-view="sites">Sites</button>
+      <button class="nav-item" data-view="topology">Topology</button>
+      <button class="nav-item" data-view="incidents">Incidents</button>
+      <button class="nav-item" data-view="security">Security</button>
+      <button class="nav-item" data-view="backups">Backups</button>
+      <button class="nav-item" data-view="events">Event log</button>
+      <button class="nav-item" data-view="templates">Templates</button>
+      <button class="nav-item" data-view="termlog">Terminal log</button>
+      <button class="nav-item" data-view="scans">Fleet scans</button>
+      <button class="nav-item" data-view="aiusage">AI usage</button>
+      <button class="nav-item" data-view="i18n">Translations</button>
+      <div class="rail-section">Account</div>
+      <button class="nav-item" data-view="vouchers">Vouchers</button>
+      <button class="nav-item" data-view="coins">Magic Coins</button>
+      <button class="nav-item" data-view="unlockkeys">Unlock keys</button>
+      <button class="nav-item" data-view="portal">Captive portal</button>
+      <button class="nav-item" data-view="team">Team</button>
+      <div class="rail-section">Operator</div>
+      <button class="nav-item" data-view="platform" id="nav-platform" hidden>Platform</button>
+      <div style="flex:1"></div>
+      <button class="nav-item" id="signout">Sign out</button>
+    </div>
   </nav>
 
   <main id="main">
@@ -2719,6 +2725,26 @@ window.addEventListener("load", async () => {
     if (navP) navP.hidden = false;
   }
   const main = document.getElementById("main");
+
+  // Narrow screens: wide data tables scroll inside their panel instead of
+  // running off the edge. Handled here so the 30 table render sites stay as-is.
+  const wrapTables = () => main.querySelectorAll("table").forEach((t) => {
+    const p = t.parentElement;
+    if (p && p.classList.contains("tablewrap")) return;
+    const d = document.createElement("div");
+    d.className = "tablewrap";
+    p.replaceChild(d, t);
+    d.appendChild(t);
+  });
+  new MutationObserver(wrapTables).observe(main, { childList: true, subtree: true });
+
+  // The rail collapses into a menu below 900px: close it once a view is chosen,
+  // or when the tap lands outside the rail.
+  const railCb = document.getElementById("rail-open");
+  document.addEventListener("click", (e) => {
+    if (!railCb || !railCb.checked) return;
+    if (e.target.closest(".nav-item") || !e.target.closest(".rail")) railCb.checked = false;
+  });
 
   const go = async (name) => {
     document.querySelectorAll(".nav-item[data-view]").forEach(b => b.removeAttribute("aria-current"));
