@@ -125,6 +125,31 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	)
 	// Voucher management for vistors (revenue features)
 	voucherHandler := handler.NewVoucherHandler(db, database.NewVoucherRepository(db), database.NewBusinessMeteredQuotaRepository(db))
+	// Magic Coins — per-user balance + immutable ledger (ported from Mikromagic).
+	magicCoinHandler := handler.NewMagicCoinHandler(db, database.NewMagicCoinRepository(db))
+	// Sites — physical locations with the ported geo data (location/timezone/lat/lng).
+	siteHandler := handler.NewSiteHandler(db, database.NewSiteRepository(db))
+	// Router connections — saved management endpoints ported from Mikromagic.
+	connHandler := handler.NewRouterConnectionHandler(db, database.NewRouterConnectionRepository(db))
+	// Device allowances + requests — granted capacity and its approval workflow.
+	allowHandler := handler.NewDeviceAllowanceHandler(db, database.NewDeviceAllowanceRepository(db))
+	// Syslog — the ported router event log (read-only, paged).
+	syslogHandler := handler.NewSyslogHandler(db, database.NewSyslogRepository(db))
+	// Terminal templates — the saved RouterOS REST call library.
+	templateHandler := handler.NewTerminalTemplateHandler(db, database.NewTerminalTemplateRepository(db))
+	// Voucher resellers + printed-voucher layout (ported from Mikromagic).
+	resellerHandler := handler.NewVoucherResellerHandler(db, database.NewVoucherResellerRepository(db))
+	// Fleet scans — the ported AI scan history (read-only).
+	scanHandler := handler.NewFleetScanRunHandler(db, database.NewFleetScanRunRepository(db))
+	// AI usage — token history behind the AI features (read-only).
+	usageHandler := handler.NewAIUsageHandler(db, database.NewAIUsageRepository(db))
+	// Terminal history — commands run against routers (read-only).
+	terminalHistoryHandler := handler.NewTerminalHistoryHandler(db, database.NewTerminalHistoryRepository(db))
+	// Unlock keys — the Magic Coin purchase ledger (read-only).
+	unlockKeyHandler := handler.NewUnlockKeyHandler(db, database.NewUnlockKeyRepository(db))
+	// Translation overrides — a GLOBAL table, so reads are open and writes are
+	// platform-only (see the route block for why).
+	i18nHandler := handler.NewI18nHandler(db, database.NewI18nRepository(db))
 	portalHandler := handler.NewPortalHandler(
 		db,
 		database.NewDeviceRepository(db),
@@ -268,7 +293,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	pulseHandler := handler.NewPulseHandler(db, database.NewDeviceRepository(db), database.NewIncidentRepository(db))
 	incidentActionHandler := handler.NewIncidentActionHandler(db, database.NewIncidentRepository(db), database.NewDeviceRepository(db), messagingClient)
 
-	setupRoutes(r, authService, authHandler, routerHandler, telemetryHandler, incidentHandler, webhookHandler, voucherHandler, portalHandler, billingHandler, guestWifiHandler, monitorHandler, fleetHandler, topologyHandler, vpsHandler, platformHandler, securityHandler, backupHandler, teamHandler, pulseHandler, incidentActionHandler, messagingClient, cacheClient, db, tenantMW)
+	setupRoutes(r, authService, authHandler, routerHandler, telemetryHandler, incidentHandler, webhookHandler, voucherHandler, portalHandler, billingHandler, guestWifiHandler, monitorHandler, fleetHandler, topologyHandler, vpsHandler, platformHandler, securityHandler, backupHandler, teamHandler, pulseHandler, incidentActionHandler, magicCoinHandler, siteHandler, connHandler, allowHandler, syslogHandler, templateHandler, resellerHandler, scanHandler, usageHandler, terminalHistoryHandler, unlockKeyHandler, i18nHandler, messagingClient, cacheClient, db, tenantMW)
 
 	// Start the policy evaluator: watches NATS telemetry and auto-opens incidents.
 	evaluator := evaluator.New(
@@ -393,7 +418,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	}, nil
 }
 
-func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.AuthHandler, routerHandler *handler.RouterHandler, telemetryHandler *handler.TelemetryHandler, incidentHandler *handler.IncidentHandler, webhookHandler *handler.WebhookHandler, voucherHandler *handler.VoucherHandler, portalHandler *handler.PortalHandler, billingHandler *handler.BillingHandler, guestWifiHandler *handler.GuestWifiHandler, monitorHandler *handler.MonitorHandler, fleetHandler *handler.FleetHandler, topologyHandler *handler.TopologyHandler, vpsHandler *handler.VPSHandler, platformHandler *handler.PlatformHandler, securityHandler *handler.SecurityHandler, backupHandler *handler.BackupHandler, teamHandler *handler.TeamHandler, pulseHandler *handler.PulseHandler, incidentActionHandler *handler.IncidentActionHandler, msg *messaging.Client, cache *cache.Client, db *database.DB, tenantMW gin.HandlerFunc) {
+func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.AuthHandler, routerHandler *handler.RouterHandler, telemetryHandler *handler.TelemetryHandler, incidentHandler *handler.IncidentHandler, webhookHandler *handler.WebhookHandler, voucherHandler *handler.VoucherHandler, portalHandler *handler.PortalHandler, billingHandler *handler.BillingHandler, guestWifiHandler *handler.GuestWifiHandler, monitorHandler *handler.MonitorHandler, fleetHandler *handler.FleetHandler, topologyHandler *handler.TopologyHandler, vpsHandler *handler.VPSHandler, platformHandler *handler.PlatformHandler, securityHandler *handler.SecurityHandler, backupHandler *handler.BackupHandler, teamHandler *handler.TeamHandler, pulseHandler *handler.PulseHandler, incidentActionHandler *handler.IncidentActionHandler, magicCoinHandler *handler.MagicCoinHandler, siteHandler *handler.SiteHandler, connHandler *handler.RouterConnectionHandler, allowHandler *handler.DeviceAllowanceHandler, syslogHandler *handler.SyslogHandler, templateHandler *handler.TerminalTemplateHandler, resellerHandler *handler.VoucherResellerHandler, scanHandler *handler.FleetScanRunHandler, usageHandler *handler.AIUsageHandler, historyHandler *handler.TerminalHistoryHandler, unlockHandler *handler.UnlockKeyHandler, i18nH *handler.I18nHandler, msg *messaging.Client, cache *cache.Client, db *database.DB, tenantMW gin.HandlerFunc) {
 	r.GET("/", indexPage)
 	r.GET("/health", healthCheck)
 	r.GET("/ready", readinessCheck(&Server{cache: cache, db: db, messaging: msg}))
@@ -504,6 +529,102 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 				vouchers.DELETE("/:id", voucherHandler.DeleteVoucher)
 				vouchers.POST("/:code/redeem", voucherHandler.RedeemVoucher) // For voucher redemption
 			}
+
+			coins := protected.Group("/magic-coins")
+			{
+				coins.GET("/wallet", magicCoinHandler.GetWallet)
+				coins.GET("/transactions", magicCoinHandler.ListTransactions)
+				// Manual adjustments move money, so they are ADMIN+ only.
+				coins.POST("/adjust", auth.RequireMinRole(model.RoleAdmin), magicCoinHandler.Adjust)
+			}
+
+			sites := protected.Group("/sites")
+			{
+				sites.GET("", siteHandler.ListSites)
+				// Editing a site moves routers between locations, so ADMIN+ only.
+				sites.POST("", auth.RequireMinRole(model.RoleAdmin), siteHandler.CreateSite)
+				sites.PUT("/:id", auth.RequireMinRole(model.RoleAdmin), siteHandler.UpdateSite)
+				sites.DELETE("/:id", auth.RequireMinRole(model.RoleAdmin), siteHandler.DeleteSite)
+			}
+
+			conns := protected.Group("/router-connections")
+			{
+				conns.GET("", connHandler.ListRouterConnections)
+				// A connection is a management credential path into the fleet, so ADMIN+ only.
+				conns.POST("", auth.RequireMinRole(model.RoleAdmin), connHandler.CreateRouterConnection)
+				conns.PUT("/:id", auth.RequireMinRole(model.RoleAdmin), connHandler.UpdateRouterConnection)
+				conns.DELETE("/:id", auth.RequireMinRole(model.RoleAdmin), connHandler.DeleteRouterConnection)
+			}
+
+			// Capacity: reading the allowance is fine for anyone; asking for more
+			// is not privileged, but DECIDING is.
+			protected.GET("/device-allowances", allowHandler.GetAllowance)
+			requests := protected.Group("/device-requests")
+			{
+				requests.GET("", allowHandler.ListRequests)
+				requests.POST("", allowHandler.CreateRequest)
+				requests.POST("/:id/decide", auth.RequireMinRole(model.RoleAdmin), allowHandler.DecideRequest)
+			}
+
+			// Router event log — read-only, so any authenticated role may browse it.
+			protected.GET("/syslog-events", syslogHandler.ListEvents)
+
+			templates := protected.Group("/terminal-templates")
+			{
+				templates.GET("", templateHandler.ListTemplates)
+				// The library is shipped content; only ADMIN+ may add or edit, and
+				// built-ins are refused outright by the repo.
+				templates.POST("", auth.RequireMinRole(model.RoleAdmin), templateHandler.CreateTemplate)
+				templates.PUT("/:id", auth.RequireMinRole(model.RoleAdmin), templateHandler.UpdateTemplate)
+				templates.DELETE("/:id", auth.RequireMinRole(model.RoleAdmin), templateHandler.DeleteTemplate)
+			}
+
+			// Voucher resellers — deliberately a TOP-LEVEL group, not
+			// /vouchers/resellers: gin's router panics when a static segment
+			// collides with the existing /vouchers/:id wildcard.
+			resellers := protected.Group("/voucher-resellers")
+			{
+				resellers.GET("", resellerHandler.ListResellers)
+				resellers.POST("", auth.RequireMinRole(model.RoleAdmin), resellerHandler.CreateReseller)
+				resellers.PUT("/:id", auth.RequireMinRole(model.RoleAdmin), resellerHandler.UpdateReseller)
+				resellers.DELETE("/:id", auth.RequireMinRole(model.RoleAdmin), resellerHandler.DeleteReseller)
+			}
+
+			// Printed-voucher layout — one row per business (business_id IS the PK).
+			layout := protected.Group("/voucher-print-layout")
+			{
+				layout.GET("", resellerHandler.GetPrintLayout)
+				layout.PUT("", auth.RequireMinRole(model.RoleAdmin), resellerHandler.SavePrintLayout)
+			}
+
+			// Fleet scans — generated by the scan engine, so READ-ONLY for tenants.
+			scans := protected.Group("/fleet-scan-runs")
+			{
+				scans.GET("", scanHandler.ListScanRuns)
+				scans.GET("/:id", scanHandler.GetScanRun)
+			}
+
+			// AI usage — written by the AI features themselves, so READ-ONLY too.
+			protected.GET("/ai-usage-events", usageHandler.ListUsageEvents)
+
+			// Terminal history — an audit log of commands, so READ-ONLY as well.
+			protected.GET("/terminal-history", historyHandler.ListTerminalHistory)
+
+			// Unlock keys — created by the coin purchase flow, so READ-ONLY.
+			protected.GET("/unlock-keys", unlockHandler.ListUnlockKeys)
+
+			// Translation overrides. `i18n_overrides` has NO business_id and RLS is
+			// DISABLED on it, so every business shares these rows. Reading them is
+			// harmless, but a tenant admin writing here would rewrite the UI for all
+			// other tenants — so writes carry the exact DEVELOPER gate, matching the
+			// /platform group, not RequireMinRole(ADMIN).
+			protected.GET("/i18n-overrides", i18nH.ListOverrides)
+			protected.POST("/i18n-overrides",
+				auth.RequireRole(string(model.RoleDeveloper)), i18nH.CreateOverride)
+			protected.PUT("/i18n-overrides/:id",
+				auth.RequireRole(string(model.RoleDeveloper)), i18nH.UpdateOverride)
+			protected.DELETE("/i18n-overrides/:id",
+				auth.RequireRole(string(model.RoleDeveloper)), i18nH.DeleteOverride)
 
 			portalStaff := protected.Group("/portal")
 			{

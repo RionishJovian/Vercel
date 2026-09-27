@@ -71,7 +71,11 @@ type Business struct {
 }
 
 type LoginRequest struct {
-	Email    string `json:"email" binding:"required,email"`
+	// NOTE: deliberately NOT `binding:"email"`. Migrated Mikromagic logins are
+	// TLD-less (e.g. `kyaw@mikromagic`) and must keep working verbatim — an
+	// `email` binding rejects them with 400 before the password is ever checked.
+	// Register stays strict (`email`) so NEW signups are real addresses.
+	Email    string `json:"email" binding:"required,min=3"`
 	Password string `json:"password" binding:"required,min=6"`
 }
 

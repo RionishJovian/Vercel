@@ -52,3 +52,21 @@ func withDeviceTenant(owner *database.DB, businessID string, fn func(tx *sql.Tx)
 	}
 	return tx.Commit()
 }
+
+// runGlobalTx executes fn in a transaction with NO tenant binding, for the
+// platform-global tables (no business_id column, RLS disabled). Binding a tenant
+// here would be a lie: with RLS off it changes nothing, and it would imply the
+// rows are isolated per business when every business shares them. Callers must
+// therefore gate writes on the DEVELOPER platform role instead.
+func runGlobalTx(owner *database.DB, fn func(tx *sql.Tx) error) error {
+	tx, err := owner.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if err := fn(tx); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
