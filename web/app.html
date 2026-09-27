@@ -763,7 +763,9 @@ function platformIncidentTable(list, bizs) {
 }
 
 /* ---------- Boot ---------- */
-(async () => {
+// External api.js/app.js load deferred; wait for window.load so MM/whoami
+// exist before we boot (they are undefined before that -> ReferenceError).
+window.addEventListener("load", async () => {
   const me = await whoami();
   if (!me) return;
   ME = me;
@@ -794,7 +796,7 @@ function platformIncidentTable(list, bizs) {
 
   const initial = location.hash.slice(1);
   await loadView(VIEWS[initial] ? initial : "overview", main, ME);
-})();
+});
 </script>
 </body>
 </html>
