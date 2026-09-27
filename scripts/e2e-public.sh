@@ -144,7 +144,7 @@ step "authenticated endpoints"
 expect GET /api/v1/me               "$TMP/me.json"       200 user.email       "" "$TOKEN"
 expect GET /api/v1/fleet/health     "$TMP/fleet.json"    200 total_peers      "" "$TOKEN"
 expect GET /api/v1/topology/map     "$TMP/topo.json"     200 business_id      "" "$TOKEN"
-expect GET /api/v1/security/posture "$TMP/sec.json"      200 posture          "" "$TOKEN"
+expect GET /api/v1/security/posture "$TMP/sec.json"      200 count            "" "$TOKEN"
 expect GET /api/v1/team             "$TMP/team.json"     200 team             "" "$TOKEN"
 expect GET /api/v1/routers          "$TMP/routers.json"  200 -                "" "$TOKEN"
 
