@@ -292,7 +292,12 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("ai.openrouter_url", "https://openrouter.ai/api/v1")
 	v.SetDefault("ai.openrouter_model", "nvidia/nemotron-3-super-120b-a12b:free")
 	v.SetDefault("ai.notify_telegram_enabled", false)
-	v.SetDefault("database.name", "mega_magic_dev")
+	// Production database: the merged data. `mega_magic_dev` is the pristine
+	// baseline and `mega_merge` the ETL working copy — neither should be the
+	// default, or a fresh deploy would serve the empty baseline and silently
+	// lose every migrated row. Build the promoted database with
+	// scripts/migration/promote.sh.
+	v.SetDefault("database.name", "mega_magic")
 	v.SetDefault("database.sslmode", "disable")
 	v.SetDefault("database.max_open_conns", 25)
 	v.SetDefault("database.max_idle_conns", 5)

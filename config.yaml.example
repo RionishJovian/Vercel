@@ -16,7 +16,7 @@ database:
   port: 5433
   user: "mega_admin"
   password: "CHANGE-ME"
-  name: "mega_magic_dev"
+  name: "mega_magic"
   sslmode: "disable"
   max_open_conns: 25
   max_idle_conns: 5
