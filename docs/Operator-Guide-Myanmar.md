@@ -39,7 +39,7 @@
 
 1. Guest တစ်ဦးသည် captive portal တွင် plan ရွေးပြီး **MMQR** ဖြင့် ငွေလွှဲမည်။
 2. ငွေလွှဲပြီးနောက် guest သည် ဖုန်းနံပါတ်နှင့် transaction နောက်ဆုံး ၆ လုံး ထည့်သွင်းမည်။
-3. သင့် owner **Telegram** bot တွင် **Approve / Reject** button ဖြင့် အကြောင်းကြားလာမည်။
+3. သင့် telegram bot တွင် **Approve / Reject** button ဖြင့် အကြောင်းကြားလာပါမည်။
 4. **Approve** နှိပ်လိုက်ပါက guest ၏ pass ကို router တွင် အလိုအလျောက် တိုးပေးမည် (data + time limit)။
 5. Web dashboard မှလည်း `Captive portal` → **Guest purchase requests** တွင် အတည်ပြု / ငြင်းနိုင်သည်။
 
@@ -143,7 +143,7 @@
 အောက်ပါ မြန်မာစာသားများကို native speaker ဖြင့် အတည်ပြုပေးပါ။ အကြောင်းအရာ မှန်ပါသည်၊ စကားအသုံးအနှုန်း သဘာဝကျမှုသာ စစ်ရန်:
 
 1. "ငွေလွှဲပြီးနောက် guest သည် ဖုန်းနံပါတ်နှင့် transaction နောက်ဆုံး ၆ လုံး ထည့်သွင်းမည်။"
-2. "သင့် owner **Telegram** bot တွင် ... အကြောင်းကြားလာမည်။"
+2. "သင့် telegram bot တွင် ... အကြောင်းကြားလာပါမည်။" ✅ NATIVE-CORRECTED (owner Telegram bot → your Telegram bot)
 3. "Approve နှိပ်လိုက်ပါက guest ၏ pass ကို router တွင် အလိုအလျောက် တိုးပေးမည် (data + time limit)။"
 4. "'Affected' ဆိုသည်မှာ ကျွန်ုပ်တို့ ခြေရာခံထားသော security advisory တစ်ခုခုနှင့် ကိုက်ညီခြင်း ဖြစ်သည်။"
 5. "Backup ယူခြင်းသည် device ကို SSH ဖြင့် ချိတ်ဆက်ရသည်။"
