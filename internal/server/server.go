@@ -120,6 +120,8 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	platformHandler := handler.NewPlatformHandler(
 		database.NewPlatformBusinessRepository(db),
 		database.NewPlatformIncidentRepository(db),
+		db,
+		authService,
 	)
 	// Voucher management for vistors (revenue features)
 	voucherHandler := handler.NewVoucherHandler(db, database.NewVoucherRepository(db), database.NewBusinessMeteredQuotaRepository(db))
@@ -576,6 +578,13 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 			platform.GET("/businesses", platformHandler.ListBusinesses)
 			platform.GET("/incidents", platformHandler.ListOpenIncidents)
 			platform.GET("/incidents/counts", platformHandler.CountIncidents)
+			// Admin console (tenant management). Same strongest gate as the group:
+			// RequireRole(DEVELOPER) — NO customer role reaches these.
+			platform.POST("/businesses", platformHandler.CreateBusiness)
+			platform.POST("/businesses/:businessId/suspend", platformHandler.SuspendBusiness)
+			platform.POST("/businesses/:businessId/unsuspend", platformHandler.UnsuspendBusiness)
+			platform.POST("/businesses/:businessId/reset-owner-password", platformHandler.ResetOwnerPassword)
+			platform.GET("/businesses/:businessId/state", platformHandler.TenantState)
 		}
 	}
 }
