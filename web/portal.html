@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="my-MM">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -30,35 +30,58 @@
 </style>
 </head>
 <body>
-<div class="lang" id="lang">မြန်မာ</div>
+<div class="lang" id="lang" role="button" tabindex="0">English</div>
 <div class="guest" id="root"><div class="msg" id="load">…</div></div>
 <script>
 /* Guest captive portal — MMQR buy flow.
-   i18n: `mm` holds Burmese (my); when a key is absent or blank the English in
-   the T() call is used. Burmese strings below are a first-pass draft —
-   VERIFY each with a native speaker before shipping to customers. */
+   i18n: default language is Burmese (my-MM); `en` is the fallback. `t(en,key)`
+   returns the Burmese only when LANG==='my' AND the key is present/non-blank;
+   otherwise the English passed in the call renders. Technical terms with no
+   clean Burmese equivalent (MMQR, Plan, Receipt, Bank/transaction) stay in
+   English per D2 — no machine transliteration.
+
+   STATUS: token-level typos corrected (ဖုန်းနံပါတ်, အတည်ပြုပါ, မကြာမီ). Several
+   strings remain FLAGGED FOR NATIVE REVIEW (marked inline); the malformed
+   `waiting` string was removed so the safe English fallback renders instead. */
 var DEVICE = new URLSearchParams(location.search).get("deviceId") || "";
 var API = "/api/v1";
 
+var LANG = (function () { try { return localStorage.getItem("mm_lang") || "my"; } catch (e) { return "my"; } })();
+var RERENDER = null;
+
 var MM = {
-  buy:      "WiFi ဝယ်ယူမှု",                // Buy WiFi
-  pay:      "MMQR ဖြင့် ငွေပေးချေမှု",      // Pay by MMQR
-  steps:    "1) Plan ရွေးပါ  2) MMQR ငွေပေးချေပါ  3) ဖုနေးနံပါတာ ထည့်ပါ",
-  choose:   "Plan ရွေးပါ",
-  trial:    "MMQR ဖြင့် ငွေပေးချေပါ — free trial အတွင်း ပြီးအောင်",
-  expired:  "Trial အချိန်ကုန်သွားပါပြီ",
-  afterPay: "ငွေပေးချေပြီးနောက် အောက်ပါကို ဖြည့်ပါ",
-  phone:    "ငွေပေးချေခဲ့သော ဖုနေးနံပါတာ (paid phone)",
-  last6:    "Bank/transaction နံပါတာ နောက်ဆုံး ၆ လုံး",
-  receipt:  "Receipt ဓာတ်ပုံ (optional)",
-  verConfirm:"ငွေပေးချေပြီးပြီ — အတည်ပြပါ",
-  waiting:  "Owner က အတည်ပြစောင့်နေသည် — အချိန်နအခမြေနို WiFi သုံးနိုဈပါ",
-  requestRec:"လက်ခံရရှိပြီ — owner က မကြာခင် အတည်ပြပါလိမ့်မည်",
+  buy:      "WiFi ဝယ်ယူမှု",                                 // Buy WiFi  [needs native review]
+  pay:      "MMQR ဖြင့် ငွေပေးချေမှု",                        // Pay by MMQR  [needs native review]
+  steps:    "1) Plan ရွေးပါ  2) MMQR ငွေပေးချေပါ  3) ဖုန်းနံပါတ် ထည့်ပါ", // [phone token fixed; native review]
+  choose:   "Plan ရွေးပါ",                                    // Choose a plan (Plan kept English)
+  trial:    "MMQR ဖြင့် ငွေပေးချေပါ — trial အချိန်အတွင်း ပြီးအောင်", // [needs native review]
+  expired:  "Trial အချိန်ကုန်သွားပါပြီ",                        // [needs native review]
+  afterPay: "ငွေပေးချေပြီးနောက် အောက်ပါကို ဖြည့်ပါ",           // verified
+  phone:    "ငွေပေးချေခဲ့သော ဖုန်းနံပါတ်",                      // [phone token fixed; native review]
+  last6:    "Bank/transaction နံပါတ် နောက်ဆုံး ၆ လုံး",         // kept English "Bank/transaction"
+  receipt:  "Receipt ဓာတ်ပုံ (optional)",                      // Receipt kept English; [native review]
+  verConfirm:"ငွေပေးချေပြီးပါပြီ — အတည်ပြုပါ",                 // [typo fixed; native review]
+  requestRec:"လက်ခံရရှိပါပြီ — owner က မကြာမီ အတည်ပြုပါလိမ့်မည်"  // [typo fixed; native review]
+  // 'waiting' — malformed in the draft and deliberately REMOVED so the safe
+  // English fallback renders until a native speaker supplies correct text.
 };
 
 function t(en, key) {
+  if (LANG !== "my") return en;
   var v = MM[key];
   return v && v.trim() ? v : en;
+}
+function langLabel() { return LANG === "my" ? "English" : "မြန်မာ"; }
+function applyLang() {
+  document.documentElement.lang = LANG === "my" ? "my-MM" : "en";
+  var el = document.getElementById("lang");
+  if (el) el.textContent = langLabel();
+}
+function toggleLang() {
+  LANG = LANG === "my" ? "en" : "my";
+  try { localStorage.setItem("mm_lang", LANG); } catch (e) {}
+  applyLang();
+  if (RERENDER) RERENDER();
 }
 function esc(s) {
   return String(s==null?"":s).replace(/[&<>"']/g, function (ch) {
@@ -76,11 +99,12 @@ async function loadConfig() {
     var d = await res.json();
     renderPlans(d.config || d);
   } catch (e) {
-    root.innerHTML = '<p class="msg">Could not load this hotspot.</p>';
+    root.innerHTML = '<p class="msg">' + t("Could not load this hotspot.", "loadErr") + '</p>';
   }
 }
 
 function renderPlans(cfg) {
+  RERENDER = function () { renderPlans(cfg); };
   var plans = cfg.guest_plans || [];
   var rows = plans.map(function (p) {
     var dm = p.data_mb ? " · " + p.data_mb + " MB" : "";
@@ -116,6 +140,7 @@ async function buy(cfg, key) {
 }
 
 function renderPay(cfg, reqId, graceExp) {
+  RERENDER = function () { renderPay(cfg, reqId, graceExp); };
   var end = new Date(graceExp).getTime();
   document.getElementById("root").innerHTML =
     '<h1>' + t("Pay by MMQR", "pay") + '</h1>' +
@@ -151,7 +176,7 @@ async function confirm(reqId) {
   var phone = document.getElementById("phone").value.trim();
   var last6 = document.getElementById("last6").value.trim();
   if (!phone || last6.length !== 6) {
-    msg.textContent = "Enter the phone and the 6-digit transaction number.";
+    msg.textContent = t("Enter the phone and the 6-digit transaction number.", "inputErr");
     return;
   }
   var fd = new FormData();
@@ -168,13 +193,17 @@ async function confirm(reqId) {
       '<h1 class="ok">' + t("Request received", "requestRec") + '</h1>' +
       '<p class="ok">' + t("The owner has been notified and will approve your connection. You can use the free trial until then.", "waiting") + '</p>';
   } catch (e) {
-    msg.textContent = t("Could not submit", "afterPay") + ": " + e.message;
+    msg.textContent = t("Could not submit", "submitErr") + ": " + e.message;
   }
 }
 
 if (!DEVICE) {
-  document.getElementById("root").innerHTML = '<p class="msg">Missing deviceId in the URL.</p>';
+  document.getElementById("root").innerHTML = '<p class="msg">' + t("Missing deviceId in the URL.", "missingDevice") + '</p>';
 } else {
+  applyLang();
+  var langEl = document.getElementById("lang");
+  langEl.addEventListener("click", toggleLang);
+  langEl.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleLang(); } });
   loadConfig();
 }
 </script>
