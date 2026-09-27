@@ -14,6 +14,7 @@ import (
 	"mega-magic/internal/provisioner"
 	"mega-magic/internal/provisioner/routeros"
 	"mega-magic/internal/recovery"
+	"mega-magic/internal/secretbox"
 )
 
 // shouldEnableLiveApplier is the pure wiring decision: live router writes are
@@ -50,11 +51,27 @@ func startLiveApplier(cfg *config.Config, client *messaging.Client, sugar *zap.S
 
 	svc := provisioner.NewApplyService(applier, prober)
 
-	// Security-posture capture (C1): the live prober can read the RouterOS
-	// version; wire it into the peer-evaluation path (best-effort, fail-soft).
+	// Security-posture capture (C1): wire a PER-PEER observer into the
+	// peer-evaluation path (best-effort, fail-soft).
+	//
+	// This deliberately does NOT reuse `prober`. That one is bound to a single
+	// configured host, while the fleet sweep evaluates every peer in every
+	// tenant — reusing it would write one router's version + posture onto every
+	// device in the fleet. The type system now prevents that mistake: Prober's
+	// ObserveVersion no longer satisfies monitoring.VersionObserver, so this
+	// line would not compile if it were reintroduced.
 	if monitor != nil && db != nil {
-		monitor.WithVersionCapture(db, database.NewDeviceRepository(db), prober)
-		sugar.Info("security-posture capture wired (RouterOS version via live prober)")
+		box, err := secretbox.New(appCfg.CredentialKey)
+		if err != nil {
+			// Not fatal: the applier is an independent concern. Fleet posture
+			// capture stays OFF, and says so rather than silently doing nothing.
+			sugar.Warnf("security-posture capture OFF: %v (set provisioner.applier.credential_key to enable)", err)
+		} else {
+			src := database.NewDeviceCredentialSource(db, box)
+			deviceProber := routeros.NewDeviceProber(src, appCfg.Timeout, nil)
+			monitor.WithVersionCapture(db, database.NewDeviceRepository(db), deviceProber)
+			sugar.Info("security-posture capture wired (per-device transport)")
+		}
 	}
 
 	// C2: attach the live applier + OTP verifier to the backup/restore handler so

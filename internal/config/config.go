@@ -232,6 +232,13 @@ type ApplierConfig struct {
 	PingTarget            string        `mapstructure:"ping_target"`
 	TDown                 time.Duration `mapstructure:"t_down"`
 
+	// CredentialKey is the base64/hex 32-byte AES-256-GCM key used to encrypt
+	// per-device SSH secrets at rest (internal/secretbox). EMPTY => the fleet
+	// posture path cannot resolve any device and captures nothing. It is
+	// deliberately not defaulted: a missing key must look unconfigured, never
+	// like encryption is on.
+	CredentialKey string `mapstructure:"credential_key"`
+
 	// RFC 6238 TOTP gate for HIGH-RISK actions. Empty secret => high-risk stays
 	// DENIED (fail closed). The secret is injected via config, never hardcoded.
 	OtpSecret string        `mapstructure:"otp_secret"`

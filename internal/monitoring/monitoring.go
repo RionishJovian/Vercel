@@ -28,14 +28,24 @@ type MonitoringService struct {
 	db              *database.DB
 }
 
-// VersionObserver reads a peer's RouterOS version + channel (satisfied by
-// *routeros.Prober). Implemented as a narrow seam so monitoring stays decoupled.
+// VersionObserver reads a peer's RouterOS version + channel. Satisfied by
+// *routeros.DeviceProber, which resolves a transport PER PEER from that
+// device's own address + credentials. Implemented as a narrow seam so
+// monitoring stays decoupled.
+//
+// businessID is part of the contract deliberately: the lookup that turns a
+// peer id into a transport must be tenant-scoped, or a device id from one
+// tenant could address another tenant's device row.
 type VersionObserver interface {
-	ObserveVersion(ctx context.Context, peerID string) (version, channel string, err error)
+	ObserveVersion(ctx context.Context, businessID, peerID string) (version, channel string, err error)
 }
 
 // WithVersionCapture enables best-effort RouterOS version capture on the
 // peer-evaluation path. Nil-safe: unwired, evaluation is unchanged.
+//
+// The observer must resolve a transport per peer. A single-host observer would
+// stamp one router's version onto every device in every tenant; that coupling
+// is documented at captureVersion and enforced by *routeros.DeviceProber.
 func (s *MonitoringService) WithVersionCapture(db *database.DB, devices *database.DeviceRepository, obs VersionObserver) {
 	s.db = db
 	s.devices = devices
@@ -88,25 +98,23 @@ func (s *MonitoringService) EvaluatePeer(ctx context.Context, businessID, peerID
 }
 
 // captureVersion best-effort records a device's RouterOS version + posture,
-// tenant-scoped. Fail-soft: any failure (unreachable device, nil deps) is
-// ignored and never fabricates a value.
+// tenant-scoped. Fail-soft: any failure (unconfigured device, unreachable
+// device, nil deps) is ignored and never fabricates a value.
 //
-// ⚠️ SAFETY COUPLING — do NOT wire this into the multi-tenant fleet sweep as
-// things stand. The observer is a single-host Prober whose ObserveVersion
-// ignores peerID (see internal/provisioner/routeros/prober.go), while the Sweep
-// calls EvaluatePeer for EVERY peer in EVERY tenant. Enabling that combination
-// writes one router's version + posture onto every device, i.e. fabricates
-// per-device security data — worse than showing nothing, because a tenant could
-// be told an unpatched router is safe (or vice versa).
+// SAFETY (fixed): this used to be unsafe on the multi-tenant fleet path,
+// because the observer was a single-host Prober whose ObserveVersion ignored
+// peerID while Sweep evaluates EVERY peer in EVERY tenant — one router's
+// version + posture would be written onto every device. The observer is now
+// *routeros.DeviceProber, which resolves a transport per peer and has NO
+// fallback: an unresolvable peer errors here and the row is left untouched.
 //
-// It is safe only when the evaluated peer IS the configured host (the
-// single-router lab case). Making it fleet-safe requires resolving a transport
-// per peer from that device's own management_ip + credentials.
+// The remaining safeguard is deliberate: skipping a device we cannot reach
+// leaves routeros_version NULL (honestly "unknown") rather than guessing.
 func (s *MonitoringService) captureVersion(ctx context.Context, businessID, peerID string) {
 	if s.versionObserver == nil || s.devices == nil || s.db == nil {
 		return
 	}
-	version, channel, err := s.versionObserver.ObserveVersion(ctx, peerID)
+	version, channel, err := s.versionObserver.ObserveVersion(ctx, businessID, peerID)
 	if err != nil || version == "" {
 		return
 	}

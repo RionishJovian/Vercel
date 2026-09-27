@@ -1395,3 +1395,41 @@ CREATE POLICY ai_usage_events_tenant_isolation ON ai_usage_events
     FOR ALL TO authenticated
     USING (business_id = current_setting('app.current_business_id')::uuid)
     WITH CHECK (business_id = current_setting('app.current_business_id')::uuid);
+-- ===========================================================================
+-- PHASE 3 — per-device SSH transport (security-posture capture, C1)
+-- ===========================================================================
+-- WHY: the posture prober must reach EACH device at that device's own address
+-- with that device's own credentials. Previously one transport was built from
+-- config and reused for every peer, so it could only ever report one router's
+-- version (see Prober.ObserveVersion). These columns give every device the
+-- facts needed to resolve ITS OWN transport.
+--
+-- The credential is stored ENCRYPTED (AES-256-GCM via internal/secretbox). The
+-- key lives in config/env, never here — a DB dump alone must not yield a router
+-- password. `legacy_password_ciphertext` on router_connections is NOT reused:
+-- it is from the old REST/WebFig stack and is undecryptable by design.
+ALTER TABLE devices ADD COLUMN IF NOT EXISTS ssh_port integer NOT NULL DEFAULT 22;
+ALTER TABLE devices ADD COLUMN IF NOT EXISTS ssh_username text;
+ALTER TABLE devices ADD COLUMN IF NOT EXISTS ssh_secret_ciphertext text;
+ALTER TABLE devices ADD COLUMN IF NOT EXISTS ssh_secret_kind text;
+-- Recorded (not yet enforced) so host-key pinning becomes possible; the
+-- transport currently still uses InsecureIgnoreHostKey.
+ALTER TABLE devices ADD COLUMN IF NOT EXISTS ssh_host_key_fingerprint text;
+
+-- A credential is either COMPLETE or ABSENT. A half-configured device must not
+-- look reachable: a username with no secret would otherwise resolve to a
+-- transport that fails at dial time and gets silently skipped.
+ALTER TABLE devices DROP CONSTRAINT IF EXISTS devices_ssh_creds_complete;
+ALTER TABLE devices ADD CONSTRAINT devices_ssh_creds_complete CHECK (
+    (ssh_username IS NULL AND ssh_secret_ciphertext IS NULL AND ssh_secret_kind IS NULL)
+ OR (ssh_username IS NOT NULL AND ssh_secret_ciphertext IS NOT NULL
+     AND ssh_secret_kind IN ('password', 'key'))
+);
+
+ALTER TABLE devices DROP CONSTRAINT IF EXISTS devices_ssh_port_valid;
+ALTER TABLE devices ADD CONSTRAINT devices_ssh_port_valid CHECK (ssh_port BETWEEN 1 AND 65535);
+
+-- Tell the "no address" case apart from "address not set yet": without this
+-- index the fleet sweep's per-device credential lookup scans devices.
+CREATE INDEX IF NOT EXISTS devices_ssh_target_idx
+    ON devices(device_id) WHERE management_ip IS NOT NULL AND ssh_username IS NOT NULL;

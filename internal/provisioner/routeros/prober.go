@@ -123,20 +123,19 @@ func (p *Prober) ObserveGuestQuota(ctx context.Context, identity string) (GuestQ
 	}, nil
 }
 
-// ObserveVersion reads the RouterOS version + release channel from
-// /system/resource. Read-only.
+// ObserveVersion reads the RouterOS version + release channel from the SINGLE
+// host this Prober was configured with.
 //
-// ⚠️ peerID IS IGNORED, and that is a REAL DEFECT outside the single-router lab
-// case. The SSH transport is bound to ONE host (cfg.Host), so this returns that
-// host's version no matter which peer is asked. The monitoring Sweep evaluates
-// EVERY peer (devices.ListAllPeerKeys) and stores the result against each
-// peerID, so wiring this into the fleet path stamps a single router's version —
-// and its security posture — onto every device in every tenant.
+// ⚠️ LAB-ONLY. peerID IS IGNORED here: the SSH transport is bound to one host
+// (cfg.Host), so this returns that host's version no matter which peer is
+// asked. Using it on the fleet path would stamp one router's version — and its
+// security posture — onto every device in every tenant.
 //
-// That is fabricated data, which is why capture stays gated behind the
-// live-applier flag and must NOT be enabled for a multi-tenant fleet until the
-// prober resolves a transport PER PEER (from the device's own management_ip +
-// credentials). See captureVersion in internal/monitoring/monitoring.go.
+// That defect is now fixed rather than merely documented: the fleet path uses
+// *DeviceProber (creds.go), which resolves a transport PER PEER from the
+// device's own address + credentials and has no fallback. It is also enforced
+// by the type system — this method's signature no longer satisfies
+// monitoring.VersionObserver, so wiring it into capture fails to compile.
 func (p *Prober) ObserveVersion(ctx context.Context, _ string) (version, channel string, err error) {
 	if p.run == nil {
 		return "", "", fmt.Errorf("routeros: nil command runner")
