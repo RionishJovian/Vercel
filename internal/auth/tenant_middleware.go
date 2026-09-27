@@ -52,3 +52,40 @@ func PinnedConn(c *gin.Context) *sql.Conn {
 	conn, _ := v.(*sql.Conn)
 	return conn
 }
+
+// RequireActiveTenant rejects requests from a tenant whose business is
+// suspended (businesses.is_active = false).
+//
+// Blocking suspension at login alone is not enough: a token issued before the
+// suspension stays valid until it expires, so the tenant keeps working for the
+// whole token lifetime and the suspend action looks like it did nothing. This
+// closes that window.
+//
+// It costs one primary-key lookup per protected request. That is deliberate —
+// a suspension that does not take effect immediately is not a suspension — and
+// it is a single indexed read on a small table.
+//
+// Fails CLOSED: if the tenant state cannot be read, the request is refused.
+// Failing open would let a database blip re-enable a suspended tenant.
+func RequireActiveTenant(pool *database.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		bid, _ := c.Get(ContextKeyBusinessID)
+		businessID, _ := bid.(string)
+		if businessID == "" {
+			// No tenant context (e.g. platform routes) — nothing to check here.
+			c.Next()
+			return
+		}
+
+		var active bool
+		err := pool.QueryRow(
+			`SELECT is_active FROM businesses WHERE business_id = $1`, businessID).Scan(&active)
+		if err != nil || !active {
+			c.AbortWithStatusJSON(http.StatusForbidden,
+				gin.H{"error": "this business account is suspended"})
+			return
+		}
+
+		c.Next()
+	}
+}

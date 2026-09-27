@@ -192,6 +192,16 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
+	// A suspended tenant must not be able to start a new session. Without this the
+	// platform's suspend action wrote is_active=false and nothing read it, so the
+	// tenant kept working — a control that reported success and changed nothing.
+	// 403 (not 401) is deliberate: the credentials were correct, the account is
+	// simply switched off, and saying so avoids a user retyping a working password.
+	if !business.IsActive {
+		c.JSON(http.StatusForbidden, gin.H{"error": "this business account is suspended"})
+		return
+	}
+
 	token, err := h.authService.GenerateToken(user)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate token"})

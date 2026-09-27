@@ -453,6 +453,11 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 
 		protected := v1.Group("")
 		protected.Use(auth.Middleware(authService))
+		// Runs immediately after the token is resolved, so a suspended tenant is
+		// refused even with a token minted before the suspension. Placed before the
+		// role gate so suspension outranks role: an OWNER of a suspended business
+		// is refused just like a VIEWER.
+		protected.Use(auth.RequireActiveTenant(db))
 		if tenantMW != nil {
 			protected.Use(tenantMW)
 		}
