@@ -238,6 +238,18 @@ CREATE TABLE IF NOT EXISTS device_change_events (
 
 CREATE INDEX idx_device_change_events_business_device ON device_change_events(business_id, device_id, created_at DESC);
 
+-- The `authenticated` role must exist BEFORE any GRANT references it. `CREATE ROLE`
+-- has no native IF NOT EXISTS, so guard it with a DO block. This block MUST stay
+-- ABOVE the first GRANT below: a fresh (empty) database runs this file in order,
+-- so a grant to a not-yet-created role aborts the whole init script.
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+        CREATE ROLE authenticated;
+    END IF;
+END;
+$$;
+
 -- C2: explicit grants to the authenticated role. These are idempotent and cover
 -- the C2 tables independently of the generic ALL-TABLES grant below, so an
 -- incremental migration never leaves the backups/change APIs without access.
@@ -458,15 +470,8 @@ ALTER TABLE device_change_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE business_telegram_bots ENABLE ROW LEVEL SECURITY;
 ALTER TABLE guest_purchase_requests ENABLE ROW LEVEL SECURITY;
 
--- The `authenticated` role must exist BEFORE the policies that reference it.
--- `CREATE ROLE` has no native IF NOT EXISTS, so guard it with a DO block.
-DO $$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
-        CREATE ROLE authenticated;
-    END IF;
-END;
-$$;
+-- NOTE: this role is CREATED EARLIER in this file, immediately before the first
+-- GRANT that references it. It is guaranteed to exist by this point.
 
 -- RLS Policies: Users can only access their business_id data
 -- These assume a session variable `current_business_id` is set by middleware
@@ -669,3 +674,724 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO authentic
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON business_telegram_bots TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON guest_purchase_requests TO authenticated;
+
+-- ============================================================================
+-- PHASE 2 — ported Mikromagic features
+-- ============================================================================
+-- These tables have no equivalent in the original 20-table schema. They are
+-- ported from the old Supabase DDL, re-expressed in this file's conventions:
+--   * `owner_id` (old auth user id) -> `business_id`  (the tenant key)
+--   * `auth.users(id)` FKs           -> users(user_id) / businesses(business_id)
+--   * `auth.uid()` RLS + helpers      -> the business-scoped _tenant_isolation policy
+--   * Supabase `SECURITY DEFINER` RPCs -> dropped; the Go backend owns that logic
+-- Appended at the end so the `authenticated` role (created earlier) exists; the
+-- blanket GRANT above ran before these tables existed, so they grant explicitly.
+
+-- ---- Magic Coins -----------------------------------------------------------
+-- Per-account, append-only wallet. 1 Magic Coin = 1 MMK. `balance` is a cached
+-- total guarded by a row lock; `magic_coin_transactions` is the source of truth.
+CREATE TABLE IF NOT EXISTS magic_coin_wallets (
+    user_id uuid PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE,
+    business_id uuid NOT NULL REFERENCES businesses(business_id) ON DELETE CASCADE,
+    balance numeric(12,2) NOT NULL DEFAULT 0,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS magic_coin_transactions (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    business_id uuid NOT NULL REFERENCES businesses(business_id) ON DELETE CASCADE,
+    user_id uuid NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+    delta numeric(12,2) NOT NULL CHECK (delta <> 0),
+    balance_after numeric(12,2) NOT NULL,
+    kind text NOT NULL CHECK (kind IN (
+        'agent_earn', 'agent_reversal', 'service_payment', 'service_refund',
+        'feature_key_purchase', 'purchase_credit',
+        'manual_credit', 'manual_debit'
+    )),
+    service_purchase_id uuid REFERENCES purchase_requests(id) ON DELETE SET NULL,
+    note text NOT NULL,
+    actor_user_id uuid REFERENCES users(user_id) ON DELETE SET NULL,
+    -- Unlock-key purchases paid with coins. These point at Bucket B tables that
+    -- are not ported yet, so they stay plain uuids; their FKs land with those tables.
+    webfig_key_activation_id        uuid,
+    reseller_add_key_activation_id  uuid,
+    router_unlock_key_activation_id uuid,
+    magic_dude_unlock_activation_id uuid,
+    switch_unlock_key_activation_id uuid,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS magic_coin_tx_service_payment_once
+    ON magic_coin_transactions(service_purchase_id) WHERE kind = 'service_payment';
+CREATE UNIQUE INDEX IF NOT EXISTS magic_coin_tx_service_refund_once
+    ON magic_coin_transactions(service_purchase_id) WHERE kind = 'service_refund';
+CREATE INDEX IF NOT EXISTS magic_coin_tx_user_created_idx
+    ON magic_coin_transactions(user_id, created_at DESC);
+
+-- The ledger is immutable: a spent/earned coin can never be edited or erased.
+CREATE OR REPLACE FUNCTION magic_coin_transaction_immutable()
+RETURNS trigger LANGUAGE plpgsql SET search_path = public AS $$
+BEGIN
+    RAISE EXCEPTION 'MAGIC_COIN_TRANSACTION_IMMUTABLE';
+END;
+$$;
+DROP TRIGGER IF EXISTS trg_magic_coin_transaction_immutable ON magic_coin_transactions;
+CREATE TRIGGER trg_magic_coin_transaction_immutable
+    BEFORE UPDATE OR DELETE ON magic_coin_transactions
+    FOR EACH ROW EXECUTE FUNCTION magic_coin_transaction_immutable();
+
+-- Every account gets a wallet on creation (the old app did this via a profiles trigger).
+CREATE OR REPLACE FUNCTION create_magic_coin_wallet_for_user()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+    INSERT INTO magic_coin_wallets (user_id, business_id)
+    VALUES (NEW.user_id, NEW.business_id)
+    ON CONFLICT (user_id) DO NOTHING;
+    RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS trg_user_magic_coin_wallet ON users;
+CREATE TRIGGER trg_user_magic_coin_wallet
+    AFTER INSERT ON users
+    FOR EACH ROW EXECUTE FUNCTION create_magic_coin_wallet_for_user();
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON magic_coin_wallets TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON magic_coin_transactions TO authenticated;
+
+ALTER TABLE magic_coin_wallets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE magic_coin_transactions ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY magic_coin_wallets_tenant_isolation ON magic_coin_wallets
+    FOR ALL TO authenticated
+    USING (business_id = current_setting('app.current_business_id')::uuid)
+    WITH CHECK (business_id = current_setting('app.current_business_id')::uuid);
+
+CREATE POLICY magic_coin_transactions_tenant_isolation ON magic_coin_transactions
+    FOR ALL TO authenticated
+    USING (business_id = current_setting('app.current_business_id')::uuid)
+    WITH CHECK (business_id = current_setting('app.current_business_id')::uuid);
+
+-- ---- Unlock-key activations ------------------------------------------------
+-- The old product had FIVE near-identical tables (webfig / magic_dude / router /
+-- switch / reseller), differing only in hardcoded constants (key_id, key_name,
+-- price_coins) enforced by rigid CHECKs. Consolidated into ONE table with a
+-- `key_kind` discriminator — the same consolidation this schema already applies
+-- to audit_events. The per-key constants live in the data, not the schema.
+CREATE TABLE IF NOT EXISTS unlock_key_activations (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    business_id uuid NOT NULL REFERENCES businesses(business_id) ON DELETE CASCADE,
+    user_id uuid NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+    key_kind text NOT NULL CHECK (key_kind IN ('webfig','magic_dude','router','switch','reseller')),
+    key_id integer,                           -- absent on magic_dude activations
+    key_name text,                            -- absent on magic_dude activations
+    price_coins numeric(12,2) NOT NULL,
+    attributes text NOT NULL,
+    account_bound boolean NOT NULL DEFAULT true,
+    non_transferable boolean NOT NULL DEFAULT true,
+    -- router keys are single-use against a specific router; others use consumed_ref_id
+    unique_router_key boolean NOT NULL DEFAULT false,
+    grace_days integer,                       -- magic_dude: expires_at = created_at + N days
+    consumed_at timestamptz,
+    consumed_ref_id uuid,                     -- the router/switch/reseller it was spent on
+    created_at timestamptz NOT NULL DEFAULT now(),
+    expires_at timestamptz NOT NULL,
+    CHECK (expires_at > created_at),
+    CHECK ((consumed_at IS NULL) = (consumed_ref_id IS NULL))
+);
+CREATE INDEX IF NOT EXISTS unlock_key_activations_user_idx ON unlock_key_activations(user_id, created_at DESC);
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON unlock_key_activations TO authenticated;
+ALTER TABLE unlock_key_activations ENABLE ROW LEVEL SECURITY;
+CREATE POLICY unlock_key_activations_tenant_isolation ON unlock_key_activations
+    FOR ALL TO authenticated
+    USING (business_id = current_setting('app.current_business_id')::uuid)
+    WITH CHECK (business_id = current_setting('app.current_business_id')::uuid);
+
+-- ---- Account entitlements --------------------------------------------------
+-- Which service tier an account holds. Old `app_role`-free; carried verbatim.
+CREATE TABLE IF NOT EXISTS account_entitlements (
+    user_id uuid PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE,
+    business_id uuid NOT NULL REFERENCES businesses(business_id) ON DELETE CASCADE,
+    tier text NOT NULL CHECK (tier IN ('spark','trial','monthly','annual')),
+    tier_expires_at timestamptz,
+    plus boolean NOT NULL DEFAULT false,
+    plus_since timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON account_entitlements TO authenticated;
+ALTER TABLE account_entitlements ENABLE ROW LEVEL SECURITY;
+CREATE POLICY account_entitlements_tenant_isolation ON account_entitlements
+    FOR ALL TO authenticated
+    USING (business_id = current_setting('app.current_business_id')::uuid)
+    WITH CHECK (business_id = current_setting('app.current_business_id')::uuid);
+
+-- ---- Operator feature grants / role defaults -------------------------------
+-- The feature-flag system the new backend does not have yet. Ported so the data
+-- survives; `legacy_role` keeps the original old `app_role` value because the
+-- old vocabulary (client/agent/site_manager) collapses onto the new one.
+CREATE TABLE IF NOT EXISTS operator_feature_grants (
+    user_id uuid NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+    business_id uuid NOT NULL REFERENCES businesses(business_id) ON DELETE CASCADE,
+    feature text NOT NULL CHECK (feature IN (
+        'vouchers','portal_deploy','cash_sales','bank_edit','router_config',
+        'reboot','alerts','syslog_ai','poe','telegram')),
+    granted_by uuid REFERENCES users(user_id) ON DELETE SET NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, feature)
+);
+
+CREATE TABLE IF NOT EXISTS operator_feature_role_defaults (
+    role text NOT NULL CHECK (role IN ('OWNER','ADMIN','OPERATOR','TECHNICIAN','VIEWER','SUPPORT','DEVELOPER')),
+    feature text NOT NULL CHECK (feature IN (
+        'vouchers','portal_deploy','cash_sales','bank_edit','router_config',
+        'reboot','alerts','syslog_ai','poe','telegram')),
+    -- The old vocabulary was finer-grained than the new one: `agent` AND
+    -- `site_manager` both map to OPERATOR, so keying on (role, feature) would
+    -- silently merge them and drop rows. Key on the ORIGINAL pair to preserve
+    -- every default; `role` carries the mapping for the app to group by.
+    legacy_role text NOT NULL,
+    updated_by uuid REFERENCES users(user_id) ON DELETE SET NULL,
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (legacy_role, feature)
+);
+
+CREATE TABLE IF NOT EXISTS portal_mode_role_defaults (
+    role text NOT NULL CHECK (role IN ('OWNER','ADMIN','OPERATOR','TECHNICIAN','VIEWER','SUPPORT','DEVELOPER')),
+    mode text NOT NULL CHECK (mode IN ('hybrid_light','commerce')),
+    legacy_role text NOT NULL,               -- see note above
+    updated_by uuid REFERENCES users(user_id) ON DELETE SET NULL,
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (legacy_role, mode)
+);
+
+-- Role defaults are platform-wide (not tenant data), so they are readable by any
+-- authenticated account and carry no business_id / RLS policy.
+GRANT SELECT, INSERT, UPDATE, DELETE ON operator_feature_grants TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON operator_feature_role_defaults TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON portal_mode_role_defaults TO authenticated;
+
+ALTER TABLE operator_feature_grants ENABLE ROW LEVEL SECURITY;
+CREATE POLICY operator_feature_grants_tenant_isolation ON operator_feature_grants
+    FOR ALL TO authenticated
+    USING (business_id = current_setting('app.current_business_id')::uuid)
+    WITH CHECK (business_id = current_setting('app.current_business_id')::uuid);
+
+-- ---- Sites -----------------------------------------------------------------
+-- The old product grouped devices by "site"; in the old single-tenant model one
+-- site == one owner, so today each imported site corresponds to a business. The
+-- table is still worth having: a WISP legitimately runs several sites per
+-- business, the SPA ships a Sites view, and the geo/timezone data has no other home.
+CREATE TABLE IF NOT EXISTS sites (
+    site_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    business_id uuid NOT NULL REFERENCES businesses(business_id) ON DELETE CASCADE,
+    name text NOT NULL,
+    location text,
+    timezone text,
+    latitude numeric(9,6),
+    longitude numeric(9,6),
+    notes text,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS sites_business_idx ON sites(business_id);
+
+-- ---- Router connections ----------------------------------------------------
+-- How to reach a router (host/port/TLS) plus its tunnel/cloud state.
+-- SECURITY: `legacy_password_ciphertext` is the OLD Supabase-encrypted secret.
+-- It is carried so nothing is destroyed, but it was encrypted with the previous
+-- stack's key and CANNOT be decrypted here — the credential must be re-entered.
+-- The old tunnel private keys were never populated (0 rows), so there is nothing
+-- to carry for them.
+CREATE TABLE IF NOT EXISTS router_connections (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    business_id uuid NOT NULL REFERENCES businesses(business_id) ON DELETE CASCADE,
+    name text NOT NULL,
+    host text,
+    port integer,
+    use_tls boolean NOT NULL DEFAULT true,
+    is_default boolean NOT NULL DEFAULT false,
+    site_id uuid REFERENCES sites(site_id) ON DELETE SET NULL,
+    connection_mode text,
+    cloud_status text,
+    cloud_last_seen_at timestamptz,
+    environment text,
+    legacy_password_ciphertext text,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS router_connections_business_idx ON router_connections(business_id);
+
+-- ---- Site topology config --------------------------------------------------
+-- Per (site, router): the port labels and downstream devices shown on the
+-- topology canvas.
+CREATE TABLE IF NOT EXISTS site_topology_config (
+    site_id uuid NOT NULL REFERENCES sites(site_id) ON DELETE CASCADE,
+    router_id uuid NOT NULL REFERENCES router_connections(id) ON DELETE CASCADE,
+    port_labels jsonb NOT NULL DEFAULT '[]'::jsonb,
+    downstream_devices jsonb NOT NULL DEFAULT '[]'::jsonb,
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (site_id, router_id)
+);
+
+-- devices gains the links it used to have in the old schema. The new device
+-- hierarchy (parent_gateway_id / deployment_layer) is untouched; these are added
+-- alongside it so migrated devices keep their site and connection.
+ALTER TABLE devices ADD COLUMN IF NOT EXISTS site_id uuid REFERENCES sites(site_id) ON DELETE SET NULL;
+ALTER TABLE devices ADD COLUMN IF NOT EXISTS router_connection_id uuid REFERENCES router_connections(id) ON DELETE SET NULL;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON sites TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON router_connections TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON site_topology_config TO authenticated;
+
+ALTER TABLE sites ENABLE ROW LEVEL SECURITY;
+ALTER TABLE router_connections ENABLE ROW LEVEL SECURITY;
+ALTER TABLE site_topology_config ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY sites_tenant_isolation ON sites
+    FOR ALL TO authenticated
+    USING (business_id = current_setting('app.current_business_id')::uuid)
+    WITH CHECK (business_id = current_setting('app.current_business_id')::uuid);
+
+CREATE POLICY router_connections_tenant_isolation ON router_connections
+    FOR ALL TO authenticated
+    USING (business_id = current_setting('app.current_business_id')::uuid)
+    WITH CHECK (business_id = current_setting('app.current_business_id')::uuid);
+
+-- topology config has no business_id of its own: scope it through its site.
+CREATE POLICY site_topology_config_tenant_isolation ON site_topology_config
+    FOR ALL TO authenticated
+    USING (site_id IN (SELECT s.site_id FROM sites s
+                        WHERE s.business_id = current_setting('app.current_business_id')::uuid))
+    WITH CHECK (site_id IN (SELECT s.site_id FROM sites s
+                        WHERE s.business_id = current_setting('app.current_business_id')::uuid));
+
+-- ---- Terminal templates / history -----------------------------------------
+-- Saved RouterOS REST calls, and an audit of what was run. The new backend has
+-- no terminal yet; ported so the 102 templates and their history survive.
+CREATE TABLE IF NOT EXISTS terminal_templates (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    business_id uuid NOT NULL REFERENCES businesses(business_id) ON DELETE CASCADE,
+    created_by uuid REFERENCES users(user_id) ON DELETE SET NULL,
+    name text NOT NULL,
+    description text,
+    category text NOT NULL,
+    method text NOT NULL CHECK (method IN ('GET','POST','PATCH','PUT','DELETE')),
+    path text NOT NULL CHECK (path LIKE '/%'),
+    body text,
+    is_builtin boolean NOT NULL DEFAULT false,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS terminal_templates_business_idx ON terminal_templates(business_id, category);
+
+CREATE TABLE IF NOT EXISTS terminal_history (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    business_id uuid NOT NULL REFERENCES businesses(business_id) ON DELETE CASCADE,
+    user_id uuid REFERENCES users(user_id) ON DELETE SET NULL,
+    router_connection_id uuid REFERENCES router_connections(id) ON DELETE SET NULL,
+    site_id uuid REFERENCES sites(site_id) ON DELETE SET NULL,
+    method text NOT NULL,
+    path text NOT NULL,
+    body text,
+    status integer,
+    ms integer,
+    response_snippet text,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS terminal_history_business_idx ON terminal_history(business_id, created_at DESC);
+
+-- ---- Voucher resellers -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS voucher_resellers (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    business_id uuid NOT NULL REFERENCES businesses(business_id) ON DELETE CASCADE,
+    shop_name text NOT NULL CHECK (char_length(shop_name) BETWEEN 1 AND 120),
+    contact_name text NOT NULL CHECK (char_length(contact_name) BETWEEN 1 AND 120),
+    location text,
+    phone text,
+    active boolean NOT NULL DEFAULT true,
+    code_prefix text NOT NULL CHECK (
+        char_length(code_prefix) BETWEEN 2 AND 4
+        AND code_prefix = upper(code_prefix)
+        AND code_prefix ~ '^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]+$'),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+-- A code prefix must be unique within a business, compared case-insensitively.
+-- Previously upheld only in the repository (which returns 409); the ported data
+-- satisfies it, so the database can now hold the invariant itself.
+CREATE UNIQUE INDEX IF NOT EXISTS voucher_resellers_business_prefix_unique
+    ON voucher_resellers (business_id, upper(code_prefix));
+
+-- ---- Voucher print layouts -------------------------------------------------
+-- One row per business. The old CHECKs are real print/UI constraints, so they
+-- are carried over verbatim rather than loosened.
+CREATE TABLE IF NOT EXISTS voucher_print_layouts (
+    business_id uuid PRIMARY KEY REFERENCES businesses(business_id) ON DELETE CASCADE,
+    business_name text NOT NULL CHECK (char_length(business_name) BETWEEN 1 AND 80),
+    wifi_name text NOT NULL CHECK (char_length(wifi_name) BETWEEN 1 AND 80),
+    support_contact text NOT NULL CHECK (char_length(support_contact) BETWEEN 1 AND 120),
+    terms text NOT NULL CHECK (char_length(terms) BETWEEN 1 AND 600),
+    paper_width_mm integer NOT NULL CHECK (paper_width_mm IN (58, 80)),
+    show_qr boolean NOT NULL DEFAULT true,
+    show_price boolean NOT NULL DEFAULT true,
+    show_expiry boolean NOT NULL DEFAULT true,
+    a4_columns integer NOT NULL CHECK (a4_columns IN (2, 3, 4, 5)),
+    a4_rows_per_page integer NOT NULL CHECK (a4_rows_per_page BETWEEN 4 AND 50),
+    thermal_columns integer NOT NULL CHECK (thermal_columns IN (1, 2)),
+    thermal_rows_per_strip integer NOT NULL CHECK (thermal_rows_per_strip BETWEEN 4 AND 40),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- ---- Pricing promo (platform singleton) ------------------------------------
+-- `id boolean PRIMARY KEY CHECK (id)` makes this structurally a one-row table.
+-- NOTE ON THE PORTED DATA (read before building a screen or activating a promo):
+-- the single migrated row's own label reads "30% off Monthly & Annual", but its
+-- monthly_promo_mmk (66,500) is ~1.9x monthly_standard_mmk (35,000) and the annual
+-- pair is ~2.1x. Either the promo/standard columns were transposed in the old app,
+-- or "promo" meant something other than a discount there. It cannot be resolved from
+-- the data, and inventing corrected prices in a billing table would be worse than
+-- carrying a suspicious value, so the row is migrated exactly as the old system stored
+-- it. Harmless today: active = false and ends_on is in the past. Fix the values (or
+-- the semantics) before ever setting active = true — a promo priced above the standard
+-- rate would overcharge.
+CREATE TABLE IF NOT EXISTS pricing_promo (
+    id boolean PRIMARY KEY DEFAULT true CHECK (id),
+    active boolean NOT NULL DEFAULT false,
+    starts_on date,
+    ends_on date,
+    label text,
+    monthly_promo_mmk integer,
+    monthly_standard_mmk integer,
+    annual_promo_mmk integer,
+    annual_standard_mmk integer,
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- ---- Ruijie cloud connections ----------------------------------------------
+-- Same secret handling as router_connections: the stored app id/secret are OLD
+-- stack ciphertext and cannot be decrypted here, so they are labelled legacy and
+-- the values must be re-entered.
+CREATE TABLE IF NOT EXISTS ruijie_cloud_connections (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    business_id uuid NOT NULL REFERENCES businesses(business_id) ON DELETE CASCADE,
+    region text,
+    base_url text,
+    legacy_app_id_ciphertext text,
+    legacy_app_secret_ciphertext text,
+    site_ref text,
+    device_ref text,
+    enabled boolean NOT NULL DEFAULT true,
+    last_test_at timestamptz,
+    last_test_status text,
+    last_sync_at timestamptz,
+    created_by uuid REFERENCES users(user_id) ON DELETE SET NULL,
+    token_path text,
+    device_path text,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- ---- Magic Dude knowledge base ---------------------------------------------
+-- knowledge_notes is platform-wide editorial content (no tenant scope), so it is
+-- granted but not RLS-scoped — like the role defaults.
+CREATE TABLE IF NOT EXISTS magic_dude_knowledge_notes (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    title text NOT NULL CHECK (char_length(btrim(title)) BETWEEN 1 AND 200),
+    body_md text NOT NULL CHECK (char_length(btrim(body_md)) BETWEEN 1 AND 20000),
+    sort integer NOT NULL DEFAULT 0,
+    active boolean NOT NULL DEFAULT true,
+    updated_by uuid REFERENCES users(user_id) ON DELETE SET NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS magic_dude_solved_cases (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    business_id uuid NOT NULL REFERENCES businesses(business_id) ON DELETE CASCADE,
+    user_id uuid REFERENCES users(user_id) ON DELETE SET NULL,
+    question text NOT NULL CHECK (char_length(btrim(question)) BETWEEN 1 AND 4000),
+    answer text NOT NULL CHECK (char_length(btrim(answer)) BETWEEN 1 AND 8000),
+    language text CHECK (language IS NULL OR language IN ('en','my','zh')),
+    helpful_count integer NOT NULL DEFAULT 1 CHECK (helpful_count >= 1),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    last_used_at timestamptz NOT NULL DEFAULT now()
+);
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON terminal_templates TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON terminal_history TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON voucher_resellers TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON voucher_print_layouts TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON pricing_promo TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ruijie_cloud_connections TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON magic_dude_knowledge_notes TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON magic_dude_solved_cases TO authenticated;
+
+ALTER TABLE terminal_templates ENABLE ROW LEVEL SECURITY;
+ALTER TABLE terminal_history ENABLE ROW LEVEL SECURITY;
+ALTER TABLE voucher_resellers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE voucher_print_layouts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ruijie_cloud_connections ENABLE ROW LEVEL SECURITY;
+ALTER TABLE magic_dude_solved_cases ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY terminal_templates_tenant_isolation ON terminal_templates
+    FOR ALL TO authenticated
+    USING (business_id = current_setting('app.current_business_id')::uuid)
+    WITH CHECK (business_id = current_setting('app.current_business_id')::uuid);
+
+CREATE POLICY terminal_history_tenant_isolation ON terminal_history
+    FOR ALL TO authenticated
+    USING (business_id = current_setting('app.current_business_id')::uuid)
+    WITH CHECK (business_id = current_setting('app.current_business_id')::uuid);
+
+CREATE POLICY voucher_resellers_tenant_isolation ON voucher_resellers
+    FOR ALL TO authenticated
+    USING (business_id = current_setting('app.current_business_id')::uuid)
+    WITH CHECK (business_id = current_setting('app.current_business_id')::uuid);
+
+CREATE POLICY voucher_print_layouts_tenant_isolation ON voucher_print_layouts
+    FOR ALL TO authenticated
+    USING (business_id = current_setting('app.current_business_id')::uuid)
+    WITH CHECK (business_id = current_setting('app.current_business_id')::uuid);
+
+CREATE POLICY ruijie_cloud_connections_tenant_isolation ON ruijie_cloud_connections
+    FOR ALL TO authenticated
+    USING (business_id = current_setting('app.current_business_id')::uuid)
+    WITH CHECK (business_id = current_setting('app.current_business_id')::uuid);
+
+CREATE POLICY magic_dude_solved_cases_tenant_isolation ON magic_dude_solved_cases
+    FOR ALL TO authenticated
+    USING (business_id = current_setting('app.current_business_id')::uuid)
+    WITH CHECK (business_id = current_setting('app.current_business_id')::uuid);
+
+-- ---- i18n overrides (platform-wide) ----------------------------------------
+-- UI/copy translation overrides. No owner_id in the old schema => platform-wide
+-- content, so it is granted but not RLS-scoped.
+CREATE TABLE IF NOT EXISTS i18n_overrides (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    locale text NOT NULL CHECK (locale IN ('en','zh','my')),
+    ns text NOT NULL CHECK (ns IN ('ui','copy')),
+    key text NOT NULL,
+    value text NOT NULL,
+    updated_by uuid REFERENCES users(user_id) ON DELETE SET NULL,
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (locale, ns, key)
+);
+
+-- ---- Owner daily closes ----------------------------------------------------
+CREATE TABLE IF NOT EXISTS owner_daily_closes (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    business_id uuid NOT NULL REFERENCES businesses(business_id) ON DELETE CASCADE,
+    site_id uuid REFERENCES sites(site_id) ON DELETE SET NULL,
+    router_connection_id uuid REFERENCES router_connections(id) ON DELETE SET NULL,
+    business_day date NOT NULL,
+    counted_cash_mmk integer NOT NULL DEFAULT 0,
+    note text,
+    closed_by uuid REFERENCES users(user_id) ON DELETE SET NULL,
+    closed_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS owner_daily_closes_business_idx ON owner_daily_closes(business_id, business_day DESC);
+-- One close per business per DAY. This is a cash ledger: without the constraint a
+-- second close for the same day is accepted and that day can be counted twice.
+-- The ported data satisfies it (30 rows, 30 distinct pairs) — verified before the
+-- index was added, not assumed.
+CREATE UNIQUE INDEX IF NOT EXISTS owner_daily_closes_business_day_unique
+    ON owner_daily_closes (business_id, business_day);
+
+-- ---- Device allowances -----------------------------------------------------
+-- NOTE: this is finer-grained than business_metered_quotas (extra slots) and
+-- businesses.device_quota_limit (a single total): it counts routers, controllers
+-- and sites separately. Kept as its own table rather than forced into either.
+CREATE TABLE IF NOT EXISTS device_allowances (
+    business_id uuid PRIMARY KEY REFERENCES businesses(business_id) ON DELETE CASCADE,
+    routers integer NOT NULL DEFAULT 0,
+    controllers integer NOT NULL DEFAULT 0,
+    sites integer NOT NULL DEFAULT 0,
+    included_router_id uuid REFERENCES router_connections(id) ON DELETE SET NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- ---- Device requests -------------------------------------------------------
+CREATE TABLE IF NOT EXISTS device_requests (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    business_id uuid NOT NULL REFERENCES businesses(business_id) ON DELETE CASCADE,
+    user_id uuid REFERENCES users(user_id) ON DELETE SET NULL,
+    kind text NOT NULL,
+    reason text,
+    status text NOT NULL DEFAULT 'pending',
+    decided_by uuid REFERENCES users(user_id) ON DELETE SET NULL,
+    decided_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- ---- Notification preferences ----------------------------------------------
+CREATE TABLE IF NOT EXISTS notification_prefs (
+    business_id uuid PRIMARY KEY REFERENCES businesses(business_id) ON DELETE CASCADE,
+    in_app boolean NOT NULL DEFAULT true,
+    email boolean NOT NULL DEFAULT false,
+    quiet_hours_start smallint CHECK (quiet_hours_start BETWEEN 0 AND 23),
+    quiet_hours_end smallint CHECK (quiet_hours_end BETWEEN 0 AND 23),
+    min_severity text NOT NULL DEFAULT 'warning' CHECK (min_severity IN ('info','warning','critical')),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- ---- Platform announcement (singleton, platform-wide) ----------------------
+CREATE TABLE IF NOT EXISTS platform_announcement (
+    id boolean PRIMARY KEY DEFAULT true CHECK (id),
+    active boolean NOT NULL DEFAULT false,
+    message text,
+    speed_seconds integer CHECK (speed_seconds BETWEEN 8 AND 120),
+    updated_by uuid REFERENCES users(user_id) ON DELETE SET NULL,
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- ---- Platform admins -------------------------------------------------------
+-- The old model kept a separate platform-admin grant list; the new model uses
+-- the DEVELOPER role. Ported so the authorisation RECORD survives, but this
+-- table grants nothing by itself — no role is changed by the migration.
+CREATE TABLE IF NOT EXISTS platform_admins (
+    user_id uuid PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE,
+    note text,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- ---- Platform service bank accounts (platform-wide) ------------------------
+CREATE TABLE IF NOT EXISTS platform_service_bank_accounts (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    slot integer NOT NULL CHECK (slot IN (1, 2)),
+    holder_name text NOT NULL,
+    bank_name text NOT NULL,
+    account_number text NOT NULL,
+    enabled boolean NOT NULL DEFAULT true,
+    sort integer NOT NULL DEFAULT 0,
+    configured_by uuid REFERENCES users(user_id) ON DELETE SET NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (slot)
+);
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON i18n_overrides TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON owner_daily_closes TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON device_allowances TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON device_requests TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON notification_prefs TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON platform_announcement TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON platform_admins TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON platform_service_bank_accounts TO authenticated;
+
+ALTER TABLE owner_daily_closes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE device_allowances ENABLE ROW LEVEL SECURITY;
+ALTER TABLE device_requests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE notification_prefs ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY owner_daily_closes_tenant_isolation ON owner_daily_closes
+    FOR ALL TO authenticated
+    USING (business_id = current_setting('app.current_business_id')::uuid)
+    WITH CHECK (business_id = current_setting('app.current_business_id')::uuid);
+
+CREATE POLICY device_allowances_tenant_isolation ON device_allowances
+    FOR ALL TO authenticated
+    USING (business_id = current_setting('app.current_business_id')::uuid)
+    WITH CHECK (business_id = current_setting('app.current_business_id')::uuid);
+
+CREATE POLICY device_requests_tenant_isolation ON device_requests
+    FOR ALL TO authenticated
+    USING (business_id = current_setting('app.current_business_id')::uuid)
+    WITH CHECK (business_id = current_setting('app.current_business_id')::uuid);
+
+CREATE POLICY notification_prefs_tenant_isolation ON notification_prefs
+    FOR ALL TO authenticated
+    USING (business_id = current_setting('app.current_business_id')::uuid)
+    WITH CHECK (business_id = current_setting('app.current_business_id')::uuid);
+
+-- ---- Syslog events ---------------------------------------------------------
+-- Operational log history. The old table carried a `token_id`, but it is NULL in
+-- every one of the 1,177 rows, so the column is dropped rather than carried.
+CREATE TABLE IF NOT EXISTS syslog_events (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    business_id uuid NOT NULL REFERENCES businesses(business_id) ON DELETE CASCADE,
+    router_connection_id uuid REFERENCES router_connections(id) ON DELETE SET NULL,
+    site_id uuid REFERENCES sites(site_id) ON DELETE SET NULL,
+    source_ip text,
+    facility text,
+    severity text NOT NULL CHECK (severity IN ('info','warning','critical')),
+    program text,
+    message text NOT NULL,
+    ai_summary text,
+    ai_severity text CHECK (ai_severity IS NULL OR ai_severity IN ('info','warning','critical')),
+    received_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS syslog_events_business_idx ON syslog_events(business_id, received_at DESC);
+
+-- ---- Fleet scan runs -------------------------------------------------------
+CREATE TABLE IF NOT EXISTS fleet_scan_runs (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    business_id uuid NOT NULL REFERENCES businesses(business_id) ON DELETE CASCADE,
+    kind text NOT NULL CHECK (kind IN ('ai','security')),
+    payload jsonb NOT NULL DEFAULT '{}'::jsonb,
+    max_severity text NOT NULL CHECK (max_severity IN ('critical','warning','info','ok')),
+    router_count integer NOT NULL DEFAULT 0,
+    generated_at timestamptz NOT NULL DEFAULT now(),
+    triggered_by uuid REFERENCES users(user_id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS fleet_scan_runs_business_idx ON fleet_scan_runs(business_id, generated_at DESC);
+
+-- ---- AI usage events -------------------------------------------------------
+CREATE TABLE IF NOT EXISTS ai_usage_events (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    business_id uuid NOT NULL REFERENCES businesses(business_id) ON DELETE CASCADE,
+    user_id uuid REFERENCES users(user_id) ON DELETE SET NULL,
+    feature text NOT NULL,
+    model text,
+    prompt_tokens integer NOT NULL DEFAULT 0,
+    completion_tokens integer NOT NULL DEFAULT 0,
+    total_tokens integer NOT NULL DEFAULT 0,
+    cached boolean NOT NULL DEFAULT false,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS ai_usage_events_business_idx ON ai_usage_events(business_id, created_at DESC);
+
+-- ---- Admin notifications ---------------------------------------------------
+-- Scoped to a RECIPIENT USER, not a business, so it is granted but not
+-- RLS-scoped: the app's tenant context only carries a business id.
+CREATE TABLE IF NOT EXISTS admin_notifications (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    recipient_user_id uuid NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+    kind text NOT NULL,
+    title text NOT NULL,
+    body text,
+    data jsonb NOT NULL DEFAULT '{}'::jsonb,
+    read_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS admin_notifications_recipient_idx ON admin_notifications(recipient_user_id, created_at DESC);
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON syslog_events TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON fleet_scan_runs TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ai_usage_events TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON admin_notifications TO authenticated;
+
+ALTER TABLE syslog_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE fleet_scan_runs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ai_usage_events ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY syslog_events_tenant_isolation ON syslog_events
+    FOR ALL TO authenticated
+    USING (business_id = current_setting('app.current_business_id')::uuid)
+    WITH CHECK (business_id = current_setting('app.current_business_id')::uuid);
+
+CREATE POLICY fleet_scan_runs_tenant_isolation ON fleet_scan_runs
+    FOR ALL TO authenticated
+    USING (business_id = current_setting('app.current_business_id')::uuid)
+    WITH CHECK (business_id = current_setting('app.current_business_id')::uuid);
+
+CREATE POLICY ai_usage_events_tenant_isolation ON ai_usage_events
+    FOR ALL TO authenticated
+    USING (business_id = current_setting('app.current_business_id')::uuid)
+    WITH CHECK (business_id = current_setting('app.current_business_id')::uuid);
