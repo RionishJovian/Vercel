@@ -7,16 +7,192 @@
   <meta name="description" content="Mega Magic operates your MikroTik fleet: self-healing recovery, provisioning, billing and guest Wi-Fi from one console.">
   <meta name="robots" content="index">
   <link rel="stylesheet" href="/assets/css/styles.css">
+  <style>
+    /* ════════════════════════════════════════════════════════════════════
+       Mega Magic — Liquid-Glass luxury landing overlay (inline, scoped here)
+       Same visual language as the operator dashboard: backdrop-blur glass
+       over ambient glow orbs, light sweeps, 3D hover depth, gold/ice accents.
+       Vanilla CSS only — the landing carries no JavaScript.
+       ════════════════════════════════════════════════════════════════════ */
+    :root{
+      --bg:#070a10; --ink:#f4f1ea; --ink-soft:#c6c1b6; --ink-muted:#8d8a83;
+      --accent:#7dd3fc; --gold:#e7b457; --gold-deep:#b9882c;
+      --line:rgba(255,255,255,.10); --line-soft:rgba(255,255,255,.055);
+      --glass:blur(22px) saturate(165%);
+      --ease:cubic-bezier(.20,.70,.20,1);
+    }
+    html{color-scheme:dark;}
+    body{
+      margin:0; min-height:100vh; color:var(--ink);
+      background:
+        radial-gradient(1200px 760px at 8% -14%, rgba(56,189,248,.20), transparent 62%),
+        radial-gradient(940px 680px at 104% 4%, rgba(147,51,234,.14), transparent 55%),
+        radial-gradient(1080px 820px at 50% 112%, rgba(231,180,87,.14), transparent 60%),
+        var(--bg);
+      background-attachment:fixed;
+      font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    }
+    ::selection{background:rgba(125,211,252,.28);}
+
+    /* Ambient glow orbs + grain (decorative, behind the glass) */
+    .lg-orb{position:fixed;border-radius:50%;filter:blur(88px);pointer-events:none;z-index:0;}
+    .lg-orb-a{width:600px;height:600px;top:-190px;left:-150px;background:radial-gradient(circle,rgba(56,189,248,.55),transparent 70%);}
+    .lg-orb-b{width:520px;height:520px;top:20%;right:-190px;background:radial-gradient(circle,rgba(168,85,247,.5),transparent 70%);}
+    .lg-orb-c{width:500px;height:500px;bottom:-170px;right:30%;background:radial-gradient(circle,rgba(231,180,87,.5),transparent 70%);}
+    .lg-grain{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.05;
+      background-image:radial-gradient(#fff 1px,transparent 1px);background-size:3px 3px;}
+
+    .landing{position:relative;z-index:1;}
+
+    /* ---------- Nav: frosted glass bar ---------- */
+    .land-nav{
+      position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:16px;
+      padding:16px 30px;
+      background:rgba(9,12,18,.55);
+      -webkit-backdrop-filter:var(--glass); backdrop-filter:var(--glass);
+      border-bottom:1px solid var(--line);
+      box-shadow:0 1px 40px -24px rgba(0,0,0,.9);
+    }
+    .rail-brand{display:flex;align-items:center;gap:10px;color:#fff;font-weight:650;letter-spacing:.02em;text-shadow:0 0 24px rgba(125,211,252,.28);}
+    .rail-brand .dot{
+      width:12px;height:12px;border-radius:4px;
+      background:radial-gradient(circle at 32% 30%, #ffe9ae, var(--gold) 58%, var(--gold-deep));
+      box-shadow:0 0 16px rgba(231,180,87,.7), inset 0 0 6px rgba(255,255,255,.55);
+    }
+    .land-nav .spacer{flex:1;}
+    .land-signin{
+      color:var(--accent);text-decoration:none;font-weight:600;letter-spacing:.02em;
+      padding:8px 14px;border-radius:10px;
+      background:rgba(255,255,255,.045);
+      -webkit-backdrop-filter:blur(8px); backdrop-filter:blur(8px);
+      border:1px solid rgba(125,211,252,.30);
+      transition:background .25s, color .25s, box-shadow .3s, transform var(--ease) .3s;
+    }
+    .land-signin:hover{background:rgba(125,211,252,.12);color:#fff;transform:translateY(-1px);
+      box-shadow:0 0 0 1px rgba(125,211,252,.5), 0 10px 26px -12px rgba(56,189,248,.5);}
+
+    /* ---------- Hero: glass panel with sweep ---------- */
+    .land-hero{
+      position:relative;overflow:hidden;
+      max-width:1180px;margin:56px auto 30px;padding:64px 34px;text-align:center;
+      background:rgba(255,255,255,.05);
+      -webkit-backdrop-filter:var(--glass); backdrop-filter:var(--glass);
+      border:1px solid var(--line); border-radius:22px;
+      box-shadow:0 30px 70px -34px rgba(0,0,0,.95), inset 0 1px 0 rgba(255,255,255,.08);
+    }
+    .land-hero::after{ /* hairline top gleam */
+      content:"";position:absolute;top:0;left:8%;right:8%;height:1px;
+      background:linear-gradient(90deg,transparent,rgba(255,255,255,.28),transparent);
+    }
+    .land-hero::before{ /* periodic light sweep */
+      content:"";position:absolute;top:-20%;left:-80%;width:52%;height:140%;
+      background:linear-gradient(105deg,transparent,rgba(255,255,255,.07),transparent);
+      transform:skewX(-12deg);animation:lgSweep 4.8s ease-in-out infinite;pointer-events:none;
+    }
+    @keyframes lgSweep{0%{left:-80%;}62%,100%{left:135%;}}
+    .land-eyebrow{
+      display:inline-block;margin-bottom:22px;color:var(--gold);font-size:13px;
+      letter-spacing:.14em;text-transform:uppercase;
+      padding:5px 14px;border-radius:999px;border:1px solid rgba(231,180,87,.35);
+      background:rgba(231,180,87,.08);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
+      box-shadow:0 0 18px rgba(231,180,87,.25);
+    }
+    .land-hero h1{
+      font-size:clamp(34px,5.5vw,60px);line-height:1.06;letter-spacing:-.02em;color:#fff;
+      text-shadow:0 0 34px rgba(125,211,252,.28);
+      animation:lgIn .6s var(--ease) both;
+    }
+    .land-hero h1 .accent{background:linear-gradient(90deg,#7dd3fc,#a5e6ff);-webkit-background-clip:text;background-clip:text;color:transparent;text-shadow:none;}
+    @keyframes lgIn{from{opacity:0;transform:translateY(14px) scale(.99);}to{opacity:1;transform:none;}}
+    .land-hero p{
+      max-width:660px;margin:22px auto 30px;color:var(--ink-soft);font-size:17px;line-height:1.65;
+      animation:lgIn .6s var(--ease) both;
+    }
+
+    .land-cta{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;animation:lgIn .6s var(--ease) both;}
+    .btn{
+      background:rgba(255,255,255,.045);color:var(--ink);
+      -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
+      border:1px solid var(--line);border-radius:12px;padding:12px 22px;font-weight:600;
+      text-decoration:none;
+      transition:transform var(--ease) .3s, background .25s, box-shadow .3s, border-color .3s;
+    }
+    .btn:hover{background:rgba(255,255,255,.10);transform:translateY(-2px);box-shadow:0 14px 30px -14px rgba(0,0,0,.7);}
+    .btn-primary{
+      background:radial-gradient(130% 220% at 22% 0%, #43b8f8, #0ea5e9 55%, #0369a1);
+      color:#04121a;font-weight:650;border:none;
+      box-shadow:inset 0 0 0 1px rgba(255,255,255,.18), 0 10px 28px -10px rgba(56,189,248,.65);
+    }
+    .btn-primary:hover{box-shadow:inset 0 0 0 1px rgba(255,255,255,.28), 0 16px 34px -10px rgba(56,189,248,.8);}
+
+    /* ---------- Feature sections ---------- */
+    .land-section{max-width:1180px;margin:64px auto;}
+    .land-section h2{
+      color:#fff;font-size:30px;letter-spacing:-.01em;text-align:center;
+      margin:0 0 10px;text-shadow:0 0 28px rgba(125,211,252,.22);
+    }
+    .land-rule{width:64px;height:2px;margin:14px auto 38px;border-radius:2px;
+      background:linear-gradient(90deg,var(--gold),var(--accent));}
+    .land-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:22px;}
+    .cell{
+      position:relative;overflow:hidden;
+      background:rgba(255,255,255,.05);
+      -webkit-backdrop-filter:var(--glass); backdrop-filter:var(--glass);
+      border:1px solid var(--line); border-radius:18px;padding:26px 24px;
+      box-shadow:0 22px 50px -30px rgba(0,0,0,.9), inset 0 1px 0 rgba(255,255,255,.07);
+      transition:transform var(--ease) .4s, box-shadow var(--ease) .4s, border-color .4s;
+    }
+    .cell:hover{
+      transform:translateY(-3px);
+      box-shadow:0 32px 76px -36px rgba(0,0,0,.98), 0 0 0 1px rgba(255,255,255,.09),
+                 inset 0 1px 0 rgba(255,255,255,.09);
+    }
+    .cell::after{ /* hairline top gleam */
+      content:"";position:absolute;top:0;left:12%;right:12%;height:1px;
+      background:linear-gradient(90deg,transparent,rgba(255,255,255,.28),transparent);
+    }
+    .cell::before{ /* soft periodic sweep */
+      content:"";position:absolute;top:-18%;left:-80%;width:50%;height:136%;
+      background:linear-gradient(105deg,transparent,rgba(255,255,255,.045),transparent);
+      transform:skewX(-12deg);animation:lgSweep 5.5s ease-in-out infinite;pointer-events:none;
+    }
+    .cell .glyph{
+      width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;
+      font-size:17px;color:#fff;margin-bottom:14px;
+      background:radial-gradient(120% 200% at 30% 0%, rgba(125,211,252,.9), rgba(56,189,248,.35));
+      -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
+      box-shadow:inset 0 0 0 1px rgba(255,255,255,.18), 0 0 16px rgba(56,189,248,.35);
+    }
+    .cell h3{color:#fff;font-size:18px;letter-spacing:.01em;margin:0 0 10px;}
+    .cell p{color:var(--ink-soft);font-size:15px;line-height:1.6;margin:0;}
+
+    @media (max-width:640px){
+      .land-hero{padding:44px 20px;}
+      .land-nav{padding:14px 18px;}
+      .land-grid{grid-template-columns:1fr;}
+    }
+    @media (prefers-reduced-motion: reduce){
+      *{transition:none!important;animation:none!important;}
+      .land-hero::before,.cell::before{animation:none;display:none;}
+    }
+  </style>
 </head>
 <body>
+<div class="lg-orb lg-orb-a"></div>
+<div class="lg-orb lg-orb-b"></div>
+<div class="lg-orb lg-orb-c"></div>
+<div class="lg-grain"></div>
+
 <div class="land-nav">
   <div class="rail-brand"><span class="dot"></span>Mega Magic</div>
+  <div class="spacer"></div>
   <div><a class="land-signin" href="/signin.html">Sign in →</a></div>
 </div>
 
 <div class="landing">
   <section class="land-hero">
-    <h1>Your MikroTik fleet<br>runs itself.</h1>
+    <span class="land-eyebrow">Self-healing network operations</span>
+    <h1>Your MikroTik fleet<br>runs <span class="accent">itself.</span></h1>
     <p>Mega Magic watches every router, heals the tunnel when it drops, provisions peers, and lets guests pay for Wi-Fi — from one calm console. No dashboards you have to babysit.</p>
     <div class="land-cta">
       <a class="btn btn-primary" href="/signin.html">Sign in</a>
@@ -26,16 +202,20 @@
 
   <section class="land-section">
     <h2>What it does</h2>
+    <div class="land-rule"></div>
     <div class="land-grid">
       <div class="cell">
+        <div class="glyph">⌁</div>
         <h3>Self-healing recovery</h3>
         <p>Probes each peer, classifies the tunnel, and runs a measured recovery ladder — no thrash, no alert spam, and every change needs a human approval gate.</p>
       </div>
       <div class="cell">
+        <div class="glyph">⌬</div>
         <h3>Provisioning &amp; topology</h3>
         <p>Deterministic WireGuard peer blocks, a live network map, and explicit device actions like remote reboot.</p>
       </div>
       <div class="cell">
+        <div class="glyph">▰</div>
         <h3>Monetization</h3>
         <p>Vouchers, operator-approved purchases, and guest Wi-Fi with online-banking receipts — the money paths are tenant-scoped and audited.</p>
       </div>
@@ -44,16 +224,20 @@
 
   <section class="land-section">
     <h2>Built on your hardware</h2>
+    <div class="land-rule"></div>
     <div class="land-grid">
       <div class="cell">
+        <div class="glyph">◇</div>
         <h3>MikroTik first</h3>
         <p>The control plane speaks RouterOS and WireGuard natively. Vendor-neutral enough to grow, honest about what runs today.</p>
       </div>
       <div class="cell">
+        <div class="glyph">◈</div>
         <h3>One source of truth</h3>
         <p>Every write is gated, every high-risk action needs a one-time code, and the state is yours — self-hosted Postgres, no SaaS lock-in.</p>
       </div>
       <div class="cell">
+        <div class="glyph">▣</div>
         <h3>A real approval gate</h3>
         <p>Destructive changes don't happen by accident. Reboots and reconfigs pause for human approval and verify the device comes back.</p>
       </div>
