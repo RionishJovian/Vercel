@@ -903,10 +903,83 @@ async function renderPlatform(main) {
       <div class="stat"><div class="stat-label">Resolved</div><div class="stat-value">${counts.resolved ?? 0}</div></div>
     </div>
     <hr class="rule">
+    ${platformCreateForm()}
     <div class="panel"><div class="panel-head"><h2 class="panel-title">Businesses</h2></div>
       <div class="panel-body">${platformBusinessTable(businesses)}</div></div>
     <div class="panel" style="margin-top:14px"><div class="panel-head"><h2 class="panel-title">Open incidents</h2></div>
       <div class="panel-body">${platformIncidentTable(incidents, businesses)}</div></div>`;
+  await wirePlatformAdmin(content, main);
+}
+
+/* ---------- Platform admin (Stage: tenant management) ---------- */
+function platformCreateForm() {
+  return `<div class="panel" style="margin-top:18px"><div class="panel-head"><h2 class="panel-title">Create tenant</h2></div>
+    <div class="panel-body">
+      <div class="field"><label>Company name *</label><input class="input" id="pt-company"></div>
+      <div class="field"><label>Owner email *</label><input class="input" id="pt-email" type="email"></div>
+      <div class="field"><label>Owner password * (8+ chars)</label><input class="input" id="pt-pass" type="password"></div>
+      <div class="field"><label>Access tier</label><select class="input" id="pt-tier"><option>SMALL_WISP</option><option>ENTERPRISE_ISP</option><option>GLOBAL_ADMIN</option></select></div>
+      <div class="field"><label>Device quota limit (optional)</label><input class="input" id="pt-quota" inputmode="numeric"></div>
+      <button class="btn btn-primary" id="pt-create">Create tenant</button>
+      <span id="pt-msg" class="muted small"></span>
+    </div></div>`;
+}
+
+async function wirePlatformAdmin(content, main) {
+  const msg = (t) => { const el = document.getElementById("pt-msg"); if (el) el.textContent = t; };
+  const fail = (e) => {
+    const t = (e.data && e.data.error) ? e.data.error : e.message;
+    content.prepend(Object.assign(document.createElement("div"), { className: "alert", textContent: t }));
+  };
+
+  const create = document.getElementById("pt-create");
+  if (create) create.addEventListener("click", async () => {
+    const quota = parseInt(document.getElementById("pt-quota").value, 10);
+    const body = {
+      company_name: document.getElementById("pt-company").value.trim(),
+      owner_email: document.getElementById("pt-email").value.trim(),
+      owner_password: document.getElementById("pt-pass").value,
+      access_tier: document.getElementById("pt-tier").value,
+    };
+    if (!body.company_name || !body.owner_email || body.owner_password.length < 8) { msg("Company, email and an 8+ char password are required."); return; }
+    if (!isNaN(quota) && quota > 0) body.device_quota_limit = quota;
+    create.disabled = true; msg("creating…");
+    try { await MM.post("/platform/businesses", body); await renderPlatform(main); }
+    catch (e) { create.disabled = false; msg(""); fail(e); }
+  });
+
+  content.querySelectorAll("button[data-susp]").forEach(btn => btn.addEventListener("click", async () => {
+    const id = btn.dataset.susp, act = btn.dataset.act === "suspend" ? "suspend" : "unsuspend";
+    btn.disabled = true; btn.textContent = "…";
+    try { await MM.post(`/platform/businesses/${encodeURIComponent(id)}/${act}`, {}); await renderPlatform(main); }
+    catch (e) { btn.disabled = false; btn.textContent = "Retry"; fail(e); }
+  }));
+
+  content.querySelectorAll("button[data-resetpw]").forEach(btn => btn.addEventListener("click", async () => {
+    const id = btn.dataset.resetpw;
+    const pw = prompt("New owner password (8+ chars):");
+    if (pw === null) return;
+    if (pw.length < 8) { fail({ message: "password must be 8+ chars" }); return; }
+    try { await MM.post(`/platform/businesses/${encodeURIComponent(id)}/reset-owner-password`, { new_password: pw }); btn.textContent = "reset ✓"; }
+    catch (e) { fail(e); }
+  }));
+
+  content.querySelectorAll("button[data-state]").forEach(btn => btn.addEventListener("click", async () => {
+    const id = btn.dataset.state;
+    try {
+      const s = await MM.get(`/platform/businesses/${encodeURIComponent(id)}/state`);
+      alert([
+        "Company: " + s.company_name,
+        "Tier: " + s.access_tier,
+        "Active: " + s.is_active,
+        "Owner: " + s.owner_email,
+        "Devices: " + s.device_count + " / " + s.device_quota_limit,
+        "Open incidents: " + s.open_incidents,
+        "Extra slots: " + s.purchased_extra_slots,
+        "AI tokens: " + s.ai_token_balance,
+      ].join("\n"));
+    } catch (e) { fail(e); }
+  }));
 }
 
 function platformBusinessTable(bizs) {
@@ -917,10 +990,15 @@ function platformBusinessTable(bizs) {
       <td>${esc(b.owner_email)}</td>
       <td><span class="mono">${esc(b.access_tier)}</span></td>
       <td class="num">${esc(b.device_quota_limit)}</td>
-      <td>${b.is_active ? `<span class="status ok">Active</span>` : `<span class="status unknown">Inactive</span>`}</td>
+      <td>${b.is_active ? `<span class="status ok">Active</span>` : `<span class="status unknown">Suspended</span>`}</td>
       <td>${ts(b.created_at)}</td>
+      <td>
+        <button class="btn btn-sm" data-susp="${esc(b.business_id)}" data-act="${b.is_active ? "suspend" : "unsuspend"}">${b.is_active ? "Suspend" : "Unsuspend"}</button>
+        <button class="btn btn-sm" data-resetpw="${esc(b.business_id)}">Reset pw</button>
+        <button class="btn btn-sm" data-state="${esc(b.business_id)}">View state</button>
+      </td>
     </tr>`).join("");
-  return `<table><thead><tr><th>Company</th><th>Owner</th><th>Tier</th><th>Device limit</th><th>Status</th><th>Created</th></tr></thead><tbody>${rows}</tbody></table>`;
+  return `<table><thead><tr><th>Company</th><th>Owner</th><th>Tier</th><th>Device limit</th><th>Status</th><th>Created</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 function platformIncidentTable(list, bizs) {
