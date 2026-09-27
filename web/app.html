@@ -8,8 +8,183 @@
   <link rel="stylesheet" href="/assets/css/styles.css">
   <script src="/assets/js/api.js" defer></script>
   <script src="/assets/js/app.js" defer></script>
+  <style>
+    /* ════════════════════════════════════════════════════════════════════
+       Mega Magic — Liquid-Glass luxury overlay (inline, scoped to this page)
+       Backdrop-blur glass surfaces over ambient glow orbs, light sweeps,
+       3D hover depth, animate-in transitions. Vanilla CSS only.
+       ════════════════════════════════════════════════════════════════════ */
+    :root{
+      --bg:#070a10; --bg-subtle:#0a0e15;
+      --surface:rgba(255,255,255,.05);
+      --ink:#f4f1ea; --ink-soft:#c6c1b6; --ink-muted:#8d8a83;
+      --line:rgba(255,255,255,.10); --line-soft:rgba(255,255,255,.055);
+      --accent:#7dd3fc; --accent-hover:#a5e6ff; --accent-wash:rgba(125,211,252,.12);
+      --gold:#e7b457; --gold-deep:#b9882c;
+      --ok:#61d395; --warn:#f0b35c; --bad:#f27c83; --unknown:#9a96a0;
+      --ok-wash:rgba(97,211,149,.15); --warn-wash:rgba(240,179,92,.16);
+      --bad-wash:rgba(242,124,131,.15); --unknown-wash:rgba(154,150,160,.17);
+      --focus:#7dd3fc; --focus-wash:rgba(125,211,252,.18);
+      --radius:16px;
+      --glass:blur(22px) saturate(165%);
+      --ease:cubic-bezier(.20,.70,.20,1);
+    }
+    html{color-scheme:dark;}
+    body{
+      margin:0; min-height:100vh; color:var(--ink);
+      background:
+        radial-gradient(1100px 720px at 10% -12%, rgba(56,189,248,.18), transparent 62%),
+        radial-gradient(900px 640px at 102% 6%, rgba(147,51,234,.15), transparent 55%),
+        radial-gradient(1000px 780px at 46% 112%, rgba(231,180,87,.12), transparent 60%),
+        var(--bg);
+      background-attachment:fixed;
+    }
+    ::selection{background:rgba(125,211,252,.28);}
+
+    /* Ambient glow orbs (decorative, behind glass) */
+    .lg-orb{position:fixed;border-radius:50%;filter:blur(88px);pointer-events:none;z-index:0;}
+    .lg-orb-a{width:540px;height:540px;top:-150px;left:-130px;background:radial-gradient(circle,rgba(56,189,248,.55),transparent 70%);}
+    .lg-orb-b{width:480px;height:480px;top:26%;right:-170px;background:radial-gradient(circle,rgba(168,85,247,.5),transparent 70%);}
+    .lg-orb-c{width:460px;height:460px;bottom:-150px;left:36%;background:radial-gradient(circle,rgba(231,180,87,.45),transparent 70%);}
+    .lg-grain{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.055;
+      background-image:radial-gradient(#fff 1px,transparent 1px);background-size:3px 3px;}
+
+    .layout{position:relative;z-index:1;}
+
+    /* ---------- Left rail: frosted glass ---------- */
+    .rail{
+      background:rgba(9,12,18,.55);
+      -webkit-backdrop-filter:var(--glass); backdrop-filter:var(--glass);
+      border-right:1px solid var(--line);
+      box-shadow:1px 0 40px -20px rgba(0,0,0,.9);
+    }
+    .rail-brand{color:#fff;text-shadow:0 0 24px rgba(125,211,252,.28);}
+    .rail-brand .dot{
+      background:radial-gradient(circle at 32% 30%, #ffe9ae, var(--gold) 58%, var(--gold-deep));
+      box-shadow:0 0 16px rgba(231,180,87,.7), inset 0 0 6px rgba(255,255,255,.55);
+      border-radius:4px;
+    }
+    .rail-sub{color:var(--ink-muted);}
+    .rail-section{color:var(--ink-muted);letter-spacing:.16em;}
+    .nav-item{
+      color:var(--ink-soft); border-radius:11px; position:relative;
+      transition:transform var(--ease) .35s, background .25s, color .25s, box-shadow .35s;
+    }
+    .nav-item:hover{background:rgba(125,211,252,.10);color:#fff;transform:translateX(3px);}
+    .nav-item[aria-current="page"],.nav-item.active{
+      background:rgba(125,211,252,.14);color:#fff;font-weight:650;
+      box-shadow:inset 0 0 0 1px rgba(125,211,252,.30), 0 10px 30px -12px rgba(56,189,248,.55);
+    }
+    .nav-item#signout{margin-top:auto;}
+
+    main{padding:34px 40px;}
+    #content>*{animation:lgIn .55s var(--ease) both;}
+    @keyframes lgIn{from{opacity:0;transform:translateY(12px) scale(.99);}to{opacity:1;transform:none;}}
+
+    .page-title{color:#fff;font-size:22px;}
+    .page-lead{color:var(--ink-soft);}
+
+    /* ---------- Glass panels with sweep + 3D hover ---------- */
+    .panel{
+      position:relative;overflow:hidden;
+      background:rgba(255,255,255,.05);
+      -webkit-backdrop-filter:var(--glass); backdrop-filter:var(--glass);
+      border:1px solid var(--line); border-radius:18px;
+      box-shadow:0 24px 55px -32px rgba(0,0,0,.95), inset 0 1px 0 rgba(255,255,255,.07);
+      transition:transform var(--ease) .4s, box-shadow var(--ease) .4s, border-color .4s;
+    }
+    .panel:hover{
+      transform:translateY(-3px);
+      box-shadow:0 34px 80px -38px rgba(0,0,0,.98), 0 0 0 1px rgba(255,255,255,.09),
+                 inset 0 1px 0 rgba(255,255,255,.09);
+    }
+    .panel::after{ /* hairline top gleam */
+      content:"";position:absolute;top:0;left:10%;right:10%;height:1px;
+      background:linear-gradient(90deg,transparent,rgba(255,255,255,.28),transparent);
+    }
+    .panel::before{ /* periodic light sweep */
+      content:"";position:absolute;top:-20%;left:-80%;width:52%;height:140%;
+      background:linear-gradient(105deg,transparent,rgba(255,255,255,.06),transparent);
+      transform:skewX(-12deg);animation:lgSweep 4.6s ease-in-out infinite;pointer-events:none;
+    }
+    @keyframes lgSweep{0%{left:-80%;}62%,100%{left:135%;}}
+    .panel-head{border-bottom:1px solid var(--line-soft);padding:14px 18px;}
+    .panel-title{color:#fff;letter-spacing:.02em;}
+    .panel-body{padding:6px 18px 16px;}
+
+    /* ---------- Stats ---------- */
+    .stat .stat-label{color:var(--ink-soft);letter-spacing:.05em;}
+    .stat .stat-value{color:#fff;font-size:30px;text-shadow:0 0 26px rgba(125,211,252,.40);}
+
+    /* ---------- Tables ---------- */
+    thead th{color:var(--ink-muted);border-bottom:1px solid var(--line);}
+    tbody td{border-bottom:1px solid var(--line-soft);}
+    tbody tr:hover{background:rgba(255,255,255,.045);}
+    .num{color:var(--ink);}
+    .mono{color:var(--ink-soft);}
+
+    /* Status pills on glass: glowing dot, frosted body */
+    .status{-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);}
+    .status::before{box-shadow:0 0 11px currentColor;}
+
+    /* Device marker: luminous orbs */
+    .dev{box-shadow:0 0 0 3px rgba(255,255,255,.06), 0 0 18px currentColor;}
+
+    /* ---------- Buttons ---------- */
+    .btn{
+      background:rgba(255,255,255,.045);
+      -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
+      border:1px solid var(--line); color:var(--ink); border-radius:11px;
+      text-decoration:none;
+      transition:transform var(--ease) .3s, background .25s, box-shadow .3s, border-color .3s;
+    }
+    .btn:hover{background:rgba(255,255,255,.10);transform:translateY(-1px);}
+    .btn-primary{
+      background:radial-gradient(130% 220% at 22% 0%, #43b8f8, #0ea5e9 55%, #0369a1);
+      color:#04121a;border:none;font-weight:650;
+      box-shadow:inset 0 0 0 1px rgba(255,255,255,.18), 0 10px 28px -10px rgba(56,189,248,.65);
+    }
+    .btn-primary:hover{box-shadow:inset 0 0 0 1px rgba(255,255,255,.28), 0 16px 34px -10px rgba(56,189,248,.8);}
+    .btn-danger{color:#ffb0b5;border-color:rgba(242,124,131,.35);}
+    .btn-danger:hover{background:rgba(242,124,131,.14);}
+    .btn:disabled{opacity:.45;cursor:not-allowed;transform:none;}
+
+    /* ---------- Forms ---------- */
+    input,select,textarea{
+      font:inherit;color:var(--ink);
+      background:rgba(0,0,0,.28);border:1px solid var(--line);
+      border-radius:10px;padding:8px 10px;
+      transition:border-color .2s, box-shadow .2s;
+    }
+    input::placeholder{color:var(--ink-muted);}
+    input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--focus-wash);}
+    .input{background:rgba(0,0,0,.28);color:var(--ink);border-color:var(--line);}
+    .field label{color:var(--ink-soft);}
+    select option{background:#0c1016;color:var(--ink);}
+
+    /* ---------- Empty / alerts ---------- */
+    .empty{color:var(--ink-soft);}
+    .empty .empty-title{color:#fff;}
+    .alert{
+      background:rgba(242,124,131,.16);border:1px solid rgba(242,124,131,.34);
+      color:#ffd6d8;border-radius:12px;
+      -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
+    }
+    hr.rule{border-top:1px solid var(--line);}
+
+    .muted{color:var(--ink-muted);}
+
+    @media (prefers-reduced-motion: reduce){
+      *{transition:none!important;animation:none!important;}
+      .panel::before{animation:none;display:none;}
+    }
+  </style>
 </head>
 <body>
+<div class="lg-orb lg-orb-a"></div>
+<div class="lg-orb lg-orb-b"></div>
+<div class="lg-orb lg-orb-c"></div>
+<div class="lg-grain"></div>
 <div class="layout">
   <nav class="rail" aria-label="Primary">
     <div>
