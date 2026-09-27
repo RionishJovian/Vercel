@@ -2376,32 +2376,79 @@ async function renderSecurity(main) {
     return;
   }
 
-  const rank = { affected: 0, unknown: 1, safe: 2 };
-  const sorted = devices.slice().sort((a, b) => (rank[a.posture] ?? 9) - (rank[b.posture] ?? 9));
-  const postureBadge = (p) => {
-    const m = { affected: "bad", safe: "ok", unknown: "unknown" }[p] || "unknown";
-    const label = { affected: "Affected", safe: "Safe", unknown: "Unknown" }[p] || "Unknown";
+  // Worst first. An unfixable finding outranks a fixable one, which outranks
+  // "we could not tell", which outranks fine — so the thing an operator must
+  // act on is never buried under rows that are merely unreadable.
+  const rank = (d) => {
+    if (d.posture === "affected") return d.unpatchable ? 0 : 1;
+    if (d.posture === "unknown") return 2;
+    return 3;
+  };
+  const sorted = devices.slice().sort((a, b) => rank(a) - rank(b));
+
+  const postureBadge = (d) => {
+    const m = { affected: "bad", safe: "ok", unknown: "unknown" }[d.posture] || "unknown";
+    const label = { affected: "Affected", safe: "Safe", unknown: "Unknown" }[d.posture] || "Unknown";
     return `<span class="status ${m}">${label}</span>`;
   };
 
+  // An advisory the vendor has published no fix for needs to look DIFFERENT from
+  // one you can upgrade out of, otherwise "affected" just means "ignored".
+  const fixBadge = (d) => {
+    if (d.posture !== "affected") return "";
+    if (d.unpatchable && !d.fix_first) return `<span class="status warn">No fix available</span>`;
+    if (d.unpatchable) return `<span class="status warn">Partly unfixable</span>`;
+    return "";
+  };
+
+  const exploitedBadge = (d) =>
+    d.exploited ? `<span class="status bad">Exploited</span>` : "";
+
+  // Two different remedies, so name the right one.
+  const fixHint = (d) => {
+    if (d.posture !== "affected") return "\u2014";
+    if (d.fix_first) return `upgrade to \u2265 <span class="mono">${esc(d.fix_first)}</span>`;
+    return "close the exposed service";
+  };
+
+  const advTitle = (d) => (d.advisories || [])
+    .map(a => `${a.id} \u2014 ${a.title}${a.fix_unavailable ? " (no fix)" : ""}`)
+    .join("\n");
+
   const rows = sorted.map(d => `
     <tr>
-      <td>${postureBadge(d.posture)}</td>
+      <td>${postureBadge(d)}</td>
       <td><span class="num">${esc(d.hardware_name)}</span></td>
-      <td class="mono">${d.routeros_version ? esc(d.routeros_version) : "—"}</td>
-      <td class="muted small">${d.routeros_channel ? esc(d.routeros_channel) : "—"}</td>
+      <td class="mono">${d.routeros_version ? esc(d.routeros_version) : "\u2014"}</td>
+      <td class="muted small">${d.routeros_channel ? esc(d.routeros_channel) : "\u2014"}</td>
+      <td>${fixBadge(d)} ${exploitedBadge(d)}</td>
+      <td class="muted small">${fixHint(d)}</td>
+      <td class="muted small">${(d.advisories || []).length
+        ? `<span class="mono" title="${esc(advTitle(d))}">${d.advisories.length} matching</span>`
+        : "\u2014"}</td>
       <td>${ts(d.version_checked_at)}</td>
     </tr>`).join("");
+
+  const unpatchableNotice = (data.unpatchable ?? 0) > 0
+    ? `<div class="alert">${data.unpatchable} of these ${data.count} device(s) match at least one advisory with <strong>no vendor fix</strong> \u2014 upgrading will not clear it. Apply the mitigation for those entries instead of scheduling a patch window.</div>`
+    : "";
+  const exploitedNotice = (data.exploited ?? 0) > 0
+    ? `<div class="alert">${data.exploited} device(s) match an advisory being <strong>exploited in the wild</strong>. Treat those first.</div>`
+    : "";
 
   content.innerHTML = `
     <div class="stat-cluster" style="margin-top:18px">
       <div class="stat"><div class="stat-label">Affected</div><div class="stat-value">${data.affected ?? 0}</div></div>
       <div class="stat"><div class="stat-label">Safe</div><div class="stat-value">${data.safe ?? 0}</div></div>
       <div class="stat"><div class="stat-label">Unknown</div><div class="stat-value">${data.unknown ?? 0}</div></div>
+      <div class="stat"><div class="stat-label">No fix exists</div><div class="stat-value">${data.unpatchable ?? 0}</div></div>
+      <div class="stat"><div class="stat-label">Exploited</div><div class="stat-value">${data.exploited ?? 0}</div></div>
     </div>
+    ${unpatchableNotice}
+    ${exploitedNotice}
     <hr class="rule">
     <table>
-      <thead><tr><th>Posture</th><th>Device</th><th>RouterOS</th><th>Channel</th><th>Checked</th></tr></thead>
+      <thead><tr><th>Posture</th><th>Device</th><th>RouterOS</th><th>Channel</th><th>Flags</th><th>Action</th><th>Matches</th><th>Checked</th></tr></thead>
       <tbody>${rows}</tbody></table>`;
 }
 

@@ -52,6 +52,12 @@ type Advisory struct {
 	// Exploited marks advisories with confirmed in-the-wild exploitation. This
 	// is the field a customer-facing "patch now" nudge should key on.
 	Exploited bool
+	// FixUnavailable marks an advisory the vendor has published NO fix for.
+	// Upgrading does not resolve it — the mitigation is environmental (close the
+	// reachable service). Kept separate because the customer's action differs
+	// completely from an "upgrade to X" advisory, and collapsing the two makes
+	// the whole audit read as a wall of indistinguishable "affected".
+	FixUnavailable bool
 	// Note records the condition or caveat a reader needs — a config
 	// precondition, a track ambiguity, or a "no fix exists" status. Empty when
 	// the range speaks for itself.
@@ -86,11 +92,12 @@ type VersionRange struct {
 // most urgent entries are the first thing a reader sees.
 var AdvisoryTable = []Advisory{
 	{
-		ID:       "CVE-2026-14227",
-		Title:    "WireGuard private key disclosure via low-privilege API session",
-		Severity: "4.9",
-		Note:     "affects EVERY version — CISA lists no fixed release. Exploitation needs a reachable RouterOS API session (port 8728/8729); the mitigation is to close the API, not to upgrade.",
-		Source:   "CISA ICSA-26-211-01 (2026-07-30)",
+		ID:             "CVE-2026-14227",
+		Title:          "WireGuard private key disclosure via low-privilege API session",
+		Severity:       "4.9",
+		FixUnavailable: true,
+		Note:           "affects EVERY version — CISA lists no fixed release, so upgrading does NOT resolve it. Exploitation needs a reachable RouterOS API session (port 8728/8729); the mitigation is to close the API, not to patch.",
+		Source:         "CISA ICSA-26-211-01 (2026-07-30)",
 		Ranges: []VersionRange{
 			{Series: "6", Min: "6.0"},
 			{Series: "7", Min: "7.0"},
@@ -296,4 +303,83 @@ func ClassifyPostureWith(version string, table []Advisory) string {
 		return PostureAffected
 	}
 	return PostureSafe
+}
+
+// PostureSummary is the full, explainable result of classifying one device.
+// Posture answers "are we OK?"; the rest answers "why, and what do we do?".
+type PostureSummary struct {
+	Posture    string     // safe | affected | unknown
+	Advisories []Advisory // every advisory this version falls into
+	// Unpatchable: at least one match has NO vendor fix. Upgrading cannot clear
+	// it; the fix is environmental. This is the difference between "patch it"
+	// and "you cannot patch your way out of this", which is why it is surfaced
+	// separately rather than folded into Posture.
+	Unpatchable bool
+	// Exploited: at least one match is confirmed exploited in the wild.
+	Exploited bool
+	// FixFirst is the lowest release that clears every FIXABLE match on this
+	// device's series. Empty when nothing fixable matched (i.e. safe, unknown,
+	// or only unfixable advisories apply).
+	FixFirst string
+}
+
+// fixedIn returns the first release that resolves r, and whether one exists.
+func fixedIn(r VersionRange) (string, bool) {
+	if r.Max == "" {
+		return "", false // no upper bound published — nothing to upgrade to
+	}
+	if r.MaxExclusive {
+		return r.Max, true // Max IS the first fixed release
+	}
+	// Inclusive Max is the last affected release, so the fix is the next patch.
+	maj, min, pat, ok := parseVersion(r.Max)
+	if !ok {
+		return "", false
+	}
+	return strconv.Itoa(maj) + "." + strconv.Itoa(min) + "." + strconv.Itoa(pat+1), true
+}
+
+// Summarize classifies a version AND explains the verdict: which advisories
+// matched, whether any is unfixable, whether any is being exploited, and the
+// lowest release that would clear the fixable ones.
+func Summarize(version string, table []Advisory) PostureSummary {
+	s := PostureSummary{Posture: ClassifyPostureWith(version, table)}
+	s.Advisories = MatchAdvisories(version, table)
+
+	vMaj, _, _, ok := parseVersion(version)
+	if !ok {
+		return s // unknown: no version, so nothing to explain or act on
+	}
+	series := strconv.Itoa(vMaj)
+	bestMaj, bestMin, bestPat := -1, -1, -1
+
+	for _, a := range s.Advisories {
+		if a.FixUnavailable {
+			s.Unpatchable = true
+		}
+		if a.Exploited {
+			s.Exploited = true
+		}
+		for _, r := range a.Ranges {
+			if r.Series != series {
+				continue
+			}
+			fx, hasFix := fixedIn(r)
+			if !hasFix {
+				continue
+			}
+			fMaj, fMin, fPat, okF := parseVersion(fx)
+			if !okF {
+				continue
+			}
+			if bestMaj < 0 || cmpVersion(fMaj, fMin, fPat, bestMaj, bestMin, bestPat) > 0 {
+				bestMaj, bestMin, bestPat = fMaj, fMin, fPat
+			}
+		}
+	}
+
+	if bestMaj >= 0 {
+		s.FixFirst = strconv.Itoa(bestMaj) + "." + strconv.Itoa(bestMin) + "." + strconv.Itoa(bestPat)
+	}
+	return s
 }

@@ -293,3 +293,80 @@ func matchesAdvisory(version string, adv Advisory) bool {
 	}
 	return false
 }
+
+// TestSummarize_unpatchableIsItsOwnSignal pins the distinction the UI needs:
+// "affected, upgrade to X" and "affected, there is no X" must not collapse into
+// one indistinguishable state.
+func TestSummarize_unpatchableIsItsOwnSignal(t *testing.T) {
+	// A version whose ONLY outstanding advisory is the unfixable one: upgrading
+	// cannot help, so there must be no fix target to offer.
+	only := Summarize("7.25", AdvisoryTable)
+	if only.Posture != PostureAffected {
+		t.Errorf("7.25 posture = %q, want affected", only.Posture)
+	}
+	if !only.Unpatchable {
+		t.Error("7.25 must be flagged unpatchable (CVE-2026-14227 has no fix)")
+	}
+	if only.FixFirst != "" {
+		t.Errorf("7.25 has nothing fixable to upgrade to, got FixFirst=%q", only.FixFirst)
+	}
+
+	// A version with fixable advisories MUST offer a target, even though it is
+	// also unpatchable — the operator has two different actions to take.
+	mixed := Summarize("7.15.3", AdvisoryTable)
+	if !mixed.Unpatchable {
+		t.Error("7.15.3 must be flagged unpatchable")
+	}
+	if !mixed.Exploited {
+		t.Error("7.15.3 must be flagged exploited (MikroTrick + CVE-2025-10948)")
+	}
+	// Highest fixable bound among 7.15.3's matches is MikroTrick's 7.23.4.
+	if mixed.FixFirst != "7.23.4" {
+		t.Errorf("7.15.3 FixFirst = %q, want 7.23.4", mixed.FixFirst)
+	}
+	if len(mixed.Advisories) == 0 {
+		t.Error("7.15.3 must expose its matched advisories so the UI can explain")
+	}
+}
+
+// TestSummarize_fixFirstIsTheHighestBound guards against offering a target that
+// clears one advisory but leaves another open.
+func TestSummarize_fixFirstIsTheHighestBound(t *testing.T) {
+	cases := map[string]string{
+		// 6.49.7 matches MikroTrick (6.49.21), CVE-2024-54772 (6.49.18) and
+		// CVE-2023-30799 (inclusive max 6.49.7 -> fix 6.49.8). Highest wins.
+		"6.49.7": "6.49.21",
+		"7.9.3":  "7.23.4",
+		"7.20":   "7.23.4",
+	}
+	for v, want := range cases {
+		if got := Summarize(v, AdvisoryTable).FixFirst; got != want {
+			t.Errorf("Summarize(%q).FixFirst = %q, want %q", v, got, want)
+		}
+	}
+}
+
+// TestSummarize_unknownOffersNothing keeps "we couldn't tell" from looking
+// actionable: no advisories, no fix target, and never reported safe.
+func TestSummarize_unknownOffersNothing(t *testing.T) {
+	for _, v := range []string{"", "garbage", "no version here"} {
+		s := Summarize(v, AdvisoryTable)
+		if s.Posture != PostureUnknown {
+			t.Errorf("Summarize(%q).Posture = %q, want unknown", v, s.Posture)
+		}
+		if len(s.Advisories) != 0 || s.FixFirst != "" || s.Unpatchable {
+			t.Errorf("Summarize(%q) invented detail for an unreadable version: %+v", v, s)
+		}
+	}
+}
+
+// TestSummarize_everyAffectedVersionIsExplained: any affected verdict must carry
+// at least one advisory, or the UI has a red badge it cannot justify.
+func TestSummarize_everyAffectedVersionIsExplained(t *testing.T) {
+	for _, v := range []string{"6.0", "6.49.7", "6.49.21", "7.0", "7.15.3", "7.23.4", "7.99"} {
+		s := Summarize(v, AdvisoryTable)
+		if s.Posture == PostureAffected && len(s.Advisories) == 0 {
+			t.Errorf("%q is affected but lists no advisory", v)
+		}
+	}
+}
