@@ -334,7 +334,31 @@ async function renderSites(main) {
       </div></div>
     <div id="site-alert"></div>
     ${routers.length ? `<table><thead><tr><th>Device</th><th>Layer</th><th>Vendor</th><th>Status</th><th>ID</th><th></th></tr></thead><tbody>${rows}</tbody></table>`
-      : `<div class="empty"><div class="empty-title">No sites</div>Use <b>Add router</b> above to register your first router.</div>`}`;
+      : `<div class="panel"><div class="panel-body">
+          <div class="empty"><div class="empty-title">Welcome — let's get you running</div>Three short steps and your network is managed.</div>
+          <ol style="margin:0 0 4px 18px;line-height:1.9">
+            <li><b>Step 1 — Add your first router.</b> Register the device we'll watch and self-heal.
+              <div style="margin:6px 0 14px"><button class="btn btn-primary" id="wz-add">Add your first router</button></div></li>
+            <li><b>Step 2 — We're watching it.</b> Once added it appears in Fleet health and self-heals.
+              <div style="margin:6px 0 14px"><button class="btn" id="wz-fleet">See live fleet</button></div></li>
+            <li><b>Step 3 — Turn on guest Wi-Fi payments.</b> Set plans and MMQR in the Captive portal.
+              <div style="margin:6px 0 4px"><button class="btn" id="wz-portal">Open Captive portal</button></div></li>
+          </ol>
+        </div></div>`}`;
+
+  const goView = (name) => {
+    const btn = document.querySelector(`.nav-item[data-view="${name}"]`);
+    if (btn) btn.click();
+  };
+  const wzAdd = document.getElementById("wz-add");
+  if (wzAdd) wzAdd.addEventListener("click", () => {
+    document.getElementById("site-form").hidden = false;
+    document.getElementById("sr-name").focus();
+  });
+  const wzFleet = document.getElementById("wz-fleet");
+  if (wzFleet) wzFleet.addEventListener("click", () => goView("overview"));
+  const wzPortal = document.getElementById("wz-portal");
+  if (wzPortal) wzPortal.addEventListener("click", () => goView("portal"));
 
   const alert = (msg) => {
     const el = document.getElementById("site-alert");
