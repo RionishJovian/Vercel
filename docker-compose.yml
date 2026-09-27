@@ -1,7 +1,8 @@
 # Mega Magic Project - Local Development Stack
 # Based on: docs/Development_Implementation_Blueprint 2.md
-
-version: '3.8'
+#
+# NOTE: no top-level `version:` key — it is obsolete in modern Compose and only
+# produces a deprecation warning.
 
 services:
   # Central SaaS Control API Engine (Go backend)
@@ -81,13 +82,19 @@ services:
     command: [
       "-js",                    # Enable JetStream
       "-m", "8222",             # HTTP monitoring port
-      "--jetstream_max_mem=256",
-      "--jetstream_max_file=512"
+      "-sd", "/data"            # JetStream storage on the mounted nats_data volume
+      # NOTE: nats-server 2.x has NO --jetstream_max_mem / --jetstream_max_file
+      # flags — passing them makes the server print usage and exit(0). Storage
+      # limits, if wanted, belong in a nats config file (jetstream { max_mem_store … }).
     ]
     volumes:
       - nats_data:/data
     healthcheck:
-      test: ["CMD", "nats", "server", "check"]
+      # `nats` (the CLI) is NOT in the nats-server image, so the old
+      # ["CMD","nats","server","check"] always failed and reported this container
+      # unhealthy even though the server was serving fine. Probe the monitoring
+      # HTTP endpoint instead — the server image ships busybox wget.
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8222/healthz"]
       interval: 10s
       timeout: 5s
       retries: 5
