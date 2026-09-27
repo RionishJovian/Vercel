@@ -277,6 +277,56 @@ async function renderOverview(main) {
     </div>`;
   document.querySelector("#ov-fleet").innerHTML = fleetTable(fleet);
   document.querySelector("#ov-topo").innerHTML = topologySummary(topo);
+  await renderPulse(main);
+}
+
+/* ---------- Fleet pulse (Stage 1) ---------- */
+const FIX_KINDS = { reboot: 1, restore_backup: 1, reprovision_peer: 1 };
+const FIX_HIGH_RISK = { reboot: 1, restore_backup: 1 };
+
+function actionKind(inc) {
+  return (inc && inc.suggested_action && inc.suggested_action.kind) ? inc.suggested_action.kind : "";
+}
+function applyFixCell(inc) {
+  const k = actionKind(inc);
+  if (FIX_KINDS[k]) return `<button class="btn btn-sm" data-fix="${esc(inc.id)}" data-kind="${esc(k)}">Apply fix</button>`;
+  if (k === "review" || k === "none") return `<span class="muted small">Manual review</span>`;
+  return "";
+}
+function wireFixes(scope, main, refresh) {
+  scope.querySelectorAll("button[data-fix]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const id = btn.dataset.fix, kind = btn.dataset.kind;
+      if (!FIX_KINDS[kind]) return;
+      if (FIX_HIGH_RISK[kind] && !confirm("Apply " + kind + " to fix this incident? This is a high-risk action.")) return;
+      btn.disabled = true; btn.textContent = "…";
+      try {
+        await MM.post("/incidents/" + encodeURIComponent(id) + "/action", {});
+        btn.textContent = "fix queued";
+        if (refresh) await refresh();
+      } catch (e) {
+        if (e.status === 503) { btn.textContent = "auto-fix unavailable offline"; btn.disabled = true; }
+        else if (e.status === 400) { btn.textContent = "Manual review"; btn.disabled = true; }
+        else { btn.disabled = false; btn.textContent = "Retry"; }
+      }
+    });
+  });
+}
+
+async function renderPulse(main) {
+  let pulse;
+  try { pulse = await MM.get("/fleet/pulse"); } catch (_) { return; }
+  if (!pulse) return;
+  const content = main.querySelector("#content");
+  const head = pulse.open_incidents_head || [];
+  const attention = (pulse.attention && pulse.attention[0]) || null;
+  const sev = (s) => `<span class="status ${{ critical: "bad", warning: "warn", warn: "warn" }[String(s).toLowerCase()] || "unknown"}">${esc(s || "info")}</span>`;
+  const headRows = head.map(inc => `<tr><td>${sev(inc.severity)}</td><td><span class="num">${esc(inc.subject_label || "—")}</span></td><td class="mono">${esc(inc.kind)}</td><td>${applyFixCell(inc)}</td></tr>`).join("");
+  const strip = document.createElement("div");
+  strip.innerHTML = (attention ? `<div class="panel" style="margin-top:18px;border-left:3px solid var(--bad)"><div class="panel-head"><h2 class="panel-title">Needs attention</h2></div><div class="panel-body"><div style="display:flex;align-items:center;gap:10px">${sev(attention.severity)}<span class="num">${esc(attention.subject_label || "—")}</span><span class="muted small">${esc(attention.kind)}</span><span style="flex:1"></span>${applyFixCell(attention)}</div></div></div>` : "") +
+    `<div class="panel" style="margin-top:14px"><div class="panel-head"><h2 class="panel-title">Open incidents</h2></div><div class="panel-body">${head.length ? `<table><thead><tr><th>Severity</th><th>Subject</th><th>Kind</th><th></th></tr></thead><tbody>${headRows}</tbody></table>` : `<div class="empty"><div class="empty-title">Nothing open</div>No unresolved incidents right now.</div>`}</div></div>`;
+  content.insertBefore(strip, content.firstChild);
+  wireFixes(content, main, async () => { await renderOverview(main); });
 }
 
 /* ---------- Fleet ---------- */
@@ -494,11 +544,13 @@ async function renderIncidents(main) {
       <td>
         <button class="btn btn-sm" data-act="ack" data-id="${esc(inc.id)}">Acknowledge</button>
         <button class="btn btn-sm" data-act="resolve" data-id="${esc(inc.id)}">Resolve</button>
+        ${applyFixCell(inc)}
       </td>
     </tr>`).join("");
   content.innerHTML = `<table>
     <thead><tr><th>Severity</th><th>Kind</th><th>Subject</th><th>Detail</th><th>Opened</th><th></th></tr></thead>
     <tbody>${rows}</tbody></table>`;
+  wireFixes(content, main, () => renderIncidents(main));
   content.querySelectorAll("button[data-act]").forEach(btn => {
     btn.addEventListener("click", async () => {
       const id = btn.dataset.id, act = btn.dataset.act;
