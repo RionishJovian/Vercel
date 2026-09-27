@@ -90,6 +90,18 @@ func (s *MonitoringService) EvaluatePeer(ctx context.Context, businessID, peerID
 // captureVersion best-effort records a device's RouterOS version + posture,
 // tenant-scoped. Fail-soft: any failure (unreachable device, nil deps) is
 // ignored and never fabricates a value.
+//
+// ⚠️ SAFETY COUPLING — do NOT wire this into the multi-tenant fleet sweep as
+// things stand. The observer is a single-host Prober whose ObserveVersion
+// ignores peerID (see internal/provisioner/routeros/prober.go), while the Sweep
+// calls EvaluatePeer for EVERY peer in EVERY tenant. Enabling that combination
+// writes one router's version + posture onto every device, i.e. fabricates
+// per-device security data — worse than showing nothing, because a tenant could
+// be told an unpatched router is safe (or vice versa).
+//
+// It is safe only when the evaluated peer IS the configured host (the
+// single-router lab case). Making it fleet-safe requires resolving a transport
+// per peer from that device's own management_ip + credentials.
 func (s *MonitoringService) captureVersion(ctx context.Context, businessID, peerID string) {
 	if s.versionObserver == nil || s.devices == nil || s.db == nil {
 		return
