@@ -905,7 +905,7 @@ async function renderPlatform(main) {
     <hr class="rule">
     ${platformCreateForm()}
     <div class="panel"><div class="panel-head"><h2 class="panel-title">Businesses</h2></div>
-      <div class="panel-body">${platformBusinessTable(businesses)}</div></div>
+      <div class="panel-body">${platformBusinessTable(businesses, ME && ME.business ? ME.business.business_id : null)}</div></div>
     <div class="panel" style="margin-top:14px"><div class="panel-head"><h2 class="panel-title">Open incidents</h2></div>
       <div class="panel-body">${platformIncidentTable(incidents, businesses)}</div></div>`;
   await wirePlatformAdmin(content, main);
@@ -982,9 +982,14 @@ async function wirePlatformAdmin(content, main) {
   }));
 }
 
-function platformBusinessTable(bizs) {
+function platformBusinessTable(bizs, selfBusinessID) {
   if (!bizs.length) return `<div class="empty"><div class="empty-title">No businesses</div>No tenants are registered yet.</div>`;
-  const rows = bizs.map(b => `
+  const rows = bizs.map(b => {
+    const isSelf = selfBusinessID && b.business_id === selfBusinessID;
+    const suspBtn = isSelf
+      ? `<span class="muted small" title="You can't suspend your own tenant">(yours)</span>`
+      : `<button class="btn btn-sm" data-susp="${esc(b.business_id)}" data-act="${b.is_active ? "suspend" : "unsuspend"}">${b.is_active ? "Suspend" : "Unsuspend"}</button>`;
+    return `
     <tr>
       <td><span class="num">${esc(b.company_name)}</span></td>
       <td>${esc(b.owner_email)}</td>
@@ -993,11 +998,11 @@ function platformBusinessTable(bizs) {
       <td>${b.is_active ? `<span class="status ok">Active</span>` : `<span class="status unknown">Suspended</span>`}</td>
       <td>${ts(b.created_at)}</td>
       <td>
-        <button class="btn btn-sm" data-susp="${esc(b.business_id)}" data-act="${b.is_active ? "suspend" : "unsuspend"}">${b.is_active ? "Suspend" : "Unsuspend"}</button>
+        ${suspBtn}
         <button class="btn btn-sm" data-resetpw="${esc(b.business_id)}">Reset pw</button>
         <button class="btn btn-sm" data-state="${esc(b.business_id)}">View state</button>
       </td>
-    </tr>`).join("");
+    </tr>`; }).join("");
   return `<table><thead><tr><th>Company</th><th>Owner</th><th>Tier</th><th>Device limit</th><th>Status</th><th>Created</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
