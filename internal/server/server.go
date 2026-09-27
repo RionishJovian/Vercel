@@ -437,9 +437,10 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 			{
 				routers.GET("", routerHandler.ListRouters)
 				routers.GET("/:id", routerHandler.GetRouter)
-				routers.POST("", routerHandler.CreateRouter)
-				routers.PUT("/:id", routerHandler.UpdateRouter)
-				routers.DELETE("/:id", routerHandler.DeleteRouter)
+				// Router write is OWNER/ADMIN (C3 hierarchy; explicit per RM).
+				routers.POST("", auth.RequireMinRole(model.RoleAdmin), routerHandler.CreateRouter)
+				routers.PUT("/:id", auth.RequireMinRole(model.RoleAdmin), routerHandler.UpdateRouter)
+				routers.DELETE("/:id", auth.RequireMinRole(model.RoleAdmin), routerHandler.DeleteRouter)
 			}
 
 			telemetry := protected.Group("/telemetry")

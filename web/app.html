@@ -302,10 +302,9 @@ function fleetTable(fleet) {
 async function renderSites(main) {
   const data = await MM.get("/routers");
   const routers = data.routers || data || [];
-  if (!routers.length) {
-    main.querySelector("#content").innerHTML = `<div class="empty"><div class="empty-title">No sites</div>Add a router to start mapping sites.</div>`;
-    return;
-  }
+  const content = main.querySelector("#content");
+  const layers = ["MAIN_GATEWAY", "DOWNSTREAM_SWITCH", "ACCESS_POINT", "CONTROLLER"];
+
   const rows = routers.map(r => `
     <tr>
       <td><span class="num">${esc(r.hardware_name)}</span></td>
@@ -313,10 +312,107 @@ async function renderSites(main) {
       <td>${esc(r.vendor)}</td>
       <td>${badge(r.is_online ? "up" : "offline")}</td>
       <td class="mono">${esc(r.device_id)}</td>
+      <td>
+        <button class="btn btn-sm" data-edit="${esc(r.device_id)}">Edit</button>
+        <button class="btn btn-sm" data-reboot="${esc(r.device_id)}">Reboot</button>
+      </td>
     </tr>`).join("");
-  main.querySelector("#content").innerHTML = `<table>
-    <thead><tr><th>Device</th><th>Layer</th><th>Vendor</th><th>Status</th><th>ID</th></tr></thead>
-    <tbody>${rows}</tbody></table>`;
+
+  content.innerHTML = `
+    <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
+      <button class="btn btn-primary" id="site-add">Add router</button>
+    </div>
+    <div class="panel" id="site-form" hidden><div class="panel-head"><h2 class="panel-title">Add router</h2></div>
+      <div class="panel-body">
+        <div class="field"><label>Hardware name *</label><input class="input" id="sr-name"></div>
+        <div class="field"><label>Model</label><input class="input" id="sr-model"></div>
+        <div class="field"><label>Deployment layer</label><select class="input" id="sr-layer">${layers.map(l => `<option value="${l}">${l}</option>`).join("")}</select></div>
+        <div class="field"><label>Management IP</label><input class="input" id="sr-ip"></div>
+        <div class="field"><label>MAC address</label><input class="input" id="sr-mac"></div>
+        <button class="btn btn-primary" id="sr-save">Create router</button>
+        <span id="sr-msg" class="muted small"></span>
+      </div></div>
+    <div id="site-alert"></div>
+    ${routers.length ? `<table><thead><tr><th>Device</th><th>Layer</th><th>Vendor</th><th>Status</th><th>ID</th><th></th></tr></thead><tbody>${rows}</tbody></table>`
+      : `<div class="empty"><div class="empty-title">No sites</div>Use <b>Add router</b> above to register your first router.</div>`}`;
+
+  const alert = (msg) => {
+    const el = document.getElementById("site-alert");
+    el.innerHTML = `<div class="alert" role="alert">${esc(msg)}</div>`;
+  };
+  const showErr = (e) => {
+    // Tenant-safe, human error surfacing (401/403/503 included).
+    if (e.status === 403) return alert("You do not have permission for this action (OWNER/ADMIN required).");
+    alert((e.data && e.data.error) ? e.data.error : e.message);
+  };
+
+  document.getElementById("site-add").addEventListener("click", () => {
+    const f = document.getElementById("site-form");
+    f.hidden = !f.hidden;
+  });
+
+  document.getElementById("sr-save").addEventListener("click", async () => {
+    const body = {
+      hardware_name: document.getElementById("sr-name").value.trim(),
+      device_model: document.getElementById("sr-model").value.trim() || null,
+      deployment_layer: document.getElementById("sr-layer").value,
+      management_ip: document.getElementById("sr-ip").value.trim() || null,
+      mac_address: document.getElementById("sr-mac").value.trim() || null,
+      vendor: "mikrotik",
+      category: "router",
+      transport: "direct",
+    };
+    if (!body.hardware_name) { document.getElementById("sr-msg").textContent = "Hardware name is required."; return; }
+    try { await MM.post("/routers", body); await renderSites(main); }
+    catch (e) { showErr(e); }
+  });
+
+  content.querySelectorAll("button[data-edit]").forEach(btn => btn.addEventListener("click", () => {
+    openEditRouter(main, routers.find(r => r.device_id === btn.dataset.edit));
+  }));
+
+  content.querySelectorAll("button[data-reboot]").forEach(btn => btn.addEventListener("click", async () => {
+    const id = btn.dataset.reboot;
+    if (!confirm("Reboot this router now? This interrupts connectivity briefly.")) return;
+    try {
+      const r = await MM.post(`/topology/${encodeURIComponent(id)}/reboot`, {});
+      alert(r && r.status ? r.status : "Reboot queued for approval.");
+    } catch (e) { showErr(e); }
+  }));
+}
+
+// Inline edit form for one router (PUT /routers/:id).
+function openEditRouter(main, r) {
+  if (!r) return;
+  const layers = ["MAIN_GATEWAY", "DOWNSTREAM_SWITCH", "ACCESS_POINT", "CONTROLLER"];
+  const content = main.querySelector("#content");
+  content.innerHTML = `
+    <div class="panel"><div class="panel-head"><h2 class="panel-title">Edit router</h2></div>
+      <div class="panel-body">
+        <div class="field"><label>Hardware name *</label><input class="input" id="er-name" value="${esc(r.hardware_name || "")}"></div>
+        <div class="field"><label>Model</label><input class="input" id="er-model" value="${esc(r.device_model || "")}"></div>
+        <div class="field"><label>Deployment layer</label><select class="input" id="er-layer">${layers.map(l => `<option value="${l}"${l === r.deployment_layer ? " selected" : ""}>${l}</option>`).join("")}</select></div>
+        <div class="field"><label>Management IP</label><input class="input" id="er-ip" value="${esc(r.management_ip || "")}"></div>
+        <button class="btn btn-primary" id="er-save">Save</button>
+        <button class="btn" id="er-cancel">Cancel</button>
+        <span id="er-msg" class="muted small"></span>
+      </div></div>`;
+  document.getElementById("er-cancel").addEventListener("click", () => renderSites(main));
+  document.getElementById("er-save").addEventListener("click", async () => {
+    const body = {
+      hardware_name: document.getElementById("er-name").value.trim(),
+      device_model: document.getElementById("er-model").value.trim() || null,
+      deployment_layer: document.getElementById("er-layer").value,
+      management_ip: document.getElementById("er-ip").value.trim() || null,
+      vendor: r.vendor, category: r.category, transport: r.transport,
+    };
+    if (!body.hardware_name) { document.getElementById("er-msg").textContent = "Hardware name is required."; return; }
+    try { await MM.put(`/routers/${encodeURIComponent(r.device_id)}`, body); await renderSites(main); }
+    catch (e) {
+      const el = document.getElementById("er-msg");
+      el.textContent = (e.status === 403) ? "OWNER/ADMIN required." : ((e.data && e.data.error) ? e.data.error : e.message);
+    }
+  });
 }
 
 /* ---------- Topology ---------- */
