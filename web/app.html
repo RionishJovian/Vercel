@@ -201,8 +201,16 @@
     <button class="nav-item" data-view="incidents">Incidents</button>
     <button class="nav-item" data-view="security">Security</button>
     <button class="nav-item" data-view="backups">Backups</button>
+    <button class="nav-item" data-view="events">Event log</button>
+    <button class="nav-item" data-view="templates">Templates</button>
+    <button class="nav-item" data-view="termlog">Terminal log</button>
+    <button class="nav-item" data-view="scans">Fleet scans</button>
+    <button class="nav-item" data-view="aiusage">AI usage</button>
+    <button class="nav-item" data-view="i18n">Translations</button>
     <div class="rail-section">Account</div>
     <button class="nav-item" data-view="vouchers">Vouchers</button>
+    <button class="nav-item" data-view="coins">Magic Coins</button>
+    <button class="nav-item" data-view="unlockkeys">Unlock keys</button>
     <button class="nav-item" data-view="portal">Captive portal</button>
     <button class="nav-item" data-view="team">Team</button>
     <div class="rail-section">Operator</div>
@@ -225,7 +233,15 @@ const VIEWS = {
   incidents:{ title: "Incidents", lead: "Problems detected across the fleet." },
   security: { title: "Security", lead: "RouterOS version posture — affected vs safe." },
   backups:  { title: "Backups", lead: "Config snapshots, change history and one-click restore." },
+  events:   { title: "Event log", lead: "Router syslog, newest first." },
+  templates:{ title: "Templates", lead: "Saved RouterOS REST calls for the terminal." },
+  termlog:  { title: "Terminal log", lead: "Commands run against your routers, with credentials redacted." },
+  scans:    { title: "Fleet scans", lead: "Automatic fleet scans, newest first." },
+  aiusage:  { title: "AI usage", lead: "Every AI call, with token cost." },
+  i18n:     { title: "Translations", lead: "UI string overrides. Platform-wide — shared by every business." },
   vouchers: { title: "Vouchers", lead: "Credit codes for the captive portal." },
+  coins:    { title: "Magic Coins", lead: "Balance and the immutable ledger behind it." },
+  unlockkeys:{ title: "Unlock keys", lead: "Keys bought with Magic Coins, and what they unlocked." },
   portal:   { title: "Captive portal", lead: "Guest Wi-Fi config and requests." },
   team:     { title: "Team", lead: "Who can access this business, and with which role." },
   platform: { title: "Platform", lead: "Cross-tenant operator view — every business, one lens." },
@@ -244,7 +260,15 @@ async function loadView(name, main, me) {
     else if (name === "incidents") await renderIncidents(main);
     else if (name === "security") await renderSecurity(main);
     else if (name === "backups") await renderBackups(main);
+    else if (name === "events") await renderEvents(main);
+    else if (name === "templates") await renderTemplates(main);
+    else if (name === "termlog") await renderTerminalLog(main);
+    else if (name === "scans") await renderScans(main);
+    else if (name === "aiusage") await renderAIUsage(main);
+    else if (name === "i18n") await renderI18n(main);
     else if (name === "vouchers") await renderVouchers(main);
+    else if (name === "coins") await renderMagicCoins(main);
+    else if (name === "unlockkeys") await renderUnlockKeys(main);
     else if (name === "portal") await renderPortal(main);
     else if (name === "team") await renderTeam(main);
     else if (name === "platform") await renderPlatform(main);
@@ -349,9 +373,699 @@ function fleetTable(fleet) {
 }
 
 /* ---------- Sites (routers) ---------- */
+/* ---------- Sites (geo) ---------- */
+// Sites hold the physical-location data migrated from Mikromagic: a free-text
+// location, a timezone label, and latitude/longitude. This is the only surface
+// in the app that shows that geo data.
+const SITE_EDITOR_ROLES = ["OWNER", "ADMIN", "DEVELOPER"];
+
+// A Go nil slice marshals to JSON null, so `data.routers || data` yields the
+// wrapper OBJECT when a tenant has none and the next .map() throws. Never trust
+// the shape — coerce to an array.
+function asArray(v) { return Array.isArray(v) ? v : []; }
+
+function siteGeoPanel(sites) {
+  const canEdit = SITE_EDITOR_ROLES.indexOf((ME && ME.user && ME.user.user_role) || "") >= 0;
+
+  const rows = sites.length ? sites.map(s => {
+    const hasGeo = s.latitude !== null && s.latitude !== undefined
+                && s.longitude !== null && s.longitude !== undefined;
+    const geo = hasGeo
+      ? `<a class="mono" target="_blank" rel="noopener"
+            href="https://www.openstreetmap.org/?mlat=${s.latitude}&mlon=${s.longitude}#map=14/${s.latitude}/${s.longitude}">
+           ${Number(s.latitude).toFixed(5)}, ${Number(s.longitude).toFixed(5)}</a>`
+      : `<span class="muted small">no coordinates</span>`;
+    return `<tr>
+      <td><span class="num">${esc(s.name)}</span></td>
+      <td>${s.location ? esc(s.location) : `<span class="muted small">—</span>`}</td>
+      <td>${s.timezone ? esc(s.timezone) : `<span class="muted small">—</span>`}</td>
+      <td>${geo}</td>
+      <td class="num">${s.device_count || 0}</td>
+      ${canEdit ? `<td>
+        <button class="btn btn-sm" data-gedit="${esc(s.site_id)}">Edit</button>
+        <button class="btn btn-sm" data-gdel="${esc(s.site_id)}">Delete</button>
+      </td>` : "<td></td>"}
+    </tr>`;
+  }).join("") : `<tr><td colspan="6" class="muted small">No sites yet — add one to place your routers on the map.</td></tr>`;
+
+  return `<div class="panel"><div class="panel-head"><h2 class="panel-title">Sites</h2></div>
+      <div class="panel-body">
+        <table><thead><tr><th>Site</th><th>Location</th><th>Timezone</th><th>Coordinates</th><th>Devices</th><th></th></tr></thead>
+        <tbody>${rows}</tbody></table>
+      </div></div>
+    ${canEdit ? `<div style="display:flex;justify-content:flex-end;margin:10px 0">
+      <button class="btn btn-primary" id="geo-add">Add site</button>
+    </div>
+    <div class="panel" id="geo-form" hidden><div class="panel-head"><h2 class="panel-title">New site</h2></div>
+      <div class="panel-body">
+        <div class="field"><label>Name *</label><input class="input" id="gs-name"></div>
+        <div class="field"><label>Location</label><input class="input" id="gs-location" placeholder="Town / campus / address"></div>
+        <div class="field"><label>Timezone</label><input class="input" id="gs-tz" placeholder="e.g. Asia/Yangon"></div>
+        <div class="field"><label>Latitude</label><input class="input" id="gs-lat" type="number" step="any" min="-90" max="90" placeholder="16.866"></div>
+        <div class="field"><label>Longitude</label><input class="input" id="gs-lng" type="number" step="any" min="-180" max="180" placeholder="96.195"></div>
+        <div class="field"><label>Notes</label><input class="input" id="gs-notes"></div>
+        <button class="btn btn-primary" id="gs-save">Create site</button>
+        <span id="gs-msg" class="muted small"></span>
+      </div></div>` : ""}
+    <div id="geo-alert"></div>`;
+}
+
+function wireSiteGeo(main, sites) {
+  const content = main.querySelector("#content");
+  const notify = (m) => {
+    const el = document.getElementById("geo-alert");
+    if (el) el.innerHTML = `<div class="alert" role="alert">${esc(m)}</div>`;
+  };
+  const num = (id) => {
+    const v = document.getElementById(id).value.trim();
+    return v === "" ? null : Number(v);
+  };
+
+  const addBtn = document.getElementById("geo-add");
+  if (addBtn) addBtn.addEventListener("click", () => {
+    const f = document.getElementById("geo-form");
+    f.hidden = !f.hidden;
+    if (!f.hidden) document.getElementById("gs-name").focus();
+  });
+
+  const saveBtn = document.getElementById("gs-save");
+  if (saveBtn) saveBtn.addEventListener("click", async () => {
+    const body = {
+      name: document.getElementById("gs-name").value.trim(),
+      location: document.getElementById("gs-location").value.trim() || null,
+      timezone: document.getElementById("gs-tz").value.trim() || null,
+      latitude: num("gs-lat"),
+      longitude: num("gs-lng"),
+      notes: document.getElementById("gs-notes").value.trim() || null,
+    };
+    if (!body.name) { document.getElementById("gs-msg").textContent = "Name is required."; return; }
+    // Half a coordinate is worse than none — require both or neither.
+    if ((body.latitude === null) !== (body.longitude === null)) {
+      document.getElementById("gs-msg").textContent = "Give both latitude and longitude, or neither.";
+      return;
+    }
+    saveBtn.disabled = true; saveBtn.textContent = "…";
+    try { await MM.post("/sites", body); await renderSites(main); }
+    catch (e) {
+      saveBtn.disabled = false; saveBtn.textContent = "Create site";
+      notify((e.data && e.data.error) ? e.data.error : e.message);
+    }
+  });
+
+  content.querySelectorAll("button[data-gdel]").forEach(btn => btn.addEventListener("click", async () => {
+    const s = sites.find(x => x.site_id === btn.dataset.gdel);
+    if (!confirm(`Delete site "${s ? s.name : ""}"? Its routers stay and become unassigned.`)) return;
+    try { await MM.del("/sites/" + encodeURIComponent(btn.dataset.gdel)); await renderSites(main); }
+    catch (e) { notify((e.data && e.data.error) ? e.data.error : e.message); }
+  }));
+
+  content.querySelectorAll("button[data-gedit]").forEach(btn => btn.addEventListener("click", () => {
+    openEditSite(main, sites.find(x => x.site_id === btn.dataset.gedit));
+  }));
+}
+
+function openEditSite(main, s) {
+  if (!s) return;
+  const content = main.querySelector("#content");
+  content.innerHTML = `
+    <div class="panel"><div class="panel-head"><h2 class="panel-title">Edit site</h2></div>
+      <div class="panel-body">
+        <div class="field"><label>Name *</label><input class="input" id="es-name" value="${esc(s.name || "")}"></div>
+        <div class="field"><label>Location</label><input class="input" id="es-location" value="${esc(s.location || "")}"></div>
+        <div class="field"><label>Timezone</label><input class="input" id="es-tz" value="${esc(s.timezone || "")}"></div>
+        <div class="field"><label>Latitude</label><input class="input" id="es-lat" type="number" step="any" min="-90" max="90" value="${s.latitude ?? ""}"></div>
+        <div class="field"><label>Longitude</label><input class="input" id="es-lng" type="number" step="any" min="-180" max="180" value="${s.longitude ?? ""}"></div>
+        <div class="field"><label>Notes</label><input class="input" id="es-notes" value="${esc(s.notes || "")}"></div>
+        <button class="btn btn-primary" id="es-save">Save</button>
+        <button class="btn" id="es-cancel">Cancel</button>
+        <div id="geo-alert"></div>
+      </div></div>`;
+
+  document.getElementById("es-cancel").addEventListener("click", () => renderSites(main));
+  document.getElementById("es-save").addEventListener("click", async () => {
+    const num = (id) => {
+      const v = document.getElementById(id).value.trim();
+      return v === "" ? null : Number(v);
+    };
+    const body = {
+      name: document.getElementById("es-name").value.trim(),
+      location: document.getElementById("es-location").value.trim() || null,
+      timezone: document.getElementById("es-tz").value.trim() || null,
+      latitude: num("es-lat"),
+      longitude: num("es-lng"),
+      notes: document.getElementById("es-notes").value.trim() || null,
+    };
+    const el = document.getElementById("geo-alert");
+    if (!body.name) { el.innerHTML = `<div class="alert" role="alert">Name is required.</div>`; return; }
+    if ((body.latitude === null) !== (body.longitude === null)) {
+      el.innerHTML = `<div class="alert" role="alert">Give both latitude and longitude, or neither.</div>`;
+      return;
+    }
+    try { await MM.put("/sites/" + encodeURIComponent(s.site_id), body); await renderSites(main); }
+    catch (e) { el.innerHTML = `<div class="alert" role="alert">${esc((e.data && e.data.error) ? e.data.error : e.message)}</div>`; }
+  });
+}
+
+/* ---------- Router connections ---------- */
+// Saved management connections ported from Mikromagic. The API never returns the
+// ported password ciphertext — only a flag saying it must be re-entered.
+const CONN_CLOUD_CLASS = { online: "ok", pending: "warn", offline: "bad", error: "bad" };
+
+function connCloudBadge(status) {
+  if (!status) return `<span class="muted small">unknown</span>`;
+  const cls = CONN_CLOUD_CLASS[status] || "";
+  return `<span class="status ${cls}">${esc(status)}</span>`;
+}
+
+function connPanel(conns) {
+  const canEdit = SITE_EDITOR_ROLES.indexOf((ME && ME.user && ME.user.user_role) || "") >= 0;
+  const needReentry = conns.filter(c => c.credentials_need_reentry).length;
+
+  const rows = conns.length ? conns.map(c => {
+    const endpoint = c.host
+      ? `<span class="mono">${esc(c.host)}${c.port ? ":" + c.port : ""}</span>${c.use_tls ? ` <span class="muted small">TLS</span>` : ""}`
+      : `<span class="muted small">—</span>`;
+    return `<tr>
+      <td><span class="num">${esc(c.name)}</span>${c.is_default ? ` <span class="muted small">default</span>` : ""}</td>
+      <td>${endpoint}</td>
+      <td>${c.connection_mode ? esc(c.connection_mode) : `<span class="muted small">—</span>`}</td>
+      <td>${connCloudBadge(c.cloud_status)}</td>
+      <td>${c.site_name ? esc(c.site_name) : `<span class="muted small">unassigned</span>`}</td>
+      <td class="num">${c.device_count || 0}</td>
+      <td>${c.credentials_need_reentry ? `<span class="status warn">re-entry needed</span>` : `<span class="muted small">—</span>`}</td>
+      ${canEdit ? `<td>
+        <button class="btn btn-sm" data-cedit="${esc(c.id)}">Edit</button>
+        <button class="btn btn-sm" data-cdel="${esc(c.id)}">Delete</button>
+      </td>` : "<td></td>"}
+    </tr>`;
+  }).join("") : `<tr><td colspan="8" class="muted small">No router connections yet.</td></tr>`;
+
+  return `<div class="panel"><div class="panel-head"><h2 class="panel-title">Router connections</h2></div>
+      <div class="panel-body">
+        ${needReentry ? `<div class="alert" role="status">${needReentry} connection(s) carry a password saved by the old system that cannot be decrypted here — re-enter it from Edit before the connection can authenticate.</div>` : ""}
+        <table><thead><tr><th>Name</th><th>Endpoint</th><th>Mode</th><th>Cloud</th><th>Site</th><th>Devices</th><th>Credentials</th><th></th></tr></thead>
+        <tbody>${rows}</tbody></table>
+      </div></div>
+    ${canEdit ? `<div style="display:flex;justify-content:flex-end;margin:10px 0">
+      <button class="btn btn-primary" id="conn-add">Add connection</button>
+    </div>
+    <div class="panel" id="conn-form" hidden><div class="panel-head"><h2 class="panel-title">New router connection</h2></div>
+      <div class="panel-body">
+        <div class="field"><label>Name *</label><input class="input" id="cs-name" placeholder="e.g. CCR2004"></div>
+        <div class="field"><label>Host</label><input class="input" id="cs-host" placeholder="router hostname or IP"></div>
+        <div class="field"><label>Port</label><input class="input" id="cs-port" type="number" min="1" max="65535" placeholder="443"></div>
+        <div class="field"><label>Mode</label><input class="input" id="cs-mode" placeholder="hub"></div>
+        <div class="field"><label>Environment</label><input class="input" id="cs-env" placeholder="production"></div>
+        <div class="field"><label>Site</label><select class="input" id="cs-site"></select></div>
+        <div class="field"><label><input type="checkbox" id="cs-tls" checked> Use TLS</label></div>
+        <div class="field"><label><input type="checkbox" id="cs-default"> Default connection</label></div>
+        <button class="btn btn-primary" id="cs-save">Create connection</button>
+        <span id="cs-msg" class="muted small"></span>
+      </div></div>` : ""}
+    <div id="conn-alert"></div>`;
+}
+
+function siteOptionsHtml(sites, selectedId) {
+  const opts = [`<option value="">— unassigned —</option>`].concat(
+    sites.map(s => `<option value="${esc(s.site_id)}"${s.site_id === selectedId ? " selected" : ""}>${esc(s.name)}</option>`)
+  );
+  return opts.join("");
+}
+
+function readConnForm(prefix) {
+  const val = id => { const el = document.getElementById(id); return el ? el.value.trim() : ""; };
+  const chk = id => { const el = document.getElementById(id); return el ? el.checked : false; };
+  const portRaw = val(prefix + "port");
+  return {
+    name: val(prefix + "name"),
+    host: val(prefix + "host") || null,
+    port: portRaw === "" ? null : Number(portRaw),
+    connection_mode: val(prefix + "mode") || null,
+    environment: val(prefix + "env") || null,
+    site_id: val(prefix + "site") || null,
+    use_tls: chk(prefix + "tls"),
+    is_default: chk(prefix + "default"),
+  };
+}
+
+function wireConns(main, conns, sites) {
+  const content = main.querySelector("#content");
+  const notify = (m) => {
+    const el = document.getElementById("conn-alert");
+    if (el) el.innerHTML = `<div class="alert" role="alert">${esc(m)}</div>`;
+  };
+
+  const addBtn = document.getElementById("conn-add");
+  if (addBtn) addBtn.addEventListener("click", () => {
+    const f = document.getElementById("conn-form");
+    f.hidden = !f.hidden;
+    if (!f.hidden) {
+      document.getElementById("cs-site").innerHTML = siteOptionsHtml(sites, null);
+      document.getElementById("cs-name").focus();
+    }
+  });
+
+  const saveBtn = document.getElementById("cs-save");
+  if (saveBtn) saveBtn.addEventListener("click", async () => {
+    const body = readConnForm("cs-");
+    if (!body.name) { document.getElementById("cs-msg").textContent = "Name is required."; return; }
+    if (body.port !== null && (body.port < 1 || body.port > 65535)) {
+      document.getElementById("cs-msg").textContent = "Port must be between 1 and 65535.";
+      return;
+    }
+    saveBtn.disabled = true; saveBtn.textContent = "…";
+    try { await MM.post("/router-connections", body); await renderSites(main); }
+    catch (e) {
+      saveBtn.disabled = false; saveBtn.textContent = "Create connection";
+      notify((e.data && e.data.error) ? e.data.error : e.message);
+    }
+  });
+
+  content.querySelectorAll("button[data-cdel]").forEach(btn => btn.addEventListener("click", async () => {
+    const c = conns.find(x => x.id === btn.dataset.cdel);
+    if (!confirm(`Delete connection "${c ? c.name : ""}"? Its devices stay and become unlinked.`)) return;
+    try { await MM.del("/router-connections/" + encodeURIComponent(btn.dataset.cdel)); await renderSites(main); }
+    catch (e) { notify((e.data && e.data.error) ? e.data.error : e.message); }
+  }));
+
+  content.querySelectorAll("button[data-cedit]").forEach(btn => btn.addEventListener("click", () => {
+    openEditConn(main, conns.find(x => x.id === btn.dataset.cedit), sites);
+  }));
+}
+
+function openEditConn(main, c, sites) {
+  if (!c) return;
+  const content = main.querySelector("#content");
+  content.innerHTML = `
+    <div class="panel"><div class="panel-head"><h2 class="panel-title">Edit router connection</h2></div>
+      <div class="panel-body">
+        ${c.credentials_need_reentry ? `<div class="alert" role="status">The saved password was encrypted by the old system and cannot be decrypted here. It has been cleared from view — re-enter it through your router tooling to restore authentication.</div>` : ""}
+        <div class="field"><label>Name *</label><input class="input" id="ec-name" value="${esc(c.name || "")}"></div>
+        <div class="field"><label>Host</label><input class="input" id="ec-host" value="${esc(c.host || "")}"></div>
+        <div class="field"><label>Port</label><input class="input" id="ec-port" type="number" min="1" max="65535" value="${c.port ?? ""}"></div>
+        <div class="field"><label>Mode</label><input class="input" id="ec-mode" value="${esc(c.connection_mode || "")}"></div>
+        <div class="field"><label>Environment</label><input class="input" id="ec-env" value="${esc(c.environment || "")}"></div>
+        <div class="field"><label>Site</label><select class="input" id="ec-site">${siteOptionsHtml(sites, c.site_id)}</select></div>
+        <div class="field"><label><input type="checkbox" id="ec-tls"${c.use_tls ? " checked" : ""}> Use TLS</label></div>
+        <div class="field"><label><input type="checkbox" id="ec-default"${c.is_default ? " checked" : ""}> Default connection</label></div>
+        <button class="btn btn-primary" id="ec-save">Save</button>
+        <button class="btn" id="ec-cancel">Cancel</button>
+        <div id="conn-alert"></div>
+      </div></div>`;
+
+  document.getElementById("ec-cancel").addEventListener("click", () => renderSites(main));
+  document.getElementById("ec-save").addEventListener("click", async () => {
+    const body = readConnForm("ec-");
+    const el = document.getElementById("conn-alert");
+    if (!body.name) { el.innerHTML = `<div class="alert" role="alert">Name is required.</div>`; return; }
+    if (body.port !== null && (body.port < 1 || body.port > 65535)) {
+      el.innerHTML = `<div class="alert" role="alert">Port must be between 1 and 65535.</div>`;
+      return;
+    }
+    try { await MM.put("/router-connections/" + encodeURIComponent(c.id), body); await renderSites(main); }
+    catch (e) { el.innerHTML = `<div class="alert" role="alert">${esc((e.data && e.data.error) ? e.data.error : e.message)}</div>`; }
+  });
+}
+
+/* ---------- Device allowances + requests ---------- */
+// Granted capacity ported from Mikromagic, plus the request workflow. Approving a
+// request records the decision only — the ported request carries no quantity, so
+// there is no amount to apply and the UI says so rather than implying a grant.
+function allowancePanel(a) {
+  if (!a) return "";
+  const row = (label, granted, used) => `<tr>
+      <td>${esc(label)}</td>
+      <td class="num">${granted === null ? `<span class="muted small">—</span>` : granted}</td>
+      <td class="num">${used}</td>
+      <td>${granted !== null && used > granted ? `<span class="status bad">over</span>` : `<span class="status ok">ok</span>`}</td>
+    </tr>`;
+
+  return `<div class="panel"><div class="panel-head"><h2 class="panel-title">Device allowances</h2></div>
+      <div class="panel-body">
+        <table><thead><tr><th>Capacity</th><th>Granted</th><th>In use</th><th></th></tr></thead>
+        <tbody>
+          ${row("Routers", a.routers, a.used_routers)}
+          ${row("Controllers", a.controllers, a.used_controllers)}
+          ${row("Sites", a.sites, a.used_sites)}
+          ${row("Access points", null, a.used_access_points)}
+        </tbody></table>
+        ${a.included_router_name ? `<p class="muted small">Grant includes router connection: <span class="mono">${esc(a.included_router_name)}</span></p>` : ""}
+        <p class="muted small">Routers and controllers are counted from each device's deployment layer; access points are listed separately because the ported grant never specified whether it covered them.</p>
+      </div></div>`;
+}
+
+function requestStatusBadge(status) {
+  const cls = status === "approved" ? "ok" : (status === "rejected" ? "bad" : "warn");
+  return `<span class="status ${cls}">${esc(status)}</span>`;
+}
+
+function requestPanel(requests) {
+  const canDecide = SITE_EDITOR_ROLES.indexOf((ME && ME.user && ME.user.user_role) || "") >= 0;
+  const pending = requests.filter(r => r.status === "pending").length;
+
+  const rows = requests.length ? requests.map(r => `<tr>
+      <td><span class="num">${esc(r.kind)}</span></td>
+      <td>${r.user_email ? esc(r.user_email) : `<span class="muted small">—</span>`}</td>
+      <td>${r.reason ? esc(r.reason) : `<span class="muted small">—</span>`}</td>
+      <td>${requestStatusBadge(r.status)}</td>
+      <td>${r.decided_at ? esc(ts(r.decided_at)) : `<span class="muted small">—</span>`}</td>
+      ${canDecide ? `<td>${r.status === "pending" ? `
+        <button class="btn btn-sm" data-qapprove="${esc(r.id)}">Approve</button>
+        <button class="btn btn-sm" data-qreject="${esc(r.id)}">Reject</button>` : `<span class="muted small">decided</span>`}</td>` : "<td></td>"}
+    </tr>`).join("") : `<tr><td colspan="6" class="muted small">No capacity requests.</td></tr>`;
+
+  return `<div class="panel"><div class="panel-head"><h2 class="panel-title">Device requests</h2></div>
+      <div class="panel-body">
+        ${canDecide && pending ? `<div class="alert" role="status">${pending} request(s) awaiting your decision. Approving records the decision — it does not raise the allowance, which is changed separately.</div>` : ""}
+        <table><thead><tr><th>Kind</th><th>Requested by</th><th>Reason</th><th>Status</th><th>Decided</th><th></th></tr></thead>
+        <tbody>${rows}</tbody></table>
+      </div></div>
+    <div style="display:flex;justify-content:flex-end;margin:10px 0">
+      <button class="btn btn-primary" id="req-add">Request capacity</button>
+    </div>
+    <div class="panel" id="req-form" hidden><div class="panel-head"><h2 class="panel-title">New capacity request</h2></div>
+      <div class="panel-body">
+        <div class="field"><label>Capacity</label><select class="input" id="qr-kind"></select></div>
+        <div class="field"><label>Reason</label><input class="input" id="qr-reason" placeholder="why you need more"></div>
+        <button class="btn btn-primary" id="qr-save">Submit request</button>
+        <span id="qr-msg" class="muted small"></span>
+      </div></div>
+    <div id="req-alert"></div>`;
+}
+
+function wireAllowance(main, allowance, requests, kinds) {
+  const content = main.querySelector("#content");
+  const notify = (m) => {
+    const el = document.getElementById("req-alert");
+    if (el) el.innerHTML = `<div class="alert" role="alert">${esc(m)}</div>`;
+  };
+
+  const addBtn = document.getElementById("req-add");
+  if (addBtn) addBtn.addEventListener("click", () => {
+    const f = document.getElementById("req-form");
+    f.hidden = !f.hidden;
+    if (!f.hidden) {
+      const sel = document.getElementById("qr-kind");
+      sel.innerHTML = (kinds && kinds.length ? kinds : ["routers", "controllers", "sites"])
+        .map(k => `<option value="${esc(k)}">${esc(k)}</option>`).join("");
+      document.getElementById("qr-reason").focus();
+    }
+  });
+
+  const saveBtn = document.getElementById("qr-save");
+  if (saveBtn) saveBtn.addEventListener("click", async () => {
+    const kind = document.getElementById("qr-kind").value;
+    const reason = document.getElementById("qr-reason").value.trim() || null;
+    saveBtn.disabled = true; saveBtn.textContent = "…";
+    try { await MM.post("/device-requests", { kind, reason }); await renderSites(main); }
+    catch (e) {
+      saveBtn.disabled = false; saveBtn.textContent = "Submit request";
+      notify((e.data && e.data.error) ? e.data.error : e.message);
+    }
+  });
+
+  const decide = async (id, status) => {
+    try { await MM.post(`/device-requests/${encodeURIComponent(id)}/decide`, { status }); await renderSites(main); }
+    catch (e) { notify((e.data && e.data.error) ? e.data.error : e.message); }
+  };
+  content.querySelectorAll("button[data-qapprove]").forEach(b =>
+    b.addEventListener("click", () => decide(b.dataset.qapprove, "approved")));
+  content.querySelectorAll("button[data-qreject]").forEach(b =>
+    b.addEventListener("click", () => decide(b.dataset.qreject, "rejected")));
+}
+
+/* ---------- Terminal templates ---------- */
+// The saved RouterOS REST call library. Every migrated row is a BUILT-IN, so the
+// view is browse-first: built-ins show a badge and offer no edit/delete, because
+// the API refuses to modify shipped content (403).
+let tplState = { category: "", q: "" };
+
+function methodBadge(m) {
+  const cls = m === "GET" ? "" : (m === "DELETE" ? "bad" : "warn");
+  return `<span class="status ${cls}">${esc(m)}</span>`;
+}
+
+async function renderTemplates(main) {
+  tplState = { category: "", q: "" };
+  const canEdit = SITE_EDITOR_ROLES.indexOf((ME && ME.user && ME.user.user_role) || "") >= 0;
+  const content = main.querySelector("#content");
+  content.innerHTML = `
+    <div class="panel"><div class="panel-head"><h2 class="panel-title">Filters</h2></div>
+      <div class="panel-body">
+        <div class="field"><label>Category</label><select class="input" id="tp-cat">
+          <option value="">all categories</option></select></div>
+        <div class="field"><label>Name or path contains</label><input class="input" id="tp-q" placeholder="e.g. firewall"></div>
+        <button class="btn btn-primary" id="tp-apply">Apply</button>
+        <button class="btn" id="tp-reset">Reset</button>
+        <span id="tp-msg" class="muted small"></span>
+      </div></div>
+    <div class="panel"><div class="panel-head"><h2 class="panel-title">Templates</h2></div>
+      <div class="panel-body">
+        <p class="muted small" id="tp-summary">Loading…</p>
+        <table><thead><tr><th>Name</th><th>Category</th><th>Method</th><th>Path</th><th></th></tr></thead>
+        <tbody id="tp-body"><tr><td colspan="5" class="muted small">Loading…</td></tr></tbody></table>
+      </div></div>
+    ${canEdit ? `<div style="display:flex;justify-content:flex-end;margin:10px 0">
+      <button class="btn btn-primary" id="tp-add">Add template</button>
+    </div>
+    <div class="panel" id="tp-form" hidden><div class="panel-head"><h2 class="panel-title">New template</h2></div>
+      <div class="panel-body">
+        <div class="field"><label>Name *</label><input class="input" id="nt-name"></div>
+        <div class="field"><label>Category *</label><input class="input" id="nt-cat" placeholder="e.g. network"></div>
+        <div class="field"><label>Method *</label><select class="input" id="nt-method">
+          <option>GET</option><option>POST</option><option>PATCH</option><option>PUT</option><option>DELETE</option></select></div>
+        <div class="field"><label>Path *</label><input class="input" id="nt-path" placeholder="/ip/firewall/filter"></div>
+        <div class="field"><label>Description</label><input class="input" id="nt-desc"></div>
+        <div class="field"><label>Body (JSON, optional)</label><input class="input" id="nt-body"></div>
+        <button class="btn btn-primary" id="nt-save">Create template</button>
+        <span id="nt-msg" class="muted small"></span>
+      </div></div>` : `<div id="tp-add"></div>`}
+    <div id="tp-alert"></div>`;
+
+  document.getElementById("tp-apply").addEventListener("click", () => {
+    tplState.category = document.getElementById("tp-cat").value;
+    tplState.q = document.getElementById("tp-q").value.trim();
+    loadTemplates(main);
+  });
+  document.getElementById("tp-reset").addEventListener("click", () => {
+    tplState = { category: "", q: "" };
+    document.getElementById("tp-cat").value = "";
+    document.getElementById("tp-q").value = "";
+    loadTemplates(main);
+  });
+  document.getElementById("tp-q").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") document.getElementById("tp-apply").click();
+  });
+  const addBtn = document.getElementById("tp-add");
+  if (addBtn && canEdit) addBtn.addEventListener("click", () => {
+    const f = document.getElementById("tp-form");
+    f.hidden = !f.hidden;
+    if (!f.hidden) document.getElementById("nt-name").focus();
+  });
+  const saveBtn = document.getElementById("nt-save");
+  if (saveBtn) saveBtn.addEventListener("click", async () => {
+    const val = id => document.getElementById(id).value.trim();
+    const body = {
+      name: val("nt-name"), category: val("nt-cat"),
+      method: val("nt-method"), path: val("nt-path"),
+      description: val("nt-desc") || null, body: val("nt-body") || null,
+    };
+    const msg = document.getElementById("nt-msg");
+    if (!body.name || !body.category || !body.path) { msg.textContent = "Name, category and path are required."; return; }
+    saveBtn.disabled = true; saveBtn.textContent = "…";
+    try { await MM.post("/terminal-templates", body); await renderTemplates(main); }
+    catch (e) {
+      saveBtn.disabled = false; saveBtn.textContent = "Create template";
+      msg.textContent = (e.data && e.data.error) ? e.data.error : e.message;
+    }
+  });
+
+  await loadTemplates(main);
+}
+
+async function loadTemplates(main) {
+  const qs = new URLSearchParams();
+  if (tplState.category) qs.set("category", tplState.category);
+  if (tplState.q) qs.set("q", tplState.q);
+  const body = document.getElementById("tp-body");
+  if (!body) return;
+  try {
+    const d = await MM.get("/terminal-templates" + (qs.toString() ? "?" + qs.toString() : ""));
+    const sel = document.getElementById("tp-cat");
+    if (sel && sel.options.length <= 1) {
+      (d.categories || []).forEach(c => sel.add(new Option(c, c)));
+      sel.value = tplState.category;
+    }
+
+    const canEdit = SITE_EDITOR_ROLES.indexOf((ME && ME.user && ME.user.user_role) || "") >= 0;
+    const list = asArray(d.templates);
+    body.innerHTML = list.length ? list.map(t => `<tr>
+        <td><span class="num">${esc(t.name)}</span>${t.is_builtin ? ` <span class="muted small">built-in</span>` : ` <span class="status ok">custom</span>`}</td>
+        <td>${esc(t.category)}</td>
+        <td>${methodBadge(t.method)}</td>
+        <td><span class="mono">${esc(t.path)}</span></td>
+        <td>${canEdit && !t.is_builtin ? `
+          <button class="btn btn-sm" data-tdel="${esc(t.id)}">Delete</button>` : ""}</td>
+      </tr>`).join("") : `<tr><td colspan="5" class="muted small">No templates match.</td></tr>`;
+
+    document.getElementById("tp-summary").textContent =
+      `${d.count} template(s) — ${d.builtin} built-in, ${d.custom} custom` +
+      (tplState.category || tplState.q ? " (filtered)" : "");
+
+    body.querySelectorAll("button[data-tdel]").forEach(b => b.addEventListener("click", async () => {
+      if (!confirm("Delete this custom template?")) return;
+      const el = document.getElementById("tp-alert");
+      try { await MM.del("/terminal-templates/" + encodeURIComponent(b.dataset.tdel)); await renderTemplates(main); }
+      catch (e) { if (el) el.innerHTML = `<div class="alert" role="alert">${esc((e.data && e.data.error) ? e.data.error : e.message)}</div>`; }
+    }));
+  } catch (e) {
+    body.innerHTML = `<tr><td colspan="5" class="muted small">Could not load templates.</td></tr>`;
+  }
+}
+
+/* ---------- Event log (syslog) ---------- */
+// Read-only, newest-first, paged. State lives here so paging and filtering can
+// refresh only the table body rather than tearing down the filter controls.
+const EVENTS_PAGE = 50;
+let eventsState = { severity: "", program: "", q: "", offset: 0, pages: 0 };
+
+const SEV_CLASS = { info: "", warning: "warn", critical: "bad" };
+
+function sevBadge(sev) {
+  const cls = SEV_CLASS[sev] !== undefined ? SEV_CLASS[sev] : "";
+  return `<span class="status ${cls}">${esc(sev)}</span>`;
+}
+
+// Router syslog lines are long; keep rows scannable but never hide the text —
+// the full message stays reachable via the title attribute.
+function clampMsg(m, n) {
+  const s = String(m == null ? "" : m);
+  return s.length > n ? s.slice(0, n) + "…" : s;
+}
+
+async function renderEvents(main) {
+  eventsState = { severity: "", program: "", q: "", offset: 0, pages: 0 };
+  const content = main.querySelector("#content");
+  content.innerHTML = `
+    <div class="panel"><div class="panel-head"><h2 class="panel-title">Filters</h2></div>
+      <div class="panel-body">
+        <div class="field"><label>Severity</label><select class="input" id="ev-sev">
+          <option value="">all severities</option></select></div>
+        <div class="field"><label>Program</label><select class="input" id="ev-prog">
+          <option value="">all programs</option></select></div>
+        <div class="field"><label>Message contains</label><input class="input" id="ev-q" placeholder="e.g. logged in"></div>
+        <button class="btn btn-primary" id="ev-apply">Apply</button>
+        <button class="btn" id="ev-reset">Reset</button>
+        <span id="ev-msg" class="muted small"></span>
+      </div></div>
+    <div class="panel"><div class="panel-head"><h2 class="panel-title">Events</h2></div>
+      <div class="panel-body">
+        <p class="muted small" id="ev-summary">Loading…</p>
+        <table><thead><tr><th>Time</th><th>Severity</th><th>Program</th><th>Source</th><th>Message</th></tr></thead>
+        <tbody id="ev-body"><tr><td colspan="5" class="muted small">Loading…</td></tr></tbody></table>
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <button class="btn" id="ev-newer">‹ Newer</button>
+          <button class="btn" id="ev-older">Older ›</button>
+        </div>
+      </div></div>`;
+
+  document.getElementById("ev-apply").addEventListener("click", () => {
+    eventsState.severity = document.getElementById("ev-sev").value;
+    eventsState.program = document.getElementById("ev-prog").value;
+    eventsState.q = document.getElementById("ev-q").value.trim();
+    eventsState.offset = 0;
+    loadEvents(main);
+  });
+  document.getElementById("ev-reset").addEventListener("click", () => {
+    eventsState = { severity: "", program: "", q: "", offset: 0, pages: eventsState.pages };
+    document.getElementById("ev-sev").value = "";
+    document.getElementById("ev-prog").value = "";
+    document.getElementById("ev-q").value = "";
+    loadEvents(main);
+  });
+  // Enter in the search box applies, matching how a log filter is expected to behave.
+  document.getElementById("ev-q").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") document.getElementById("ev-apply").click();
+  });
+  document.getElementById("ev-newer").addEventListener("click", () => {
+    eventsState.offset = Math.max(0, eventsState.offset - EVENTS_PAGE);
+    loadEvents(main);
+  });
+  document.getElementById("ev-older").addEventListener("click", () => {
+    eventsState.offset += EVENTS_PAGE;
+    loadEvents(main);
+  });
+
+  await loadEvents(main);
+}
+
+async function loadEvents(main) {
+  const qs = new URLSearchParams();
+  if (eventsState.severity) qs.set("severity", eventsState.severity);
+  if (eventsState.program) qs.set("program", eventsState.program);
+  if (eventsState.q) qs.set("q", eventsState.q);
+  qs.set("limit", EVENTS_PAGE);
+  qs.set("offset", eventsState.offset);
+
+  const body = document.getElementById("ev-body");
+  const summary = document.getElementById("ev-summary");
+  const msg = document.getElementById("ev-msg");
+  if (!body) return;                       // view was navigated away mid-flight
+  try {
+    const d = await MM.get("/syslog-events?" + qs.toString());
+
+    const sevSel = document.getElementById("ev-sev");
+    if (sevSel && sevSel.options.length <= 1) {
+      (d.severities || []).forEach(s => sevSel.add(new Option(s, s)));
+      sevSel.value = eventsState.severity;
+    }
+    const progSel = document.getElementById("ev-prog");
+    if (progSel && progSel.options.length <= 1) {
+      (d.programs || []).forEach(p => progSel.add(new Option(p, p)));
+      progSel.value = eventsState.program;
+    }
+
+    const events = asArray(d.events);
+    body.innerHTML = events.length ? events.map(e => `<tr>
+        <td class="muted small">${esc(ts(e.received_at))}</td>
+        <td>${sevBadge(e.severity)}${e.ai_severity ? ` <span class="muted small">ai:${esc(e.ai_severity)}</span>` : ""}</td>
+        <td>${e.program ? `<span class="mono">${esc(e.program)}</span>` : `<span class="muted small">—</span>`}</td>
+        <td>${e.source_ip ? `<span class="mono">${esc(e.source_ip)}</span>` : `<span class="muted small">—</span>`}</td>
+        <td title="${esc(e.message)}">${esc(clampMsg(e.message, 140))}</td>
+      </tr>`).join("") : `<tr><td colspan="5" class="muted small">No events match these filters.</td></tr>`;
+
+    const from = d.total ? eventsState.offset + 1 : 0;
+    const to = eventsState.offset + events.length;
+    summary.textContent = `Showing ${from}–${to} of ${d.total} event(s)` +
+      (eventsState.severity || eventsState.program || eventsState.q ? " (filtered)" : "");
+
+    document.getElementById("ev-newer").disabled = eventsState.offset === 0;
+    document.getElementById("ev-older").disabled = !d.has_more;
+    if (msg) msg.textContent = "";
+  } catch (e) {
+    if (msg) msg.textContent = (e.data && e.data.error) ? e.data.error : e.message;
+    body.innerHTML = `<tr><td colspan="5" class="muted small">Could not load events.</td></tr>`;
+  }
+}
+
 async function renderSites(main) {
   const data = await MM.get("/routers");
-  const routers = data.routers || data || [];
+  const routers = Array.isArray(data.routers) ? data.routers : asArray(data);
+  // Sites carry the geo data migrated from Mikromagic. Loaded separately so a
+  // site-endpoint failure still leaves router management usable.
+  let sites = [];
+  try { const sr = await MM.get("/sites"); sites = sr.sites || []; } catch (_) {}
+  // Saved management connections (also ported) — same defence.
+  let conns = [];
+  try { const cr = await MM.get("/router-connections"); conns = cr.connections || []; } catch (_) {}
+  // Granted capacity + its request workflow.
+  let allowance = null, requests = [], allowanceKinds = [];
+  try {
+    const ar = await MM.get("/device-allowances");
+    allowance = ar.allowance || null;
+    allowanceKinds = ar.kinds || [];
+  } catch (_) {}
+  try { const qr = await MM.get("/device-requests"); requests = qr.requests || []; } catch (_) {}
   const content = main.querySelector("#content");
   const layers = ["MAIN_GATEWAY", "DOWNSTREAM_SWITCH", "ACCESS_POINT", "CONTROLLER"];
 
@@ -369,6 +1083,10 @@ async function renderSites(main) {
     </tr>`).join("");
 
   content.innerHTML = `
+    ${siteGeoPanel(sites)}
+    ${connPanel(conns)}
+    ${allowancePanel(allowance)}
+    ${requestPanel(requests)}
     <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
       <button class="btn btn-primary" id="site-add">Add router</button>
     </div>
@@ -453,6 +1171,10 @@ async function renderSites(main) {
       alert(r && r.status ? r.status : "Reboot queued for approval.");
     } catch (e) { showErr(e); }
   }));
+
+  wireSiteGeo(main, sites);
+  wireConns(main, conns, sites);
+  wireAllowance(main, allowance, requests, allowanceKinds);
 }
 
 // Inline edit form for one router (PUT /routers/:id).
@@ -524,7 +1246,7 @@ function topologyTree(topo) {
 /* ---------- Incidents ---------- */
 async function renderIncidents(main) {
   const data = await MM.get("/incidents");
-  const list = data.incidents || data || [];
+  const list = Array.isArray(data.incidents) ? data.incidents : asArray(data);
   const content = main.querySelector("#content");
   if (!list.length) {
     content.innerHTML = `<div class="empty"><div class="empty-title">No open incidents</div>AI-detected problems and policy alerts will appear here.</div>`;
@@ -566,14 +1288,741 @@ async function renderIncidents(main) {
   });
 }
 
-async function renderVouchers(main) {
-  const data = await MM.get("/vouchers");
-  const list = data.vouchers || data || [];
-  if (!list.length) {
-    main.querySelector("#content").innerHTML = `<div class="empty"><div class="empty-title">No vouchers</div>Create a voucher batch to sell portal access.</div>`;
+/* ---------- Translations (i18n overrides) ---------- */
+// UI string overrides. ⚠️ This table is GLOBAL: it has no business_id and RLS is
+// disabled, so every business reads the same rows. Editing is therefore a
+// platform action — the write controls only appear for an exact DEVELOPER role,
+// and the API enforces the same gate independently of this check.
+let i18nState = { locale: "", namespace: "", q: "", limit: 100, offset: 0 };
+let i18nEditing = null; // id being edited, or "new"
+
+function isDeveloper() {
+  return ((ME && ME.user && ME.user.user_role) || "") === "DEVELOPER";
+}
+
+function renderI18nForm(o) {
+  return `
+    <div class="panel"><div class="panel-head"><h2 class="panel-title">${o ? "Edit override" : "Add override"}</h2></div>
+      <div class="panel-body">
+        <div class="field"><label>Locale</label><select class="input" id="i18n-f-locale">${LOCALES}</select></div>
+        <div class="field"><label>Namespace</label><select class="input" id="i18n-f-ns">${NAMESPACES}</select></div>
+        <div class="field"><label>Key (the English source string)</label>
+          <input class="input" id="i18n-f-key" value="${o ? esc(o.key) : ""}"></div>
+        <div class="field"><label>Translation</label>
+          <input class="input" id="i18n-f-value" value="${o ? esc(o.value) : ""}"></div>
+        <button class="btn btn-primary" id="i18n-save">${o ? "Save" : "Create"}</button>
+        <button class="btn" id="i18n-cancel">Cancel</button>
+        <div id="i18n-form-err"></div>
+      </div></div>`;
+}
+
+let LOCALES = "", NAMESPACES = "";
+function fillOptions(list, selected) {
+  return asArray(list).map(v =>
+    `<option value="${esc(v)}"${v === selected ? " selected" : ""}>${esc(v)}</option>`).join("");
+}
+
+async function renderI18n(main) {
+  i18nState = { locale: "", namespace: "", q: "", limit: 100, offset: 0 };
+  LOCALES = fillOptions(["en", "zh", "my"], "");
+  NAMESPACES = fillOptions(["ui", "copy"], "");
+  main.querySelector("#content").innerHTML = `
+    <div class="panel"><div class="panel-head"><h2 class="panel-title">Scope</h2></div>
+      <div class="panel-body">
+        <div class="alert" role="alert">
+          <strong>These translations are platform-wide.</strong> The table has no
+          business id and row-level security is off, so <em>every</em> business sees the
+          same strings. ${isDeveloper()
+            ? "You can edit them."
+            : "Editing requires the platform (DEVELOPER) role."}
+        </div>
+        <p class="muted small" id="i18n-facets">Loading…</p>
+        <div id="i18n-editor"></div>
+      </div></div>
+    <div class="panel"><div class="panel-head"><h2 class="panel-title">Strings</h2></div>
+      <div class="panel-body">
+        <div class="field"><label>Locale</label><select class="input" id="i18n-locale">
+          <option value="">all locales</option></select></div>
+        <div class="field"><label>Namespace</label><select class="input" id="i18n-ns">
+          <option value="">all namespaces</option></select></div>
+        <div class="field"><label>Search</label><input class="input" id="i18n-q"
+          placeholder="key or translation"></div>
+        <button class="btn btn-primary" id="i18n-apply">Apply</button>
+        <button class="btn" id="i18n-reset">Reset</button>
+        <p class="muted small" id="i18n-summary">Loading…</p>
+        <table><thead><tr><th>Locale</th><th>Namespace</th><th>Key</th><th>Translation</th>
+          <th>Updated</th>${isDeveloper() ? "<th></th>" : ""}</tr></thead>
+          <tbody id="i18n-body"><tr><td colspan="6" class="muted small">Loading…</td></tr></tbody></table>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px">
+          <button class="btn btn-sm" id="i18n-newer">‹ Newer</button>
+          <button class="btn btn-sm" id="i18n-older">Older ›</button>
+        </div>
+      </div></div>`;
+
+  const apply = () => {
+    i18nState.locale = document.getElementById("i18n-locale").value;
+    i18nState.namespace = document.getElementById("i18n-ns").value;
+    i18nState.q = document.getElementById("i18n-q").value.trim();
+    i18nState.offset = 0;
+    loadI18n();
+  };
+  document.getElementById("i18n-apply").addEventListener("click", apply);
+  document.getElementById("i18n-q").addEventListener("keydown", ev => { if (ev.key === "Enter") apply(); });
+  document.getElementById("i18n-reset").addEventListener("click", () => {
+    i18nState = { locale: "", namespace: "", q: "", limit: 100, offset: 0 };
+    ["i18n-locale", "i18n-ns", "i18n-q"].forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
+    loadI18n();
+  });
+  document.getElementById("i18n-older").addEventListener("click", () => {
+    i18nState.offset += i18nState.limit; loadI18n();
+  });
+  document.getElementById("i18n-newer").addEventListener("click", () => {
+    i18nState.offset = Math.max(0, i18nState.offset - i18nState.limit); loadI18n();
+  });
+
+  await loadI18n();
+}
+
+function openI18nEditor(o) {
+  i18nEditing = o ? o.id : "new";
+  const host = document.getElementById("i18n-editor");
+  if (!host) return;
+  host.innerHTML = renderI18nForm(o);
+  const l = document.getElementById("i18n-f-locale"), n = document.getElementById("i18n-f-ns");
+  if (o) { l.value = o.locale; n.value = o.namespace; }
+  document.getElementById("i18n-cancel").addEventListener("click", () => {
+    i18nEditing = null; host.innerHTML = "";
+  });
+  document.getElementById("i18n-save").addEventListener("click", async () => {
+    const err = document.getElementById("i18n-form-err");
+    const body = {
+      locale: document.getElementById("i18n-f-locale").value,
+      namespace: document.getElementById("i18n-f-ns").value,
+      key: document.getElementById("i18n-f-key").value.trim(),
+      value: document.getElementById("i18n-f-value").value,
+    };
+    if (!body.key) { err.innerHTML = `<div class="alert" role="alert">Key is required.</div>`; return; }
+    if (!body.value.trim()) { err.innerHTML = `<div class="alert" role="alert">Translation is required — an empty value would blank the string.</div>`; return; }
+    try {
+      if (o) await MM.put("/i18n-overrides/" + o.id, body);
+      else await MM.post("/i18n-overrides", body);
+      i18nEditing = null;
+      await loadI18n();
+    } catch (e) {
+      err.innerHTML = `<div class="alert" role="alert">${esc(apiErrorText(e, "Could not save."))}</div>`;
+    }
+  });
+}
+
+async function loadI18n() {
+  const body = document.getElementById("i18n-body");
+  if (!body) return;
+  const qs = new URLSearchParams();
+  qs.set("limit", i18nState.limit);
+  qs.set("offset", i18nState.offset);
+  if (i18nState.locale) qs.set("locale", i18nState.locale);
+  if (i18nState.namespace) qs.set("namespace", i18nState.namespace);
+  if (i18nState.q) qs.set("q", i18nState.q);
+
+  let d;
+  try { d = await MM.get("/i18n-overrides?" + qs.toString()); }
+  catch (e) {
+    body.innerHTML = `<tr><td colspan="6" class="muted small">${esc(apiErrorText(e, "Could not load translations."))}</td></tr>`;
     return;
   }
-  const rows = list.slice(0, 50).map(v => `
+
+  const ls = document.getElementById("i18n-locale"), ns = document.getElementById("i18n-ns");
+  if (ls && ls.options.length <= 1) {
+    asArray(d.locales).forEach(v => ls.add(new Option(v, v)));
+    asArray(d.namespaces).forEach(v => ns.add(new Option(v, v)));
+    ls.value = i18nState.locale; ns.value = i18nState.namespace;
+  }
+
+  const bl = d.by_locale || {}, bn = d.by_namespace || {};
+  document.getElementById("i18n-facets").textContent =
+    `${tok(d.total)} override(s) · by locale: ` +
+    (Object.keys(bl).length ? Object.entries(bl).map(([k, v]) => `${k} ${v}`).join(", ") : "none") +
+    " · by namespace: " +
+    (Object.keys(bn).length ? Object.entries(bn).map(([k, v]) => `${k} ${v}`).join(", ") : "none");
+
+  const canEdit = isDeveloper();
+  const items = asArray(d.overrides);
+  body.innerHTML = items.length ? items.map(o => `<tr>
+      <td>${esc(o.locale)}</td>
+      <td>${esc(o.namespace)}</td>
+      <td>${esc(o.key)}</td>
+      <td>${esc(o.value)}</td>
+      <td>${ts(o.updated_at)}</td>
+      ${canEdit ? `<td class="num">
+        <button class="btn btn-sm" data-i18n-edit="${esc(o.id)}">Edit</button>
+        <button class="btn btn-sm" data-i18n-del="${esc(o.id)}">Delete</button></td>` : ""}
+    </tr>`).join("") : `<tr><td colspan="6" class="muted small">No overrides match.</td></tr>`;
+
+  if (canEdit) {
+    body.querySelectorAll("[data-i18n-edit]").forEach(el =>
+      el.addEventListener("click", () => openI18nEditor(items.find(x => x.id === el.getAttribute("data-i18n-edit")))));
+    body.querySelectorAll("[data-i18n-del]").forEach(el =>
+      el.addEventListener("click", async () => {
+        const id = el.getAttribute("data-i18n-del");
+        try { await MM.del("/i18n-overrides/" + id); await loadI18n(); }
+        catch (e) {
+          document.getElementById("i18n-form-err").innerHTML =
+            `<div class="alert" role="alert">${esc(apiErrorText(e, "Could not delete."))}</div>`;
+        }
+      }));
+    const host = document.getElementById("i18n-editor");
+    if (host && !i18nEditing) host.innerHTML = `<button class="btn btn-primary" id="i18n-add">Add override</button>`;
+    const add = document.getElementById("i18n-add");
+    if (add) add.addEventListener("click", () => openI18nEditor(null));
+  }
+
+  const from = items.length ? i18nState.offset + 1 : 0;
+  document.getElementById("i18n-summary").textContent =
+    `Showing ${from}–${i18nState.offset + items.length} of ${tok(d.total)} override(s)` +
+    (i18nState.locale || i18nState.namespace || i18nState.q ? " (filtered)" : "");
+  document.getElementById("i18n-newer").disabled = i18nState.offset === 0;
+  document.getElementById("i18n-older").disabled = !d.has_more;
+}
+
+/* ---------- Unlock keys ---------- */
+// The Magic Coin purchase ledger. Read-only.
+//
+// `status` is DERIVED by the API (consumed / expired / active), not stored, so the
+// counts and the filter use one expression and cannot drift apart.
+let unlockState = { kind: "", status: "", q: "", limit: 50, offset: 0 };
+
+function unlockStatusBadge(s) {
+  const cls = s === "active" ? "ok" : (s === "consumed" ? "info" : "warn");
+  return `<span class="status ${cls}">${esc(s)}</span>`;
+}
+
+async function renderUnlockKeys(main) {
+  unlockState = { kind: "", status: "", q: "", limit: 50, offset: 0 };
+  main.querySelector("#content").innerHTML = `
+    <div class="panel"><div class="panel-head"><h2 class="panel-title">Coins spent</h2></div>
+      <div class="panel-body">
+        <p class="muted small" id="uk-totals">Loading…</p>
+        <table><thead><tr><th>Key kind</th><th class="num">Bought</th>
+          <th class="num">Coins</th></tr></thead><tbody id="uk-bykind"></tbody></table>
+      </div></div>
+    <div class="panel"><div class="panel-head"><h2 class="panel-title">Keys</h2></div>
+      <div class="panel-body">
+        <div class="field"><label>Kind</label><select class="input" id="uk-kind">
+          <option value="">all kinds</option></select></div>
+        <div class="field"><label>Status</label><select class="input" id="uk-status">
+          <option value="">any status</option>
+          <option value="active">active</option>
+          <option value="expired">expired</option>
+          <option value="consumed">consumed</option></select></div>
+        <div class="field"><label>Search</label><input class="input" id="uk-q"
+          placeholder="key name or description"></div>
+        <button class="btn btn-primary" id="uk-apply">Apply</button>
+        <button class="btn" id="uk-reset">Reset</button>
+        <p class="muted small" id="uk-summary">Loading…</p>
+        <table><thead><tr><th>When</th><th>Key</th><th>Kind</th><th>Unlocks</th>
+          <th class="num">Coins</th><th>Status</th><th>Expires</th></tr></thead>
+          <tbody id="uk-body"><tr><td colspan="7" class="muted small">Loading…</td></tr></tbody></table>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px">
+          <button class="btn btn-sm" id="uk-newer">‹ Newer</button>
+          <button class="btn btn-sm" id="uk-older">Older ›</button>
+        </div>
+      </div></div>`;
+
+  const apply = () => {
+    unlockState.kind = document.getElementById("uk-kind").value;
+    unlockState.status = document.getElementById("uk-status").value;
+    unlockState.q = document.getElementById("uk-q").value.trim();
+    unlockState.offset = 0;
+    loadUnlockKeys();
+  };
+  document.getElementById("uk-apply").addEventListener("click", apply);
+  document.getElementById("uk-q").addEventListener("keydown", ev => { if (ev.key === "Enter") apply(); });
+  document.getElementById("uk-reset").addEventListener("click", () => {
+    unlockState = { kind: "", status: "", q: "", limit: 50, offset: 0 };
+    ["uk-kind", "uk-status", "uk-q"].forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
+    loadUnlockKeys();
+  });
+  document.getElementById("uk-older").addEventListener("click", () => {
+    unlockState.offset += unlockState.limit; loadUnlockKeys();
+  });
+  document.getElementById("uk-newer").addEventListener("click", () => {
+    unlockState.offset = Math.max(0, unlockState.offset - unlockState.limit); loadUnlockKeys();
+  });
+
+  await loadUnlockKeys();
+}
+
+async function loadUnlockKeys() {
+  const body = document.getElementById("uk-body");
+  if (!body) return;
+  const qs = new URLSearchParams();
+  qs.set("limit", unlockState.limit);
+  qs.set("offset", unlockState.offset);
+  if (unlockState.kind) qs.set("kind", unlockState.kind);
+  if (unlockState.status) qs.set("status", unlockState.status);
+  if (unlockState.q) qs.set("q", unlockState.q);
+
+  let d;
+  try { d = await MM.get("/unlock-keys?" + qs.toString()); }
+  catch (e) {
+    body.innerHTML = `<tr><td colspan="7" class="muted small">${esc(apiErrorText(e, "Could not load unlock keys."))}</td></tr>`;
+    return;
+  }
+
+  const sel = document.getElementById("uk-kind");
+  if (sel && sel.options.length <= 1) {
+    asArray(d.kinds).forEach(k => sel.add(new Option(k, k)));
+    sel.value = unlockState.kind;
+  }
+
+  const s = d.summary || {};
+  document.getElementById("uk-totals").textContent =
+    `${tok(s.activations)} key(s) bought · ${tok(s.coins_spent)} coins spent · ` +
+    `${tok(s.active)} active · ${tok(s.expired)} expired · ${tok(s.consumed)} consumed`;
+  const groups = asArray(s.by_kind);
+  document.getElementById("uk-bykind").innerHTML = groups.length
+    ? groups.map(g => `<tr><td>${esc(g.name)}</td><td class="num">${tok(g.count)}</td>
+        <td class="num">${tok(g.coins_spent)}</td></tr>`).join("")
+    : `<tr><td colspan="3" class="muted small">none</td></tr>`;
+
+  const keys = asArray(d.keys);
+  body.innerHTML = keys.length ? keys.map(k => `<tr>
+      <td>${ts(k.created_at)}</td>
+      <td>${k.key_name ? esc(k.key_name) : `<span class="muted">${esc(k.key_kind)}</span>`}</td>
+      <td>${esc(k.key_kind)}</td>
+      <td>${esc(k.attributes)}</td>
+      <td class="num">${tok(k.price_coins)}</td>
+      <td>${unlockStatusBadge(k.status)}</td>
+      <td>${ts(k.expires_at)}</td>
+    </tr>`).join("") : `<tr><td colspan="7" class="muted small">No keys match.</td></tr>`;
+
+  const from = keys.length ? unlockState.offset + 1 : 0;
+  document.getElementById("uk-summary").textContent =
+    `Showing ${from}–${unlockState.offset + keys.length} of ${tok(d.total)} key(s)` +
+    (unlockState.kind || unlockState.status || unlockState.q ? " (filtered)" : "");
+  document.getElementById("uk-newer").disabled = unlockState.offset === 0;
+  document.getElementById("uk-older").disabled = !d.has_more;
+}
+
+/* ---------- Terminal log ---------- */
+// Audit log of commands run against routers. Read-only.
+//
+// The API redacts credential values before returning, so a script like
+// `/user add name=x password=y` renders as `password=***`. The banner says so, so
+// nobody reads `***` as the literal value the router received.
+let termLogState = { source: "", status: "", q: "", limit: 50, offset: 0 };
+
+// apiErrorText renders why a call failed. api.js already puts the server's own
+// `error` field into err.message ("status must be an integer"), so discarding it
+// for a generic string throws away the most useful part of the response.
+function apiErrorText(e, fallback) {
+  const m = (e && e.message) || "";
+  if (m === "network-unreachable") return "The server could not be reached.";
+  if (m === "unauthorized") return "Your session expired — sign in again.";
+  if (m && !/^http-\d+$/.test(m)) return m;
+  return fallback;
+}
+
+function statusCell(e) {
+  if (!e.status_known) return `<span class="muted" title="The old app did not record a status.">—</span>`;
+  const ok = Number(e.status) < 400;
+  return `<span class="${ok ? "status ok" : "status warn"}">${esc(e.status)}</span>`;
+}
+
+async function renderTerminalLog(main) {
+  termLogState = { source: "", status: "", q: "", limit: 50, offset: 0 };
+  main.querySelector("#content").innerHTML = `
+    <div class="panel"><div class="panel-head"><h2 class="panel-title">Commands</h2></div>
+      <div class="panel-body">
+        <div class="alert" role="alert">
+          <strong>Credential values are redacted.</strong> Any <code>password=</code>,
+          <code>secret=</code> or <code>token=</code> value in a command or reply is
+          replaced with <code>***</code> before it reaches this page.
+        </div>
+        <div class="field"><label>Source</label><select class="input" id="tl-source">
+          <option value="">all sources</option></select></div>
+        <div class="field"><label>Status</label><input class="input" id="tl-status"
+          placeholder="e.g. 200" inputmode="numeric"></div>
+        <div class="field"><label>Search</label><input class="input" id="tl-q"
+          placeholder="script, path or reply"></div>
+        <button class="btn btn-primary" id="tl-apply">Apply</button>
+        <button class="btn" id="tl-reset">Reset</button>
+        <p class="muted small" id="tl-summary">Loading…</p>
+        <table><thead><tr><th>When</th><th>Command</th><th>Source</th>
+          <th>Status</th><th class="num">ms</th><th>Reply</th></tr></thead>
+          <tbody id="tl-body"><tr><td colspan="6" class="muted small">Loading…</td></tr></tbody></table>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px">
+          <button class="btn btn-sm" id="tl-newer">‹ Newer</button>
+          <button class="btn btn-sm" id="tl-older">Older ›</button>
+        </div>
+      </div></div>`;
+
+  const apply = () => {
+    termLogState.source = document.getElementById("tl-source").value;
+    termLogState.status = document.getElementById("tl-status").value.trim();
+    termLogState.q = document.getElementById("tl-q").value.trim();
+    termLogState.offset = 0;
+    loadTerminalLog();
+  };
+  document.getElementById("tl-apply").addEventListener("click", apply);
+  document.getElementById("tl-q").addEventListener("keydown", ev => { if (ev.key === "Enter") apply(); });
+  document.getElementById("tl-reset").addEventListener("click", () => {
+    termLogState = { source: "", status: "", q: "", limit: 50, offset: 0 };
+    ["tl-source", "tl-status", "tl-q"].forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
+    loadTerminalLog();
+  });
+  document.getElementById("tl-older").addEventListener("click", () => {
+    termLogState.offset += termLogState.limit; loadTerminalLog();
+  });
+  document.getElementById("tl-newer").addEventListener("click", () => {
+    termLogState.offset = Math.max(0, termLogState.offset - termLogState.limit); loadTerminalLog();
+  });
+
+  await loadTerminalLog();
+}
+
+async function loadTerminalLog() {
+  const body = document.getElementById("tl-body");
+  if (!body) return;
+  const qs = new URLSearchParams();
+  qs.set("limit", termLogState.limit);
+  qs.set("offset", termLogState.offset);
+  if (termLogState.source) qs.set("source", termLogState.source);
+  if (termLogState.status) qs.set("status", termLogState.status);
+  if (termLogState.q) qs.set("q", termLogState.q);
+
+  let d;
+  try { d = await MM.get("/terminal-history?" + qs.toString()); }
+  catch (e) {
+    body.innerHTML = `<tr><td colspan="6" class="muted small">${esc(apiErrorText(e, "Could not load the terminal log."))}</td></tr>`;
+    return;
+  }
+
+  const sel = document.getElementById("tl-source");
+  if (sel && sel.options.length <= 1) {
+    asArray(d.sources).forEach(s => sel.add(new Option(s, s)));
+    sel.value = termLogState.source;
+  }
+
+  const entries = asArray(d.entries);
+  body.innerHTML = entries.length ? entries.map(e => `<tr>
+      <td>${ts(e.created_at)}</td>
+      <td><code>${esc(e.script)}</code>${e.body_unparsed
+        ? ` <span class="muted small" title="The stored body was not a JSON script object; shown verbatim.">(raw)</span>` : ""}</td>
+      <td>${e.source ? esc(e.source) : `<span class="muted">manual</span>`}</td>
+      <td>${statusCell(e)}</td>
+      <td class="num">${e.duration_known ? tok(e.duration_ms) : "—"}</td>
+      <td><code class="small">${esc((e.response_snippet || "").slice(0, 60))}</code></td>
+    </tr>`).join("") : `<tr><td colspan="6" class="muted small">No commands match.</td></tr>`;
+
+  const from = entries.length ? termLogState.offset + 1 : 0;
+  document.getElementById("tl-summary").textContent =
+    `Showing ${from}–${termLogState.offset + entries.length} of ${tok(d.total)} command(s)` +
+    (termLogState.source || termLogState.status || termLogState.q ? " (filtered)" : "");
+  document.getElementById("tl-newer").disabled = termLogState.offset === 0;
+  document.getElementById("tl-older").disabled = !d.has_more;
+}
+
+/* ---------- AI usage ---------- */
+// Token history for the AI features. Read-only.
+//
+// The dashboard figures come from an UNFILTERED summary, so narrowing the list
+// does not silently change the totals above it.
+let aiUsageState = { feature: "", model: "", limit: 50, offset: 0 };
+
+function tok(n) { return Number(n || 0).toLocaleString(); }
+
+function usageRows(groups) {
+  const list = asArray(groups);
+  if (!list.length) return `<tr><td colspan="3" class="muted small">none</td></tr>`;
+  return list.map(g => `<tr>
+      <td>${esc(g.name)}</td>
+      <td class="num">${tok(g.events)}</td>
+      <td class="num">${tok(g.total_tokens)}</td>
+    </tr>`).join("");
+}
+
+async function renderAIUsage(main) {
+  aiUsageState = { feature: "", model: "", limit: 50, offset: 0 };
+  main.querySelector("#content").innerHTML = `
+    <div class="panel"><div class="panel-head"><h2 class="panel-title">Totals</h2></div>
+      <div class="panel-body">
+        <p class="muted small" id="ai-totals">Loading…</p>
+        <div class="panel-head"><h2 class="panel-title">By feature</h2></div>
+        <table><thead><tr><th>Feature</th><th class="num">Calls</th><th class="num">Tokens</th></tr></thead>
+          <tbody id="ai-byfeat"></tbody></table>
+        <div class="panel-head"><h2 class="panel-title">By model</h2></div>
+        <table><thead><tr><th>Model</th><th class="num">Calls</th><th class="num">Tokens</th></tr></thead>
+          <tbody id="ai-bymodel"></tbody></table>
+        <div id="ai-notice"></div>
+      </div></div>
+    <div class="panel"><div class="panel-head"><h2 class="panel-title">Calls</h2></div>
+      <div class="panel-body">
+        <div class="field"><label>Feature</label><select class="input" id="ai-feat">
+          <option value="">all features</option></select></div>
+        <div class="field"><label>Model</label><select class="input" id="ai-model">
+          <option value="">all models</option></select></div>
+        <button class="btn btn-primary" id="ai-apply">Apply</button>
+        <button class="btn" id="ai-reset">Reset</button>
+        <p class="muted small" id="ai-summary">Loading…</p>
+        <table><thead><tr><th>When</th><th>Feature</th><th>Model</th>
+          <th class="num">Prompt</th><th class="num">Completion</th><th class="num">Total</th></tr></thead>
+          <tbody id="ai-body"><tr><td colspan="6" class="muted small">Loading…</td></tr></tbody></table>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px">
+          <button class="btn btn-sm" id="ai-newer">‹ Newer</button>
+          <button class="btn btn-sm" id="ai-older">Older ›</button>
+        </div>
+      </div></div>`;
+
+  document.getElementById("ai-apply").addEventListener("click", () => {
+    aiUsageState.feature = document.getElementById("ai-feat").value;
+    aiUsageState.model = document.getElementById("ai-model").value;
+    aiUsageState.offset = 0;
+    loadAIUsage();
+  });
+  document.getElementById("ai-reset").addEventListener("click", () => {
+    aiUsageState = { feature: "", model: "", limit: 50, offset: 0 };
+    const f = document.getElementById("ai-feat"), m = document.getElementById("ai-model");
+    if (f) f.value = ""; if (m) m.value = "";
+    loadAIUsage();
+  });
+  document.getElementById("ai-older").addEventListener("click", () => {
+    aiUsageState.offset += aiUsageState.limit; loadAIUsage();
+  });
+  document.getElementById("ai-newer").addEventListener("click", () => {
+    aiUsageState.offset = Math.max(0, aiUsageState.offset - aiUsageState.limit); loadAIUsage();
+  });
+
+  await loadAIUsage();
+}
+
+async function loadAIUsage() {
+  const body = document.getElementById("ai-body");
+  if (!body) return;
+  const qs = new URLSearchParams();
+  qs.set("limit", aiUsageState.limit);
+  qs.set("offset", aiUsageState.offset);
+  if (aiUsageState.feature) qs.set("feature", aiUsageState.feature);
+  if (aiUsageState.model) qs.set("model", aiUsageState.model);
+
+  let d;
+  try { d = await MM.get("/ai-usage-events?" + qs.toString()); }
+  catch (e) {
+    body.innerHTML = `<tr><td colspan="6" class="muted small">${esc(apiErrorText(e, "Could not load AI usage."))}</td></tr>`;
+    return;
+  }
+
+  // Populate the facet dropdowns from the summary (unfiltered, so they stay stable).
+  const s = d.summary || {};
+  const fs = document.getElementById("ai-feat"), ms = document.getElementById("ai-model");
+  if (fs && fs.options.length <= 1) {
+    asArray(s.by_feature).forEach(g => fs.add(new Option(`${g.name} (${tok(g.total_tokens)})`, g.name)));
+    asArray(s.by_model).forEach(g => ms.add(new Option(`${g.name} (${tok(g.total_tokens)})`, g.name)));
+    fs.value = aiUsageState.feature; ms.value = aiUsageState.model;
+  }
+
+  document.getElementById("ai-totals").textContent =
+    `${tok(s.events)} call(s) · ${tok(s.total_tokens)} tokens total ` +
+    `(${tok(s.prompt_tokens)} prompt + ${tok(s.completion_tokens)} completion)` +
+    (Number(s.cached_events) > 0 ? ` · ${tok(s.cached_events)} cached` : "");
+  document.getElementById("ai-byfeat").innerHTML = usageRows(s.by_feature);
+  document.getElementById("ai-bymodel").innerHTML = usageRows(s.by_model);
+
+  // Honesty: flag rows whose recorded total does not equal prompt + completion,
+  // rather than printing arithmetic that does not add up.
+  const notice = document.getElementById("ai-notice");
+  const bad = Number(s.mismatched_events || 0);
+  if (notice) {
+    notice.innerHTML = bad > 0 ? `<div class="alert" role="alert">
+      <strong>${tok(bad)} call(s) have a total that is not prompt + completion.</strong>
+      The recorded figure is shown as-is and marked below; the previous system did not
+      break out the difference.</div>` : "";
+  }
+
+  const evs = asArray(d.events);
+  body.innerHTML = evs.length ? evs.map(e => `<tr>
+      <td>${ts(e.created_at)}</td>
+      <td>${esc(e.feature)}</td>
+      <td>${esc(e.model)}</td>
+      <td class="num">${tok(e.prompt_tokens)}</td>
+      <td class="num">${tok(e.completion_tokens)}</td>
+      <td class="num">${tok(e.total_tokens)}${e.token_mismatch
+        ? ` <span class="status warn" title="Recorded total does not equal prompt + completion.">≠</span>` : ""}</td>
+    </tr>`).join("") : `<tr><td colspan="6" class="muted small">No calls match.</td></tr>`;
+
+  const from = evs.length ? aiUsageState.offset + 1 : 0;
+  document.getElementById("ai-summary").textContent =
+    `Showing ${from}–${aiUsageState.offset + evs.length} of ${tok(d.total)} call(s)` +
+    (aiUsageState.feature || aiUsageState.model ? " (filtered)" : "");
+  document.getElementById("ai-newer").disabled = aiUsageState.offset === 0;
+  document.getElementById("ai-older").disabled = !d.has_more;
+}
+
+/* ---------- Fleet scans ---------- */
+// Read-only history of automatic fleet scans. The ported payload is genuinely
+// heterogeneous (some rows carry `insights`, others a node/connectivity event), so
+// both shapes are rendered rather than assuming one.
+//
+// IMPORTANT: 1,102 of the 1,156 migrated scans contain a JavaScript error that the
+// OLD app persisted ("Cannot read properties of undefined (reading 'rest')") under
+// the title "Router unreachable". Those are labelled `scan error` here instead of
+// being presented as live critical alerts. The data is untouched.
+let scansState = { kind: "", severity: "", findings_only: false, limit: 50, offset: 0 };
+
+function scanSevBadge(s) {
+  const cls = s === "critical" ? "bad" : s === "warning" ? "warn" : s === "ok" ? "ok" : "";
+  return `<span class="status ${cls}">${esc(s)}</span>`;
+}
+
+function findingLine(f) {
+  const sev = f.severity || "info";
+  const tag = f.runtime_error
+    ? `<span class="status warn" title="This is a program error recorded by the previous system, not a network finding.">scan error</span>`
+    : scanSevBadge(sev);
+  const who = f.router ? `<span class="muted small">${esc(f.router)}</span>` : "";
+  return `<div style="margin:2px 0">${tag} ${esc(f.title || "(untitled)")} ${who}
+    <div class="muted small">${esc(f.subtitle || "")}</div>
+    ${f.suggestion ? `<div class="muted small">→ ${esc(f.suggestion)}</div>` : ""}</div>`;
+}
+
+async function renderScans(main) {
+  scansState = { kind: "", severity: "", findings_only: false, limit: 50, offset: 0 };
+  const content = main.querySelector("#content");
+  content.innerHTML = `
+    <div class="panel"><div class="panel-head"><h2 class="panel-title">Filters</h2></div>
+      <div class="panel-body">
+        <div class="field"><label>Kind</label><select class="input" id="sc-kind">
+          <option value="">all kinds</option></select></div>
+        <div class="field"><label>Worst severity</label><select class="input" id="sc-sev">
+          <option value="">all severities</option></select></div>
+        <div class="field"><label>Only scans with findings</label>
+          <input type="checkbox" id="sc-fo"></div>
+        <button class="btn btn-primary" id="sc-apply">Apply</button>
+        <button class="btn" id="sc-reset">Reset</button>
+        <span id="sc-msg" class="muted small"></span>
+      </div></div>
+    <div id="sc-notice"></div>
+    <div class="panel"><div class="panel-head"><h2 class="panel-title">Scans</h2></div>
+      <div class="panel-body">
+        <p class="muted small" id="sc-summary">Loading…</p>
+        <table><thead><tr><th>When</th><th>Kind</th><th>Worst</th><th>Routers</th><th>Findings</th></tr></thead>
+        <tbody id="sc-body"><tr><td colspan="5" class="muted small">Loading…</td></tr></tbody></table>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px">
+          <button class="btn btn-sm" id="sc-newer">‹ Newer</button>
+          <button class="btn btn-sm" id="sc-older">Older ›</button>
+        </div>
+      </div></div>`;
+
+  document.getElementById("sc-apply").addEventListener("click", () => {
+    scansState.kind = document.getElementById("sc-kind").value;
+    scansState.severity = document.getElementById("sc-sev").value;
+    scansState.findings_only = document.getElementById("sc-fo").checked;
+    scansState.offset = 0;
+    loadScans();
+  });
+  document.getElementById("sc-reset").addEventListener("click", () => {
+    scansState = { kind: "", severity: "", findings_only: false, limit: 50, offset: 0 };
+    const k = document.getElementById("sc-kind"), s = document.getElementById("sc-sev");
+    if (k) k.value = ""; if (s) s.value = "";
+    document.getElementById("sc-fo").checked = false;
+    loadScans();
+  });
+  document.getElementById("sc-older").addEventListener("click", () => {
+    scansState.offset += scansState.limit; loadScans();
+  });
+  document.getElementById("sc-newer").addEventListener("click", () => {
+    scansState.offset = Math.max(0, scansState.offset - scansState.limit); loadScans();
+  });
+
+  await loadScans();
+}
+
+async function loadScans() {
+  const body = document.getElementById("sc-body");
+  if (!body) return;
+  const qs = new URLSearchParams();
+  qs.set("limit", scansState.limit);
+  qs.set("offset", scansState.offset);
+  if (scansState.kind) qs.set("kind", scansState.kind);
+  if (scansState.severity) qs.set("severity", scansState.severity);
+  if (scansState.findings_only) qs.set("findings_only", "1");
+
+  let d;
+  try { d = await MM.get("/fleet-scan-runs?" + qs.toString()); }
+  catch (e) {
+    body.innerHTML = `<tr><td colspan="5" class="muted small">Could not load scans.</td></tr>`;
+    return;
+  }
+
+  const ks = document.getElementById("sc-kind"), sv = document.getElementById("sc-sev");
+  if (ks && ks.options.length <= 1) {
+    asArray(d.kinds).forEach(k => ks.add(new Option(k, k)));
+    asArray(d.severities).forEach(s => {
+      const o = new Option(`${s}${d.severity_counts && d.severity_counts[s] ? ` (${d.severity_counts[s]})` : ""}`, s);
+      sv.add(o);
+    });
+    ks.value = scansState.kind; sv.value = scansState.severity;
+  }
+
+  // Honesty notice: keep crash artefacts from reading as live outages.
+  const notice = document.getElementById("sc-notice");
+  const crashes = Number(d.crash_artifact_scans || 0);
+  if (notice) {
+    notice.innerHTML = crashes > 0 ? `<div class="alert" role="alert">
+      <strong>${crashes} of these ${d.severity_counts ? Object.values(d.severity_counts).reduce((a,b)=>a+b,0) : crashes} scan(s) contain a recorded program error</strong>
+      from the previous system, not a finding about your network. They are marked
+      <span class="status warn">scan error</span> below and are kept exactly as recorded.</div>` : "";
+  }
+
+  const runs = asArray(d.scans);
+  body.innerHTML = runs.length ? runs.map(r => {
+    const fs = asArray(r.findings);
+    const shown = fs.slice(0, 3).map(findingLine).join("");
+    const more = fs.length > 3 ? `<div class="muted small">+${fs.length - 3} more</div>` : "";
+    const node = r.node ? `<div class="muted small">node ${esc(r.node.node_id || "")} ${esc(r.node.node_status || "")} ${esc(r.node.source || "")}</div>` : "";
+    // Some scans carry no `insights` at all — their finding IS the node event
+    // (e.g. a critical "router down" from the topology source). Showing "none"
+    // beside a critical would misrepresent it, so render the node event instead.
+    const nodeFinding = (!fs.length && r.node && (r.node.node_status || r.node.node_id))
+      ? `<div style="margin:2px 0">${scanSevBadge(r.max_severity)}
+           ${esc(r.node.node_status || r.node.node_id)}
+           <span class="muted small">${esc(r.node.source || "")}</span></div>`
+      : "";
+    return `<tr>
+      <td>${ts(r.generated_at)}</td>
+      <td>${esc(r.kind)}</td>
+      <td>${scanSevBadge(r.max_severity)}</td>
+      <td class="num">${esc(r.router_count)}</td>
+      <td>${fs.length ? shown + more + node
+                      : (nodeFinding || `<span class="muted small">none</span>`)}
+        ${Number(r.error_findings) > 0 ? `<div class="muted small">${r.error_findings} of ${fs.length} are scan errors</div>` : ""}</td>
+    </tr>`;
+  }).join("") : `<tr><td colspan="5" class="muted small">No scans match.</td></tr>`;
+
+  const from = runs.length ? scansState.offset + 1 : 0;
+  document.getElementById("sc-summary").textContent =
+    `Showing ${from}–${scansState.offset + runs.length} of ${d.total} scan(s)` +
+    (scansState.kind || scansState.severity || scansState.findings_only ? " (filtered)" : "");
+  document.getElementById("sc-newer").disabled = scansState.offset === 0;
+  document.getElementById("sc-older").disabled = !d.has_more;
+}
+
+/* ---------- Vouchers: list + resellers + printed layout ---------- */
+// Restructured so the reseller and print-layout panels ALWAYS render. The old
+// version returned early whenever a tenant had no vouchers, which would have
+// hidden both new panels from exactly the tenants most likely to need them.
+async function renderVouchers(main) {
+  const canEdit = SITE_EDITOR_ROLES.indexOf((ME && ME.user && ME.user.user_role) || "") >= 0;
+  const content = main.querySelector("#content");
+
+  const [vRes, rRes, lRes] = await Promise.all([
+    MM.get("/vouchers").catch(() => null),
+    MM.get("/voucher-resellers").catch(() => null),
+    MM.get("/voucher-print-layout").catch(() => null),
+  ]);
+
+  const list = vRes ? asArray(vRes.vouchers) : [];
+  const vRows = list.slice(0, 50).map(v => `
     <tr>
       <td class="mono">${esc(v.code)}</td>
       <td>${v.plan_key ? esc(v.plan_key) : "—"}</td>
@@ -581,9 +2030,246 @@ async function renderVouchers(main) {
       <td>${badge((v.status||"unknown").toLowerCase())}</td>
       <td>${ts(v.created_at)}</td>
     </tr>`).join("");
-  main.querySelector("#content").innerHTML = `<table>
-    <thead><tr><th>Code</th><th>Plan</th><th>Amount</th><th>Status</th><th>Created</th></tr></thead>
-    <tbody>${rows}</tbody></table>`;
+
+  const resellers = rRes ? asArray(rRes.resellers) : [];
+  const rRows = resellers.map(r => `
+    <tr>
+      <td>${esc(r.shop_name)}</td>
+      <td>${esc(r.contact_name)}</td>
+      <td>${r.location ? esc(r.location) : "—"}</td>
+      <td>${r.phone ? esc(r.phone) : "—"}</td>
+      <td><span class="mono">${esc(r.code_prefix)}</span></td>
+      <td>${r.active ? `<span class="status ok">active</span>` : `<span class="status">inactive</span>`}</td>
+      <td>${canEdit ? `<button class="btn btn-sm" data-vredit="${esc(r.id)}">Edit</button>
+        <button class="btn btn-sm" data-vrdel="${esc(r.id)}">Delete</button>` : ""}</td>
+    </tr>`).join("");
+
+  const lay = (lRes && lRes.layout) || {};
+  const laySaved = !!(lRes && lRes.saved);
+
+  content.innerHTML = `
+    <div class="panel"><div class="panel-head"><h2 class="panel-title">Vouchers</h2></div>
+      <div class="panel-body">
+        ${list.length ? `<table>
+          <thead><tr><th>Code</th><th>Plan</th><th>Amount</th><th>Status</th><th>Created</th></tr></thead>
+          <tbody>${vRows}</tbody></table>` : `<p class="muted small">No vouchers yet.</p>`}
+      </div></div>
+
+    <div class="panel"><div class="panel-head"><h2 class="panel-title">Resellers</h2></div>
+      <div class="panel-body">
+        <p class="muted small" id="vr-summary">${rRes ? `${rRes.count} shop(s), ${rRes.active} active. Each shop's code prefix keeps its vouchers distinguishable.` : "Could not load resellers."}</p>
+        <table><thead><tr><th>Shop</th><th>Contact</th><th>Location</th><th>Phone</th><th>Prefix</th><th>Status</th><th></th></tr></thead>
+        <tbody>${rRows || `<tr><td colspan="7" class="muted small">No resellers yet.</td></tr>`}</tbody></table>
+      </div></div>
+    ${canEdit ? `<div style="display:flex;justify-content:flex-end;margin:10px 0">
+      <button class="btn btn-primary" id="vr-add">Add reseller</button></div>
+      <div class="panel" id="vr-form" hidden><div class="panel-head"><h2 class="panel-title">New reseller</h2></div>
+        <div class="panel-body">
+          <div class="field"><label>Shop name *</label><input class="input" id="nr-shop"></div>
+          <div class="field"><label>Contact name *</label><input class="input" id="nr-contact"></div>
+          <div class="field"><label>Location</label><input class="input" id="nr-loc"></div>
+          <div class="field"><label>Phone</label><input class="input" id="nr-phone"></div>
+          <div class="field"><label>Code prefix * (2–4 chars)</label><input class="input" id="nr-prefix" placeholder="RS"></div>
+          <button class="btn btn-primary" id="nr-save">Create reseller</button>
+          <span id="nr-msg" class="muted small"></span>
+        </div></div>` : ""}
+
+    <div class="panel"><div class="panel-head"><h2 class="panel-title">Printed voucher layout</h2></div>
+      <div class="panel-body">
+        <p class="muted small">${laySaved ? "Saved for this business." : "Not saved yet — showing the default layout."}</p>
+        <div class="field"><label>Business name</label><input class="input" id="pl-bname" value="${esc(lay.business_name||"")}" ${canEdit?"":"disabled"}></div>
+        <div class="field"><label>Wi-Fi name</label><input class="input" id="pl-wifi" value="${esc(lay.wifi_name||"")}" ${canEdit?"":"disabled"}></div>
+        <div class="field"><label>Support contact</label><input class="input" id="pl-support" value="${esc(lay.support_contact||"")}" ${canEdit?"":"disabled"}></div>
+        <div class="field"><label>Terms</label><input class="input" id="pl-terms" value="${esc(lay.terms||"")}" ${canEdit?"":"disabled"}></div>
+        <div class="field"><label>Paper width (mm)</label><input class="input" id="pl-width" type="number" value="${esc(lay.paper_width_mm||80)}" ${canEdit?"":"disabled"}></div>
+        <div class="field"><label>A4 columns / rows</label>
+          <input class="input" id="pl-a4c" type="number" value="${esc(lay.a4_columns||3)}" ${canEdit?"":"disabled"}>
+          <input class="input" id="pl-a4r" type="number" value="${esc(lay.a4_rows_per_page||12)}" ${canEdit?"":"disabled"}></div>
+        <div class="field"><label>Thermal columns / per strip</label>
+          <input class="input" id="pl-tc" type="number" value="${esc(lay.thermal_columns||2)}" ${canEdit?"":"disabled"}>
+          <input class="input" id="pl-tr" type="number" value="${esc(lay.thermal_rows_per_strip||8)}" ${canEdit?"":"disabled"}></div>
+        <div class="field"><label>Show on voucher</label>
+          <label class="muted small"><input type="checkbox" id="pl-qr" ${lay.show_qr?"checked":""} ${canEdit?"":"disabled"}> QR</label>
+          <label class="muted small"><input type="checkbox" id="pl-price" ${lay.show_price?"checked":""} ${canEdit?"":"disabled"}> Price</label>
+          <label class="muted small"><input type="checkbox" id="pl-expiry" ${lay.show_expiry?"checked":""} ${canEdit?"":"disabled"}> Expiry</label></div>
+        ${canEdit ? `<button class="btn btn-primary" id="pl-save">Save layout</button>` : ""}
+        <span id="pl-msg" class="muted small"></span>
+      </div></div>
+    <div id="vr-alert"></div>`;
+
+  if (canEdit) {
+    const addBtn = document.getElementById("vr-add");
+    if (addBtn) addBtn.addEventListener("click", () => {
+      const f = document.getElementById("vr-form");
+      f.hidden = !f.hidden;
+      if (!f.hidden) document.getElementById("nr-shop").focus();
+    });
+    const saveBtn = document.getElementById("nr-save");
+    if (saveBtn) saveBtn.addEventListener("click", async () => {
+      const val = id => document.getElementById(id).value.trim();
+      const msg = document.getElementById("nr-msg");
+      const body = { shop_name: val("nr-shop"), contact_name: val("nr-contact"),
+                     location: val("nr-loc") || null, phone: val("nr-phone") || null,
+                     code_prefix: val("nr-prefix"), active: true };
+      if (!body.shop_name || !body.contact_name || !body.code_prefix) {
+        msg.textContent = "Shop name, contact name and prefix are required."; return;
+      }
+      saveBtn.disabled = true; saveBtn.textContent = "…";
+      try { await MM.post("/voucher-resellers", body); await renderVouchers(main); }
+      catch (e) {
+        saveBtn.disabled = false; saveBtn.textContent = "Create reseller";
+        msg.textContent = (e.data && e.data.reason) ? e.data.reason
+                        : (e.data && e.data.error) ? e.data.error : e.message;
+      }
+    });
+    const plSave = document.getElementById("pl-save");
+    if (plSave) plSave.addEventListener("click", async () => {
+      const val = id => document.getElementById(id).value.trim();
+      const num = id => parseInt(document.getElementById(id).value, 10);
+      const msg = document.getElementById("pl-msg");
+      const body = { business_name: val("pl-bname"), wifi_name: val("pl-wifi"),
+                     support_contact: val("pl-support"), terms: val("pl-terms"),
+                     paper_width_mm: num("pl-width"), a4_columns: num("pl-a4c"),
+                     a4_rows_per_page: num("pl-a4r"), thermal_columns: num("pl-tc"),
+                     thermal_rows_per_strip: num("pl-tr"),
+                     show_qr: document.getElementById("pl-qr").checked,
+                     show_price: document.getElementById("pl-price").checked,
+                     show_expiry: document.getElementById("pl-expiry").checked };
+      plSave.disabled = true; plSave.textContent = "…";
+      try { await MM.put("/voucher-print-layout", body); await renderVouchers(main); }
+      catch (e) {
+        plSave.disabled = false; plSave.textContent = "Save layout";
+        msg.textContent = (e.data && e.data.error) ? e.data.error : e.message;
+      }
+    });
+  }
+
+  document.querySelectorAll("#content button[data-vrdel]").forEach(b =>
+    b.addEventListener("click", async () => {
+      if (!confirm("Delete this reseller?")) return;
+      const el = document.getElementById("vr-alert");
+      try { await MM.del("/voucher-resellers/" + encodeURIComponent(b.dataset.vrdel)); await renderVouchers(main); }
+      catch (e) { if (el) el.innerHTML = `<div class="alert" role="alert">${esc((e.data && e.data.error) ? e.data.error : e.message)}</div>`; }
+    }));
+
+  document.querySelectorAll("#content button[data-vredit]").forEach(b =>
+    b.addEventListener("click", async () => {
+      const r = resellers.find(x => x.id === b.dataset.vredit);
+      if (!r) return;
+      const shop = prompt("Shop name", r.shop_name); if (shop === null) return;
+      const contact = prompt("Contact name", r.contact_name); if (contact === null) return;
+      const prefix = prompt("Code prefix (2–4 chars)", r.code_prefix); if (prefix === null) return;
+      const el = document.getElementById("vr-alert");
+      try {
+        await MM.put("/voucher-resellers/" + encodeURIComponent(r.id),
+          { shop_name: shop, contact_name: contact, code_prefix: prefix,
+            location: r.location || null, phone: r.phone || null, active: r.active });
+        await renderVouchers(main);
+      } catch (e) {
+        if (el) el.innerHTML = `<div class="alert" role="alert">${esc((e.data && e.data.reason) ? e.data.reason : (e.data && e.data.error) ? e.data.error : e.message)}</div>`;
+      }
+    }));
+}
+
+/* ---------- Magic Coins ---------- */
+// The ledger is append-only in the database, so this view is a read-only audit
+// trail plus (for OWNER/ADMIN) a manual adjustment form.
+const COIN_KIND_LABEL = {
+  agent_earn: "Agent earn",
+  agent_reversal: "Agent reversal",
+  service_payment: "Service payment",
+  service_refund: "Service refund",
+  feature_key_purchase: "Feature key purchase",
+  purchase_credit: "Purchase credit",
+  manual_credit: "Manual credit",
+  manual_debit: "Manual debit",
+};
+const coinAmt = (n) => Number(n || 0).toFixed(2);
+
+async function renderMagicCoins(main) {
+  const content = main.querySelector("#content");
+  const role = (ME && ME.user && ME.user.user_role) || "";
+  const canAdjust = ["OWNER", "ADMIN", "DEVELOPER"].indexOf(role) >= 0;
+
+  let wallet = null, txs = [];
+  try { const w = await MM.get("/magic-coins/wallet"); wallet = w.wallet || null; } catch (_) {}
+  try { const r = await MM.get("/magic-coins/transactions"); txs = r.transactions || []; } catch (_) {}
+
+  const rows = txs.length ? txs.map(t => {
+    const d = Number(t.delta || 0);
+    return `<tr>
+      <td class="muted small">${ts(t.created_at)}</td>
+      <td>${esc(COIN_KIND_LABEL[t.kind] || t.kind)}</td>
+      <td class="num">${d > 0 ? "+" : ""}${coinAmt(d)}</td>
+      <td class="num">${coinAmt(t.balance_after)}</td>
+      <td>${esc(t.note)}</td>
+    </tr>`;
+  }).join("") : `<tr><td colspan="5" class="muted small">No coin activity yet.</td></tr>`;
+
+  content.innerHTML = `
+    <div class="stat-cluster" style="margin-top:18px">
+      <div class="stat"><div class="stat-label">Your balance</div><div class="stat-value">${coinAmt(wallet && wallet.balance)}</div></div>
+      <div class="stat"><div class="stat-label">Ledger entries</div><div class="stat-value">${txs.length}</div></div>
+    </div>
+    <hr class="rule">
+    ${canAdjust ? `<div class="panel"><div class="panel-head"><h2 class="panel-title">Manual adjustment</h2></div>
+      <div class="panel-body">
+        <div class="field"><label class="muted small" for="coin-user">User</label>
+          <select class="input" id="coin-user"></select></div>
+        <div class="field"><label class="muted small" for="coin-kind">Type</label>
+          <select class="input" id="coin-kind">
+            <option value="manual_credit">Credit (+)</option>
+            <option value="manual_debit">Debit (−)</option>
+          </select></div>
+        <div class="field"><label class="muted small" for="coin-amount">Amount</label>
+          <input class="input" id="coin-amount" type="number" min="0.01" step="0.01" placeholder="0.00"></div>
+        <div class="field"><label class="muted small" for="coin-note">Reason</label>
+          <input class="input" id="coin-note" type="text" placeholder="Why this adjustment"></div>
+        <button class="btn btn-primary" id="coin-submit">Apply adjustment</button>
+        <div id="coin-alert"></div>
+      </div></div>` : ""}
+    <div class="panel" style="margin-top:14px"><div class="panel-head"><h2 class="panel-title">Coin ledger</h2></div>
+      <div class="panel-body">
+        <table><thead><tr><th>When</th><th>Type</th><th>Change</th><th>Balance</th><th>Reason</th></tr></thead>
+        <tbody>${rows}</tbody></table>
+      </div></div>`;
+
+  if (!canAdjust) return;
+
+  const sel = document.getElementById("coin-user");
+  try {
+    const t = await MM.get("/team");
+    const members = t.team || [];
+    sel.innerHTML = members.length
+      ? members.map(m => `<option value="${esc(m.user_id)}">${esc(m.full_name || m.email)}</option>`).join("")
+      : `<option value="">(no team members)</option>`;
+  } catch (_) {
+    sel.innerHTML = `<option value="">(could not load users)</option>`;
+  }
+
+  const notify = (m) => {
+    document.getElementById("coin-alert").innerHTML = `<div class="alert" role="alert">${esc(m)}</div>`;
+  };
+
+  document.getElementById("coin-submit").addEventListener("click", async () => {
+    const btn = document.getElementById("coin-submit");
+    const uid = sel.value;
+    const amount = parseFloat(document.getElementById("coin-amount").value);
+    const kind = document.getElementById("coin-kind").value;
+    const note = document.getElementById("coin-note").value.trim();
+    if (!uid) return notify("Pick a user.");
+    if (!(amount > 0)) return notify("Amount must be greater than zero.");
+    if (note.length < 3) return notify("Give a reason (at least 3 characters).");
+
+    btn.disabled = true; btn.textContent = "…";
+    try {
+      await MM.post("/magic-coins/adjust", { user_id: uid, amount: amount, kind: kind, note: note });
+      await renderMagicCoins(main); // reload balance + ledger
+    } catch (e) {
+      btn.disabled = false; btn.textContent = "Apply adjustment";
+      notify((e.data && e.data.error) ? e.data.error : e.message);
+    }
+  });
 }
 
 /* ---------- Captive portal ---------- */
@@ -783,7 +2469,7 @@ async function renderTeam(main) {
 async function renderBackups(main) {
   const content = main.querySelector("#content");
   const data = await MM.get("/routers");
-  const devices = data.routers || data || [];
+  const devices = Array.isArray(data.routers) ? data.routers : asArray(data);
   if (!devices.length) {
     content.innerHTML = `<div class="empty"><div class="empty-title">No devices</div>Add a router to enable backups.</div>`;
     return;

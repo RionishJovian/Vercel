@@ -143,7 +143,9 @@
     <form id="login-form">
       <div class="field">
         <label for="email">Email</label>
-        <input class="input" id="email" name="email" type="email" autocomplete="username" required autofocus>
+        <!-- type="text", NOT "email": migrated Mikromagic logins are TLD-less
+             (e.g. kyaw@mikromagic); browser email validation would block submit. -->
+        <input class="input" id="email" name="email" type="text" inputmode="email" autocomplete="username" required autofocus>
       </div>
       <div class="field">
         <label for="password">Password</label>
