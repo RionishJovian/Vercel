@@ -427,6 +427,12 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 	{
 		v1.GET("/version", version)
 
+		// Public price list — anonymous, NO auth. pricing_promo is a
+		// platform-global table (no business_id, RLS disabled) holding published
+		// prices and capacity tiers: the same class of non-tenant information as
+		// /version, and deliberately public because it backs the pricing page.
+		v1.GET("/pricing", handler.NewPricingHandler(db).Get)
+
 		// PUBLIC captive-portal endpoints — anonymous, NO auth middleware. The
 		// tenant is resolved from the DEVICE the client is attached to (not from
 		// the voucher code).

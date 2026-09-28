@@ -64,7 +64,18 @@ func (h *PlatformHandler) CountIncidents(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"counts": counts})
 }
 
-var validTiers = map[string]bool{"SMALL_WISP": true, "ENTERPRISE_ISP": true, "GLOBAL_ADMIN": true}
+// validTiers is DERIVED from the model's ordered tier list rather than repeated
+// here, so the set a tenant can be created with and the set the pricing page
+// advertises cannot drift apart: adding a tier in one place makes it both
+// creatable and publishable.
+var validTiers = func() map[string]bool {
+	m := make(map[string]bool, len(model.AccessTiers))
+	for _, tier := range model.AccessTiers {
+		m[tier] = true
+	}
+	return m
+}()
+
 
 // CreateBusiness: POST /platform/businesses — create a tenant atomically.
 func (h *PlatformHandler) CreateBusiness(c *gin.Context) {
