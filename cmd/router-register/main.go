@@ -35,6 +35,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -153,10 +154,23 @@ func run(o runOpts) error {
 
 	deviceID := o.device
 	if deviceID == "" {
+		// Refuse to create a duplicate. Registering the same router twice would
+		// split its identity and posture history across two device rows.
+		var existing string
+		err := db.QueryRowContext(ctx,
+			`SELECT device_id FROM devices WHERE business_id = $1 AND hardware_name = $2 LIMIT 1`,
+			o.business, o.name).Scan(&existing)
+		switch {
+		case err == nil:
+			return fmt.Errorf("a device named %q already exists in this business (%s) — pass --device %s to update it instead of --create", o.name, existing, existing)
+		case !errors.Is(err, sql.ErrNoRows):
+			return fmt.Errorf("check for an existing device: %w", err)
+		}
+
 		// Create the device row. RLS is bypassed for this superuser role, so the
 		// business_id predicate below is what scopes it — and there is nothing to
 		// scope against but the operator-supplied tenant.
-		err := db.QueryRowContext(ctx,
+		err = db.QueryRowContext(ctx,
 			`INSERT INTO devices (business_id, hardware_name, device_model, deployment_layer, vendor, category, transport)
 			 VALUES ($1, $2, NULLIF($3,''), $4, 'mikrotik', 'router', 'direct')
 			 RETURNING device_id`,
@@ -178,6 +192,8 @@ func run(o runOpts) error {
 		sshPort                              int
 		hasCipher, hasFinger                 bool
 	)
+	// Column name must match the schema exactly: init.sql and
+	// device_credentials.go both use ssh_host_key_fingerprint.
 	err = db.QueryRowContext(ctx, `
 		SELECT hardware_name,
 		       COALESCE(host(management_ip), ''),
@@ -185,7 +201,7 @@ func run(o runOpts) error {
 		       COALESCE(ssh_secret_kind, ''),
 		       COALESCE(ssh_port, 0),
 		       (ssh_secret_ciphertext IS NOT NULL),
-		       (ssh_secret_fingerprint IS NOT NULL)
+		       (ssh_host_key_fingerprint IS NOT NULL)
 		  FROM devices
 		 WHERE business_id = $1 AND device_id = $2`,
 		o.business, deviceID,
