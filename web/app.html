@@ -6,6 +6,25 @@
   <title>Mega Magic</title>
   <meta name="robots" content="noindex">
   <link rel="stylesheet" href="/assets/css/styles.css">
+  <!-- Live-preview surfaces (guest-portal frame + voucher sheet). Scoped to their
+       own classes and kept inline deliberately: Cloudflare serves /assets/* as
+       immutable for a week, and deploy.sh only hash-stamps the asset URLs written
+       into this file, so adding to the shared stylesheet would risk week-stale CSS. -->
+  <style>
+    .pv-split { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(320px, 430px); gap: 18px; align-items: start; }
+    @media (max-width: 900px) { .pv-split { grid-template-columns: 1fr; } }
+    .pv-stage { display: flex; justify-content: center; }
+    .pv-phone { width: 390px; max-width: 100%; height: 660px; border: 1px solid var(--border, #2a3550);
+                border-radius: 18px; background: #fff; }
+    .pv-hint { margin: 8px 0 0; }
+    .sheet-stage { background: #0d1117; border: 1px solid var(--border, #2a3550); border-radius: 10px;
+                   padding: 12px; overflow: auto; max-height: 480px; }
+    /* .sheet / .sheet-tile / .sheet-code / .sheet-qr are NOT defined here — they
+       are injected from the SHEET_CSS constant in the voucher script, which the
+       print document embeds too, so the preview and the printed page can never
+       drift apart. */
+    .pl-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  </style>
   <script src="/assets/js/api.js" defer></script>
   <script src="/assets/js/app.js" defer></script>
   <style>
@@ -2013,6 +2032,178 @@ async function loadScans() {
   document.getElementById("sc-older").disabled = !d.has_more;
 }
 
+/* ---------- Voucher print sheet: geometry, live preview, printing ----------
+   The tile maths is ported from the OLD app's voucher-print-layout.ts, because
+   the console's preview and the sheet that actually reaches the printer must
+   agree on tile size and type scale — otherwise the preview is decoration.
+   Two page shapes share one model: an A4 cut sheet (packed by columns × rows per
+   page) and a continuous thermal roll (columns × rows per strip of ~120 mm).
+   As packing tightens the type shrinks, and below ~9–10 mm tiles the meta line is
+   dropped entirely so the CODE — the only thing a voucher exists for — stays
+   readable. */
+const SHEET_MM = { a4: { w: 210, h: 297, pad: 8, usable: 275 }, thermal: { usable: 120 } };
+
+/* Injected into the preview stage AND embedded in the print document, so there is
+   exactly one definition of what a sheet looks like. */
+const SHEET_CSS = `
+  .sheet { background:#fff; color:#111; margin:0 auto; box-sizing:border-box; display:grid; gap:1mm; }
+  .sheet-tile { display:flex; flex-direction:column; align-items:center; justify-content:center;
+                text-align:center; border:0.3mm dashed #99a; overflow:hidden; }
+  .sheet-code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-weight:700; letter-spacing:.06em; }
+  .sheet-qr { border:0.3mm solid #99a; display:flex; align-items:center; justify-content:center;
+              color:#667; font-size:7px; }`;
+
+function pvClamp(v, lo, hi) {
+  const n = Number(v);
+  if (!isFinite(n)) return lo;
+  return Math.min(hi, Math.max(lo, n));
+}
+
+function sheetDensity(mode, rows) {
+  const r = Math.max(1, Math.round(rows));
+  const usable = mode === "a4" ? SHEET_MM.a4.usable : SHEET_MM.thermal.usable;
+  const rowHeightMm = usable / r;
+  const k = mode === "a4"
+    ? { code: [7, 18, 1.55], meta: [5.5, 10, 0.85], brand: [5.5, 9, 0.75], pad: [0.6, 3.5, 0.12], m: 9 }
+    : { code: [8, 20, 1.65], meta: [5.5, 11, 0.9], brand: [5.5, 10, 0.8], pad: [0.5, 3, 0.14], m: 10 };
+  return {
+    rowHeightMm,
+    codeFontPx: pvClamp(rowHeightMm * k.code[2], k.code[0], k.code[1]),
+    metaFontPx: pvClamp(rowHeightMm * k.meta[2], k.meta[0], k.meta[1]),
+    brandFontPx: pvClamp(rowHeightMm * k.brand[2], k.brand[0], k.brand[1]),
+    padMm: pvClamp(rowHeightMm * k.pad[2], k.pad[0], k.pad[1]),
+    showMeta: rowHeightMm >= k.m,
+  };
+}
+
+/** Reads the layout from the FORM, not from the saved row — that is what makes
+ *  the preview live while the operator is still typing. */
+function readPrintLayout() {
+  const el = id => document.getElementById(id);
+  const v = id => { const e = el(id); return e ? e.value.trim() : ""; };
+  const n = id => { const e = el(id); return e ? parseInt(e.value, 10) : NaN; };
+  const c = id => { const e = el(id); return e ? e.checked : false; };
+  const width = n("pl-width") === 58 ? 58 : 80;
+  return {
+    business_name: v("pl-bname"), wifi_name: v("pl-wifi"), support_contact: v("pl-support"),
+    terms: v("pl-terms"), paper_width_mm: width,
+    a4_columns: pvClamp(n("pl-a4c") || 3, 2, 5),
+    a4_rows_per_page: pvClamp(n("pl-a4r") || 12, 4, 50),
+    // 58 mm is too narrow for two readable code tiles.
+    thermal_columns: width === 58 ? 1 : pvClamp(n("pl-tc") || 2, 1, 2),
+    thermal_rows_per_strip: pvClamp(n("pl-tr") || 8, 4, 40),
+    show_qr: c("pl-qr"), show_price: c("pl-price"), show_expiry: c("pl-expiry"),
+  };
+}
+
+function sheetTile(lay, dens, v) {
+  const parts = [];
+  if (lay.business_name) parts.push(`<div style="font-size:${dens.brandFontPx}px;font-weight:700">${esc(lay.business_name)}</div>`);
+  if (lay.wifi_name) parts.push(`<div style="font-size:${dens.metaFontPx}px;color:#556">${esc(lay.wifi_name)}</div>`);
+  if (lay.show_qr) {
+    const qs = Math.max(8, Math.min(24, dens.rowHeightMm * 0.42));
+    parts.push(`<div class="sheet-qr" style="width:${qs.toFixed(1)}mm;height:${qs.toFixed(1)}mm">QR</div>`);
+  }
+  parts.push(`<div class="sheet-code" style="font-size:${dens.codeFontPx.toFixed(1)}px">${esc(v.code)}</div>`);
+  if (dens.showMeta) {
+    if (lay.show_price && v.amount !== null && v.amount !== undefined && v.amount !== "") {
+      parts.push(`<div style="font-size:${dens.metaFontPx.toFixed(1)}px;color:#556">${esc(String(v.amount))} MMK</div>`);
+    }
+    if (lay.show_expiry && v.expires_at) {
+      parts.push(`<div style="font-size:${dens.metaFontPx.toFixed(1)}px;color:#556">${esc(String(v.expires_at).slice(0,10))}</div>`);
+    }
+  }
+  return `<div class="sheet-tile" style="height:${dens.rowHeightMm.toFixed(2)}mm;padding:${dens.padMm.toFixed(2)}mm">${parts.join("")}</div>`;
+}
+
+function wirePrintPreview(main, vouchers, canEdit) {
+  const stage = main.querySelector("#pl-stage");
+  const hint = main.querySelector("#pl-hint");
+  if (!stage) return;
+  const real = (vouchers || []).filter(v => v && v.code);
+  let mode = "a4";
+  const styleEl = document.createElement("style");
+  styleEl.textContent = SHEET_CSS;
+  document.head.appendChild(styleEl);
+
+  const draw = () => {
+    const lay = readPrintLayout();
+    const cols = mode === "a4" ? lay.a4_columns : lay.thermal_columns;
+    const rows = mode === "a4" ? lay.a4_rows_per_page : lay.thermal_rows_per_strip;
+    const dens = sheetDensity(mode, rows);
+    const perPage = cols * rows;
+    const tiles = real.slice(0, perPage).map(v => sheetTile(lay, dens, v));
+    const realShown = tiles.length;
+    // Samples keep the packing visible on an empty account. They are clearly
+    // labelled and never appear on a printed sheet.
+    while (tiles.length < perPage) tiles.push(sheetTile(lay, dens, { code: "SAMPLE-" + String(tiles.length + 1).padStart(2, "0"), amount: 500 }));
+    const mmW = mode === "a4" ? SHEET_MM.a4.w : lay.paper_width_mm;
+    const pageCss = mode === "a4"
+      ? `width:${SHEET_MM.a4.w}mm;height:${SHEET_MM.a4.h}mm;padding:${SHEET_MM.a4.pad}mm`
+      : `width:${mmW}mm;padding:2mm`;
+    stage.innerHTML = `<div class="sheet" style="${pageCss};grid-template-columns:repeat(${cols},1fr);` +
+                      `grid-template-rows:repeat(${rows},${dens.rowHeightMm.toFixed(2)}mm)">${tiles.join("")}</div>`;
+    const pxW = mmW * 96 / 25.4;
+    const avail = Math.max(200, (stage.parentNode.clientWidth || 400) - 24);
+    try { stage.style.zoom = Math.min(1, avail / pxW).toFixed(3); } catch (e) { stage.style.transform = "scale(.5)"; }
+    const per = `A4 ${lay.a4_columns}×${lay.a4_rows_per_page} = ${lay.a4_columns * lay.a4_rows_per_page}/page`;
+    const th = `thermal ${lay.thermal_columns}×${lay.thermal_rows_per_strip} = ${lay.thermal_columns * lay.thermal_rows_per_strip}/strip (${lay.paper_width_mm} mm)`;
+    hint.textContent = `${mode === "a4" ? per : th} · ${realShown} real code(s)` +
+      (realShown < perPage ? ` + ${perPage - realShown} sample tile(s)` : "") +
+      (dens.showMeta ? "" : " · tiles are short, so price/expiry are dropped to keep the code readable") +
+      (canEdit ? "" : " · read-only");
+  };
+
+  const setMode = m => { mode = m; draw(); };
+  const a4b = main.querySelector("#pl-mode-a4");
+  const thb = main.querySelector("#pl-mode-thermal");
+  if (a4b) a4b.addEventListener("click", () => setMode("a4"));
+  if (thb) thb.addEventListener("click", () => setMode("thermal"));
+  document.querySelectorAll("#pl-bname,#pl-wifi,#pl-support,#pl-terms,#pl-width,#pl-a4c,#pl-a4r,#pl-tc,#pl-tr,#pl-qr,#pl-price,#pl-expiry")
+    .forEach(el => { el.addEventListener("input", draw); el.addEventListener("change", draw); });
+
+  const pbtn = main.querySelector("#pl-print");
+  if (pbtn) pbtn.addEventListener("click", () => {
+    if (!real.length) { hint.textContent = "Nothing to print yet — create vouchers first."; return; }
+    printSheet(readPrintLayout(), mode, real);
+  });
+
+  draw();
+}
+
+/** Prints real voucher codes only — never samples, never invented codes. More
+ *  codes than one page paginates into as many sheets as it takes. */
+function printSheet(lay, mode, vouchers) {
+  const cols = mode === "a4" ? lay.a4_columns : lay.thermal_columns;
+  const rows = mode === "a4" ? lay.a4_rows_per_page : lay.thermal_rows_per_strip;
+  const dens = sheetDensity(mode, rows);
+  const perPage = cols * rows;
+  const chunks = [];
+  for (let i = 0; i < vouchers.length; i += perPage) chunks.push(vouchers.slice(i, i + perPage));
+  const pagesHtml = chunks.map(chunk => {
+    const tiles = chunk.map(v => sheetTile(lay, dens, v));
+    while (tiles.length < perPage) tiles.push(`<div class="sheet-tile" style="height:${dens.rowHeightMm.toFixed(2)}mm"></div>`);
+    return `<div class="sheet">${tiles.join("")}</div>`;
+  }).join("");
+  const pageRule = mode === "a4"
+    ? `@page { size: A4 portrait; margin: 0 } .sheet { width: ${SHEET_MM.a4.w}mm; height: ${SHEET_MM.a4.h}mm; padding: ${SHEET_MM.a4.pad}mm; }`
+    : `@page { size: ${lay.paper_width_mm}mm auto; margin: 0 } .sheet { width: ${lay.paper_width_mm}mm; padding: 2mm; }`;
+  const doc = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Vouchers</title><style>${SHEET_CSS}
+    body { margin:0; background:#fff; }
+    .sheet { grid-template-columns: repeat(${cols}, 1fr); grid-template-rows: repeat(${rows}, ${dens.rowHeightMm.toFixed(2)}mm); page-break-after: always; }
+    .sheet:last-child { page-break-after: auto; }
+    ${pageRule}</style></head><body>${pagesHtml}</body></html>`;
+  const fr = document.createElement("iframe");
+  fr.setAttribute("aria-hidden", "true");
+  fr.style.cssText = "position:fixed;right:0;bottom:0;width:1px;height:1px;border:0;opacity:0";
+  document.body.appendChild(fr);
+  fr.srcdoc = doc;
+  fr.addEventListener("load", () => {
+    try { fr.contentWindow.focus(); fr.contentWindow.print(); } catch (e) {}
+    setTimeout(() => fr.remove(), 60000);
+  });
+}
+
 /* ---------- Vouchers: list + resellers + printed layout ---------- */
 // Restructured so the reseller and print-layout panels ALWAYS render. The old
 // version returned early whenever a tenant had no vouchers, which would have
@@ -2083,23 +2274,41 @@ async function renderVouchers(main) {
     <div class="panel"><div class="panel-head"><h2 class="panel-title">Printed voucher layout</h2></div>
       <div class="panel-body">
         <p class="muted small">${laySaved ? "Saved for this business." : "Not saved yet — showing the default layout."}</p>
-        <div class="field"><label>Business name</label><input class="input" id="pl-bname" value="${esc(lay.business_name||"")}" ${canEdit?"":"disabled"}></div>
-        <div class="field"><label>Wi-Fi name</label><input class="input" id="pl-wifi" value="${esc(lay.wifi_name||"")}" ${canEdit?"":"disabled"}></div>
-        <div class="field"><label>Support contact</label><input class="input" id="pl-support" value="${esc(lay.support_contact||"")}" ${canEdit?"":"disabled"}></div>
-        <div class="field"><label>Terms</label><input class="input" id="pl-terms" value="${esc(lay.terms||"")}" ${canEdit?"":"disabled"}></div>
-        <div class="field"><label>Paper width (mm)</label><input class="input" id="pl-width" type="number" value="${esc(lay.paper_width_mm||80)}" ${canEdit?"":"disabled"}></div>
-        <div class="field"><label>A4 columns / rows</label>
-          <input class="input" id="pl-a4c" type="number" value="${esc(lay.a4_columns||3)}" ${canEdit?"":"disabled"}>
-          <input class="input" id="pl-a4r" type="number" value="${esc(lay.a4_rows_per_page||12)}" ${canEdit?"":"disabled"}></div>
-        <div class="field"><label>Thermal columns / per strip</label>
-          <input class="input" id="pl-tc" type="number" value="${esc(lay.thermal_columns||2)}" ${canEdit?"":"disabled"}>
-          <input class="input" id="pl-tr" type="number" value="${esc(lay.thermal_rows_per_strip||8)}" ${canEdit?"":"disabled"}></div>
-        <div class="field"><label>Show on voucher</label>
-          <label class="muted small"><input type="checkbox" id="pl-qr" ${lay.show_qr?"checked":""} ${canEdit?"":"disabled"}> QR</label>
-          <label class="muted small"><input type="checkbox" id="pl-price" ${lay.show_price?"checked":""} ${canEdit?"":"disabled"}> Price</label>
-          <label class="muted small"><input type="checkbox" id="pl-expiry" ${lay.show_expiry?"checked":""} ${canEdit?"":"disabled"}> Expiry</label></div>
-        ${canEdit ? `<button class="btn btn-primary" id="pl-save">Save layout</button>` : ""}
-        <span id="pl-msg" class="muted small"></span>
+        <div class="pv-split">
+          <div>
+            <div class="field"><label>Business name</label><input class="input" id="pl-bname" value="${esc(lay.business_name||"")}" ${canEdit?"":"disabled"}></div>
+            <div class="field"><label>Wi-Fi name</label><input class="input" id="pl-wifi" value="${esc(lay.wifi_name||"")}" ${canEdit?"":"disabled"}></div>
+            <div class="field"><label>Support contact</label><input class="input" id="pl-support" value="${esc(lay.support_contact||"")}" ${canEdit?"":"disabled"}></div>
+            <div class="field"><label>Terms</label><input class="input" id="pl-terms" value="${esc(lay.terms||"")}" ${canEdit?"":"disabled"}></div>
+            <div class="field"><label>Paper width</label>
+              <select class="input" id="pl-width" ${canEdit?"":"disabled"}>
+                <option value="58" ${(Number(lay.paper_width_mm)===58)?"selected":""}>58 mm (thermal roll, 1 column)</option>
+                <option value="80" ${(Number(lay.paper_width_mm)!==58)?"selected":""}>80 mm (thermal roll)</option>
+              </select></div>
+            <div class="pl-grid">
+              <div class="field"><label>A4 columns</label><input class="input" id="pl-a4c" type="number" min="2" max="5" value="${esc(lay.a4_columns||3)}" ${canEdit?"":"disabled"}></div>
+              <div class="field"><label>A4 rows per page</label><input class="input" id="pl-a4r" type="number" min="4" max="50" value="${esc(lay.a4_rows_per_page||12)}" ${canEdit?"":"disabled"}></div>
+              <div class="field"><label>Thermal columns</label><input class="input" id="pl-tc" type="number" min="1" max="2" value="${esc(lay.thermal_columns||2)}" ${canEdit?"":"disabled"}></div>
+              <div class="field"><label>Thermal rows per strip</label><input class="input" id="pl-tr" type="number" min="4" max="40" value="${esc(lay.thermal_rows_per_strip||8)}" ${canEdit?"":"disabled"}></div>
+            </div>
+            <div class="field"><label>Show on voucher</label>
+              <label class="muted small"><input type="checkbox" id="pl-qr" ${lay.show_qr?"checked":""} ${canEdit?"":"disabled"}> QR</label>
+              <label class="muted small"><input type="checkbox" id="pl-price" ${lay.show_price?"checked":""} ${canEdit?"":"disabled"}> Price</label>
+              <label class="muted small"><input type="checkbox" id="pl-expiry" ${lay.show_expiry?"checked":""} ${canEdit?"":"disabled"}> Expiry</label></div>
+            ${canEdit ? `<button class="btn btn-primary" id="pl-save">Save layout</button>` : ""}
+            <span id="pl-msg" class="muted small"></span>
+          </div>
+          <div>
+            <div class="field"><label>Live preview</label>
+              <div style="display:flex;gap:6px;flex-wrap:wrap">
+                <button class="btn btn-sm" id="pl-mode-a4">A4 sheet</button>
+                <button class="btn btn-sm" id="pl-mode-thermal">Thermal strip</button>
+                <button class="btn btn-sm" id="pl-print">Print…</button>
+              </div></div>
+            <div class="sheet-stage"><div id="pl-stage"></div></div>
+            <p class="muted small pv-hint" id="pl-hint"></p>
+          </div>
+        </div>
       </div></div>
     <div id="vr-alert"></div>`;
 
@@ -2133,10 +2342,13 @@ async function renderVouchers(main) {
       const val = id => document.getElementById(id).value.trim();
       const num = id => parseInt(document.getElementById(id).value, 10);
       const msg = document.getElementById("pl-msg");
+      const width = num("pl-width") === 58 ? 58 : 80;
       const body = { business_name: val("pl-bname"), wifi_name: val("pl-wifi"),
                      support_contact: val("pl-support"), terms: val("pl-terms"),
-                     paper_width_mm: num("pl-width"), a4_columns: num("pl-a4c"),
-                     a4_rows_per_page: num("pl-a4r"), thermal_columns: num("pl-tc"),
+                     paper_width_mm: width, a4_columns: num("pl-a4c"),
+                     a4_rows_per_page: num("pl-a4r"),
+                     // 58 mm cannot fit two readable code tiles side by side.
+                     thermal_columns: width === 58 ? 1 : num("pl-tc"),
                      thermal_rows_per_strip: num("pl-tr"),
                      show_qr: document.getElementById("pl-qr").checked,
                      show_price: document.getElementById("pl-price").checked,
@@ -2149,6 +2361,11 @@ async function renderVouchers(main) {
       }
     });
   }
+
+  // The sheet preview is wired for EVERYONE, not only editors — a viewer still
+  // needs to see what the layout produces. It reads the form rather than the
+  // saved row, so it tracks unsaved edits live.
+  wirePrintPreview(main, list, canEdit);
 
   document.querySelectorAll("#content button[data-vrdel]").forEach(b =>
     b.addEventListener("click", async () => {
@@ -2278,6 +2495,85 @@ async function renderMagicCoins(main) {
   });
 }
 
+/* ---------- Portal branding editor + live preview ---------- */
+
+/** <input type="color"> only accepts #rrggbb, so a stored #rgb or a junk value
+ *  must fall back rather than render an unusable swatch. */
+function hexOr(v, fallback) {
+  const s = String(v == null ? "" : v).trim();
+  return /^#[0-9a-fA-F]{6}$/.test(s) ? s : fallback;
+}
+
+/** Mounts the editor against the REAL guest portal in an iframe. The frame is the
+ *  production page in preview mode, so what the operator sees is what guests get
+ *  — there is no second copy of the portal markup to drift out of date. */
+function wirePortalBranding(main, cfg, collect, plansTbl) {
+  const frame = main.querySelector("#pb-frame");
+  if (!frame) return;
+  const q = id => main.querySelector("#" + id);
+  const val = id => { const e = q(id); return e ? e.value.trim() : ""; };
+  const numOf = id => { const e = q(id); return e ? (parseInt(e.value, 10) || 0) : 0; };
+  let lang = "en";
+  const draft = () => ({
+    business_name: val("pb-name"), welcome_text: val("pb-welcome"), terms_text: val("pb-terms"),
+    primary_hex: val("pb-primary-hex"), glass_tint_hex: val("pb-tint-hex"),
+    bank_name: val("pb-bank-name"), bank_holder: val("pb-bank-holder"), bank_account: val("pb-bank-acc"),
+    mmqr_url: val("mmqr-url"), guest_grace_minutes: numOf("grace-min"),
+    guest_plans: (typeof collect === "function" ? collect() : ((cfg && cfg.guest_plans) || [])),
+  });
+  const push = () => {
+    if (!frame.contentWindow || !document.body.contains(frame)) return;
+    frame.contentWindow.postMessage({ type: "mm-portal-preview", config: draft(), lang }, location.origin);
+  };
+  // The frame announces when it is listening; a frame left over from a previous
+  // view is ignored so window-level listeners cannot accumulate across views.
+  window.addEventListener("message", ev => {
+    if (ev.origin !== location.origin || !ev.data) return;
+    if (ev.data.type !== "mm-portal-preview-ready") return;
+    if (!document.body.contains(frame)) return;
+    push();
+  });
+  ["pb-name","pb-welcome","pb-terms","pb-bank-name","pb-bank-holder","pb-bank-acc","mmqr-url","grace-min"]
+    .forEach(id => { const e = q(id); if (e) e.addEventListener("input", push); });
+  const syncColor = (pick, hex) => {
+    const p = q(pick), h = q(hex);
+    if (!p || !h) return;
+    p.addEventListener("input", () => { h.value = p.value; push(); });
+    h.addEventListener("input", () => { if (/^#[0-9a-fA-F]{6}$/.test(h.value.trim())) p.value = h.value.trim(); push(); });
+  };
+  syncColor("pb-primary", "pb-primary-hex");
+  syncColor("pb-tint", "pb-tint-hex");
+  if (plansTbl) plansTbl.addEventListener("input", push);
+  const myBtn = q("pb-lang-my"), enBtn = q("pb-lang-en");
+  if (myBtn) myBtn.addEventListener("click", () => { lang = "my"; push(); });
+  if (enBtn) enBtn.addEventListener("click", () => { lang = "en"; push(); });
+
+  const HEXISH = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
+  const saveBtn = q("pb-save");
+  if (saveBtn) saveBtn.addEventListener("click", async () => {
+    const m = q("pb-msg");
+    const d = draft();
+    if (!HEXISH.test(d.primary_hex)) { m.textContent = "Brand colour must be a hex colour like #ffb547."; return; }
+    if (!HEXISH.test(d.glass_tint_hex)) { m.textContent = "Accent tint must be a hex colour like #7ad0ff."; return; }
+    saveBtn.disabled = true; saveBtn.textContent = "…";
+    try {
+      // Branding fields ONLY. The endpoint merges now, so guest plans, the MMQR
+      // URL, the grace window and guest consent are left exactly as they are —
+      // previously an omitted field was erased by the full-replace upsert.
+      await MM.put("/portal/config", {
+        business_name: d.business_name, welcome_text: d.welcome_text, terms_text: d.terms_text,
+        primary_hex: d.primary_hex, glass_tint_hex: d.glass_tint_hex,
+        bank_name: d.bank_name, bank_holder: d.bank_holder, bank_account: d.bank_account,
+      });
+      m.textContent = "Saved.";
+      await loadView("portal", main, ME);
+    } catch (e) {
+      saveBtn.disabled = false; saveBtn.textContent = "Save branding";
+      m.textContent = "Save failed: " + ((e.data && (e.data.error || e.data.reason)) || e.message || "");
+    }
+  });
+}
+
 /* ---------- Captive portal ---------- */
 async function renderPortal(main) {
   let cfg = null, cfgErr = null;
@@ -2316,6 +2612,49 @@ async function renderPortal(main) {
   html += `<div style="margin-top:8px;display:flex;gap:8px"><button class="btn-sm" id="plan-add">+ Add plan</button>` +
     `<button class="btn-sm" id="plan-save">Save plans</button><span id="plan-msg" class="muted small"></span></div>`;
   html += `</div></div>`;
+
+  // Branding + live guest-portal preview. These fields were stored and accepted
+  // by the API but never surfaced anywhere in the console, so an owner could not
+  // set their own brand at all — and the portal never applied them anyway (it
+  // does now).
+  html += `<div class="panel" style="margin-top:14px"><div class="panel-head"><h2 class="panel-title">Portal branding &amp; live preview</h2></div><div class="panel-body">
+    <div class="pv-split">
+      <div>
+        <div class="field"><label>Business name shown to guests</label><input class="input" id="pb-name" value="${esc((cfg&&cfg.business_name)||"")}"></div>
+        <div class="field"><label>Welcome message</label><input class="input" id="pb-welcome" value="${esc((cfg&&cfg.welcome_text)||"")}" placeholder="Welcome! Fast internet for your stay."></div>
+        <div class="field"><label>Terms shown to guests</label><input class="input" id="pb-terms" value="${esc((cfg&&cfg.terms_text)||"")}" placeholder="One voucher = one device."></div>
+        <div class="pl-grid">
+          <div class="field"><label>Brand colour</label>
+            <div style="display:flex;gap:8px;align-items:center">
+              <input type="color" id="pb-primary" value="${esc(hexOr((cfg&&cfg.primary_hex), "#ffb547"))}">
+              <input class="input" id="pb-primary-hex" value="${esc((cfg&&cfg.primary_hex)||"#ffb547")}">
+            </div></div>
+          <div class="field"><label>Accent tint</label>
+            <div style="display:flex;gap:8px;align-items:center">
+              <input type="color" id="pb-tint" value="${esc(hexOr((cfg&&cfg.glass_tint_hex), "#7ad0ff"))}">
+              <input class="input" id="pb-tint-hex" value="${esc((cfg&&cfg.glass_tint_hex)||"#7ad0ff")}">
+            </div></div>
+        </div>
+        <div class="field"><label>Bank details shown on the pay screen</label>
+          <div class="pl-grid">
+            <input class="input" id="pb-bank-name" placeholder="Bank name" value="${esc((cfg&&cfg.bank_name)||"")}">
+            <input class="input" id="pb-bank-holder" placeholder="Account holder" value="${esc((cfg&&cfg.bank_holder)||"")}">
+            <input class="input" id="pb-bank-acc" placeholder="Account number" value="${esc((cfg&&cfg.bank_account)||"")}">
+          </div></div>
+        <button class="btn btn-primary" id="pb-save">Save branding</button>
+        <span id="pb-msg" class="muted small"></span>
+      </div>
+      <div>
+        <div class="field"><label>Guest portal preview <span class="muted small">(live, unsaved)</span></label>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-sm" id="pb-lang-my">မြန်မာ</button>
+            <button class="btn btn-sm" id="pb-lang-en">English</button>
+          </div></div>
+        <div class="pv-stage"><iframe class="pv-phone" id="pb-frame" src="/portal.html?preview=1" title="Guest portal preview"></iframe></div>
+        <p class="muted small pv-hint">The real guest portal rendering your values as you type. Its buttons are inert — nothing is submitted.</p>
+      </div>
+    </div>
+  </div></div>`;
 
   html += `<div class="panel" style="margin-top:14px"><div class="panel-head"><h2 class="panel-title">Guest purchase requests</h2></div><div class="panel-body">`;
   if (reqErr) html += `<p class="muted small">${esc(reqErr)}</p>`;
@@ -2363,6 +2702,9 @@ async function renderPortal(main) {
   const saveBtn = main.querySelector("#plan-save");
   if (saveBtn) saveBtn.addEventListener("click", save);
   plansTbl.querySelectorAll("button[data-act=del]").forEach(b => b.addEventListener("click", () => b.closest("tr").remove()));
+
+  // Branding editor + the REAL portal rendered live beside it.
+  wirePortalBranding(main, cfg, collect, plansTbl);
 }
 
 /* ---------- Security (C1 posture) ---------- */
