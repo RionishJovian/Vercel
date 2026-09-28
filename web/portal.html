@@ -6,27 +6,48 @@
 <title>Guest WiFi</title>
 <link rel="stylesheet" href="/assets/css/styles.css">
 <style>
-  body { background: #f7f3ea; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-  .guest { max-width: 520px; margin: 40px auto; background: #fff; border: 1px solid #e2dccf; border-radius: 12px; padding: 24px; }
-  .guest h1 { font-size: 22px; margin: 0 0 6px; }
-  .guest .biz { color: #5a6b73; margin: 0 0 18px; }
-  .steps { color: #8a8577; font-size: 13px; margin: 0 0 16px; }
+  /* Owner-set branding arrives as --brand / --tint (validated hex). Every other
+     value here is a fallback so the page is complete before the config lands. */
+  :root {
+    --brand: #0e5a5a;
+    --brand-ink: #fff;
+    --tint: #7ad0ff;
+    --bg: #f7f3ea;
+    --card: #fff;
+    --line: #e2dccf;
+    --muted: #5a6b73;
+    --faint: #8a8577;
+    --warn: #b45309;
+    --ok: #1e7d3e;
+  }
+  body { background: var(--bg); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  .guest { max-width: 520px; margin: 40px auto; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 24px; }
+  .guest h1 { font-size: 22px; margin: 0 0 6px; color: var(--brand); }
+  .guest .biz { color: var(--muted); margin: 0 0 6px; font-weight: 600; }
+  .welcome { color: var(--muted); margin: 0 0 18px; }
+  .steps { color: var(--faint); font-size: 13px; margin: 0 0 16px; }
   .plan { display: block; width: 100%; text-align: left; padding: 12px; margin: 0 0 8px;
-          background: #fff; border: 1px solid #e2dccf; border-radius: 8px; cursor: pointer; }
-  .plan .nm { font-weight: 600; } .plan .sub { color: #5a6b73; font-size: 13px; }
-  .btn { display: inline-block; background: #0e5a5a; color: #fff; border: 0; padding: 12px 18px;
+          background: var(--card); border: 1px solid var(--line); border-radius: 8px; cursor: pointer; }
+  .plan:hover { border-color: var(--brand); }
+  .plan .nm { font-weight: 600; } .plan .sub { color: var(--muted); font-size: 13px; }
+  .btn { display: inline-block; background: var(--brand); color: var(--brand-ink); border: 0; padding: 12px 18px;
          border-radius: 8px; font-size: 15px; cursor: pointer; }
   .btn:disabled { opacity: .5; }
   .qr { text-align: center; margin: 16px 0; }
-  .qr img { width: 200px; height: 200px; border: 1px solid #e2dccf; }
-  .qr .bank { color: #5a6b73; font-size: 14px; margin-top: 8px; }
-  .timer { font-family: ui-monospace, monospace; font-size: 26px; color: #b45309; text-align: center; margin: 10px 0; }
+  .qr img { width: 200px; height: 200px; border: 1px solid var(--line); }
+  .qr .bank { color: var(--muted); font-size: 14px; margin-top: 8px; }
+  .timer { font-family: ui-monospace, monospace; font-size: 26px; color: var(--warn); text-align: center; margin: 10px 0; }
   .form-row { margin: 0 0 12px; } .form-row label { display: block; font-size: 13px; margin: 0 0 4px; }
-  .form-row input { width: 100%; padding: 10px; border: 1px solid #e2dccf; border-radius: 6px; font-size: 15px; }
-  .msg { color: #b45309; margin: 12px 0; }
-  .ok { color: #1e7d3e; }
-  .lang { position: fixed; top: 10px; right: 14px; background: #fff; border: 1px solid #e2dccf;
-          border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: 13px; color: #0e5a5a; }
+  .form-row input { width: 100%; padding: 10px; border: 1px solid var(--line); border-radius: 6px; font-size: 15px; }
+  .msg { color: var(--warn); margin: 12px 0; }
+  .ok { color: var(--ok); }
+  .terms { color: var(--faint); font-size: 12px; margin: 18px 0 0; border-top: 1px solid var(--line); padding-top: 10px; }
+  .lang { position: fixed; top: 10px; right: 14px; background: var(--card); border: 1px solid var(--line);
+          border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: 13px; color: var(--brand); }
+  /* Preview chrome: makes it unmistakable that this is not a live hotspot, and
+     that its actions are inert. */
+  .pv-badge { position: fixed; top: 10px; left: 14px; background: var(--brand); color: var(--brand-ink);
+              border-radius: 6px; padding: 4px 10px; font-size: 12px; font-weight: 600; letter-spacing: .04em; }
 </style>
 </head>
 <body>
@@ -34,6 +55,18 @@
 <div class="guest" id="root"><div class="msg" id="load">…</div></div>
 <script>
 /* Guest captive portal — MMQR buy flow.
+
+   PREVIEW MODE (`?preview=1`) exists for the operator console's live preview:
+   the page renders a draft config pushed in by the parent frame over
+   postMessage and performs NO network calls of its own. Crucially its actions
+   are inert — clicking a plan must never create a real guest-purchase request,
+   which would otherwise pollute the owner's real queue with preview clicks.
+
+   Branding: primary_hex / glass_tint_hex come from the owner and are injected
+   into CSS custom properties. They are validated against a strict hex pattern
+   here as well as on the server, because this is a public page: it must not
+   assume the only way a value reached the database was the write path.
+
    i18n: default language is Burmese (my-MM); `en` is the fallback. `t(en,key)`
    returns the Burmese only when LANG==='my' AND the key is present/non-blank;
    otherwise the English passed in the call renders. Technical terms with no
@@ -43,8 +76,10 @@
    STATUS: token-level typos corrected (ဖုန်းနံပါတ်, အတည်ပြုပါ, မကြာမီ). Several
    strings remain FLAGGED FOR NATIVE REVIEW (marked inline); the malformed
    `waiting` string was removed so the safe English fallback renders instead. */
-var DEVICE = new URLSearchParams(location.search).get("deviceId") || "";
 var API = "/api/v1";
+var QS = new URLSearchParams(location.search);
+var DEVICE = QS.get("deviceId") || "";
+var PREVIEW = QS.get("preview") === "1";
 
 var LANG = (function () { try { return localStorage.getItem("mm_lang") || "my"; } catch (e) { return "my"; } })();
 var RERENDER = null;
@@ -92,6 +127,35 @@ function clientMac() {
   return "00:00:00:00:00:00";
 }
 
+/* --- branding ------------------------------------------------------------ */
+
+/** Only a literal hex colour may reach a stylesheet; anything else is dropped. */
+function safeHex(v, fallback) {
+  var s = String(v == null ? "" : v).trim();
+  return /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(s) ? s : fallback;
+}
+
+/** Pick a readable foreground for a brand background, so a light owner colour
+ *  does not end up as white-on-yellow. */
+function readableOn(hex) {
+  var h = hex.replace("#", "");
+  if (h.length === 3 || h.length === 4) { h = h[0]+h[0]+h[1]+h[1]+h[2]+h[2]; }
+  var r = parseInt(h.substring(0,2),16), g = parseInt(h.substring(2,4),16), b = parseInt(h.substring(4,6),16);
+  var lum = (0.299*r + 0.587*g + 0.114*b) / 255;
+  return lum > 0.62 ? "#111" : "#fff";
+}
+
+function applyBranding(cfg) {
+  var root = document.documentElement, s = root.style;
+  var brand = safeHex(cfg.primary_hex, "#0e5a5a");
+  var tint  = safeHex(cfg.glass_tint_hex, "#7ad0ff");
+  s.setProperty("--brand", brand);
+  s.setProperty("--brand-ink", readableOn(brand));
+  s.setProperty("--tint", tint);
+}
+
+/* --- data ---------------------------------------------------------------- */
+
 async function loadConfig() {
   var root = document.getElementById("root");
   try {
@@ -104,6 +168,7 @@ async function loadConfig() {
 }
 
 function renderPlans(cfg) {
+  applyBranding(cfg);
   RERENDER = function () { renderPlans(cfg); };
   var plans = cfg.guest_plans || [];
   var rows = plans.map(function (p) {
@@ -116,9 +181,12 @@ function renderPlans(cfg) {
   }).join("");
   document.getElementById("root").innerHTML =
     '<h1>' + t("Buy WiFi", "buy") + '</h1>' +
-    '<p class="biz">' + esc(cfg.business_name || "") + '</p>' +
+    (cfg.business_name ? '<p class="biz">' + esc(cfg.business_name) + '</p>' : '') +
+    (cfg.welcome_text ? '<p class="welcome">' + esc(cfg.welcome_text) + '</p>' : '') +
     '<p class="steps">' + t("1) Choose a plan · 2) Pay by MMQR (free trial) · 3) Enter phone + last 6 digits", "steps") + '</p>' +
-    '<h3>' + t("Choose a plan", "choose") + '</h3>' + rows;
+    '<h3>' + t("Choose a plan", "choose") + '</h3>' +
+    (rows || '<p class="msg">' + t("No plans are available yet.", "noPlans") + '</p>') +
+    (cfg.terms_text ? '<p class="terms">' + esc(cfg.terms_text) + '</p>' : '');
   document.querySelectorAll(".plan").forEach(function (b) {
     b.addEventListener("click", function () { buy(cfg, b.dataset.key); });
   });
@@ -126,6 +194,8 @@ function renderPlans(cfg) {
 
 async function buy(cfg, key) {
   var root = document.getElementById("root");
+  // Preview must not create real purchase requests on the owner's queue.
+  if (PREVIEW) { renderPay(cfg, "preview-request", new Date(Date.now() + 600000).toISOString()); return; }
   var fd = new FormData();
   fd.append("plan_key", key);
   fd.append("client_mac", clientMac());
@@ -140,6 +210,7 @@ async function buy(cfg, key) {
 }
 
 function renderPay(cfg, reqId, graceExp) {
+  applyBranding(cfg);
   RERENDER = function () { renderPay(cfg, reqId, graceExp); };
   var end = new Date(graceExp).getTime();
   document.getElementById("root").innerHTML =
@@ -155,13 +226,15 @@ function renderPay(cfg, reqId, graceExp) {
     '<div class="form-row"><label>' + t("Last 6 digits of the bank / transaction number", "last6") + '</label><input id="last6" inputmode="numeric" maxlength="6"></div>' +
     '<div class="form-row"><label>' + t("Receipt photo (optional)", "receipt") + '</label><input id="receipt" type="file" accept="image/*"></div>' +
     '<button class="btn" id="confirm">' + t("I have paid — verify", "verConfirm") + '</button>' +
-    '<p class="msg" id="msg"></p>';
+    '<p class="msg" id="msg"></p>' +
+    (cfg.terms_text ? '<p class="terms">' + esc(cfg.terms_text) + '</p>' : '');
   tickTimer(end);
   document.getElementById("confirm").addEventListener("click", function () { confirm(reqId); });
 }
 
 function tickTimer(end) {
   var timerEl = document.getElementById("timer");
+  if (!timerEl) return;
   var fn = function () {
     var diff = end - Date.now();
     if (diff <= 0) { timerEl.textContent = t("Trial expired", "expired"); return; }
@@ -179,6 +252,7 @@ async function confirm(reqId) {
     msg.textContent = t("Enter the phone and the 6-digit transaction number.", "inputErr");
     return;
   }
+  if (PREVIEW) { msg.textContent = t("Preview only — nothing was submitted.", "pvInert"); return; }
   var fd = new FormData();
   fd.append("paid_phone", phone);
   fd.append("tx_last6", last6);
@@ -197,7 +271,38 @@ async function confirm(reqId) {
   }
 }
 
-if (!DEVICE) {
+/* --- preview bridge ------------------------------------------------------ */
+
+// Same-origin only: a preview frame must not accept a config pushed by any
+// other page. The parent answers our "ready" ping so the first paint is never
+// lost to a race with its own load.
+function wirePreview() {
+  var badge = document.createElement("div");
+  badge.className = "pv-badge";
+  badge.textContent = "PREVIEW";
+  document.body.appendChild(badge);
+  document.getElementById("root").innerHTML =
+    '<p class="msg" id="load">' + t("Waiting for the console…", "pvWaiting") + '</p>';
+
+  window.addEventListener("message", function (ev) {
+    if (ev.origin !== location.origin) return;
+    var d = ev.data;
+    if (!d || d.type !== "mm-portal-preview" || !d.config) return;
+    if (d.lang === "my" || d.lang === "en") { LANG = d.lang; applyLang(); }
+    renderPlans(d.config);
+  });
+  if (window.parent && window.parent !== window) {
+    window.parent.postMessage({ type: "mm-portal-preview-ready" }, location.origin);
+  }
+}
+
+if (PREVIEW) {
+  applyLang();
+  var langElPv = document.getElementById("lang");
+  langElPv.addEventListener("click", toggleLang);
+  langElPv.style.display = "none";   // language is driven by the console in preview
+  wirePreview();
+} else if (!DEVICE) {
   document.getElementById("root").innerHTML = '<p class="msg">' + t("Missing deviceId in the URL.", "missingDevice") + '</p>';
 } else {
   applyLang();
