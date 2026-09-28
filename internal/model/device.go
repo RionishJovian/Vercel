@@ -182,6 +182,32 @@ type PortalConfig struct {
 	UpdatedAt         time.Time   `json:"updated_at"`
 }
 
+// IsHexColor reports whether s is a literal CSS hex colour — `#rgb`, `#rgba`,
+// `#rrggbb` or `#rrggbbaa`.
+//
+// Owner-supplied brand colours are interpolated straight into the GUEST page's
+// stylesheet, so this refuses anything that is not a plain hex literal rather
+// than trying to escape it: a colour value is never a legitimate place for
+// arbitrary CSS. The guest portal sanitises independently, because a public page
+// must not assume the write path was the only way a value got there.
+func IsHexColor(s string) bool {
+	switch len(s) {
+	case 4, 5, 7, 9: // #rgb, #rgba, #rrggbb, #rrggbbaa
+	default:
+		return false
+	}
+	if s[0] != '#' {
+		return false
+	}
+	for _, r := range s[1:] {
+		ok := (r >= '0' && r <= '9') || (r >= 'a' && r <= 'f') || (r >= 'A' && r <= 'F')
+		if !ok {
+			return false
+		}
+	}
+	return true
+}
+
 // GuestPlan is one wifi data plan the owner sets on the portal for guests to
 // buy via online banking. Approved requests grant `minutes` of data use and,
 // when DataMB > 0, a data allowance. DataMB is the plan's data limit in

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"database/sql"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -281,7 +282,7 @@ func (h *PortalHandler) StaffUpdateConfig(c *gin.Context) {
 	}
 
 	var req struct {
-		BusinessName    string             `json:"business_name" binding:"required"`
+		BusinessName    *string            `json:"business_name"`
 		WelcomeText     *string            `json:"welcome_text"`
 		TermsText       *string            `json:"terms_text"`
 		PrimaryHex      *string            `json:"primary_hex"`
@@ -290,6 +291,9 @@ func (h *PortalHandler) StaffUpdateConfig(c *gin.Context) {
 		ConsentText     *string            `json:"consent_text"`
 		GraceMinutes    *int               `json:"guest_grace_minutes"`
 		MMQRURL         *string            `json:"mmqr_url"`
+		BankName        *string            `json:"bank_name"`
+		BankAccount     *string            `json:"bank_account"`
+		BankHolder      *string            `json:"bank_holder"`
 		GuestPlans      *[]model.GuestPlan `json:"guest_plans"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -297,33 +301,17 @@ func (h *PortalHandler) StaffUpdateConfig(c *gin.Context) {
 		return
 	}
 
-	cfg := &model.PortalConfig{
-		BusinessID:   businessID,
-		BusinessName: req.BusinessName,
+	// Brand colours are owner-supplied strings that end up in the GUEST page's
+	// CSS. Reject anything that is not a literal hex colour before it can reach
+	// a stylesheet — the client sanitises too, but a public page must not depend
+	// on the client having done so.
+	if req.PrimaryHex != nil && !model.IsHexColor(*req.PrimaryHex) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "primary_hex must be a hex colour like #ffb547"})
+		return
 	}
-	if req.WelcomeText != nil {
-		cfg.WelcomeText = *req.WelcomeText
-	}
-	if req.TermsText != nil {
-		cfg.TermsText = *req.TermsText
-	}
-	if req.PrimaryHex != nil {
-		cfg.PrimaryHex = *req.PrimaryHex
-	}
-	if req.GlassTintHex != nil {
-		cfg.GlassTintHex = *req.GlassTintHex
-	}
-	if req.MMQRURL != nil {
-		cfg.MMQRURL = *req.MMQRURL
-	}
-	if req.GraceMinutes != nil {
-		cfg.GuestGraceMinutes = *req.GraceMinutes
-	}
-	if req.ConsentRequired != nil {
-		cfg.ConsentRequired = *req.ConsentRequired
-	}
-	if req.ConsentText != nil {
-		cfg.ConsentText = *req.ConsentText
+	if req.GlassTintHex != nil && !model.IsHexColor(*req.GlassTintHex) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "glass_tint_hex must be a hex colour like #7ad0ff"})
+		return
 	}
 	if req.GuestPlans != nil {
 		// Fail closed on malformed plans: each must be non-empty-ready
@@ -340,16 +328,83 @@ func (h *PortalHandler) StaffUpdateConfig(c *gin.Context) {
 				return
 			}
 		}
-		cfg.GuestPlans = *req.GuestPlans
 	}
 
+	// Read-modify-write, NOT replace. The upsert writes every column, so a body
+	// that omits a field would otherwise erase it: owners lost their bank details
+	// and consent flag simply by saving an unrelated change. Load the row, apply
+	// only the fields actually supplied, then persist the merged result.
+	var merged *model.PortalConfig
 	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
-		return h.configRepo.UpsertTXN(tx, cfg)
+		existing, e := h.configRepo.GetByBusinessTXN(tx, businessID)
+		if e != nil {
+			return e
+		}
+		if existing == nil {
+			existing = &model.PortalConfig{BusinessID: businessID}
+		}
+		if req.BusinessName != nil {
+			existing.BusinessName = strings.TrimSpace(*req.BusinessName)
+		}
+		if req.WelcomeText != nil {
+			existing.WelcomeText = *req.WelcomeText
+		}
+		if req.TermsText != nil {
+			existing.TermsText = *req.TermsText
+		}
+		if req.PrimaryHex != nil {
+			existing.PrimaryHex = *req.PrimaryHex
+		}
+		if req.GlassTintHex != nil {
+			existing.GlassTintHex = *req.GlassTintHex
+		}
+		if req.MMQRURL != nil {
+			existing.MMQRURL = *req.MMQRURL
+		}
+		if req.BankName != nil {
+			existing.BankName = *req.BankName
+		}
+		if req.BankAccount != nil {
+			existing.BankAccount = *req.BankAccount
+		}
+		if req.BankHolder != nil {
+			existing.BankHolder = *req.BankHolder
+		}
+		if req.GraceMinutes != nil {
+			existing.GuestGraceMinutes = *req.GraceMinutes
+		}
+		if req.ConsentRequired != nil {
+			existing.ConsentRequired = *req.ConsentRequired
+		}
+		if req.ConsentText != nil {
+			existing.ConsentText = *req.ConsentText
+		}
+		if req.GuestPlans != nil {
+			existing.GuestPlans = *req.GuestPlans
+		}
+		// A portal with no business name renders a nameless guest page, so this
+		// stays required — it just may arrive from the stored row instead.
+		if strings.TrimSpace(existing.BusinessName) == "" {
+			return errBusinessNameRequired
+		}
+		if e := h.configRepo.UpsertTXN(tx, existing); e != nil {
+			return e
+		}
+		merged = existing
+		return nil
 	})
 	if err != nil {
+		if errors.Is(err, errBusinessNameRequired) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "business_name is required"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update portal config"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"status": "ok", "config": cfg})
+	c.JSON(http.StatusOK, gin.H{"status": "ok", "config": merged})
 }
+
+// errBusinessNameRequired marks the empty-name case so it can answer 400 rather
+// than 500 without aborting the transaction from inside the closure.
+var errBusinessNameRequired = errors.New("business_name is required")
