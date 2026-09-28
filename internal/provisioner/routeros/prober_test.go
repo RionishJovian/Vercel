@@ -3,6 +3,7 @@ package routeros
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -108,5 +109,70 @@ func TestParseHelpers(t *testing.T) {
 	}
 	if got := pingSummary(pingFail); got == "" {
 		t.Fatal("pingSummary should return the sent= line")
+	}
+}
+
+// goldenSystemResourcePrint is the VERBATIM output of `/system/resource print`
+// captured from a real RouterOS 7.15.3 (CHR, x86_64). It guards two bugs that
+// only a real device exposed:
+//
+//  1. The command must have NO arguments. `/system/resource` is a SINGLETON
+//     menu and rejects `value-list`; the old command
+//     (`/system/resource print value-list detail`) returned "expected end of
+//     command" against every real router, so version capture could never have
+//     worked outside a test double that answered the invalid command.
+//  2. There is no `channel` field — the channel is the parenthesised suffix of
+//     `version`.
+//
+// board-name's value contains BOTH a colon and parentheses, and build-time's
+// value contains colons, so this also proves the parser splits on the FIRST
+// colon and is not confused by parens elsewhere in the block.
+const goldenSystemResourcePrint = `                   uptime: 7m54s
+                  version: 7.15.3 (stable)
+               build-time: 2024-07-24 10:39:01
+         factory-software: 7.1
+              free-memory: 307.9MiB
+             total-memory: 512.0MiB
+                      cpu: Intel
+                cpu-count: 4
+                 cpu-load: 1%
+        architecture-name: x86_64
+               board-name: CHR QEMU Standard PC (i440FX + PIIX, 1996)
+                 platform: MikroTik
+`
+
+func TestParseSystemResourceGolden(t *testing.T) {
+	// CRLF, exactly as it arrives over SSH.
+	out := strings.ReplaceAll(goldenSystemResourcePrint, "\n", "\r\n")
+	v, ch := parseSystemResource(out)
+	if v != "7.15.3" {
+		t.Errorf("version = %q, want 7.15.3", v)
+	}
+	if ch != "stable" {
+		t.Errorf("channel = %q, want stable", ch)
+	}
+}
+
+// The command text is load-bearing: adding an argument breaks it on every real
+// router. Pin it so a future "improvement" cannot silently re-break it.
+func TestSystemResourceCommandHasNoArguments(t *testing.T) {
+	if SystemResourceCommand != "/system/resource print" {
+		t.Fatalf("SystemResourceCommand = %q — /system resource is a singleton menu and rejects print arguments", SystemResourceCommand)
+	}
+}
+
+func TestParseSystemResourceEdgeCases(t *testing.T) {
+	// A version with no parenthesised suffix must still yield the version and
+	// an empty channel rather than a mangled value.
+	if v, ch := parseSystemResource("version: 7.15.3\n"); v != "7.15.3" || ch != "" {
+		t.Fatalf("no-channel: got version=%q channel=%q", v, ch)
+	}
+	// No version at all → both empty, which callers treat as "no observation".
+	if v, ch := parseSystemResource("uptime: 1s\n"); v != "" || ch != "" {
+		t.Fatalf("absent version should be empty, got %q/%q", v, ch)
+	}
+	// Trailing spaces inside the suffix.
+	if v, ch := parseSystemResource("version: 7.16 (long-term) \n"); v != "7.16" || ch != "long-term" {
+		t.Fatalf("suffixed: got version=%q channel=%q", v, ch)
 	}
 }

@@ -140,12 +140,14 @@ func (p *Prober) ObserveVersion(ctx context.Context, _ string) (version, channel
 	if p.run == nil {
 		return "", "", fmt.Errorf("routeros: nil command runner")
 	}
-	out, err := p.run.Run(ctx, "/system/resource print value-list detail")
+	out, err := p.run.Run(ctx, SystemResourceCommand)
 	if err != nil {
 		return "", "", fmt.Errorf("routeros: probe version: %w", err)
 	}
-	kv := parseValueList(out)
-	return strings.TrimSpace(kv["version"]), strings.TrimSpace(kv["channel"]), nil
+	// RouterOS has no separate `channel` field; it rides in the parenthesised
+	// suffix of `version` ("7.15.3 (stable)"). See parseSystemResource.
+	version, channel = parseSystemResource(out)
+	return version, channel, nil
 }
 
 // parseUptimeSeconds converts a RouterOS uptime duration ("1h", "2h30m", "45s")

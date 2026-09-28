@@ -5,9 +5,13 @@ import (
 	"strings"
 )
 
-// parseValueList turns RouterOS `print value-list detail` output into a map of
-// trimmed "field: value" pairs (last occurrence wins). Lines without a colon are
-// ignored, as are blank keys.
+// parseValueList turns RouterOS "field: value" output into a map of trimmed
+// pairs (last occurrence wins). Lines without a colon are ignored, as are blank
+// keys.
+//
+// It is fed by two different command shapes, and both produce this format:
+//   - `print value-list detail` on LIST menus (/interface, /ip hotspot user)
+//   - plain `print` on SINGLETON menus (/system resource)
 func parseValueList(out string) map[string]string {
 	m := map[string]string{}
 	for _, line := range strings.Split(out, "\n") {
@@ -23,6 +27,35 @@ func parseValueList(out string) map[string]string {
 		m[k] = v
 	}
 	return m
+}
+
+// SystemResourceCommand reads the router's identity/version block.
+//
+// ⚠️ It must be EXACTLY this, with NO arguments. `/system resource` is a
+// SINGLETON menu: unlike `/interface print`, it REJECTS `value-list` (and even
+// `detail`) with "expected end of command". Verified against real RouterOS
+// 7.15.3 — the previous `/system/resource print value-list detail` failed on
+// every real device, so version capture could never have worked outside a test
+// double that answered the invalid command.
+const SystemResourceCommand = "/system/resource print"
+
+// parseSystemResource extracts (version, channel) from `SystemResourceCommand`
+// output.
+//
+// RouterOS renders BOTH in ONE field — "version: 7.15.3 (stable)" — and exposes
+// no separate `channel` property. The channel is the parenthesised suffix, so
+// splitting it out is the only way to report it.
+func parseSystemResource(out string) (version, channel string) {
+	raw := strings.TrimSpace(parseValueList(out)["version"])
+	if raw == "" {
+		return "", ""
+	}
+	if i := strings.IndexByte(raw, '('); i >= 0 {
+		version = strings.TrimSpace(raw[:i])
+		channel = strings.TrimSpace(strings.Trim(raw[i+1:], ") 	"))
+		return version, channel
+	}
+	return raw, ""
 }
 
 // atoiOr parses an int, returning def for empty/garbage input.

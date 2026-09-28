@@ -62,14 +62,27 @@ type addrEchoRunner struct {
 	err  error
 }
 
+// Run returns output shaped EXACTLY like real RouterOS `/system/resource print`
+// (captured from RouterOS 7.15.3). Two details matter and both were previously
+// wrong in this fixture:
+//
+//  1. Real output is COLON-separated, not "key=value".
+//  2. There is NO `channel:` field. The channel is the parenthesised suffix of
+//     `version`, so the per-peer marker has to ride there — which also proves
+//     the channel is extracted from the right place.
 func (r *addrEchoRunner) Run(_ context.Context, _ string) (string, error) {
 	if r.err != nil {
 		return "", r.err
 	}
-	// Mimic RouterOS "print value-list": COLON-separated key/value lines.
-	// (My first attempt used "=", which parseValueList does not split on — the
-	// fixture was wrong, not the parser.)
-	return fmt.Sprintf("version: 7.%s\nchannel: stable\n", r.addr), nil
+	return fmt.Sprintf(`                   uptime: 9m1s
+                  version: 7.15.3 (stable-%s)
+               build-time: 2024-07-24 10:39:01
+         factory-software: 7.1
+              free-memory: 307.9MiB
+            architecture-name: x86_64
+               board-name: CHR QEMU Standard PC
+                 platform: MikroTik
+`, r.addr), nil
 }
 
 // recordingFactory records every config handed to it.
@@ -120,23 +133,31 @@ func TestObserveVersionRoutesPerPeer(t *testing.T) {
 	rf := &recordingFactory{}
 	p := NewDeviceProber(src, time.Second, rf.build)
 
-	vA, _, err := p.ObserveVersion(context.Background(), "biz-1", "dev-A")
+	vA, cA, err := p.ObserveVersion(context.Background(), "biz-1", "dev-A")
 	if err != nil {
 		t.Fatalf("dev-A: %v", err)
 	}
-	vB, _, err := p.ObserveVersion(context.Background(), "biz-1", "dev-B")
+	vB, cB, err := p.ObserveVersion(context.Background(), "biz-1", "dev-B")
 	if err != nil {
 		t.Fatalf("dev-B: %v", err)
 	}
 
-	if !strings.Contains(vA, "10.0.0.1:22") {
-		t.Errorf("dev-A read through the wrong transport: %q", vA)
+	// The version is identical on both (same image); the per-peer marker rides
+	// in the channel suffix, so that is what proves WHICH transport answered.
+	// See addrEchoRunner.
+	if !strings.Contains(cA, "10.0.0.1:22") {
+		t.Errorf("dev-A read through the wrong transport: version=%q channel=%q", vA, cA)
 	}
-	if !strings.Contains(vB, "10.0.0.2:22") {
-		t.Errorf("dev-B read through the wrong transport: %q", vB)
+	if !strings.Contains(cB, "10.0.0.2:22") {
+		t.Errorf("dev-B read through the wrong transport: version=%q channel=%q", vB, cB)
 	}
-	if vA == vB {
+	if cA == cB {
 		t.Fatal("two devices produced identical results — the transport is being shared")
+	}
+	// The version must be split cleanly away from the channel suffix, so the
+	// classifier never sees "7.15.3 (stable-10.0.0.1:22)".
+	if vA != "7.15.3" || vB != "7.15.3" {
+		t.Errorf("version not split from the channel suffix: %q / %q", vA, vB)
 	}
 	if got := rf.count(); got != 2 {
 		t.Errorf("expected one transport per peer (2), built %d", got)
@@ -154,16 +175,16 @@ func TestObserveVersionIsTenantScoped(t *testing.T) {
 	rf := &recordingFactory{}
 	p := NewDeviceProber(src, time.Second, rf.build)
 
-	a, _, err := p.ObserveVersion(context.Background(), "biz-1", "shared-id")
+	a, ca, err := p.ObserveVersion(context.Background(), "biz-1", "shared-id")
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, _, err := p.ObserveVersion(context.Background(), "biz-2", "shared-id")
+	b, cb, err := p.ObserveVersion(context.Background(), "biz-2", "shared-id")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(a, "10.10.0.1") || !strings.Contains(b, "10.20.0.1") {
-		t.Fatalf("tenant scoping lost: biz-1=%q biz-2=%q", a, b)
+	if !strings.Contains(ca, "10.10.0.1") || !strings.Contains(cb, "10.20.0.1") {
+		t.Fatalf("tenant scoping lost: biz-1=%q/%q biz-2=%q/%q", a, ca, b, cb)
 	}
 }
 
@@ -247,14 +268,15 @@ func TestConcurrentPeersStayIsolated(t *testing.T) {
 
 	var wg sync.WaitGroup
 	got := make([]string, n)
+	chans := make([]string, n)
 	errs := make([]error, n)
 	for i := 0; i < n; i++ {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
 			id := fmt.Sprintf("dev-%02d", i)
-			v, _, err := p.ObserveVersion(context.Background(), "biz-1", id)
-			got[i], errs[i] = v, err
+			v, c, err := p.ObserveVersion(context.Background(), "biz-1", id)
+			got[i], chans[i], errs[i] = v, c, err
 		}(i)
 	}
 	wg.Wait()
@@ -264,8 +286,8 @@ func TestConcurrentPeersStayIsolated(t *testing.T) {
 			t.Fatalf("peer %d: %v", i, errs[i])
 		}
 		id := fmt.Sprintf("dev-%02d", i)
-		if !strings.Contains(got[i], want[id]) {
-			t.Errorf("peer %s read through %q, want its own %q", id, got[i], want[id])
+		if !strings.Contains(chans[i], want[id]) {
+			t.Errorf("peer %s read through %q (version %q), want its own %q", id, chans[i], got[i], want[id])
 		}
 	}
 }

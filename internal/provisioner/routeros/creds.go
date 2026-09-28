@@ -186,12 +186,14 @@ func (p *DeviceProber) ObserveVersion(ctx context.Context, businessID, peerID st
 		// "unconfigured" (ErrNoTarget) from "unreachable".
 		return "", "", err
 	}
-	out, err := runner.Run(ctx, "/system/resource print value-list detail")
+	out, err := runner.Run(ctx, SystemResourceCommand)
 	if err != nil {
 		return "", "", fmt.Errorf("routeros: probe version for %s: %w", peerID, err)
 	}
-	kv := parseValueList(out)
-	return strings.TrimSpace(kv["version"]), strings.TrimSpace(kv["channel"]), nil
+	// The channel is not a separate field on real RouterOS — it is the
+	// parenthesised suffix of `version`. See parseSystemResource.
+	version, channel = parseSystemResource(out)
+	return version, channel, nil
 }
 
 // JoinHostPort builds the SSH address from a stored management address and port.
