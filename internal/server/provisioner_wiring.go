@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -35,6 +36,15 @@ func shouldEnableLiveApplier(flagEnabled bool, applier provisioner.Applier, prob
 // consumer. Any error fails server startup loudly — a mis-config must never
 // silently look "enabled".
 func startLiveApplier(cfg *config.Config, client *messaging.Client, sugar *zap.SugaredLogger, monitor *monitoring.MonitoringService, db *database.DB, backup *handler.BackupHandler, incidentAction *handler.IncidentActionHandler) error {
+	// Security-posture capture is wired FIRST, on its OWN flag. It never writes to
+	// a router, so it must not sit behind applier.enabled — that flag turns on
+	// live router WRITES and the single-host live applier they require (which
+	// fails server startup when misconfigured). Gating a read-only monitoring
+	// feature behind a write-capable one made it impossible to enable safely.
+	if err := wirePostureCapture(cfg, sugar, monitor, db); err != nil {
+		return err
+	}
+
 	appCfg := cfg.Provisioner.Applier
 	if !appCfg.Enabled {
 		sugar.Info("live applier disabled — recovery ladder stays plan-only")
@@ -50,29 +60,6 @@ func startLiveApplier(cfg *config.Config, client *messaging.Client, sugar *zap.S
 	}
 
 	svc := provisioner.NewApplyService(applier, prober)
-
-	// Security-posture capture (C1): wire a PER-PEER observer into the
-	// peer-evaluation path (best-effort, fail-soft).
-	//
-	// This deliberately does NOT reuse `prober`. That one is bound to a single
-	// configured host, while the fleet sweep evaluates every peer in every
-	// tenant — reusing it would write one router's version + posture onto every
-	// device in the fleet. The type system now prevents that mistake: Prober's
-	// ObserveVersion no longer satisfies monitoring.VersionObserver, so this
-	// line would not compile if it were reintroduced.
-	if monitor != nil && db != nil {
-		box, err := secretbox.New(appCfg.CredentialKey)
-		if err != nil {
-			// Not fatal: the applier is an independent concern. Fleet posture
-			// capture stays OFF, and says so rather than silently doing nothing.
-			sugar.Warnf("security-posture capture OFF: %v (set provisioner.applier.credential_key to enable)", err)
-		} else {
-			src := database.NewDeviceCredentialSource(db, box)
-			deviceProber := routeros.NewDeviceProber(src, appCfg.Timeout, nil)
-			monitor.WithVersionCapture(db, database.NewDeviceRepository(db), deviceProber)
-			sugar.Info("security-posture capture wired (per-device transport)")
-		}
-	}
 
 	// C2: attach the live applier + OTP verifier to the backup/restore handler so
 	// capture/restore stop failing closed. Same flag gates both.
@@ -134,5 +121,54 @@ func startLiveApplier(cfg *config.Config, client *messaging.Client, sugar *zap.S
 		sugar.Warn("Telegram approval bridge not configured (no bot messenger) — approval requests will time out and DENY")
 	}
 
+	return nil
+}
+
+// wirePostureCapture wires the fleet's per-device RouterOS version observer.
+//
+// READ-ONLY with respect to routers — it only reads a version over SSH — which is
+// exactly why it is gated by its own flag (provisioner.posture_capture.enabled)
+// and not by applier.enabled.
+//
+// An EXPLICIT enable that cannot work is a startup ERROR. The previous code
+// warned and continued, which was only tolerable while capture was an accidental
+// side effect of the applier flag. Once an operator asks for capture by name,
+// capturing nothing while reporting success is precisely the "looks enabled but
+// isn't" failure this codebase refuses everywhere else.
+func wirePostureCapture(cfg *config.Config, sugar *zap.SugaredLogger, monitor *monitoring.MonitoringService, db *database.DB) error {
+	c := cfg.Provisioner.PostureCapture
+	if !c.Enabled {
+		sugar.Info("security-posture capture disabled — device versions stay unknown")
+		return nil
+	}
+	if monitor == nil || db == nil {
+		return errors.New("security-posture capture: enabled but the monitoring service or database is unavailable")
+	}
+
+	// The key originally lived under the applier; that location is still read so
+	// an existing deployment does not have to be migrated.
+	key := c.CredentialKey
+	if key == "" {
+		key = cfg.Provisioner.Applier.CredentialKey
+	}
+	box, err := secretbox.New(key)
+	if err != nil {
+		return fmt.Errorf("security-posture capture: %w (set provisioner.posture_capture.credential_key)", err)
+	}
+
+	timeout := c.Timeout
+	if timeout <= 0 {
+		timeout = 10 * time.Second
+	}
+
+	// A PER-DEVICE prober, deliberately NOT the single-host `prober` built above
+	// for the applier: the fleet sweep evaluates every peer in every tenant, so a
+	// single-host observer would stamp one router's version onto every device in
+	// the fleet. The type system enforces this — Prober's ObserveVersion does not
+	// satisfy monitoring.VersionObserver, so that mistake will not compile.
+	src := database.NewDeviceCredentialSource(db, box)
+	deviceProber := routeros.NewDeviceProber(src, timeout, nil)
+	monitor.WithVersionCapture(db, database.NewDeviceRepository(db), deviceProber)
+	sugar.Info("security-posture capture wired (per-device transport)")
 	return nil
 }

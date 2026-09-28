@@ -210,6 +210,33 @@ type RecoveryConfig struct {
 // ProvisionerConfig configures the real provisioner apply path.
 type ProvisionerConfig struct {
 	Applier ApplierConfig `mapstructure:"applier"`
+
+	// PostureCapture gates the READ-ONLY security-posture capture separately
+	// from Applier. See PostureCaptureConfig for why they are not one flag.
+	PostureCapture PostureCaptureConfig `mapstructure:"posture_capture"`
+}
+
+// PostureCaptureConfig configures fleet-wide RouterOS version + security-posture
+// capture.
+//
+// WHY THIS IS NOT PART OF ApplierConfig: capture never writes to a router — it
+// reads one version over SSH. Gating it behind `applier.enabled` meant a
+// read-only monitoring feature could not be switched on without also switching
+// on live router WRITES (and the single-host live applier that those require,
+// which fails server startup when misconfigured). A read-only feature must not
+// be hostage to a write-capable one, so it has its own flag.
+type PostureCaptureConfig struct {
+	// Enabled turns on best-effort version capture on the peer-evaluation path.
+	Enabled bool `mapstructure:"enabled"`
+
+	// CredentialKey unlocks the per-device SSH secrets stored on `devices`.
+	// EMPTY falls back to applier.credential_key (the original location) so an
+	// already-configured deployment keeps working.
+	CredentialKey string `mapstructure:"credential_key"`
+
+	// Timeout bounds ONE device's version read. The fleet sweep is serial, so
+	// this is also the worst-case per-device stall.
+	Timeout time.Duration `mapstructure:"timeout"`
 }
 
 // ApplierConfig configures the REAL SSH + RouterOS Applier/Prober. It is
@@ -389,6 +416,12 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("provisioner.applier.reset_hold", "30s")
 	v.SetDefault("provisioner.applier.t_down", "180s")
 	v.SetDefault("provisioner.applier.otp_secret", "")
+
+	// Security-posture capture: READ-ONLY w.r.t. routers, so it has its own flag
+	// rather than riding on applier.enabled (which enables live router writes).
+	// OFF by default for the same reason: never capture until asked.
+	v.SetDefault("provisioner.posture_capture.enabled", false)
+	v.SetDefault("provisioner.posture_capture.timeout", "10s")
 	v.SetDefault("provisioner.applier.otp_digits", 6)
 	v.SetDefault("provisioner.applier.otp_step", "30s")
 	v.SetDefault("provisioner.applier.otp_skew", 1)
