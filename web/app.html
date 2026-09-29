@@ -221,26 +221,32 @@
       <div class="rail-section">Operations</div>
       <button class="nav-item" data-view="overview" aria-current="page">Overview</button>
       <button class="nav-item" data-view="fleet">Fleet health</button>
-      <button class="nav-item" data-view="sites">Sites</button>
       <button class="nav-item" data-view="topology">Topology</button>
       <button class="nav-item" data-view="incidents">Incidents</button>
+      <button class="nav-item" data-view="sites">Sites &amp; routers</button>
+      <div class="rail-section">Automation</div>
       <button class="nav-item" data-view="security">Security</button>
       <button class="nav-item" data-view="backups">Backups</button>
-      <button class="nav-item" data-view="events">Event log</button>
+      <button class="nav-item" data-view="scans">Fleet scans</button>
       <button class="nav-item" data-view="templates">Templates</button>
       <button class="nav-item" data-view="termlog">Terminal log</button>
-      <button class="nav-item" data-view="scans">Fleet scans</button>
-      <button class="nav-item" data-view="aiusage">AI usage</button>
-      <button class="nav-item" data-view="i18n">Translations</button>
-      <div class="rail-section">Account</div>
+      <div class="rail-section">Business</div>
+      <button class="nav-item" data-view="portal">Captive portal</button>
       <button class="nav-item" data-view="vouchers">Vouchers</button>
       <button class="nav-item" data-view="coins">Magic Coins</button>
       <button class="nav-item" data-view="unlockkeys">Unlock keys</button>
-      <button class="nav-item" data-view="portal">Captive portal</button>
       <button class="nav-item" data-view="team">Team</button>
+      <div class="rail-section">Audit</div>
+      <button class="nav-item" data-view="events">Event log</button>
+      <button class="nav-item" data-view="aiusage">AI usage</button>
+      <button class="nav-item" data-view="i18n">Translations</button>
       <div class="rail-section">Operator</div>
       <button class="nav-item" data-view="platform" id="nav-platform" hidden>Platform</button>
       <div style="flex:1"></div>
+      <div class="rail-profile">
+        <div class="rail-profile-name" id="rail-user-name">—</div>
+        <div class="rail-profile-role" id="rail-user-role">—</div>
+      </div>
       <button class="nav-item" id="signout">Sign out</button>
     </div>
   </nav>
@@ -252,32 +258,32 @@
 
 <script>
 const VIEWS = {
-  overview: { title: "Overview", lead: "How the fleet is doing, at a glance." },
-  fleet:    { title: "Fleet health", lead: "Every peer and its tunnel state." },
-  sites:    { title: "Sites", lead: "Routers and gateways by layer." },
-  topology: { title: "Topology", lead: "The live network map." },
-  incidents:{ title: "Incidents", lead: "Problems detected across the fleet." },
-  security: { title: "Security", lead: "RouterOS version posture — affected vs safe." },
-  backups:  { title: "Backups", lead: "Config snapshots, change history and one-click restore." },
-  events:   { title: "Event log", lead: "Router syslog, newest first." },
-  templates:{ title: "Templates", lead: "Saved RouterOS REST calls for the terminal." },
-  termlog:  { title: "Terminal log", lead: "Commands run against your routers, with credentials redacted." },
-  scans:    { title: "Fleet scans", lead: "Automatic fleet scans, newest first." },
-  aiusage:  { title: "AI usage", lead: "Every AI call, with token cost." },
-  i18n:     { title: "Translations", lead: "UI string overrides. Platform-wide — shared by every business." },
-  vouchers: { title: "Vouchers", lead: "Credit codes for the captive portal." },
-  coins:    { title: "Magic Coins", lead: "Balance and the immutable ledger behind it." },
-  unlockkeys:{ title: "Unlock keys", lead: "Keys bought with Magic Coins, and what they unlocked." },
-  portal:   { title: "Captive portal", lead: "Guest Wi-Fi config and requests." },
-  team:     { title: "Team", lead: "Who can access this business, and with which role." },
-  platform: { title: "Platform", lead: "Cross-tenant operator view — every business, one lens." },
+  overview: { title: "Overview", lead: "Fleet status, active incidents, and network shape." },
+  fleet:    { title: "Fleet health", lead: "Current WireGuard state for every managed peer." },
+  sites:    { title: "Sites & routers", lead: "Physical locations, router access, and maintenance requests." },
+  topology: { title: "Topology", lead: "Live relationships between the hub, sites, and peers." },
+  incidents:{ title: "Incidents", lead: "Detected problems, recommended actions, and resolution state." },
+  security: { title: "Security", lead: "RouterOS exposure and version posture across the fleet." },
+  backups:  { title: "Backups", lead: "Configuration snapshots, verified change history, and restore controls." },
+  events:   { title: "Event log", lead: "Router syslog and operational events, newest first." },
+  templates:{ title: "Templates", lead: "Reusable RouterOS requests for controlled terminal work." },
+  termlog:  { title: "Terminal log", lead: "Executed router commands with credentials redacted." },
+  scans:    { title: "Fleet scans", lead: "Automated fleet inspections and their results." },
+  aiusage:  { title: "AI usage", lead: "Model activity, token use, and cost records." },
+  i18n:     { title: "Translations", lead: "Platform-wide interface text overrides." },
+  vouchers: { title: "Vouchers", lead: "Guest access codes, resellers, and print layouts." },
+  coins:    { title: "Magic Coins", lead: "Current balance and the immutable transaction ledger." },
+  unlockkeys:{ title: "Unlock keys", lead: "Purchased keys and the capabilities they unlock." },
+  portal:   { title: "Captive portal", lead: "Guest Wi-Fi presentation, payment settings, and requests." },
+  team:     { title: "Team", lead: "People with access to this business and their roles." },
+  platform: { title: "Platform", lead: "Cross-tenant health, incidents, and account administration." },
 };
 
 let ME = null;
 
 async function loadView(name, main, me) {
   const v = VIEWS[name] || VIEWS.overview;
-  main.innerHTML = `<div class="page-head"><div><h1 class="page-title">${v.title}</h1><p class="page-lead">${v.lead}</p></div></div><div id="content">${loading()}</div>`;
+  main.innerHTML = `<div class="page-head"><div><h1 class="page-title">${v.title}</h1><p class="page-lead">${v.lead}</p></div></div><div id="content" aria-live="polite">${loading()}</div>`;
   try {
     if (name === "overview") await renderOverview(main);
     else if (name === "fleet") await renderFleet(main);
@@ -299,11 +305,19 @@ async function loadView(name, main, me) {
     else if (name === "team") await renderTeam(main);
     else if (name === "platform") await renderPlatform(main);
   } catch (err) {
-    main.querySelector("#content").innerHTML = `<div class="alert" role="alert">${esc(err.message)}</div>`;
+    const content = main.querySelector("#content");
+    content.innerHTML = `<div class="panel"><div class="empty error-empty" role="alert">
+      <div class="empty-title">Couldn’t load ${esc(v.title.toLowerCase())}</div>
+      <p>${esc(err.message || "The server did not return this view.")}</p>
+      <button class="btn" id="view-retry" type="button">Try again</button>
+    </div></div>`;
+    content.querySelector("#view-retry").addEventListener("click", () => loadView(name, main, me));
   }
 }
 
-function loading() { return `<p class="muted small">Loading…</p>`; }
+function loading() {
+  return `<div class="loading-state" role="status"><span class="loading-pulse"></span><span>Loading…</span></div>`;
+}
 
 /* ---------- Overview ---------- */
 async function renderOverview(main) {
@@ -3109,6 +3123,8 @@ window.addEventListener("load", async () => {
   if (!me) return;
   ME = me;
   document.querySelector("#rail-biz").textContent = (me.business && me.business.company_name) || "—";
+  document.querySelector("#rail-user-name").textContent = (me.user && (me.user.full_name || me.user.email)) || "Signed in";
+  document.querySelector("#rail-user-role").textContent = (me.user && me.user.user_role) || "Member";
   // The Platform console is DEVELOPER-only: reveal the rail item only for that role.
   if (me.user && me.user.user_role === "DEVELOPER") {
     const navP = document.getElementById("nav-platform");
