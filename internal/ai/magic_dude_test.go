@@ -13,7 +13,7 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
 func TestOpenRouterMagicDudeChat(t *testing.T) {
-	client := NewOpenRouterClient("https://openrouter.test/v1", "secret-key", "test/model")
+	client := NewOpenRouterClient("https://openrouter.test/v1", "secret-key", "test/model:free")
 	client.http = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		if got := req.Header.Get("Authorization"); got != "Bearer secret-key" {
 			t.Fatalf("authorization = %q", got)
@@ -40,13 +40,13 @@ func TestOpenRouterMagicDudeChat(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if reply.Answer != "Check the tunnel first." || reply.TotalTokens != 17 || reply.Model != "test/model" {
+	if reply.Answer != "Check the tunnel first." || reply.TotalTokens != 17 || reply.Model != "test/model:free" {
 		t.Fatalf("unexpected reply: %+v", reply)
 	}
 }
 
 func TestOpenRouterMagicDudeRequiresKey(t *testing.T) {
-	client := NewOpenRouterClient("https://openrouter.test/v1", "", "test/model")
+	client := NewOpenRouterClient("https://openrouter.test/v1", "", "test/model:free")
 	if _, err := client.Chat(context.Background(), "system", nil, "question"); err == nil {
 		t.Fatal("expected missing-key error")
 	}

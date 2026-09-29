@@ -33,7 +33,10 @@ func NewOpenRouterClient(url, apiKey, model string) *OpenRouterClient {
 	if strings.TrimSpace(url) == "" {
 		url = defaultOpenRouterURL
 	}
-	if strings.TrimSpace(model) == "" {
+	// Cost safety is fail-closed: only explicit OpenRouter free variants may be
+	// used. A missing or paid model name falls back to the known free default.
+	model = strings.TrimSpace(model)
+	if !isFreeOpenRouterModel(model) {
 		model = defaultOpenRouterModel
 	}
 	return &OpenRouterClient{
@@ -42,6 +45,11 @@ func NewOpenRouterClient(url, apiKey, model string) *OpenRouterClient {
 		model:  model,
 		http:   &http.Client{Timeout: 25 * time.Second},
 	}
+}
+
+func isFreeOpenRouterModel(model string) bool {
+	model = strings.ToLower(strings.TrimSpace(model))
+	return model == "openrouter/free" || strings.HasSuffix(model, ":free")
 }
 
 type openRouterMessage struct {

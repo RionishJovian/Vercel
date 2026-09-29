@@ -79,6 +79,24 @@ func TestLoad_billingTelegramDefaultsOff(t *testing.T) {
 	}
 }
 
+func TestLoad_openRouterKeyCompatibilityAlias(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte("environment: development\n"), 0o600); err != nil {
+		t.Fatalf("write temp config: %v", err)
+	}
+	t.Setenv("AI_OPENROUTER_API_KEY", "")
+	t.Setenv("OPENROUTER_API_KEY", "alias-test-key")
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.AI.OpenRouterAPIKey != "alias-test-key" {
+		t.Fatalf("compatibility key was not loaded")
+	}
+}
+
 func TestValidateDevelopmentAllowsLocalDefaults(t *testing.T) {
 	cfg := &Config{Environment: "development"}
 	if err := cfg.Validate(); err != nil {
@@ -123,6 +141,18 @@ func TestValidateProductionAcceptsHardenedConfig(t *testing.T) {
 	}
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("hardened production config rejected: %v", err)
+	}
+}
+
+func TestValidateRejectsPaidOpenRouterModel(t *testing.T) {
+	cfg := &Config{Environment: "development", AI: AIConfig{OpenRouterModel: "provider/paid-model"}}
+	err := cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "ai.openrouter_model") {
+		t.Fatalf("paid OpenRouter model should be rejected, got %v", err)
+	}
+	cfg.AI.OpenRouterModel = "provider/free-model:free"
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("free OpenRouter model rejected: %v", err)
 	}
 }
 

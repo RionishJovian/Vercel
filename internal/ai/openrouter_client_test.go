@@ -43,7 +43,7 @@ func TestOpenRouterClient_parseFinding(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewOpenRouterClient(srv.URL, key, "test/model")
+	c := NewOpenRouterClient(srv.URL, key, "test/model:free")
 	f, err := c.Analyze(context.Background(), orSample())
 	if err != nil {
 		t.Fatalf("Analyze: %v", err)
@@ -60,7 +60,7 @@ func TestOpenRouterClient_parseFinding(t *testing.T) {
 	if gotBody.ResponseFormat["type"] != "json_object" {
 		t.Fatalf("response_format = %v, want json_object (mandatory)", gotBody.ResponseFormat)
 	}
-	if gotBody.Model != "test/model" || gotBody.MaxTokens != 250 {
+	if gotBody.Model != "test/model:free" || gotBody.MaxTokens != 250 {
 		t.Fatalf("model/max_tokens wrong: %q/%d", gotBody.Model, gotBody.MaxTokens)
 	}
 }
@@ -151,5 +151,16 @@ func TestNewClient_defaultModelApplied(t *testing.T) {
 	}
 	if c.url != defaultOpenRouterURL {
 		t.Fatalf("url = %q, want default %q", c.url, defaultOpenRouterURL)
+	}
+}
+
+func TestNewOpenRouterClient_refusesPaidModel(t *testing.T) {
+	c := NewOpenRouterClient("", "", "provider/paid-model")
+	if c.model != defaultOpenRouterModel {
+		t.Fatalf("paid model was not replaced by free default: %q", c.model)
+	}
+	c = NewOpenRouterClient("", "", "openrouter/free")
+	if c.model != "openrouter/free" {
+		t.Fatalf("free router was replaced: %q", c.model)
 	}
 }

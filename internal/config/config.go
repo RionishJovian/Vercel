@@ -300,6 +300,13 @@ func Load(path string) (*Config, error) {
 	v.SetConfigType("yaml")
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
+	// Accept the conventional provider variable as a compatibility alias. The
+	// nested Viper key normally maps to AI_OPENROUTER_API_KEY, but operators and
+	// hosting panels commonly provide OPENROUTER_API_KEY. Prefer the explicit
+	// namespaced variable when both exist.
+	if err := v.BindEnv("ai.openrouter_api_key", "AI_OPENROUTER_API_KEY", "OPENROUTER_API_KEY"); err != nil {
+		return nil, err
+	}
 
 	setDefaults(v)
 
@@ -393,6 +400,9 @@ func (cfg *Config) Validate() error {
 		if weakSecret(cfg.Security.AESGCMKey, defaultAESGCMKey, 32) {
 			problems = append(problems, "security.aes_gcm_key must be a non-default secret of at least 32 characters")
 		}
+	}
+	if modelName := strings.ToLower(strings.TrimSpace(cfg.AI.OpenRouterModel)); modelName != "" && modelName != "openrouter/free" && !strings.HasSuffix(modelName, ":free") {
+		problems = append(problems, "ai.openrouter_model must be an OpenRouter free model (:free or openrouter/free)")
 	}
 	if len(problems) > 0 {
 		return fmt.Errorf("unsafe %s configuration: %s", env, strings.Join(problems, "; "))
