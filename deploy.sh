@@ -28,21 +28,28 @@ deploy_web() {
   # would keep its old edge copy for a WEEK while the new HTML went live
   # immediately — the CDN would serve fresh markup against stale CSS/JS.
   # Versioning each asset URL by its content hash makes every change a new URL
-  # that the edge has to fetch from origin. app.html is always revalidated, so
-  # stamping it here is enough; no Cloudflare API access needed.
-  local vcss vapi vapp
+  # that the edge has to fetch from origin. HTML is always revalidated. Stamp
+  # every page that imports shared assets so marketing, auth, pricing, and the
+  # console cannot drift across an immutable-cache deployment.
+  local vcss vredesign vapi vapp stamp_dir page
   vcss=$(md5sum "$ROOT/web/assets/css/styles.css" | cut -c1-8)
+  vredesign=$(md5sum "$ROOT/web/assets/css/redesign.css" | cut -c1-8)
   vapi=$(md5sum "$ROOT/web/assets/js/api.js"       | cut -c1-8)
   vapp=$(md5sum "$ROOT/web/assets/js/app.js"       | cut -c1-8)
-  sed -e "s#\(/assets/css/styles\.css\)[^\"']*#\1?v=$vcss#" \
-      -e "s#\(/assets/js/api\.js\)[^\"']*#\1?v=$vapi#" \
-      -e "s#\(/assets/js/app\.js\)[^\"']*#\1?v=$vapp#" \
-      "$ROOT/web/app.html" > /tmp/mm-app.stamped.html
-  sudo install -m 644 /tmp/mm-app.stamped.html /opt/mega-magic-web/app.html
-  rm -f /tmp/mm-app.stamped.html
+  stamp_dir=$(mktemp -d /tmp/mm-web-stamp.XXXXXX)
+  for page in app index signin pricing; do
+    sed -e "s#\(/assets/css/styles\.css\)[^\"']*#\1?v=$vcss#" \
+        -e "s#\(/assets/css/redesign\.css\)[^\"']*#\1?v=$vredesign#" \
+        -e "s#\(/assets/js/api\.js\)[^\"']*#\1?v=$vapi#" \
+        -e "s#\(/assets/js/app\.js\)[^\"']*#\1?v=$vapp#" \
+        "$ROOT/web/$page.html" > "$stamp_dir/$page.html"
+    sudo install -m 644 "$stamp_dir/$page.html" "/opt/mega-magic-web/$page.html"
+    rm -f "$stamp_dir/$page.html"
+  done
+  rmdir "$stamp_dir"
 
   sudo systemctl reload nginx
-  echo ">> Frontend published (assets v: css=$vcss js=$vapi app=$vapp) + nginx reloaded"
+  echo ">> Frontend published (assets v: css=$vcss redesign=$vredesign js=$vapi app=$vapp) + nginx reloaded"
 }
 
 deploy_api() {
