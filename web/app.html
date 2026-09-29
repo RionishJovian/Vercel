@@ -209,15 +209,16 @@
 <div class="lg-grain"></div>
 <div class="layout">
   <nav class="rail" aria-label="Primary">
-    <input type="checkbox" id="rail-open" class="rail-open" aria-label="Toggle navigation menu">
     <div class="rail-head">
       <div>
         <div class="rail-brand"><span class="dot"></span>Mega Magic</div>
         <div class="rail-sub" id="rail-biz">—</div>
       </div>
-      <label class="rail-toggle" for="rail-open" title="Menu" aria-hidden="true">☰</label>
+      <button class="rail-toggle" id="rail-toggle" type="button" aria-expanded="false" aria-controls="rail-menu" title="Menu">
+        <span class="sr-only">Toggle navigation</span><span aria-hidden="true">☰</span>
+      </button>
     </div>
-    <div class="rail-menu">
+    <div class="rail-menu" id="rail-menu">
       <div class="rail-section">Operations</div>
       <button class="nav-item" data-view="overview" aria-current="page">Overview</button>
       <button class="nav-item" data-view="fleet">Fleet health</button>
@@ -308,7 +309,7 @@ async function loadView(name, main, me) {
     const content = main.querySelector("#content");
     content.innerHTML = `<div class="panel"><div class="empty error-empty" role="alert">
       <div class="empty-title">Couldn’t load ${esc(v.title.toLowerCase())}</div>
-      <p>${esc(err.message || "The server did not return this view.")}</p>
+      <p>${esc(errorText(err, "The server did not return this view."))}</p>
       <button class="btn" id="view-retry" type="button">Try again</button>
     </div></div>`;
     content.querySelector("#view-retry").addEventListener("click", () => loadView(name, main, me));
@@ -317,6 +318,17 @@ async function loadView(name, main, me) {
 
 function loading() {
   return `<div class="loading-state" role="status"><span class="loading-pulse"></span><span>Loading…</span></div>`;
+}
+
+function errorText(err, fallback = "The server did not return a usable response.") {
+  if (!err) return fallback;
+  if (typeof err === "string") return err;
+  const data = err.data !== undefined ? err.data : err;
+  if (typeof data === "string") return data;
+  if (data && typeof data === "object") {
+    return String(data.error || data.reason || data.message || fallback);
+  }
+  return String(err.message || fallback);
 }
 
 /* ---------- Overview ---------- */
@@ -387,9 +399,14 @@ async function renderPulse(main) {
   const sev = (s) => `<span class="status ${{ critical: "bad", warning: "warn", warn: "warn" }[String(s).toLowerCase()] || "unknown"}">${esc(s || "info")}</span>`;
   const headRows = head.map(inc => `<tr><td>${sev(inc.severity)}</td><td><span class="num">${esc(inc.subject_label || "—")}</span></td><td class="mono">${esc(inc.kind)}</td><td>${applyFixCell(inc)}</td></tr>`).join("");
   const strip = document.createElement("div");
-  strip.innerHTML = (attention ? `<div class="panel" style="margin-top:18px;border-left:3px solid var(--bad)"><div class="panel-head"><h2 class="panel-title">Needs attention</h2></div><div class="panel-body"><div style="display:flex;align-items:center;gap:10px">${sev(attention.severity)}<span class="num">${esc(attention.subject_label || "—")}</span><span class="muted small">${esc(attention.kind)}</span><span style="flex:1"></span>${applyFixCell(attention)}</div></div></div>` : "") +
-    `<div class="panel" style="margin-top:14px"><div class="panel-head"><h2 class="panel-title">Open incidents</h2></div><div class="panel-body">${head.length ? `<table><thead><tr><th>Severity</th><th>Subject</th><th>Kind</th><th></th></tr></thead><tbody>${headRows}</tbody></table>` : `<div class="empty"><div class="empty-title">Nothing open</div>No unresolved incidents right now.</div>`}</div></div>`;
-  content.insertBefore(strip, content.firstChild);
+  strip.innerHTML = (attention ? `<div class="panel" style="margin-bottom:14px;border-left:3px solid var(--bad)"><div class="panel-head"><h2 class="panel-title">Needs attention</h2></div><div class="panel-body"><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">${sev(attention.severity)}<span class="num">${esc(attention.subject_label || "—")}</span><span class="muted small">${esc(attention.kind)}</span><span style="flex:1"></span>${applyFixCell(attention)}</div></div></div>` : "") +
+    (head.length
+      ? `<div class="panel" style="margin-bottom:14px"><div class="panel-head"><h2 class="panel-title">Open incidents</h2></div><div class="panel-body"><table><thead><tr><th>Severity</th><th>Subject</th><th>Kind</th><th></th></tr></thead><tbody>${headRows}</tbody></table></div></div>`
+      : `<div class="health-banner"><span class="status ok">Clear</span><div><strong>No open incidents</strong><span>No unresolved incidents right now.</span></div></div>`);
+  const stats = content.querySelector(".stat-cluster");
+  if (attention) content.insertBefore(strip, content.firstChild);
+  else if (stats) stats.insertAdjacentElement("afterend", strip);
+  else content.insertBefore(strip, content.firstChild);
   wireFixes(content, main, async () => { await renderOverview(main); });
 }
 
@@ -2592,11 +2609,11 @@ function wirePortalBranding(main, cfg, collect, plansTbl) {
 /* ---------- Captive portal ---------- */
 async function renderPortal(main) {
   let cfg = null, cfgErr = null;
-  try { cfg = await MM.get("/portal/config"); } catch (e) { cfgErr = e.data || e.message; }
+  try { cfg = await MM.get("/portal/config"); } catch (e) { cfgErr = errorText(e, "Portal configuration has not been created yet."); }
   let reqs = [], reqErr = null;
   try {
     const r = await MM.get("/billing/requests"); reqs = r.requests || r || [];
-  } catch (e) { reqErr = e.data || e.message; }
+  } catch (e) { reqErr = errorText(e, "Guest purchase requests could not be loaded."); }
 
   let html = `<div class="panel"><div class="panel-head"><h2 class="panel-title">Portal configuration</h2></div><div class="panel-body">`;
   if (cfg) {
@@ -3146,10 +3163,19 @@ window.addEventListener("load", async () => {
 
   // The rail collapses into a menu below 900px: close it once a view is chosen,
   // or when the tap lands outside the rail.
-  const railCb = document.getElementById("rail-open");
+  const railToggle = document.getElementById("rail-toggle");
+  const railMenu = document.getElementById("rail-menu");
+  const setRailOpen = (open) => {
+    if (!railToggle || !railMenu) return;
+    railMenu.classList.toggle("open", open);
+    railToggle.setAttribute("aria-expanded", open ? "true" : "false");
+  };
+  if (railToggle) railToggle.addEventListener("click", () => {
+    setRailOpen(railToggle.getAttribute("aria-expanded") !== "true");
+  });
   document.addEventListener("click", (e) => {
-    if (!railCb || !railCb.checked) return;
-    if (e.target.closest(".nav-item") || !e.target.closest(".rail")) railCb.checked = false;
+    if (!railMenu || !railMenu.classList.contains("open")) return;
+    if (e.target.closest(".nav-item") || !e.target.closest(".rail")) setRailOpen(false);
   });
 
   const go = async (name) => {
