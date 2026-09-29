@@ -10,7 +10,36 @@ const MM = (() => {
   function signedIn() { return !!token(); }
   function clear() { localStorage.removeItem(KEY); localStorage.removeItem(KEY_REFRESH); }
 
-  async function req(method, path, body) {
+  let refreshInFlight = null;
+
+  async function renew() {
+    const refreshToken = localStorage.getItem(KEY_REFRESH);
+    if (!refreshToken) return false;
+    if (!refreshInFlight) {
+      refreshInFlight = (async () => {
+        try {
+          const res = await fetch(API + "/auth/refresh", {
+            method: "POST",
+            headers: { "Accept": "application/json", "Content-Type": "application/json" },
+            body: JSON.stringify({ refresh_token: refreshToken }),
+          });
+          if (!res.ok) return false;
+          const data = await res.json();
+          if (!data || !data.token) return false;
+          localStorage.setItem(KEY, data.token);
+          if (data.refresh_token) localStorage.setItem(KEY_REFRESH, data.refresh_token);
+          return true;
+        } catch (_) {
+          return false;
+        } finally {
+          refreshInFlight = null;
+        }
+      })();
+    }
+    return refreshInFlight;
+  }
+
+  async function req(method, path, body, retried = false) {
     const headers = { "Accept": "application/json" };
     if (body !== undefined) headers["Content-Type"] = "application/json";
     if (token()) headers["Authorization"] = "Bearer " + token();
@@ -25,7 +54,13 @@ const MM = (() => {
     } catch (e) {
       throw new Error("network-unreachable");
     }
-    if (res.status === 401) { clear(); throw new Error("unauthorized"); }
+    if (res.status === 401) {
+      if (!retried && path !== "/auth/refresh" && await renew()) {
+        return req(method, path, body, true);
+      }
+      clear();
+      throw new Error("unauthorized");
+    }
 
     let data = null;
     const ct = res.headers.get("content-type") || "";
