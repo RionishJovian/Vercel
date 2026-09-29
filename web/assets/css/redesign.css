@@ -1159,7 +1159,6 @@ body.page-pricing {
   .page-app .security-banner > div { align-items: flex-start; flex-direction: column; gap: 1px; }
   .page-app .security-banner .btn { grid-column: 1 / -1; justify-content: center; }
   .page-app .md-layout { grid-template-columns: 1fr; }
-  .page-app .md-prompts { order: -1; }
   .page-app .md-prompts .panel-body { grid-template-columns: 1fr 1fr; }
   .page-app .md-privacy { grid-column: 1 / -1; }
 }
