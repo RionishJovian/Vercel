@@ -263,7 +263,7 @@ const VIEWS = {
   overview: { title: "Overview", lead: "Fleet status, active incidents, and network shape." },
   fleet:    { title: "Fleet health", lead: "Current WireGuard state for every managed peer." },
   sites:    { title: "Sites & routers", lead: "Physical locations, router access, and maintenance requests." },
-  topology: { title: "Topology", lead: "Live relationships between the hub, sites, and peers." },
+  topology: { title: "Topology", lead: "Live paths from the WireGuard hub through gateways and downstream devices." },
   incidents:{ title: "Incidents", lead: "Detected problems, recommended actions, and resolution state." },
   magicdude:{ title: "Magic Dude", lead: "Read-only fleet guidance grounded in your current operations data." },
   security: { title: "Security", lead: "RouterOS exposure and version posture across the fleet." },
@@ -1289,33 +1289,81 @@ function openEditRouter(main, r) {
 /* ---------- Topology ---------- */
 async function renderTopology(main) {
   const topo = await MM.get("/topology/map");
+  let fleet = {peers: []};
+  try { fleet = await MM.get("/fleet/health"); } catch (_) {}
   const content = main.querySelector("#content");
   content.innerHTML = `<div id="topo-tree">${loading()}</div>`;
-  content.querySelector("#topo-tree").innerHTML = topologyTree(topo);
+  content.querySelector("#topo-tree").innerHTML = topologyTree(topo, fleet);
 }
 
-function deviceLabel(d) {
-  const st = d.is_online ? "up" : "offline";
-  return `<div class="dev ${st}" title="${esc(d.device_id)}">${esc((d.hardware_name||"D")[0])}</div>`;
+function topologyState(d, states) {
+  return states[d.device_id] || "unknown";
+}
+
+function topologyGlyph(d) {
+  const layer = String(d.deployment_layer || "").toUpperCase();
+  const category = String(d.category || "").toLowerCase();
+  if (layer === "MAIN_GATEWAY" || category === "gateway" || category === "router") return "GW";
+  if (layer === "DOWNSTREAM_SWITCH" || category === "switch") return "SW";
+  if (layer === "ACCESS_POINT" || category === "ap") return "AP";
+  if (layer === "CONTROLLER" || category === "controller") return "CT";
+  return "DV";
+}
+
+function topologyLayerLabel(value) {
+  return String(value || "device").toLowerCase().replace(/_/g, " ");
 }
 
 function topologySummary(topo) {
-  const count = (topo.roots ? topo.roots.length : 0) + (topo.orphans ? topo.orphans.length : 0);
   const s = topo.summary || {};
-  return `<div class="muted small">${count} device${count === 1 ? "" : "s"} · ${esc(topo.business_id)}</div>`;
+  const total = Number(s.total_devices || 0), mapped = Number(s.in_tree || 0);
+  const broken = (topo.orphans || []).length + (topo.cycles || []).length;
+  return `<div class="muted small">${total} managed device${total === 1 ? "" : "s"} · ${mapped} mapped${broken ? ` · ${broken} relationship issue${broken === 1 ? "" : "s"}` : " · relationships valid"}</div>`;
 }
 
-function topologyTree(topo) {
+function topologyTree(topo, fleet) {
   const roots = topo.roots || [];
-  if (!roots.length) return `<div class="empty"><div class="empty-title">Empty map</div>No devices have reported a topology yet.</div>`;
-  const render = (node, depth) => {
+  const orphans = topo.orphans || [], cycles = topo.cycles || [], s = topo.summary || {};
+  if (!roots.length && !orphans.length) return `<div class="panel"><div class="empty"><div class="empty-title">No network relationships yet</div>Add a gateway to begin building the live topology.</div></div>`;
+  const states = {};
+  (fleet.peers || []).forEach(p => { states[p.device_id] = p.state || "unknown"; });
+  const total = Number(s.total_devices || 0);
+  const attention = (fleet.stale || 0) + (fleet.offline || 0);
+  const unknown = Number(fleet.unknown || 0);
+  const links = Number(s.in_tree || 0); // one hub/root path + one path per child
+
+  const render = (node) => {
     const d = node.device || {};
-    const kids = (node.children || []).map(c => render(c, depth + 1)).join("");
-    const pad = "&nbsp;".repeat(depth * 4);
-    const caret = node.children && node.children.length ? (node.expanded ? "▾" : "▸") : "·";
-    return `<div style="display:flex;gap:8px;align-items:center;margin-bottom:4px"><span class="mono small">${pad}${caret}</span>${deviceLabel(d)}<span class="num" style="flex:1">${esc(d.hardware_name||"(device)")}</span><span class="muted small">${esc(d.deployment_layer||"")}</span>${node.children && node.children.length ? `<span class="muted small">${node.children.length} child${node.children.length===1?"":"ren"}</span>` : ""}</div>${kids}`;
+    const children = node.children || [];
+    const state = topologyState(d, states);
+    const model = d.device_model ? `${d.vendor || "device"} ${d.device_model}` : (d.vendor || "Managed device");
+    return `<li><article class="topo-device topo-state-${esc(state)}" tabindex="0" aria-label="${esc(d.hardware_name || "Device")}, ${esc(state)}">
+      <div class="topo-device-head"><span class="topo-glyph">${topologyGlyph(d)}</span><span class="status ${state === "up" ? "ok" : state === "stale" ? "warn" : state === "offline" ? "bad" : "unknown"}">${esc(state)}</span></div>
+      <strong>${esc(d.hardware_name || "Unnamed device")}</strong>
+      <span>${esc(model)}</span>
+      <div class="topo-device-meta"><span>${esc(topologyLayerLabel(d.deployment_layer))}</span><span>${esc(d.transport || "direct")}</span></div>
+    </article>${children.length ? `<ul>${children.map(render).join("")}</ul>` : ""}</li>`;
   };
-  return `<div>${roots.map(r => render(r, 0)).join("")}</div>`;
+  const problems = [];
+  if (orphans.length) problems.push(`<div class="topo-problem"><span class="status warn">${orphans.length} orphan${orphans.length === 1 ? "" : "s"}</span><span>${orphans.map(d => esc(d.hardware_name || d.device_id)).join(", ")} ${orphans.length === 1 ? "has" : "have"} no valid parent in this tenant.</span></div>`);
+  if (cycles.length) problems.push(`<div class="topo-problem"><span class="status bad">${cycles.length} cycle${cycles.length === 1 ? "" : "s"}</span><span>A parent loop was detected and excluded from the diagram.</span></div>`);
+
+  return `<div class="topo-stats">
+      <div><span>Managed devices</span><strong>${total}</strong></div>
+      <div><span>Live paths</span><strong>${links}</strong></div>
+      <div><span>Needs attention</span><strong>${attention}</strong></div>
+      <div><span>Awaiting signal</span><strong>${unknown}</strong></div>
+    </div>
+    <section class="panel topo-panel" aria-label="Network topology diagram">
+      <div class="panel-head topo-panel-head"><div><h2 class="panel-title">Network path</h2><span class="muted small">WireGuard hub → gateways → downstream devices</span></div>
+        <div class="topo-legend"><span><i class="topo-dot up"></i>Up</span><span><i class="topo-dot stale"></i>Stale</span><span><i class="topo-dot offline"></i>Offline</span><span><i class="topo-dot unknown"></i>Unknown</span></div>
+      </div>
+      <div class="topo-canvas">
+        <div class="topo-hub"><span class="topo-hub-mark">WG</span><div><strong>Magic Hub</strong><span>WireGuard control plane</span></div><span class="status ok">service active</span></div>
+        ${roots.length ? `<div class="topo-hub-link"></div><ul class="topo-tree">${roots.map(render).join("")}</ul>` : `<div class="empty">No valid gateway path is available.</div>`}
+      </div>
+    </section>
+    ${problems.length ? `<section class="panel topo-integrity"><div class="panel-head"><h2 class="panel-title">Relationship integrity</h2></div><div class="panel-body">${problems.join("")}</div></section>` : ""}`;
 }
 
 /* ---------- Incidents ---------- */
