@@ -1013,6 +1013,88 @@ body.page-pricing {
 /* Responsive                                                             */
 /* ---------------------------------------------------------------------- */
 
+/* Magic Dude */
+.page-app .md-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 16px;
+  align-items: start;
+}
+
+.page-app .md-chat { overflow: hidden; }
+.page-app .md-chat .panel-head { display: flex; justify-content: space-between; align-items: center; }
+.page-app .md-messages {
+  min-height: 390px;
+  max-height: 58vh;
+  padding: 20px;
+  overflow-y: auto;
+  background: #0b1117;
+}
+
+.page-app .md-welcome {
+  display: flex;
+  gap: 14px;
+  max-width: 610px;
+  margin: 54px auto;
+  color: var(--ink);
+}
+
+.page-app .md-welcome p { margin: 7px 0 0; color: var(--ink-soft); line-height: 1.55; }
+.page-app .md-mark {
+  display: grid;
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  color: #07130d;
+  background: var(--accent);
+  border-radius: 8px;
+  font-weight: 800;
+}
+
+.page-app .md-message { max-width: 78%; margin: 0 0 18px; }
+.page-app .md-message.user { margin-left: auto; }
+.page-app .md-message-label {
+  margin: 0 0 5px;
+  color: var(--ink-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.page-app .md-message.user .md-message-label { text-align: right; }
+.page-app .md-message-body {
+  padding: 12px 14px;
+  color: var(--ink);
+  line-height: 1.55;
+  background: #131c25;
+  border: 1px solid var(--line-soft);
+  border-radius: 4px 12px 12px 12px;
+}
+.page-app .md-message.user .md-message-body {
+  background: #173126;
+  border-color: rgba(98, 212, 154, .2);
+  border-radius: 12px 4px 12px 12px;
+}
+
+.page-app .md-composer { padding: 14px; border-top: 1px solid var(--line-soft); }
+.page-app .md-composer textarea { width: 100%; min-height: 78px; resize: vertical; }
+.page-app .md-compose-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 10px; }
+.page-app .md-prompts .panel-body { display: grid; gap: 8px; padding-top: 14px; }
+.page-app .md-prompt {
+  width: 100%;
+  padding: 11px 12px;
+  color: var(--ink-soft);
+  text-align: left;
+  line-height: 1.4;
+  background: #111922;
+  border: 1px solid var(--line-soft);
+  border-radius: 7px;
+  cursor: pointer;
+}
+.page-app .md-prompt:hover { color: var(--ink); border-color: #3d4b57; background: #151f29; }
+.page-app .md-privacy { margin: 12px 0 0; line-height: 1.5; }
+
 @media (max-width: 900px) {
   .page-app .layout { display: block; min-height: 100vh; }
 
@@ -1076,6 +1158,10 @@ body.page-pricing {
   .page-app .security-banner { grid-template-columns: auto minmax(0, 1fr); }
   .page-app .security-banner > div { align-items: flex-start; flex-direction: column; gap: 1px; }
   .page-app .security-banner .btn { grid-column: 1 / -1; justify-content: center; }
+  .page-app .md-layout { grid-template-columns: 1fr; }
+  .page-app .md-prompts { order: -1; }
+  .page-app .md-prompts .panel-body { grid-template-columns: 1fr 1fr; }
+  .page-app .md-privacy { grid-column: 1 / -1; }
 }
 
 @media (max-width: 640px) {
@@ -1097,6 +1183,12 @@ body.page-pricing {
   .page-signin .signin-wrap { padding: 18px; }
   .page-signin .signin-left { padding-top: 26px; }
   .page-signin .signin-card { padding: 27px 22px; }
+  .page-app .md-prompts .panel-body { grid-template-columns: 1fr; }
+  .page-app .md-privacy { grid-column: auto; }
+  .page-app .md-messages { min-height: 340px; padding: 14px; }
+  .page-app .md-message { max-width: 92%; }
+  .page-app .md-compose-row { align-items: stretch; flex-direction: column; }
+  .page-app .md-compose-row .btn { justify-content: center; }
 }
 
 @media (max-width: 420px) {

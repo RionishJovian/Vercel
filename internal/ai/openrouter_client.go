@@ -53,7 +53,7 @@ type openRouterRequest struct {
 	Model          string              `json:"model"`
 	Messages       []openRouterMessage `json:"messages"`
 	MaxTokens      int                 `json:"max_tokens"`
-	ResponseFormat map[string]string   `json:"response_format"`
+	ResponseFormat map[string]string   `json:"response_format,omitempty"`
 }
 
 type openRouterResponse struct {
@@ -62,6 +62,11 @@ type openRouterResponse struct {
 			Content string `json:"content"`
 		} `json:"message"`
 	} `json:"choices"`
+	Usage struct {
+		PromptTokens     int `json:"prompt_tokens"`
+		CompletionTokens int `json:"completion_tokens"`
+		TotalTokens      int `json:"total_tokens"`
+	} `json:"usage"`
 }
 
 func (c *OpenRouterClient) Analyze(ctx context.Context, sample model.TelemetrySample) (*Finding, error) {

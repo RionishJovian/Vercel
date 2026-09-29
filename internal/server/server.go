@@ -142,7 +142,17 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	// Fleet scans — the ported AI scan history (read-only).
 	scanHandler := handler.NewFleetScanRunHandler(db, database.NewFleetScanRunRepository(db))
 	// AI usage — token history behind the AI features (read-only).
-	usageHandler := handler.NewAIUsageHandler(db, database.NewAIUsageRepository(db))
+	usageRepo := database.NewAIUsageRepository(db)
+	usageHandler := handler.NewAIUsageHandler(db, usageRepo)
+	// Magic Dude — a read-only tenant-aware operations assistant. It intentionally
+	// receives no messaging or provisioner dependency, so chat can never mutate a router.
+	magicDudeHandler := handler.NewMagicDudeHandler(
+		db,
+		database.NewDeviceRepository(db),
+		database.NewIncidentRepository(db),
+		usageRepo,
+		ai.NewOpenRouterClient(cfg.AI.OpenRouterURL, cfg.AI.OpenRouterAPIKey, cfg.AI.OpenRouterModel),
+	)
 	// Terminal history — commands run against routers (read-only).
 	terminalHistoryHandler := handler.NewTerminalHistoryHandler(db, database.NewTerminalHistoryRepository(db))
 	// Unlock keys — the Magic Coin purchase ledger (read-only).
@@ -293,7 +303,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	pulseHandler := handler.NewPulseHandler(db, database.NewDeviceRepository(db), database.NewIncidentRepository(db))
 	incidentActionHandler := handler.NewIncidentActionHandler(db, database.NewIncidentRepository(db), database.NewDeviceRepository(db), messagingClient)
 
-	setupRoutes(r, authService, authHandler, routerHandler, telemetryHandler, incidentHandler, webhookHandler, voucherHandler, portalHandler, billingHandler, guestWifiHandler, monitorHandler, fleetHandler, topologyHandler, vpsHandler, platformHandler, securityHandler, backupHandler, teamHandler, pulseHandler, incidentActionHandler, magicCoinHandler, siteHandler, connHandler, allowHandler, syslogHandler, templateHandler, resellerHandler, scanHandler, usageHandler, terminalHistoryHandler, unlockKeyHandler, i18nHandler, messagingClient, cacheClient, db, tenantMW)
+	setupRoutes(r, authService, authHandler, routerHandler, telemetryHandler, incidentHandler, webhookHandler, voucherHandler, portalHandler, billingHandler, guestWifiHandler, monitorHandler, fleetHandler, topologyHandler, vpsHandler, platformHandler, securityHandler, backupHandler, teamHandler, pulseHandler, incidentActionHandler, magicCoinHandler, siteHandler, connHandler, allowHandler, syslogHandler, templateHandler, resellerHandler, scanHandler, usageHandler, magicDudeHandler, terminalHistoryHandler, unlockKeyHandler, i18nHandler, messagingClient, cacheClient, db, tenantMW)
 
 	// Start the policy evaluator: watches NATS telemetry and auto-opens incidents.
 	evaluator := evaluator.New(
@@ -418,7 +428,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	}, nil
 }
 
-func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.AuthHandler, routerHandler *handler.RouterHandler, telemetryHandler *handler.TelemetryHandler, incidentHandler *handler.IncidentHandler, webhookHandler *handler.WebhookHandler, voucherHandler *handler.VoucherHandler, portalHandler *handler.PortalHandler, billingHandler *handler.BillingHandler, guestWifiHandler *handler.GuestWifiHandler, monitorHandler *handler.MonitorHandler, fleetHandler *handler.FleetHandler, topologyHandler *handler.TopologyHandler, vpsHandler *handler.VPSHandler, platformHandler *handler.PlatformHandler, securityHandler *handler.SecurityHandler, backupHandler *handler.BackupHandler, teamHandler *handler.TeamHandler, pulseHandler *handler.PulseHandler, incidentActionHandler *handler.IncidentActionHandler, magicCoinHandler *handler.MagicCoinHandler, siteHandler *handler.SiteHandler, connHandler *handler.RouterConnectionHandler, allowHandler *handler.DeviceAllowanceHandler, syslogHandler *handler.SyslogHandler, templateHandler *handler.TerminalTemplateHandler, resellerHandler *handler.VoucherResellerHandler, scanHandler *handler.FleetScanRunHandler, usageHandler *handler.AIUsageHandler, historyHandler *handler.TerminalHistoryHandler, unlockHandler *handler.UnlockKeyHandler, i18nH *handler.I18nHandler, msg *messaging.Client, cache *cache.Client, db *database.DB, tenantMW gin.HandlerFunc) {
+func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.AuthHandler, routerHandler *handler.RouterHandler, telemetryHandler *handler.TelemetryHandler, incidentHandler *handler.IncidentHandler, webhookHandler *handler.WebhookHandler, voucherHandler *handler.VoucherHandler, portalHandler *handler.PortalHandler, billingHandler *handler.BillingHandler, guestWifiHandler *handler.GuestWifiHandler, monitorHandler *handler.MonitorHandler, fleetHandler *handler.FleetHandler, topologyHandler *handler.TopologyHandler, vpsHandler *handler.VPSHandler, platformHandler *handler.PlatformHandler, securityHandler *handler.SecurityHandler, backupHandler *handler.BackupHandler, teamHandler *handler.TeamHandler, pulseHandler *handler.PulseHandler, incidentActionHandler *handler.IncidentActionHandler, magicCoinHandler *handler.MagicCoinHandler, siteHandler *handler.SiteHandler, connHandler *handler.RouterConnectionHandler, allowHandler *handler.DeviceAllowanceHandler, syslogHandler *handler.SyslogHandler, templateHandler *handler.TerminalTemplateHandler, resellerHandler *handler.VoucherResellerHandler, scanHandler *handler.FleetScanRunHandler, usageHandler *handler.AIUsageHandler, magicDudeHandler *handler.MagicDudeHandler, historyHandler *handler.TerminalHistoryHandler, unlockHandler *handler.UnlockKeyHandler, i18nH *handler.I18nHandler, msg *messaging.Client, cache *cache.Client, db *database.DB, tenantMW gin.HandlerFunc) {
 	r.GET("/", indexPage)
 	r.GET("/health", healthCheck)
 	r.GET("/ready", readinessCheck(&Server{cache: cache, db: db, messaging: msg}))
@@ -623,6 +633,10 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 
 			// AI usage — written by the AI features themselves, so READ-ONLY too.
 			protected.GET("/ai-usage-events", usageHandler.ListUsageEvents)
+
+			// Magic Dude is diagnostic only. The handler has no router-control
+			// dependency and enforces included-role / active-key access itself.
+			protected.POST("/magic-dude/chat", magicDudeHandler.Chat)
 
 			// Terminal history — an audit log of commands, so READ-ONLY as well.
 			protected.GET("/terminal-history", historyHandler.ListTerminalHistory)

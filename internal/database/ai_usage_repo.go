@@ -24,6 +24,20 @@ func NewAIUsageRepository(db *DB) *AIUsageRepository {
 	return &AIUsageRepository{db: db}
 }
 
+// CreateAIUsageEventTXN records one completed model call. All identity values
+// are supplied by the authenticated request, never by the browser payload.
+func (r *AIUsageRepository) CreateAIUsageEventTXN(tx *sql.Tx, businessID, userID, feature, modelName string, promptTokens, completionTokens, totalTokens int) error {
+	_, err := tx.Exec(`
+		INSERT INTO ai_usage_events
+			(business_id, user_id, feature, model, prompt_tokens, completion_tokens, total_tokens, cached)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, false)`,
+		businessID, userID, feature, modelName, promptTokens, completionTokens, totalTokens)
+	if err != nil {
+		return fmt.Errorf("create ai usage event: %w", err)
+	}
+	return nil
+}
+
 // ListAIUsageEventsTXN returns one page of events, newest first, plus the total
 // matching the filters.
 //

@@ -226,6 +226,7 @@
       <button class="nav-item" data-view="incidents">Incidents</button>
       <button class="nav-item" data-view="sites">Sites &amp; routers</button>
       <div class="rail-section">Automation</div>
+      <button class="nav-item" data-view="magicdude">Magic Dude</button>
       <button class="nav-item" data-view="security">Security</button>
       <button class="nav-item" data-view="backups">Backups</button>
       <button class="nav-item" data-view="scans">Fleet scans</button>
@@ -264,6 +265,7 @@ const VIEWS = {
   sites:    { title: "Sites & routers", lead: "Physical locations, router access, and maintenance requests." },
   topology: { title: "Topology", lead: "Live relationships between the hub, sites, and peers." },
   incidents:{ title: "Incidents", lead: "Detected problems, recommended actions, and resolution state." },
+  magicdude:{ title: "Magic Dude", lead: "Read-only fleet guidance grounded in your current operations data." },
   security: { title: "Security", lead: "RouterOS exposure and version posture across the fleet." },
   backups:  { title: "Backups", lead: "Configuration snapshots, verified change history, and restore controls." },
   events:   { title: "Event log", lead: "Router syslog and operational events, newest first." },
@@ -291,6 +293,7 @@ async function loadView(name, main, me) {
     else if (name === "sites") await renderSites(main);
     else if (name === "topology") await renderTopology(main);
     else if (name === "incidents") await renderIncidents(main);
+    else if (name === "magicdude") await renderMagicDude(main);
     else if (name === "security") await renderSecurity(main);
     else if (name === "backups") await renderBackups(main);
     else if (name === "events") await renderEvents(main);
@@ -1812,6 +1815,98 @@ function usageRows(groups) {
       <td class="num">${tok(g.events)}</td>
       <td class="num">${tok(g.total_tokens)}</td>
     </tr>`).join("");
+}
+
+/* ---------- Magic Dude ---------- */
+let magicDudeTurns = [];
+
+function magicDudeText(value) {
+  return esc(String(value || "")).replace(/\n/g, "<br>");
+}
+
+function drawMagicDudeMessages() {
+  const list = document.getElementById("md-messages");
+  if (!list) return;
+  if (!magicDudeTurns.length) {
+    list.innerHTML = `<div class="md-welcome">
+      <div class="md-mark" aria-hidden="true">M</div>
+      <div><strong>I’m ready to help with your fleet.</strong>
+      <p>I can explain current health, security exposure, incidents, and safe troubleshooting steps. I cannot make changes or run commands.</p></div>
+    </div>`;
+    return;
+  }
+  list.innerHTML = magicDudeTurns.map(m => `<div class="md-message ${m.role}">
+    <div class="md-message-label">${m.role === "user" ? "You" : "Magic Dude"}</div>
+    <div class="md-message-body">${magicDudeText(m.content)}</div>
+  </div>`).join("");
+  list.scrollTop = list.scrollHeight;
+}
+
+async function renderMagicDude(main) {
+  const content = main.querySelector("#content");
+  content.innerHTML = `<div class="md-layout">
+    <section class="panel md-chat" aria-label="Magic Dude conversation">
+      <div class="panel-head">
+        <div><div class="panel-title">Operations assistant</div><div class="muted small">Live tenant context · Read-only</div></div>
+        <span class="status ok">No action access</span>
+      </div>
+      <div class="md-messages" id="md-messages" aria-live="polite"></div>
+      <form class="md-composer" id="md-form">
+        <label class="sr-only" for="md-question">Ask Magic Dude</label>
+        <textarea id="md-question" maxlength="4000" rows="3" placeholder="Ask about fleet health, an incident, or a safe troubleshooting plan…" required></textarea>
+        <div class="md-compose-row">
+          <span class="muted small" id="md-note">Advice only. Changes always require operator approval.</span>
+          <button class="btn btn-primary" id="md-send" type="submit">Ask Magic Dude</button>
+        </div>
+      </form>
+    </section>
+    <aside class="panel md-prompts">
+      <div class="panel-head"><div class="panel-title">Suggested questions</div></div>
+      <div class="panel-body">
+        <button class="md-prompt" type="button">Summarize my fleet health and the most urgent issue.</button>
+        <button class="md-prompt" type="button">Explain my current security exposure in plain language.</button>
+        <button class="md-prompt" type="button">Give me a safe troubleshooting checklist for offline routers.</button>
+        <button class="md-prompt" type="button">What should I verify before upgrading RouterOS?</button>
+        <p class="muted small md-privacy">Magic Dude receives a redacted snapshot. Credentials, private keys, management IPs, and raw configurations are never sent.</p>
+      </div>
+    </aside>
+  </div>`;
+  drawMagicDudeMessages();
+
+  const form = document.getElementById("md-form");
+  const input = document.getElementById("md-question");
+  const send = document.getElementById("md-send");
+  const note = document.getElementById("md-note");
+  document.querySelectorAll(".md-prompt").forEach(btn => btn.addEventListener("click", () => {
+    input.value = btn.textContent.trim(); input.focus();
+  }));
+  input.addEventListener("keydown", e => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); }
+  });
+  form.addEventListener("submit", async e => {
+    e.preventDefault();
+    const question = input.value.trim();
+    if (!question) return;
+    const history = magicDudeTurns.slice(-6).map(({role, content}) => ({role, content}));
+    magicDudeTurns.push({role: "user", content: question});
+    input.value = ""; input.disabled = true; send.disabled = true;
+    note.textContent = "Reviewing the current fleet snapshot…";
+    drawMagicDudeMessages();
+    try {
+      const reply = await MM.post("/magic-dude/chat", {question, history});
+      magicDudeTurns.push({role: "assistant", content: reply.answer || "No answer was returned."});
+      note.textContent = `Read-only response · ${tok(reply.usage && reply.usage.total_tokens || 0)} tokens`;
+    } catch (err) {
+      if (err.status === 403 && err.data && err.data.code === "MAGIC_DUDE_UNLOCK_REQUIRED") {
+        magicDudeTurns.push({role: "assistant", content: "This account role needs an active Magic Dude unlock key. Ask an owner or administrator to review access."});
+      } else {
+        magicDudeTurns.push({role: "assistant", content: apiErrorText(err, "I’m temporarily unavailable. Your question was not used to make any fleet changes.")});
+      }
+      note.textContent = "The request did not complete.";
+    } finally {
+      input.disabled = false; send.disabled = false; input.focus(); drawMagicDudeMessages();
+    }
+  });
 }
 
 async function renderAIUsage(main) {
