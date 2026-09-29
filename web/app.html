@@ -1359,7 +1359,7 @@ function topologyTree(topo, fleet) {
         <div class="topo-legend"><span><i class="topo-dot up"></i>Up</span><span><i class="topo-dot stale"></i>Stale</span><span><i class="topo-dot offline"></i>Offline</span><span><i class="topo-dot unknown"></i>Unknown</span></div>
       </div>
       <div class="topo-canvas">
-        <div class="topo-hub"><span class="topo-hub-mark">WG</span><div><strong>Magic Hub</strong><span>WireGuard control plane</span></div><span class="status ok">service active</span></div>
+        <div class="topo-hub"><span class="topo-hub-mark">WG</span><div><strong>Magic Hub</strong><span>WireGuard control plane</span></div><span class="topo-role">Hub</span></div>
         ${roots.length ? `<div class="topo-hub-link"></div><ul class="topo-tree">${roots.map(render).join("")}</ul>` : `<div class="empty">No valid gateway path is available.</div>`}
       </div>
     </section>

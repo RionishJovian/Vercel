@@ -1124,6 +1124,7 @@ body.page-pricing {
 .page-app .topo-hub div { display: flex; flex: 1; flex-direction: column; gap: 2px; }
 .page-app .topo-hub strong { color: var(--ink); font-size: 14px; }
 .page-app .topo-hub div span { color: var(--ink-muted); font-size: 11px; }
+.page-app .topo-role { padding: 3px 7px; color: var(--ink-muted); background: #111a16; border: 1px solid rgba(98,212,154,.18); border-radius: 999px; font: 700 10px var(--font-mono); text-transform: uppercase; }
 .page-app .topo-hub-link { width: 1px; height: 28px; margin: 0 auto; background: #3c4b57; }
 .page-app .topo-tree,
 .page-app .topo-tree ul { display: flex; justify-content: center; position: relative; margin: 0; padding: 28px 0 0; }
@@ -1150,7 +1151,7 @@ body.page-pricing {
 .page-app .topo-device.topo-state-offline { border-left-color: var(--bad); }
 .page-app .topo-device-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
 .page-app .topo-glyph { display: grid; width: 30px; height: 30px; place-items: center; color: var(--ink-soft); background: #1b2630; border: 1px solid #34424f; border-radius: 7px; font: 800 10px var(--font-mono); }
-.page-app .topo-device > strong { display: block; overflow: hidden; color: var(--ink); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.page-app .topo-device > strong { display: block; color: var(--ink); font-size: 13px; line-height: 1.35; overflow-wrap: anywhere; }
 .page-app .topo-device > span:not(.topo-glyph) { display: block; margin-top: 3px; overflow: hidden; color: var(--ink-muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .page-app .topo-device-meta { display: flex; justify-content: space-between; gap: 8px; margin-top: 10px; padding-top: 8px; color: var(--ink-muted); border-top: 1px solid var(--line-soft); font-size: 10px; text-transform: capitalize; }
 .page-app .topo-integrity { margin-top: 14px; }
