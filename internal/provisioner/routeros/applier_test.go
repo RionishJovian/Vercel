@@ -93,7 +93,7 @@ func TestTranslate_failsClosed(t *testing.T) {
 func TestApply_resetOrderAndError(t *testing.T) {
 	fr := &fakeRunner{}
 	a := NewApplier(fr, "wg-magichub", 13241, 0)
-	if err := a.Apply(context.Background(), "peer2", []provisioner.Change{{Action: provisioner.ActionResetPeer}}); err != nil {
+	if err := a.Apply(context.Background(), "biz-1", "peer2", []provisioner.Change{{Action: provisioner.ActionResetPeer}}); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
 	joined := fr.joined()
@@ -105,7 +105,7 @@ func TestApply_resetOrderAndError(t *testing.T) {
 
 	// A runner error must propagate.
 	bad := &fakeRunner{err: map[string]error{"disable": errors.New("ssh refused")}}
-	if err := NewApplier(bad, "wg-magichub", 0, 0).Apply(context.Background(), "peer2", []provisioner.Change{{Action: provisioner.ActionResetPeer}}); err == nil {
+	if err := NewApplier(bad, "wg-magichub", 0, 0).Apply(context.Background(), "biz-1", "peer2", []provisioner.Change{{Action: provisioner.ActionResetPeer}}); err == nil {
 		t.Fatal("runner error must propagate from Apply")
 	}
 }
@@ -117,7 +117,7 @@ func TestSnapshot_populatesFields(t *testing.T) {
 		"/ip route print detail":                         "DAc 10.99.0.0/30 wg-magichub main 0\n",
 	}}
 	a := NewApplier(fr, "wg-magichub", 13241, 0)
-	snap, err := a.Snapshot(context.Background(), "peer2", []provisioner.Change{{Action: provisioner.ActionRotateListenPort}})
+	snap, err := a.Snapshot(context.Background(), "biz-1", "peer2", []provisioner.Change{{Action: provisioner.ActionRotateListenPort}})
 	if err != nil {
 		t.Fatalf("Snapshot: %v", err)
 	}
@@ -145,7 +145,7 @@ func TestSnapshot_populatesFields(t *testing.T) {
 }
 
 func TestSnapshot_nilRunner(t *testing.T) {
-	if _, err := NewApplier(nil, "wg-magichub", 0, 0).Snapshot(context.Background(), "p", nil); err == nil {
+	if _, err := NewApplier(nil, "wg-magichub", 0, 0).Snapshot(context.Background(), "biz-1", "p", nil); err == nil {
 		t.Fatal("nil runner must error")
 	}
 }
@@ -159,7 +159,7 @@ func TestRestore_revertsAndReenables(t *testing.T) {
 		WGPeerKeepalive:      "25s",
 		WGPeerAllowedAddress: "10.99.0.1/32",
 	}
-	if err := a.Restore(context.Background(), snap); err != nil {
+	if err := a.Restore(context.Background(), "biz-1", snap); err != nil {
 		t.Fatalf("Restore: %v", err)
 	}
 	joined := fr.joined()

@@ -40,7 +40,7 @@ var _ provisioner.Prober = (*Prober)(nil)
 // traffic counters (rx+tx>0 => fresh) combined with the ping result. The
 // authoritative handshake-age signal still comes from the probe/monitoring
 // pipeline; this is the on-box fallback.
-func (p *Prober) Observe(ctx context.Context, peerID string) (provisioner.Observation, provisioner.Connectivity, error) {
+func (p *Prober) Observe(ctx context.Context, _, peerID string) (provisioner.Observation, provisioner.Connectivity, error) {
 	if p.run == nil {
 		return provisioner.Observation{}, provisioner.Connectivity{}, fmt.Errorf("routeros: nil command runner")
 	}

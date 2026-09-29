@@ -46,6 +46,18 @@ deploy_web() {
 }
 
 deploy_api() {
+  echo ">> Validating production configuration"
+  # ENVIRONMENT is injected again into systemd below. Supplying it here makes
+  # the preflight fail closed even if an old config.yaml omits or misspells the
+  # environment field. No service is touched when validation fails.
+  ENVIRONMENT=production /usr/bin/go run ./cmd/config-check --config config.yaml
+
+  echo ">> Verifying required database schema"
+  # This is intentionally a check, not an automatic production migration.
+  # Apply and complete the two-stage rollout using docs/DATABASE-MIGRATIONS.md.
+  # A stale schema stops the deploy before the binary or service is touched.
+  ENVIRONMENT=production /usr/bin/go run ./cmd/device-ssh-schema --action check --config config.yaml
+
   echo ">> Building Go binary"
   # Build to a TEMPORARY file first. Two reasons:
   #   1. A failed build must not touch the binary the service is running.
@@ -66,6 +78,16 @@ deploy_api() {
     cp -f server server.prev
   fi
   mv -f "$tmpserver" server
+
+  # Persist the same fail-closed environment for the actual service process.
+  # A build-time environment variable alone does not reach systemd.
+  local dropin_dir="/etc/systemd/system/mega-magic-api.service.d"
+  sudo install -d -m 755 "$dropin_dir"
+  printf '[Service]\nEnvironment=ENVIRONMENT=production\n' | \
+    sudo tee "$dropin_dir/99-production-environment.conf" >/dev/null
+  sudo chmod 644 "$dropin_dir/99-production-environment.conf"
+  sudo systemctl daemon-reload
+
   echo ">> Restarting mega-magic-api"
   sudo systemctl restart mega-magic-api
   sleep 3

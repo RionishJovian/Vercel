@@ -38,7 +38,7 @@ func TestObserve_classify(t *testing.T) {
 			}}
 			fr.out["/interface wireguard peers print"] = tc.peers
 			p := NewProber(fr, "wg-magichub", "10.99.0.1", 3*time.Minute)
-			obs, conn, err := p.Observe(context.Background(), "peer2")
+			obs, conn, err := p.Observe(context.Background(), "biz-1", "peer2")
 			if err != nil {
 				t.Fatalf("Observe: %v", err)
 			}
@@ -59,7 +59,7 @@ func TestObserve_parsesFields(t *testing.T) {
 		"/ping":                            pingFail,
 	}}
 	p := NewProber(fr, "wg-magichub", "10.99.0.1", 3*time.Minute)
-	obs, conn, err := p.Observe(context.Background(), "peer2")
+	obs, conn, err := p.Observe(context.Background(), "biz-1", "peer2")
 	if err != nil {
 		t.Fatalf("Observe: %v", err)
 	}
@@ -80,7 +80,7 @@ func TestObserve_emptyPingTargetSkipsDataPlane(t *testing.T) {
 		"/interface wireguard print":       labIface,
 	}}
 	p := NewProber(fr, "wg-magichub", "", 3*time.Minute)
-	obs, _, err := p.Observe(context.Background(), "peer2")
+	obs, _, err := p.Observe(context.Background(), "biz-1", "peer2")
 	if err != nil {
 		t.Fatalf("Observe: %v", err)
 	}
@@ -91,7 +91,7 @@ func TestObserve_emptyPingTargetSkipsDataPlane(t *testing.T) {
 
 func TestObserve_runnerError(t *testing.T) {
 	fr := &fakeRunner{err: map[string]error{"/interface wireguard peers print": errors.New("ssh down")}}
-	if _, _, err := NewProber(fr, "wg-magichub", "10.99.0.1", time.Minute).Observe(context.Background(), "peer2"); err == nil {
+	if _, _, err := NewProber(fr, "wg-magichub", "10.99.0.1", time.Minute).Observe(context.Background(), "biz-1", "peer2"); err == nil {
 		t.Fatal("runner error must propagate")
 	}
 }

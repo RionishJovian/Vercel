@@ -2,6 +2,7 @@ package routeros
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"mega-magic/internal/provisioner"
 )
 
 // ErrNoTarget means the peer has no usable connection facts (no address, or no
@@ -25,6 +28,10 @@ var ErrNoTarget = errors.New("routeros: device has no ssh target configured")
 // cannot yield a half-built transport.
 var ErrIncompleteTarget = errors.New("routeros: device ssh target is incomplete")
 
+// ErrHostKeyUnpinned prevents a database-resolved device from silently using
+// trust-on-first-use or InsecureIgnoreHostKey in the production control path.
+var ErrHostKeyUnpinned = errors.New("routeros: device ssh host key is not pinned")
+
 // DeviceTarget is one device's OWN connection facts, resolved from the database
 // and with the secret already decrypted. Secret never carries a value that was
 // not successfully opened, and must never be logged or serialised.
@@ -34,7 +41,7 @@ type DeviceTarget struct {
 	User        string
 	Secret      string
 	Kind        string // "password" | "key"
-	Fingerprint string // recorded for future host-key pinning; not enforced yet
+	Fingerprint string // pinned OpenSSH SHA-256 host-key fingerprint
 }
 
 // ── Leak guards ───────────────────────────────────────────────────────────
@@ -90,10 +97,9 @@ type TargetSource interface {
 
 // SSHConfigFromTarget maps a resolved target onto the transport's config.
 //
-// NOTE: InsecureIgnoreHostKey stays true. Host-key verification is NOT quietly
-// claimed here — the fingerprint is carried for a later slice, and the existing
-// guard.go safety layer is unchanged. Storing a fingerprint is the first step
-// toward pinning, not pinning itself.
+// Database-resolved devices must carry a SHA256 host-key fingerprint. The
+// single-host lab constructor may still opt into insecure mode explicitly, but
+// the multi-tenant production path never does.
 func SSHConfigFromTarget(t *DeviceTarget, timeout time.Duration) (SSHConfig, error) {
 	if t == nil {
 		return SSHConfig{}, ErrNoTarget
@@ -101,11 +107,15 @@ func SSHConfigFromTarget(t *DeviceTarget, timeout time.Duration) (SSHConfig, err
 	if strings.TrimSpace(t.Addr) == "" || strings.TrimSpace(t.User) == "" || t.Secret == "" {
 		return SSHConfig{}, ErrIncompleteTarget
 	}
+	fingerprint := strings.TrimSpace(t.Fingerprint)
+	if err := ValidateHostKeyFingerprint(fingerprint); err != nil {
+		return SSHConfig{}, ErrHostKeyUnpinned
+	}
 	cfg := SSHConfig{
-		Addr:                  t.Addr,
-		User:                  t.User,
-		InsecureIgnoreHostKey: true,
-		Timeout:               timeout,
+		Addr:               t.Addr,
+		User:               t.User,
+		HostKeyFingerprint: fingerprint,
+		Timeout:            timeout,
 	}
 	switch t.Kind {
 	case "password":
@@ -116,6 +126,23 @@ func SSHConfigFromTarget(t *DeviceTarget, timeout time.Duration) (SSHConfig, err
 		return SSHConfig{}, fmt.Errorf("%w: unknown secret kind %q", ErrIncompleteTarget, t.Kind)
 	}
 	return cfg, nil
+}
+
+// ValidateHostKeyFingerprint accepts the exact format returned by
+// ssh.FingerprintSHA256: the SHA256: prefix followed by 32 bytes encoded with
+// unpadded base64. Merely checking the prefix lets typos persist in the DB and
+// makes every later connection fail with a misleading key-mismatch error.
+func ValidateHostKeyFingerprint(fingerprint string) error {
+	fingerprint = strings.TrimSpace(fingerprint)
+	const prefix = "SHA256:"
+	if !strings.HasPrefix(fingerprint, prefix) {
+		return ErrHostKeyUnpinned
+	}
+	raw, err := base64.RawStdEncoding.Strict().DecodeString(strings.TrimPrefix(fingerprint, prefix))
+	if err != nil || len(raw) != 32 {
+		return ErrHostKeyUnpinned
+	}
+	return nil
 }
 
 // RunnerFactory builds a command runner for one device's config. It exists so
@@ -133,9 +160,12 @@ type RunnerFactory func(SSHConfig) CommandRunner
 // cannot be resolved to its own target, the call fails. It never quietly reads
 // from a shared host.
 type DeviceProber struct {
-	src     TargetSource
-	factory RunnerFactory
-	timeout time.Duration
+	src        TargetSource
+	factory    RunnerFactory
+	timeout    time.Duration
+	iface      string
+	pingTarget string
+	tDown      time.Duration
 }
 
 // NewDeviceProber builds the per-peer prober. A nil factory defaults to the
@@ -147,27 +177,184 @@ func NewDeviceProber(src TargetSource, timeout time.Duration, factory RunnerFact
 	if factory == nil {
 		factory = func(c SSHConfig) CommandRunner { return NewSSHTransport(c) }
 	}
-	return &DeviceProber{src: src, factory: factory, timeout: timeout}
+	return &DeviceProber{
+		src:     src,
+		factory: factory,
+		timeout: timeout,
+		iface:   DefaultInterface,
+		tDown:   3 * time.Minute,
+	}
 }
+
+// WithControlConfig configures full health probing for the per-device control
+// path. Version capture does not use these values.
+func (p *DeviceProber) WithControlConfig(iface, pingTarget string, tDown time.Duration) *DeviceProber {
+	if strings.TrimSpace(iface) != "" {
+		p.iface = iface
+	}
+	p.pingTarget = strings.TrimSpace(pingTarget)
+	if tDown > 0 {
+		p.tDown = tDown
+	}
+	return p
+}
+
+// Observe resolves the tenant's requested device before opening any transport.
+// There is no shared-host fallback: an absent or cross-tenant target fails.
+func (p *DeviceProber) Observe(ctx context.Context, businessID, peerID string) (provisioner.Observation, provisioner.Connectivity, error) {
+	runner, err := p.runnerForDevice(ctx, businessID, peerID)
+	if err != nil {
+		return provisioner.Observation{}, provisioner.Connectivity{}, err
+	}
+	return NewProber(runner, p.iface, p.pingTarget, p.tDown).Observe(ctx, businessID, peerID)
+}
+
+var _ provisioner.Prober = (*DeviceProber)(nil)
+
+// DeviceApplier resolves a new RouterOS transport for the exact tenant/device
+// on every operation. It is the production write path; unlike Applier it is not
+// bound to one deployment-wide host.
+type DeviceApplier struct {
+	src        TargetSource
+	factory    RunnerFactory
+	timeout    time.Duration
+	iface      string
+	pingTarget string
+	tDown      time.Duration
+	rotatePort int
+	resetHold  time.Duration
+}
+
+func NewDeviceApplier(src TargetSource, timeout time.Duration, factory RunnerFactory, iface string, rotatePort int, resetHold time.Duration) *DeviceApplier {
+	if timeout <= 0 {
+		timeout = 10 * time.Second
+	}
+	if factory == nil {
+		factory = func(c SSHConfig) CommandRunner { return NewSSHTransport(c) }
+	}
+	if strings.TrimSpace(iface) == "" {
+		iface = DefaultInterface
+	}
+	return &DeviceApplier{
+		src:        src,
+		factory:    factory,
+		timeout:    timeout,
+		iface:      iface,
+		tDown:      3 * time.Minute,
+		rotatePort: rotatePort,
+		resetHold:  resetHold,
+	}
+}
+
+// WithControlConfig supplies the verification settings used by a bound
+// snapshot/apply/verify/rollback operation.
+func (a *DeviceApplier) WithControlConfig(pingTarget string, tDown time.Duration) *DeviceApplier {
+	a.pingTarget = strings.TrimSpace(pingTarget)
+	if tDown > 0 {
+		a.tDown = tDown
+	}
+	return a
+}
+
+func (a *DeviceApplier) applierFor(ctx context.Context, businessID, peerID string) (*Applier, error) {
+	p := NewDeviceProber(a.src, a.timeout, a.factory)
+	runner, err := p.runnerForDevice(ctx, businessID, peerID)
+	if err != nil {
+		return nil, err
+	}
+	return NewApplier(runner, a.iface, a.rotatePort, a.resetHold), nil
+}
+
+func (a *DeviceApplier) Snapshot(ctx context.Context, businessID, peerID string, changes []provisioner.Change) (provisioner.RollbackSnapshot, error) {
+	applier, err := a.applierFor(ctx, businessID, peerID)
+	if err != nil {
+		return provisioner.RollbackSnapshot{}, err
+	}
+	return applier.Snapshot(ctx, businessID, peerID, changes)
+}
+
+func (a *DeviceApplier) Apply(ctx context.Context, businessID, peerID string, changes []provisioner.Change) error {
+	applier, err := a.applierFor(ctx, businessID, peerID)
+	if err != nil {
+		return err
+	}
+	return applier.Apply(ctx, businessID, peerID, changes)
+}
+
+func (a *DeviceApplier) Restore(ctx context.Context, businessID string, snap provisioner.RollbackSnapshot) error {
+	applier, err := a.applierFor(ctx, businessID, snap.PeerID)
+	if err != nil {
+		return err
+	}
+	return applier.Restore(ctx, businessID, snap)
+}
+
+var _ provisioner.Applier = (*DeviceApplier)(nil)
+
+// BindOperation resolves the database target exactly once, then constructs the
+// applier and prober over the same immutable runner. A later device-row update
+// cannot redirect apply, verification, or rollback to another router.
+func (a *DeviceApplier) BindOperation(ctx context.Context, businessID, peerID string) (provisioner.BoundOperation, error) {
+	runner, err := runnerForDevice(ctx, a.src, a.factory, a.timeout, businessID, peerID)
+	if err != nil {
+		return nil, err
+	}
+	return &boundDeviceOperation{
+		businessID: businessID,
+		peerID:     peerID,
+		applier:    NewApplier(runner, a.iface, a.rotatePort, a.resetHold),
+		prober:     NewProber(runner, a.iface, a.pingTarget, a.tDown),
+	}, nil
+}
+
+type boundDeviceOperation struct {
+	businessID string
+	peerID     string
+	applier    *Applier
+	prober     *Prober
+}
+
+func (o *boundDeviceOperation) Snapshot(ctx context.Context, changes []provisioner.Change) (provisioner.RollbackSnapshot, error) {
+	return o.applier.Snapshot(ctx, o.businessID, o.peerID, changes)
+}
+
+func (o *boundDeviceOperation) Apply(ctx context.Context, changes []provisioner.Change) error {
+	return o.applier.Apply(ctx, o.businessID, o.peerID, changes)
+}
+
+func (o *boundDeviceOperation) Restore(ctx context.Context, snap provisioner.RollbackSnapshot) error {
+	return o.applier.Restore(ctx, o.businessID, snap)
+}
+
+func (o *boundDeviceOperation) Observe(ctx context.Context) (provisioner.Observation, provisioner.Connectivity, error) {
+	return o.prober.Observe(ctx, o.businessID, o.peerID)
+}
+
+var _ provisioner.OperationBinder = (*DeviceApplier)(nil)
+var _ provisioner.BoundOperation = (*boundDeviceOperation)(nil)
 
 // runnerForDevice resolves the peer's own transport. Returning an error here is
 // the whole point: a missing target must stop the read, not redirect it.
 func (p *DeviceProber) runnerForDevice(ctx context.Context, businessID, peerID string) (CommandRunner, error) {
-	if p.src == nil {
+	return runnerForDevice(ctx, p.src, p.factory, p.timeout, businessID, peerID)
+}
+
+func runnerForDevice(ctx context.Context, src TargetSource, factory RunnerFactory, timeout time.Duration, businessID, peerID string) (CommandRunner, error) {
+	if src == nil {
 		return nil, fmt.Errorf("%w: no target source wired", ErrNoTarget)
 	}
 	if strings.TrimSpace(peerID) == "" {
 		return nil, fmt.Errorf("%w: empty peer id", ErrNoTarget)
 	}
-	t, err := p.src.TargetForDevice(ctx, businessID, peerID)
+	t, err := src.TargetForDevice(ctx, businessID, peerID)
 	if err != nil {
 		return nil, err
 	}
-	cfg, err := SSHConfigFromTarget(t, p.timeout)
+	cfg, err := SSHConfigFromTarget(t, timeout)
 	if err != nil {
 		return nil, err
 	}
-	runner := p.factory(cfg)
+	runner := factory(cfg)
 	if runner == nil {
 		return nil, fmt.Errorf("routeros: nil runner for device %s", peerID)
 	}

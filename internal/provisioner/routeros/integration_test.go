@@ -79,7 +79,7 @@ func TestLab_SnapshotApplyVerifyRollback(t *testing.T) {
 	pr := NewProber(tr, labIfaceName, labPeerPingTarget, 3*time.Minute)
 
 	// Pre-state must be the documented lab baseline.
-	before, _, err := pr.Observe(ctx, "peer2")
+	before, _, err := pr.Observe(ctx, "lab", "peer2")
 	if err != nil {
 		t.Fatalf("observe before: %v", err)
 	}
@@ -88,7 +88,7 @@ func TestLab_SnapshotApplyVerifyRollback(t *testing.T) {
 	}
 
 	// 1) Snapshot (real /export + /system backup save + WG capture).
-	snap, err := ap.Snapshot(ctx, "peer2", []provisioner.Change{{Action: provisioner.ActionRotateListenPort}})
+	snap, err := ap.Snapshot(ctx, "lab", "peer2", []provisioner.Change{{Action: provisioner.ActionRotateListenPort}})
 	if err != nil {
 		t.Fatalf("snapshot: %v", err)
 	}
@@ -97,10 +97,10 @@ func TestLab_SnapshotApplyVerifyRollback(t *testing.T) {
 	}
 
 	// 2) Direct apply, then read back — proves the translation really writes.
-	if err := ap.Apply(ctx, "peer2", []provisioner.Change{{Action: provisioner.ActionRotateListenPort}}); err != nil {
+	if err := ap.Apply(ctx, "lab", "peer2", []provisioner.Change{{Action: provisioner.ActionRotateListenPort}}); err != nil {
 		t.Fatalf("apply rotate: %v", err)
 	}
-	mid, _, err := pr.Observe(ctx, "peer2")
+	mid, _, err := pr.Observe(ctx, "lab", "peer2")
 	if err != nil {
 		t.Fatalf("observe after apply: %v", err)
 	}
@@ -109,10 +109,10 @@ func TestLab_SnapshotApplyVerifyRollback(t *testing.T) {
 	}
 
 	// 3) Direct restore — proves the revert path.
-	if err := ap.Restore(ctx, snap); err != nil {
+	if err := ap.Restore(ctx, "lab", snap); err != nil {
 		t.Fatalf("restore: %v", err)
 	}
-	restored, _, err := pr.Observe(ctx, "peer2")
+	restored, _, err := pr.Observe(ctx, "lab", "peer2")
 	if err != nil {
 		t.Fatalf("observe after restore: %v", err)
 	}
@@ -151,7 +151,7 @@ func TestLab_SnapshotApplyVerifyRollback(t *testing.T) {
 	}
 
 	// Final device state: reverted to baseline and peer enabled.
-	final, _, err := pr.Observe(ctx, "peer2")
+	final, _, err := pr.Observe(ctx, "lab", "peer2")
 	if err != nil {
 		t.Fatalf("observe final: %v", err)
 	}
@@ -186,7 +186,7 @@ func TestLab_EnforceGuestQuotaLive(t *testing.T) {
 	ap := NewApplier(tr, "wg-magichub", 0, 0)
 
 	// Clean guarantee: start from a known-empty state.
-	if err := ap.Apply(ctx, name, []provisioner.Change{{Action: provisioner.ActionRevokeGuestQuota, Target: identity}}); err != nil {
+	if err := ap.Apply(ctx, "lab", name, []provisioner.Change{{Action: provisioner.ActionRevokeGuestQuota, Target: identity}}); err != nil {
 		t.Fatalf("pre-clean revoke: %v", err)
 	}
 	if st, err := pr.ObserveGuestQuota(ctx, identity); err != nil || st.Exists {
@@ -194,7 +194,7 @@ func TestLab_EnforceGuestQuotaLive(t *testing.T) {
 	}
 
 	// 1) Enforce: a bought "1GB / 60min" plan.
-	err := ap.Apply(ctx, name, []provisioner.Change{{
+	err := ap.Apply(ctx, "lab", name, []provisioner.Change{{
 		Action:   provisioner.ActionEnforceGuestQuota,
 		Target:   identity,
 		Proposed: `{"data_bytes":1073741824,"uptime_seconds":3600}`,
@@ -216,7 +216,7 @@ func TestLab_EnforceGuestQuotaLive(t *testing.T) {
 	}
 
 	// 3) Revoke (plan lapsed / rejected) and verify it's gone.
-	if err := ap.Apply(ctx, name, []provisioner.Change{{Action: provisioner.ActionRevokeGuestQuota, Target: identity}}); err != nil {
+	if err := ap.Apply(ctx, "lab", name, []provisioner.Change{{Action: provisioner.ActionRevokeGuestQuota, Target: identity}}); err != nil {
 		t.Fatalf("revoke: %v", err)
 	}
 	final, err := pr.ObserveGuestQuota(ctx, identity)

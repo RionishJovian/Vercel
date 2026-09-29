@@ -17,6 +17,10 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
         CREATE ROLE authenticated;
     END IF;
+EXCEPTION
+    -- pg_roles is cluster-wide, so concurrent database initializers can race
+    -- between the existence check and CREATE ROLE.
+    WHEN duplicate_object OR unique_violation THEN NULL;
 END;
 $$;
 

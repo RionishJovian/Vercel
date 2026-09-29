@@ -1,13 +1,18 @@
 package config
 
 import (
+	"fmt"
+	"net/netip"
 	"strings"
 	"time"
 
 	"github.com/spf13/viper"
+
+	"mega-magic/internal/secretbox"
 )
 
 type Config struct {
+	Environment string            `mapstructure:"environment"`
 	Server      ServerConfig      `mapstructure:"server"`
 	Database    DatabaseConfig    `mapstructure:"database"`
 	Redis       RedisConfig       `mapstructure:"redis"`
@@ -211,6 +216,12 @@ type RecoveryConfig struct {
 type ProvisionerConfig struct {
 	Applier ApplierConfig `mapstructure:"applier"`
 
+	// AllowedTargetCIDRs bounds every database-resolved SSH connection (read
+	// and write) to explicit management networks. Empty is safe only while both
+	// live features are disabled; enabling either feature without an allowlist
+	// fails server startup.
+	AllowedTargetCIDRs []string `mapstructure:"allowed_target_cidrs"`
+
 	// PostureCapture gates the READ-ONLY security-posture capture separately
 	// from Applier. See PostureCaptureConfig for why they are not one flag.
 	PostureCapture PostureCaptureConfig `mapstructure:"posture_capture"`
@@ -239,10 +250,10 @@ type PostureCaptureConfig struct {
 	Timeout time.Duration `mapstructure:"timeout"`
 }
 
-// ApplierConfig configures the REAL SSH + RouterOS Applier/Prober. It is
-// DISABLED by default; live router writes require Enabled=true. The target must
-// never be a production host — the transport fails closed on prod-shaped
-// addresses regardless of this flag.
+// ApplierConfig configures the real SSH + RouterOS control path. The server uses
+// CredentialKey plus each device's encrypted target and pinned host key. The
+// single-host fields remain for the standalone disposable-lab constructor and
+// are never a fleet fallback.
 type ApplierConfig struct {
 	Enabled               bool          `mapstructure:"enabled"`
 	Host                  string        `mapstructure:"host"`
@@ -300,8 +311,98 @@ func Load(path string) (*Config, error) {
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, err
 	}
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
 
 	return &cfg, nil
+}
+
+const (
+	defaultDatabasePassword = "MegaSecurePass123"
+	defaultJWTSecret        = "CHANGE_ME_IN_PRODUCTION_USE_STRONG_RANDOM_32_BYTES"
+	defaultAESGCMKey        = "CHANGE_ME_32_BYTE_KEY_FOR_ENCRYPTION"
+)
+
+// Validate enforces environment-specific safety invariants. Development keeps
+// convenient local defaults, while production refuses to boot in a state that
+// can silently bypass tenant isolation or reuse repository-known secrets.
+func (cfg *Config) Validate() error {
+	env := strings.ToLower(strings.TrimSpace(cfg.Environment))
+	switch env {
+	case "development", "test":
+		// Router access is still validated below. Development may use convenient
+		// application defaults, but it must not weaken the SSH safety boundary.
+	case "production", "prod":
+		// Production-only checks are appended below.
+	case "":
+		return fmt.Errorf("environment is required (development, test, or production); refusing an implicit development fallback")
+	default:
+		return fmt.Errorf("unknown environment %q (want development, test, or production)", cfg.Environment)
+	}
+
+	var problems []string
+	routerAccess := cfg.Provisioner.Applier.Enabled || cfg.Provisioner.PostureCapture.Enabled
+	if routerAccess {
+		if len(cfg.Provisioner.AllowedTargetCIDRs) == 0 {
+			problems = append(problems, "provisioner.allowed_target_cidrs is required when router access is enabled")
+		}
+		for _, raw := range cfg.Provisioner.AllowedTargetCIDRs {
+			cidr := strings.TrimSpace(raw)
+			prefix, err := netip.ParsePrefix(cidr)
+			if err != nil {
+				problems = append(problems, fmt.Sprintf("provisioner.allowed_target_cidrs contains invalid CIDR %q", raw))
+				continue
+			}
+			if prefix.Bits() == 0 {
+				problems = append(problems, fmt.Sprintf("provisioner.allowed_target_cidrs forbids default route %q", raw))
+			}
+			if prefix != prefix.Masked() {
+				problems = append(problems, fmt.Sprintf("provisioner.allowed_target_cidrs requires canonical network notation, got %q", raw))
+			}
+		}
+	}
+	if cfg.Provisioner.Applier.Enabled {
+		if ip, err := netip.ParseAddr(strings.TrimSpace(cfg.Provisioner.Applier.PingTarget)); err != nil || ip.IsUnspecified() {
+			problems = append(problems, "provisioner.applier.ping_target must be a specific IP address when live apply is enabled")
+		}
+		if _, err := secretbox.New(cfg.Provisioner.Applier.CredentialKey); err != nil {
+			problems = append(problems, "provisioner.applier.credential_key must be a valid base64 or hex encoded 32-byte key")
+		}
+	}
+	if cfg.Provisioner.PostureCapture.Enabled {
+		key := strings.TrimSpace(cfg.Provisioner.PostureCapture.CredentialKey)
+		if key == "" {
+			key = cfg.Provisioner.Applier.CredentialKey
+		}
+		if _, err := secretbox.New(key); err != nil {
+			problems = append(problems, "provisioner.posture_capture.credential_key (or applier fallback) must be a valid base64 or hex encoded 32-byte key")
+		}
+	}
+
+	if env == "production" || env == "prod" {
+		if !cfg.Database.RLSEnforce {
+			problems = append(problems, "database.rls_enforce must be true")
+		}
+		if weakSecret(cfg.Database.Password, defaultDatabasePassword, 16) {
+			problems = append(problems, "database.password must be a non-default secret of at least 16 characters")
+		}
+		if weakSecret(cfg.Security.JWTSecret, defaultJWTSecret, 32) {
+			problems = append(problems, "security.jwt_secret must be a non-default secret of at least 32 characters")
+		}
+		if weakSecret(cfg.Security.AESGCMKey, defaultAESGCMKey, 32) {
+			problems = append(problems, "security.aes_gcm_key must be a non-default secret of at least 32 characters")
+		}
+	}
+	if len(problems) > 0 {
+		return fmt.Errorf("unsafe %s configuration: %s", env, strings.Join(problems, "; "))
+	}
+	return nil
+}
+
+func weakSecret(value, knownDefault string, minLength int) bool {
+	value = strings.TrimSpace(value)
+	return len(value) < minLength || value == knownDefault
 }
 
 func setDefaults(v *viper.Viper) {
@@ -315,7 +416,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("database.host", "localhost")
 	v.SetDefault("database.port", 5432)
 	v.SetDefault("database.user", "mega_admin")
-	v.SetDefault("database.password", "MegaSecurePass123")
+	v.SetDefault("database.password", defaultDatabasePassword)
 	v.SetDefault("billing.receipt_dir", "./data/receipts")
 	v.SetDefault("billing.quota_enforcement_interval", "60s")
 	v.SetDefault("billing.telegram.poll_timeout", "10s")
@@ -374,11 +475,11 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("quotas.ai_tokens_monthly_enterprise", 2000000)
 	v.SetDefault("quotas.webfig_pass_duration", "3h")
 
-	v.SetDefault("security.jwt_secret", "CHANGE_ME_IN_PRODUCTION_USE_STRONG_RANDOM_32_BYTES")
+	v.SetDefault("security.jwt_secret", defaultJWTSecret)
 	v.SetDefault("security.jwt_expiry", "24h")
 	v.SetDefault("security.refresh_expiry", "168h")
 	v.SetDefault("security.bcrypt_cost", 12)
-	v.SetDefault("security.aes_gcm_key", "CHANGE_ME_32_BYTE_KEY_FOR_ENCRYPTION")
+	v.SetDefault("security.aes_gcm_key", defaultAESGCMKey)
 	v.SetDefault("security.tls_cert_path", "")
 	v.SetDefault("security.tls_key_path", "")
 
@@ -407,7 +508,12 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("recovery.backoff_window", "15m")
 
 	// Live provisioner applier: OFF by default. Never point at production.
+	v.SetDefault("provisioner.allowed_target_cidrs", []string{})
 	v.SetDefault("provisioner.applier.enabled", false)
+	// Defaults are required for Viper to include nested environment-only values
+	// during Unmarshal. Without these keys, operators could set the documented
+	// PROVISIONER_*_CREDENTIAL_KEY variables and still get an empty key.
+	v.SetDefault("provisioner.applier.credential_key", "")
 	v.SetDefault("provisioner.applier.port", 22)
 	v.SetDefault("provisioner.applier.insecure_ignore_host_key", true)
 	v.SetDefault("provisioner.applier.allow_empty_password", false)
@@ -421,6 +527,7 @@ func setDefaults(v *viper.Viper) {
 	// rather than riding on applier.enabled (which enables live router writes).
 	// OFF by default for the same reason: never capture until asked.
 	v.SetDefault("provisioner.posture_capture.enabled", false)
+	v.SetDefault("provisioner.posture_capture.credential_key", "")
 	v.SetDefault("provisioner.posture_capture.timeout", "10s")
 	v.SetDefault("provisioner.applier.otp_digits", 6)
 	v.SetDefault("provisioner.applier.otp_step", "30s")

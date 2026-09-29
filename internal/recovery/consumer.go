@@ -145,7 +145,7 @@ func (c *ApplyConsumer) OnRecover(ctx context.Context, businessID, peerID string
 	if c.probe == nil {
 		return nil, fmt.Errorf("provisioner: no prober configured")
 	}
-	obs, _, err := c.probe.Observe(ctx, peerID)
+	obs, _, err := c.probe.Observe(ctx, businessID, peerID)
 	if err != nil {
 		return nil, fmt.Errorf("provisioner: observe peer %s: %w", peerID, err)
 	}

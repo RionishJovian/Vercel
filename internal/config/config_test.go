@@ -3,15 +3,18 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
+
+const validCredentialKey = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
 
 // TestLoad_provisionerApplierDefaultsOff proves the live applier is DISABLED by
 // default (deliverable 4) even when the config file says nothing about it.
 func TestLoad_provisionerApplierDefaultsOff(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
-	if err := os.WriteFile(path, []byte("# no provisioner section on purpose\n"), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte("environment: development\n# no provisioner section on purpose\n"), 0o600); err != nil {
 		t.Fatalf("write temp config: %v", err)
 	}
 
@@ -42,6 +45,7 @@ func TestLoad_provisionerApplierDefaultsOff(t *testing.T) {
 
 // TestLoad_vpsConfigParses proves the real config.yaml's vps section loads.
 func TestLoad_vpsConfigParses(t *testing.T) {
+	t.Setenv("ENVIRONMENT", "development")
 	cfg, err := Load("../../config.yaml")
 	if err != nil {
 		t.Fatalf("Load config.yaml: %v", err)
@@ -58,6 +62,7 @@ func TestLoad_vpsConfigParses(t *testing.T) {
 // DISABLED by default (fail closed): no token, no chat, so the bridge stays
 // inert until explicitly enabled.
 func TestLoad_billingTelegramDefaultsOff(t *testing.T) {
+	t.Setenv("ENVIRONMENT", "development")
 	cfg, err := Load("../../config.yaml")
 	if err != nil {
 		t.Fatalf("Load config.yaml: %v", err)
@@ -71,5 +76,214 @@ func TestLoad_billingTelegramDefaultsOff(t *testing.T) {
 	}
 	if tg.ChatID != 0 {
 		t.Fatalf("billing.telegram.chat_id must default 0, got %d", tg.ChatID)
+	}
+}
+
+func TestValidateDevelopmentAllowsLocalDefaults(t *testing.T) {
+	cfg := &Config{Environment: "development"}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("development config should allow local defaults: %v", err)
+	}
+}
+
+func TestValidateProductionRejectsUnsafeDefaults(t *testing.T) {
+	cfg := &Config{
+		Environment: "production",
+		Database: DatabaseConfig{
+			Password:   defaultDatabasePassword,
+			RLSEnforce: false,
+		},
+		Security: SecurityConfig{
+			JWTSecret: defaultJWTSecret,
+			AESGCMKey: defaultAESGCMKey,
+		},
+	}
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("unsafe production defaults must be rejected")
+	}
+	for _, want := range []string{"database.rls_enforce", "database.password", "security.jwt_secret", "security.aes_gcm_key"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("validation error %q does not mention %s", err, want)
+		}
+	}
+}
+
+func TestValidateProductionAcceptsHardenedConfig(t *testing.T) {
+	cfg := &Config{
+		Environment: "prod",
+		Database: DatabaseConfig{
+			Password:   "unique-database-password-2026",
+			RLSEnforce: true,
+		},
+		Security: SecurityConfig{
+			JWTSecret: "unique-jwt-secret-at-least-32-bytes-long",
+			AESGCMKey: "unique-aes-key-at-least-32-bytes-long",
+		},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("hardened production config rejected: %v", err)
+	}
+}
+
+func TestValidateProductionRouterAccessRequiresTargetAllowlist(t *testing.T) {
+	cfg := &Config{
+		Environment: "production",
+		Database: DatabaseConfig{
+			Password:   "unique-database-password-2026",
+			RLSEnforce: true,
+		},
+		Security: SecurityConfig{
+			JWTSecret: "unique-jwt-secret-at-least-32-bytes-long",
+			AESGCMKey: "unique-aes-key-at-least-32-bytes-long",
+		},
+		Provisioner: ProvisionerConfig{Applier: ApplierConfig{
+			Enabled:       true,
+			PingTarget:    "10.77.0.1",
+			CredentialKey: validCredentialKey,
+		}},
+	}
+	err := cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "provisioner.allowed_target_cidrs") {
+		t.Fatalf("enabled production router access without allowlist must fail, got %v", err)
+	}
+	cfg.Provisioner.AllowedTargetCIDRs = []string{"10.77.0.0/24"}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("explicit production target allowlist rejected: %v", err)
+	}
+}
+
+func TestValidateRouterAccessRejectsUnsafeInputsInEveryEnvironment(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  ProvisionerConfig
+		want string
+	}{
+		{
+			name: "missing ping target",
+			cfg: ProvisionerConfig{
+				AllowedTargetCIDRs: []string{"10.77.0.0/24"},
+				Applier:            ApplierConfig{Enabled: true, CredentialKey: validCredentialKey},
+			},
+			want: "ping_target",
+		},
+		{
+			name: "ping target is not an IP",
+			cfg: ProvisionerConfig{
+				AllowedTargetCIDRs: []string{"10.77.0.0/24"},
+				Applier:            ApplierConfig{Enabled: true, CredentialKey: validCredentialKey, PingTarget: "hub.example.com"},
+			},
+			want: "ping_target",
+		},
+		{
+			name: "invalid credential key",
+			cfg: ProvisionerConfig{
+				AllowedTargetCIDRs: []string{"10.77.0.0/24"},
+				Applier:            ApplierConfig{Enabled: true, CredentialKey: "too-short", PingTarget: "10.77.0.1"},
+			},
+			want: "credential_key",
+		},
+		{
+			name: "malformed CIDR",
+			cfg: ProvisionerConfig{
+				AllowedTargetCIDRs: []string{"not-a-cidr"},
+				PostureCapture:     PostureCaptureConfig{Enabled: true, CredentialKey: validCredentialKey},
+			},
+			want: "invalid CIDR",
+		},
+		{
+			name: "default route",
+			cfg: ProvisionerConfig{
+				AllowedTargetCIDRs: []string{"0.0.0.0/0"},
+				PostureCapture:     PostureCaptureConfig{Enabled: true, CredentialKey: validCredentialKey},
+			},
+			want: "default route",
+		},
+		{
+			name: "noncanonical CIDR",
+			cfg: ProvisionerConfig{
+				AllowedTargetCIDRs: []string{"10.77.0.4/24"},
+				PostureCapture:     PostureCaptureConfig{Enabled: true, CredentialKey: validCredentialKey},
+			},
+			want: "canonical",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := (&Config{Environment: "development", Provisioner: tc.cfg}).Validate()
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("Validate() error = %v, want mention of %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestValidateRouterAccessAcceptsCompleteConfiguration(t *testing.T) {
+	cfg := &Config{
+		Environment: "development",
+		Provisioner: ProvisionerConfig{
+			AllowedTargetCIDRs: []string{"10.77.0.0/24", "fd00:77::/64"},
+			Applier:            ApplierConfig{Enabled: true, CredentialKey: validCredentialKey, PingTarget: "10.77.0.1"},
+			PostureCapture:     PostureCaptureConfig{Enabled: true}, // valid applier-key fallback
+		},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("complete router access configuration rejected: %v", err)
+	}
+}
+
+func TestLoadEnvironmentOverrideActivatesProductionValidation(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte("# environment supplied below; other defaults are intentionally unsafe\n"), 0o600); err != nil {
+		t.Fatalf("write temp config: %v", err)
+	}
+	t.Setenv("ENVIRONMENT", "production")
+
+	if _, err := Load(path); err == nil || !strings.Contains(err.Error(), "unsafe production configuration") {
+		t.Fatalf("production environment override must activate validation, got %v", err)
+	}
+}
+
+func TestLoadCredentialKeysFromEnvironment(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte("environment: development\n"), 0o600); err != nil {
+		t.Fatalf("write temp config: %v", err)
+	}
+	t.Setenv("PROVISIONER_APPLIER_CREDENTIAL_KEY", "applier-key-from-environment")
+	t.Setenv("PROVISIONER_POSTURE_CAPTURE_CREDENTIAL_KEY", "posture-key-from-environment")
+	t.Setenv("PROVISIONER_ALLOWED_TARGET_CIDRS", "10.77.0.0/24,10.88.0.0/24")
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Provisioner.Applier.CredentialKey != "applier-key-from-environment" {
+		t.Fatal("applier credential key environment override was not loaded")
+	}
+	if cfg.Provisioner.PostureCapture.CredentialKey != "posture-key-from-environment" {
+		t.Fatal("posture credential key environment override was not loaded")
+	}
+	if got := cfg.Provisioner.AllowedTargetCIDRs; len(got) != 2 || got[0] != "10.77.0.0/24" || got[1] != "10.88.0.0/24" {
+		t.Fatalf("allowed target CIDR environment override = %v, want two CIDRs", got)
+	}
+}
+
+func TestLoadRejectsMissingOrUnknownEnvironment(t *testing.T) {
+	dir := t.TempDir()
+	for name, contents := range map[string]string{
+		"missing": "{}\n",
+		"unknown": "environment: prodution\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join(dir, name+".yaml")
+			if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := Load(path); err == nil {
+				t.Fatal("unsafe environment value was accepted")
+			}
+		})
 	}
 }

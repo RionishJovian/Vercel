@@ -247,6 +247,11 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
         CREATE ROLE authenticated;
     END IF;
+EXCEPTION
+    -- Roles are cluster-wide. Parallel throwaway databases can both observe
+    -- the role as absent, then race to create it. Either duplicate condition
+    -- means another initializer won and the required role now exists.
+    WHEN duplicate_object OR unique_violation THEN NULL;
 END;
 $$;
 
@@ -1412,8 +1417,8 @@ ALTER TABLE devices ADD COLUMN IF NOT EXISTS ssh_port integer NOT NULL DEFAULT 2
 ALTER TABLE devices ADD COLUMN IF NOT EXISTS ssh_username text;
 ALTER TABLE devices ADD COLUMN IF NOT EXISTS ssh_secret_ciphertext text;
 ALTER TABLE devices ADD COLUMN IF NOT EXISTS ssh_secret_kind text;
--- Recorded (not yet enforced) so host-key pinning becomes possible; the
--- transport currently still uses InsecureIgnoreHostKey.
+-- Required for every configured credential. The multi-tenant transport refuses
+-- to connect without a SHA256 pin, preventing router impersonation.
 ALTER TABLE devices ADD COLUMN IF NOT EXISTS ssh_host_key_fingerprint text;
 
 -- A credential is either COMPLETE or ABSENT. A half-configured device must not
@@ -1421,9 +1426,12 @@ ALTER TABLE devices ADD COLUMN IF NOT EXISTS ssh_host_key_fingerprint text;
 -- transport that fails at dial time and gets silently skipped.
 ALTER TABLE devices DROP CONSTRAINT IF EXISTS devices_ssh_creds_complete;
 ALTER TABLE devices ADD CONSTRAINT devices_ssh_creds_complete CHECK (
-    (ssh_username IS NULL AND ssh_secret_ciphertext IS NULL AND ssh_secret_kind IS NULL)
+    (ssh_username IS NULL AND ssh_secret_ciphertext IS NULL AND ssh_secret_kind IS NULL
+     AND ssh_host_key_fingerprint IS NULL)
  OR (ssh_username IS NOT NULL AND ssh_secret_ciphertext IS NOT NULL
-     AND ssh_secret_kind IN ('password', 'key'))
+     AND ssh_secret_kind IN ('password', 'key')
+     AND ssh_host_key_fingerprint IS NOT NULL
+     AND ssh_host_key_fingerprint ~ '^SHA256:[A-Za-z0-9+/]{42}[AEIMQUYcgkosw048]$')
 );
 
 ALTER TABLE devices DROP CONSTRAINT IF EXISTS devices_ssh_port_valid;

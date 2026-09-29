@@ -35,9 +35,28 @@ type RollbackSnapshot struct {
 // LATER slice (out of scope, matching how dry-run shipped no real transport);
 // this boundary is what makes the apply path unit-testable today.
 type Applier interface {
-	Snapshot(ctx context.Context, peerID string, changes []Change) (RollbackSnapshot, error)
-	Apply(ctx context.Context, peerID string, changes []Change) error
+	Snapshot(ctx context.Context, businessID, peerID string, changes []Change) (RollbackSnapshot, error)
+	Apply(ctx context.Context, businessID, peerID string, changes []Change) error
+	Restore(ctx context.Context, businessID string, snap RollbackSnapshot) error
+}
+
+// BoundOperation is one logical device operation pinned to a single resolved
+// transport. Production implementations resolve the tenant/device target once
+// and reuse this object for snapshot, mutation, verification, and rollback.
+// This prevents a concurrent credential/address update from moving the middle
+// of an operation to a different router.
+type BoundOperation interface {
+	Snapshot(ctx context.Context, changes []Change) (RollbackSnapshot, error)
+	Apply(ctx context.Context, changes []Change) error
 	Restore(ctx context.Context, snap RollbackSnapshot) error
+	Observe(ctx context.Context) (Observation, Connectivity, error)
+}
+
+// OperationBinder is an optional stronger contract implemented by live
+// transports. ApplyService falls back to a legacy adapter for in-memory/test
+// appliers, while production RouterOS uses a bound transport.
+type OperationBinder interface {
+	BindOperation(ctx context.Context, businessID, peerID string) (BoundOperation, error)
 }
 
 // ApplyRequest is one apply attempt for a peer.
@@ -111,16 +130,20 @@ func (s *ApplyService) ApplyFixes(ctx context.Context, req ApplyRequest) (*Apply
 		res.VerificationDetail = "no changes to apply"
 		return res, nil
 	}
+	op, err := s.bindOperation(ctx, req.BusinessID, req.PeerID)
+	if err != nil {
+		return nil, fmt.Errorf("provisioner: bind peer %s: %w", req.PeerID, err)
+	}
 
-	snap, err := s.applier.Snapshot(ctx, req.PeerID, req.Changes)
+	snap, err := op.Snapshot(ctx, req.Changes)
 	if err != nil {
 		return nil, fmt.Errorf("provisioner: snapshot peer %s: %w", req.PeerID, err)
 	}
 	res.SnapshotCaptured = true
 
-	if err := s.applier.Apply(ctx, req.PeerID, req.Changes); err != nil {
+	if err := op.Apply(ctx, req.Changes); err != nil {
 		// A failed apply may have left partial state: revert to the snapshot.
-		detail, exceeded, ms := s.rollback(ctx, snap)
+		detail, exceeded, ms := s.rollback(ctx, op, snap)
 		res.RolledBack = true
 		res.DeadlineExceeded = exceeded
 		res.RollbackMs = ms
@@ -129,7 +152,7 @@ func (s *ApplyService) ApplyFixes(ctx context.Context, req ApplyRequest) (*Apply
 		return res, nil
 	}
 
-	verified, vdetail, verr := s.verify(ctx, req.PeerID)
+	verified, vdetail, verr := s.verify(ctx, op)
 	if verr == nil && verified {
 		res.Verified = true
 		res.VerificationDetail = vdetail
@@ -140,7 +163,7 @@ func (s *ApplyService) ApplyFixes(ctx context.Context, req ApplyRequest) (*Apply
 	}
 	res.VerificationDetail = vdetail
 
-	rdetail, exceeded, ms := s.rollback(ctx, snap)
+	rdetail, exceeded, ms := s.rollback(ctx, op, snap)
 	res.RolledBack = true
 	res.DeadlineExceeded = exceeded
 	res.RollbackMs = ms
@@ -174,13 +197,17 @@ func (s *ApplyService) ApplyAction(ctx context.Context, req ApplyRequest) (*Appl
 		res.VerificationDetail = "no action to apply"
 		return res, nil
 	}
+	op, err := s.bindOperation(ctx, req.BusinessID, req.PeerID)
+	if err != nil {
+		return nil, fmt.Errorf("provisioner: bind peer %s: %w", req.PeerID, err)
+	}
 
-	if err := s.applier.Apply(ctx, req.PeerID, req.Changes); err != nil {
+	if err := op.Apply(ctx, req.Changes); err != nil {
 		res.VerificationDetail = "action failed: " + err.Error()
 		return res, nil
 	}
 
-	verified, vdetail, verr := s.verify(ctx, req.PeerID)
+	verified, vdetail, verr := s.verify(ctx, op)
 	res.VerificationDetail = vdetail
 	if verr == nil && verified {
 		res.Verified = true
@@ -194,11 +221,8 @@ func (s *ApplyService) ApplyAction(ctx context.Context, req ApplyRequest) (*Appl
 
 // verify confirms the tunnel is up AND the peer is reachable from the cloud,
 // reusing the same read-only Prober the dry-run path uses.
-func (s *ApplyService) verify(ctx context.Context, peerID string) (bool, string, error) {
-	if s.prober == nil {
-		return false, "no prober configured", nil
-	}
-	obs, conn, err := s.prober.Observe(ctx, peerID)
+func (s *ApplyService) verify(ctx context.Context, op BoundOperation) (bool, string, error) {
+	obs, conn, err := op.Observe(ctx)
 	if err != nil {
 		return false, "", err
 	}
@@ -210,16 +234,19 @@ func (s *ApplyService) verify(ctx context.Context, peerID string) (bool, string,
 
 // rollback restores the snapshot within the rollback window, returning the
 // human detail, whether the deadline was exceeded, and how long it took.
-func (s *ApplyService) rollback(ctx context.Context, snap RollbackSnapshot) (string, bool, int64) {
+func (s *ApplyService) rollback(ctx context.Context, op BoundOperation, snap RollbackSnapshot) (string, bool, int64) {
 	window := s.window
 	if window <= 0 {
 		window = DefaultRollbackWindow
 	}
-	rctx, cancel := context.WithTimeout(ctx, window)
+	// Emergency restore must survive the HTTP/job cancellation that triggered
+	// the failure. Preserve request values for auditing, but give rollback its
+	// own strictly bounded lifetime.
+	rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), window)
 	defer cancel()
 
 	start := time.Now()
-	err := s.applier.Restore(rctx, snap)
+	err := op.Restore(rctx, snap)
 	ms := time.Since(start).Milliseconds()
 
 	if rctx.Err() == context.DeadlineExceeded {
@@ -231,3 +258,45 @@ func (s *ApplyService) rollback(ctx context.Context, snap RollbackSnapshot) (str
 	return fmt.Sprintf("reverted to snapshot captured at %s and re-enabled peer %s",
 		snap.CapturedAt.Format(time.RFC3339), snap.PeerID), false, ms
 }
+
+func (s *ApplyService) bindOperation(ctx context.Context, businessID, peerID string) (BoundOperation, error) {
+	if binder, ok := s.applier.(OperationBinder); ok {
+		return binder.BindOperation(ctx, businessID, peerID)
+	}
+	return &legacyBoundOperation{
+		applier:    s.applier,
+		prober:     s.prober,
+		businessID: businessID,
+		peerID:     peerID,
+	}, nil
+}
+
+// legacyBoundOperation preserves the existing injectable seams for dry-run and
+// unit-test implementations. Live RouterOS never uses this adapter.
+type legacyBoundOperation struct {
+	applier    Applier
+	prober     Prober
+	businessID string
+	peerID     string
+}
+
+func (o *legacyBoundOperation) Snapshot(ctx context.Context, changes []Change) (RollbackSnapshot, error) {
+	return o.applier.Snapshot(ctx, o.businessID, o.peerID, changes)
+}
+
+func (o *legacyBoundOperation) Apply(ctx context.Context, changes []Change) error {
+	return o.applier.Apply(ctx, o.businessID, o.peerID, changes)
+}
+
+func (o *legacyBoundOperation) Restore(ctx context.Context, snap RollbackSnapshot) error {
+	return o.applier.Restore(ctx, o.businessID, snap)
+}
+
+func (o *legacyBoundOperation) Observe(ctx context.Context) (Observation, Connectivity, error) {
+	if o.prober == nil {
+		return Observation{}, Connectivity{Checked: false}, nil
+	}
+	return o.prober.Observe(ctx, o.businessID, o.peerID)
+}
+
+var _ BoundOperation = (*legacyBoundOperation)(nil)

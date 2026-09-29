@@ -70,7 +70,7 @@ type seqProber struct {
 	index int
 }
 
-func (p *seqProber) Observe(_ context.Context, peerID string) (provisioner.Observation, provisioner.Connectivity, error) {
+func (p *seqProber) Observe(_ context.Context, _, peerID string) (provisioner.Observation, provisioner.Connectivity, error) {
 	if len(p.obs) == 0 {
 		return provisioner.Observation{PeerID: peerID, State: provisioner.StateUnknown}, provisioner.Connectivity{Checked: true}, nil
 	}
@@ -88,15 +88,15 @@ type fakeApplier struct {
 	restored int
 }
 
-func (a *fakeApplier) Snapshot(_ context.Context, peerID string, changes []provisioner.Change) (provisioner.RollbackSnapshot, error) {
+func (a *fakeApplier) Snapshot(_ context.Context, _, peerID string, changes []provisioner.Change) (provisioner.RollbackSnapshot, error) {
 	a.snapped++
 	return provisioner.RollbackSnapshot{PeerID: peerID, CapturedAt: time.Now().UTC(), Protecting: changes}, nil
 }
-func (a *fakeApplier) Apply(_ context.Context, _ string, _ []provisioner.Change) error {
+func (a *fakeApplier) Apply(_ context.Context, _, _ string, _ []provisioner.Change) error {
 	a.applied++
 	return nil
 }
-func (a *fakeApplier) Restore(_ context.Context, _ provisioner.RollbackSnapshot) error {
+func (a *fakeApplier) Restore(_ context.Context, _ string, _ provisioner.RollbackSnapshot) error {
 	a.restored++
 	return nil
 }

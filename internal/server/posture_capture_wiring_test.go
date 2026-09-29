@@ -61,8 +61,9 @@ func TestWirePostureCaptureGating(t *testing.T) {
 	// explicitly OFF.
 	t.Run("wires with the applier disabled", func(t *testing.T) {
 		cfg := &config.Config{Provisioner: config.ProvisionerConfig{
-			PostureCapture: config.PostureCaptureConfig{Enabled: true, CredentialKey: goodKey},
-			Applier:        config.ApplierConfig{Enabled: false},
+			AllowedTargetCIDRs: []string{"10.77.0.0/24"},
+			PostureCapture:     config.PostureCaptureConfig{Enabled: true, CredentialKey: goodKey},
+			Applier:            config.ApplierConfig{Enabled: false},
 		}}
 		if err := wirePostureCapture(cfg, sugar, &monitoring.MonitoringService{}, &database.DB{}); err != nil {
 			t.Fatalf("capture should wire on its own flag; got %v", err)
@@ -73,11 +74,22 @@ func TestWirePostureCaptureGating(t *testing.T) {
 	// working without moving it.
 	t.Run("key still read from the original applier location", func(t *testing.T) {
 		cfg := &config.Config{Provisioner: config.ProvisionerConfig{
-			PostureCapture: config.PostureCaptureConfig{Enabled: true}, // no key here
-			Applier:        config.ApplierConfig{CredentialKey: goodKey},
+			AllowedTargetCIDRs: []string{"10.77.0.0/24"},
+			PostureCapture:     config.PostureCaptureConfig{Enabled: true}, // no key here
+			Applier:            config.ApplierConfig{CredentialKey: goodKey},
 		}}
 		if err := wirePostureCapture(cfg, sugar, &monitoring.MonitoringService{}, &database.DB{}); err != nil {
 			t.Fatalf("back-compat key location should work; got %v", err)
+		}
+	})
+
+	t.Run("enabled without target allowlist fails", func(t *testing.T) {
+		cfg := &config.Config{Provisioner: config.ProvisionerConfig{
+			PostureCapture: config.PostureCaptureConfig{Enabled: true, CredentialKey: goodKey},
+		}}
+		err := wirePostureCapture(cfg, sugar, &monitoring.MonitoringService{}, &database.DB{})
+		if err == nil || !strings.Contains(err.Error(), "allowed target CIDRs") {
+			t.Fatalf("missing target allowlist must fail clearly, got %v", err)
 		}
 	})
 }

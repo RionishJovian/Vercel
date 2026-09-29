@@ -1,6 +1,10 @@
 # Mega Magic Project - Configuration
 # Copy to config.yaml and customize
 
+# Production fails closed unless RLS is enabled and the database/JWT/AES
+# secrets below are replaced with strong, deployment-specific values.
+environment: development
+
 # Server
 server:
   host: "0.0.0.0"
@@ -140,24 +144,33 @@ monitoring:
   sla_check_interval: 60s
   alert_webhook_url: ""
 
-# Provisioner real apply path (SSH + RouterOS). DISABLED by default.
-# When enabled, the target MUST NOT be production; the transport fails closed on
-# prod-shaped hosts/ports regardless. Credentials are injected here, never hardcoded.
+# Provisioner real apply path (SSH + RouterOS). DISABLED by default. When
+# enabled, every action resolves the exact tenant/device target from encrypted
+# device credentials; no deployment-wide fallback router exists.
 provisioner:
+  # REQUIRED when either posture_capture or applier is enabled. Every
+  # database-resolved SSH target must fall inside one of these networks.
+  # Use the WireGuard management subnet(s), never 0.0.0.0/0 or ::/0.
+  allowed_target_cidrs:
+    - "10.77.0.0/24"
   applier:
     enabled: false
-    host: ""                 # lab/sandbox router only (never production)
+    credential_key: ""       # base64/hex 32-byte key; inject via env/config
+    # The fields below are retained only for the standalone disposable-lab
+    # constructor. The server's fleet path ignores them and uses each device's
+    # stored address, credential and required SHA256 host-key fingerprint.
+    host: ""
     port: 22
     user: ""
     password: ""
     private_key_path: ""
-    insecure_ignore_host_key: true   # lab RouterOS uses a self-signed key
+    insecure_ignore_host_key: true   # disposable lab only; never fleet control
     allow_empty_password: false      # true only for a disposable lab (admin/empty)
     timeout: 10s
     interface: "wg-magichub"
     listen_port_rotate_to: 0         # required for rotate_listen_port
     reset_hold: 30s                  # disable-peer hold (> UDP timeout)
-    ping_target: ""                  # peer address probed for data-plane reachability
+    ping_target: "10.77.0.1"         # required IP: WireGuard hub probed after every live change
     t_down: 180s
     # RFC 6238 TOTP gate for HIGH-RISK actions (rotate_listen_port/escalate).
     # Empty secret => high-risk approvals stay DENIED. Inject the secret via

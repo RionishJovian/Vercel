@@ -7,18 +7,22 @@ import (
 	"go.uber.org/zap"
 
 	"mega-magic/internal/config"
+	"mega-magic/internal/database"
 	"mega-magic/internal/provisioner"
+	"mega-magic/internal/secretbox"
 )
 
 // stubApplier satisfies provisioner.Applier for wiring-decision tests; the
 // decision only cares whether it is non-nil.
 type stubApplier struct{}
 
-func (stubApplier) Snapshot(_ context.Context, _ string, _ []provisioner.Change) (provisioner.RollbackSnapshot, error) {
+func (stubApplier) Snapshot(_ context.Context, _, _ string, _ []provisioner.Change) (provisioner.RollbackSnapshot, error) {
 	return provisioner.RollbackSnapshot{}, nil
 }
-func (stubApplier) Apply(_ context.Context, _ string, _ []provisioner.Change) error { return nil }
-func (stubApplier) Restore(_ context.Context, _ provisioner.RollbackSnapshot) error { return nil }
+func (stubApplier) Apply(_ context.Context, _, _ string, _ []provisioner.Change) error { return nil }
+func (stubApplier) Restore(_ context.Context, _ string, _ provisioner.RollbackSnapshot) error {
+	return nil
+}
 
 func TestShouldEnableLiveApplier(t *testing.T) {
 	prober := provisioner.StaticProber{}
@@ -53,47 +57,56 @@ func TestStartLiveApplier_disabledIsNoOp(t *testing.T) {
 	}
 }
 
-func TestStartLiveApplier_enabledProdTargetFailsLoudly(t *testing.T) {
+func TestStartLiveApplier_enabledWithoutDatabaseFailsLoudly(t *testing.T) {
 	cfg := &config.Config{}
+	cfg.Provisioner.AllowedTargetCIDRs = []string{"10.77.0.0/24"}
 	cfg.Provisioner.Applier = config.ApplierConfig{
-		Enabled:            true,
-		Host:               "10.77.0.4", // prod-shaped: guard must refuse
-		Port:               22,
-		User:               "admin",
-		AllowEmptyPassword: true,
+		Enabled: true,
 	}
 	err := startLiveApplier(cfg, nil, zap.NewNop().Sugar(), nil, nil, nil, nil)
 	if err == nil {
-		t.Fatal("enabled + prod-shaped target must fail startup loudly")
+		t.Fatal("enabled per-device control without a database must fail startup loudly")
 	}
 }
 
-func TestStartLiveApplier_enabledMissingCredsFailsLoudly(t *testing.T) {
+func TestStartLiveApplier_enabledWithoutTargetAllowlistFailsLoudly(t *testing.T) {
+	credentialKey, err := secretbox.GenerateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := &config.Config{}
+	cfg.Provisioner.Applier = config.ApplierConfig{Enabled: true, CredentialKey: credentialKey}
+	err = startLiveApplier(cfg, nil, zap.NewNop().Sugar(), nil, &database.DB{}, nil, nil)
+	if err == nil {
+		t.Fatal("enabled router access without an explicit target CIDR allowlist must fail")
+	}
+}
+
+func TestStartLiveApplier_enabledMissingCredentialKeyFailsLoudly(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Provisioner.Applier = config.ApplierConfig{
 		Enabled: true,
-		Host:    "172.20.0.250", // lab-shaped, but no credentials
-		Port:    22,
 	}
-	if err := startLiveApplier(cfg, nil, zap.NewNop().Sugar(), nil, nil, nil, nil); err == nil {
-		t.Fatal("enabled + missing credentials must fail loudly")
+	if err := startLiveApplier(cfg, nil, zap.NewNop().Sugar(), nil, &database.DB{}, nil, nil); err == nil {
+		t.Fatal("enabled + missing credential encryption key must fail loudly")
 	}
 }
 
 func TestStartLiveApplier_enabledButNoClientFailsLoudly(t *testing.T) {
-	// A valid lab config builds the live applier, but with no messaging client
-	// the consumer cannot start: that must surface as an error, not be swallowed.
-	cfg := &config.Config{}
-	cfg.Provisioner.Applier = config.ApplierConfig{
-		Enabled:               true,
-		Host:                  "172.20.0.250",
-		Port:                  22,
-		User:                  "admin",
-		AllowEmptyPassword:    true,
-		InsecureIgnoreHostKey: true,
-		Interface:             "wg-magichub",
+	// A valid per-device configuration builds the control path, but with no
+	// messaging client the consumer cannot start. That must surface loudly.
+	credentialKey, err := secretbox.GenerateKey()
+	if err != nil {
+		t.Fatal(err)
 	}
-	if err := startLiveApplier(cfg, nil, zap.NewNop().Sugar(), nil, nil, nil, nil); err == nil {
+	cfg := &config.Config{}
+	cfg.Provisioner.AllowedTargetCIDRs = []string{"10.77.0.0/24"}
+	cfg.Provisioner.Applier = config.ApplierConfig{
+		Enabled:       true,
+		CredentialKey: credentialKey,
+		Interface:     "wg-magichub",
+	}
+	if err := startLiveApplier(cfg, nil, zap.NewNop().Sugar(), nil, &database.DB{}, nil, nil); err == nil {
 		t.Fatal("enabled live path without a messaging client must fail loudly")
 	}
 }

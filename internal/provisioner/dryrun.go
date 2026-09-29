@@ -389,7 +389,7 @@ type Report struct {
 // Prober gathers read-only evidence about a peer. Implementations MUST NOT
 // mutate anything; a Prober that writes would defeat dry-run.
 type Prober interface {
-	Observe(ctx context.Context, peerID string) (Observation, Connectivity, error)
+	Observe(ctx context.Context, businessID, peerID string) (Observation, Connectivity, error)
 }
 
 // StaticProber returns a fixed observation. Useful for CLI dry-runs against a
@@ -399,7 +399,7 @@ type StaticProber struct {
 	Conn Connectivity
 }
 
-func (s StaticProber) Observe(_ context.Context, peerID string) (Observation, Connectivity, error) {
+func (s StaticProber) Observe(_ context.Context, _, peerID string) (Observation, Connectivity, error) {
 	obs := s.Obs
 	obs.PeerID = peerID
 	return obs, s.Conn, nil
@@ -450,7 +450,7 @@ func (p *Provisioner) DryRunAction(ctx context.Context, peerID, cfgFile string) 
 	report.ConfigValid = !HasErrors(report.Issues)
 
 	// 2) Check connectivity to the peer (read-only probe).
-	obs, conn, err := p.probe.Observe(ctx, peerID)
+	obs, conn, err := p.probe.Observe(ctx, "", peerID)
 	if err != nil {
 		return nil, fmt.Errorf("provisioner: probe peer %s: %w", peerID, err)
 	}

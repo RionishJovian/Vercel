@@ -12,6 +12,7 @@ package routeros
 import (
 	"fmt"
 	"net"
+	"net/netip"
 	"strings"
 )
 
@@ -31,6 +32,43 @@ var prodCCR = func() *net.IPNet {
 	}
 	return n
 }()
+
+var disposableNetworkParents = []netip.Prefix{
+	netip.MustParsePrefix("10.0.0.0/8"),
+	netip.MustParsePrefix("172.16.0.0/12"),
+	netip.MustParsePrefix("192.168.0.0/16"),
+	netip.MustParsePrefix("127.0.0.0/8"),
+	netip.MustParsePrefix("fc00::/7"),
+	netip.MustParsePrefix("::1/128"),
+}
+
+var prodCCRPrefix = netip.MustParsePrefix(prodCCRCIDR)
+
+// ValidateDisposableCIDR accepts only canonical networks wholly contained in
+// private, loopback, or IPv6 ULA space and refuses any overlap with the known
+// production router range. Certification uses this before wrapping every DB
+// lookup in CIDRTargetSource, so a concurrent row change cannot escape from a
+// disposable network.
+func ValidateDisposableCIDR(raw string) error {
+	raw = strings.TrimSpace(raw)
+	prefix, err := netip.ParsePrefix(raw)
+	if err != nil {
+		return fmt.Errorf("routeros: invalid disposable CIDR %q: %w", raw, err)
+	}
+	if prefix != prefix.Masked() {
+		return fmt.Errorf("routeros: disposable CIDR %q is not a canonical network", raw)
+	}
+	if prefix.Overlaps(prodCCRPrefix) {
+		return fmt.Errorf("routeros: disposable CIDR %q overlaps production range %s", raw, prodCCRCIDR)
+	}
+	for _, parent := range disposableNetworkParents {
+		if prefix.Addr().BitLen() == parent.Addr().BitLen() &&
+			prefix.Bits() >= parent.Bits() && parent.Contains(prefix.Addr()) {
+			return nil
+		}
+	}
+	return fmt.Errorf("routeros: disposable CIDR %q is not wholly private, loopback, or IPv6 ULA", raw)
+}
 
 // GuardTarget fails closed when an SSH target looks like production.
 //

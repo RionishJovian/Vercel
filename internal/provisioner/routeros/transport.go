@@ -24,6 +24,7 @@ type SSHConfig struct {
 	User                  string
 	Password              string
 	PrivateKeyPEM         []byte
+	HostKeyFingerprint    string
 	InsecureIgnoreHostKey bool
 	Timeout               time.Duration
 }
@@ -97,16 +98,24 @@ func (t *SSHTransport) clientConfig() (*ssh.ClientConfig, error) {
 	if t.cfg.Password != "" || len(auths) == 0 {
 		auths = append(auths, ssh.Password(t.cfg.Password))
 	}
-	if !t.cfg.InsecureIgnoreHostKey {
-		// Without a known-hosts source we cannot verify the host key, so fail
-		// closed rather than silently trust anything. (Known-hosts support is a
-		// later slice.)
-		return nil, fmt.Errorf("routeros: host-key verification requested but no known_hosts source is configured; refusing")
+	var hostKeyCallback ssh.HostKeyCallback
+	if fingerprint := strings.TrimSpace(t.cfg.HostKeyFingerprint); fingerprint != "" {
+		hostKeyCallback = func(hostname string, remote net.Addr, key ssh.PublicKey) error {
+			actual := ssh.FingerprintSHA256(key)
+			if actual != fingerprint {
+				return fmt.Errorf("routeros: ssh host key mismatch for %s: got %s", hostname, actual)
+			}
+			return nil
+		}
+	} else if t.cfg.InsecureIgnoreHostKey {
+		hostKeyCallback = ssh.InsecureIgnoreHostKey()
+	} else {
+		return nil, fmt.Errorf("routeros: host-key verification requested but no SHA256 fingerprint is configured; refusing")
 	}
 	return &ssh.ClientConfig{
 		User:            t.cfg.User,
 		Auth:            auths,
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		HostKeyCallback: hostKeyCallback,
 		Timeout:         t.cfg.Timeout,
 	}, nil
 }

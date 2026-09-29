@@ -26,7 +26,7 @@ type TCPProber struct {
 	Timeout  time.Duration
 }
 
-func (t TCPProber) Observe(ctx context.Context, peerID string) (Observation, Connectivity, error) {
+func (t TCPProber) Observe(ctx context.Context, _, peerID string) (Observation, Connectivity, error) {
 	timeout := t.Timeout
 	if timeout <= 0 {
 		timeout = 5 * time.Second

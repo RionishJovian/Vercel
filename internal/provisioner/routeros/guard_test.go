@@ -43,3 +43,33 @@ func TestGuardTarget_tripsOnProdShapedInput(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateDisposableCIDR(t *testing.T) {
+	for _, cidr := range []string{
+		"172.20.0.0/16",
+		"10.99.0.0/30",
+		"192.168.99.0/24",
+		"127.0.0.0/8",
+		"fd42::/64",
+		"::1/128",
+	} {
+		if err := ValidateDisposableCIDR(cidr); err != nil {
+			t.Errorf("safe disposable CIDR %s rejected: %v", cidr, err)
+		}
+	}
+
+	for _, cidr := range []string{
+		"0.0.0.0/1",
+		"128.0.0.0/1",
+		"::/1",
+		"8.8.8.8/32",
+		"100.64.0.0/10",
+		"10.0.0.0/8",    // overlaps the known production range
+		"10.77.0.0/24",  // production itself
+		"172.20.0.1/16", // noncanonical host bits
+	} {
+		if err := ValidateDisposableCIDR(cidr); err == nil {
+			t.Errorf("unsafe disposable CIDR %s was accepted", cidr)
+		}
+	}
+}

@@ -128,11 +128,9 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	// Magic Coins — per-user balance + immutable ledger (ported from Mikromagic).
 	magicCoinHandler := handler.NewMagicCoinHandler(db, database.NewMagicCoinRepository(db))
 	// Sites — physical locations with the ported geo data (location/timezone/lat/lng).
-		siteHandler := handler.NewSiteHandler(db, database.NewSiteRepository(db))
-		// Geo map — CoreBit/The Dude topology visualization
-		geoMapHandler := handler.NewGeoMapHandler(db)
-		// Router connections — saved management endpoints ported from Mikromagic.
-		connHandler := handler.NewRouterConnectionHandler(db, database.NewRouterConnectionRepository(db))
+	siteHandler := handler.NewSiteHandler(db, database.NewSiteRepository(db))
+	// Router connections — saved management endpoints ported from Mikromagic.
+	connHandler := handler.NewRouterConnectionHandler(db, database.NewRouterConnectionRepository(db))
 	// Device allowances + requests — granted capacity and its approval workflow.
 	allowHandler := handler.NewDeviceAllowanceHandler(db, database.NewDeviceAllowanceRepository(db))
 	// Syslog — the ported router event log (read-only, paged).
@@ -295,7 +293,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	pulseHandler := handler.NewPulseHandler(db, database.NewDeviceRepository(db), database.NewIncidentRepository(db))
 	incidentActionHandler := handler.NewIncidentActionHandler(db, database.NewIncidentRepository(db), database.NewDeviceRepository(db), messagingClient)
 
-	setupRoutes(r, authService, authHandler, routerHandler, telemetryHandler, incidentHandler, webhookHandler, voucherHandler, portalHandler, billingHandler, guestWifiHandler, monitorHandler, fleetHandler, topologyHandler, vpsHandler, platformHandler, securityHandler, backupHandler, teamHandler, pulseHandler, incidentActionHandler, magicCoinHandler, geoMapHandler, siteHandler, connHandler, allowHandler, syslogHandler, templateHandler, resellerHandler, scanHandler, usageHandler, terminalHistoryHandler, unlockKeyHandler, i18nHandler, messagingClient, cacheClient, db, tenantMW)
+	setupRoutes(r, authService, authHandler, routerHandler, telemetryHandler, incidentHandler, webhookHandler, voucherHandler, portalHandler, billingHandler, guestWifiHandler, monitorHandler, fleetHandler, topologyHandler, vpsHandler, platformHandler, securityHandler, backupHandler, teamHandler, pulseHandler, incidentActionHandler, magicCoinHandler, siteHandler, connHandler, allowHandler, syslogHandler, templateHandler, resellerHandler, scanHandler, usageHandler, terminalHistoryHandler, unlockKeyHandler, i18nHandler, messagingClient, cacheClient, db, tenantMW)
 
 	// Start the policy evaluator: watches NATS telemetry and auto-opens incidents.
 	evaluator := evaluator.New(
@@ -420,15 +418,12 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	}, nil
 }
 
-func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.AuthHandler, routerHandler *handler.RouterHandler, telemetryHandler *handler.TelemetryHandler, incidentHandler *handler.IncidentHandler, webhookHandler *handler.WebhookHandler, voucherHandler *handler.VoucherHandler, portalHandler *handler.PortalHandler, billingHandler *handler.BillingHandler, guestWifiHandler *handler.GuestWifiHandler, monitorHandler *handler.MonitorHandler, fleetHandler *handler.FleetHandler, topologyHandler *handler.TopologyHandler, vpsHandler *handler.VPSHandler, platformHandler *handler.PlatformHandler, securityHandler *handler.SecurityHandler, backupHandler *handler.BackupHandler, teamHandler *handler.TeamHandler, pulseHandler *handler.PulseHandler, incidentActionHandler *handler.IncidentActionHandler, magicCoinHandler *handler.MagicCoinHandler, geoMapHandler *handler.GeoMapHandler, siteHandler *handler.SiteHandler, connHandler *handler.RouterConnectionHandler, allowHandler *handler.DeviceAllowanceHandler, syslogHandler *handler.SyslogHandler, templateHandler *handler.TerminalTemplateHandler, resellerHandler *handler.VoucherResellerHandler, scanHandler *handler.FleetScanRunHandler, usageHandler *handler.AIUsageHandler, historyHandler *handler.TerminalHistoryHandler, unlockHandler *handler.UnlockKeyHandler, i18nH *handler.I18nHandler, msg *messaging.Client, cache *cache.Client, db *database.DB, tenantMW gin.HandlerFunc) {
+func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.AuthHandler, routerHandler *handler.RouterHandler, telemetryHandler *handler.TelemetryHandler, incidentHandler *handler.IncidentHandler, webhookHandler *handler.WebhookHandler, voucherHandler *handler.VoucherHandler, portalHandler *handler.PortalHandler, billingHandler *handler.BillingHandler, guestWifiHandler *handler.GuestWifiHandler, monitorHandler *handler.MonitorHandler, fleetHandler *handler.FleetHandler, topologyHandler *handler.TopologyHandler, vpsHandler *handler.VPSHandler, platformHandler *handler.PlatformHandler, securityHandler *handler.SecurityHandler, backupHandler *handler.BackupHandler, teamHandler *handler.TeamHandler, pulseHandler *handler.PulseHandler, incidentActionHandler *handler.IncidentActionHandler, magicCoinHandler *handler.MagicCoinHandler, siteHandler *handler.SiteHandler, connHandler *handler.RouterConnectionHandler, allowHandler *handler.DeviceAllowanceHandler, syslogHandler *handler.SyslogHandler, templateHandler *handler.TerminalTemplateHandler, resellerHandler *handler.VoucherResellerHandler, scanHandler *handler.FleetScanRunHandler, usageHandler *handler.AIUsageHandler, historyHandler *handler.TerminalHistoryHandler, unlockHandler *handler.UnlockKeyHandler, i18nH *handler.I18nHandler, msg *messaging.Client, cache *cache.Client, db *database.DB, tenantMW gin.HandlerFunc) {
 	r.GET("/", indexPage)
 	r.GET("/health", healthCheck)
 	r.GET("/ready", readinessCheck(&Server{cache: cache, db: db, messaging: msg}))
 
-	// Geo map — CoreBit/The Dude topology visualization
-		geoMapHandler.RegisterRoutes(tv1, authService, tenantMW)
-
-		tv1 := r.Group("/api/v1")
+	tv1 := r.Group("/api/v1")
 	{
 		tv1.GET("/version", version)
 
@@ -477,6 +472,12 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 		protected.Use(auth.RequireMinRole(model.RoleViewer))
 		{
 			protected.GET("/me", authHandler.Me)
+
+			// Backward-compatible CoreBit/The Dude route. It deliberately reuses
+			// the real tenant-scoped topology handler instead of returning a static
+			// success marker. Registering it inside `protected` ensures auth, tenant
+			// suspension, role checks and optional RLS connection pinning all apply.
+			registerGeoTopologyRoute(protected, topologyHandler.Map)
 
 			routers := protected.Group("/routers")
 			{
@@ -805,6 +806,14 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		}
 	}
 	return s.http.Shutdown(ctx)
+}
+
+// registerGeoTopologyRoute keeps the legacy CoreBit/The Dude URL as an alias
+// of the real topology handler. The caller must pass the protected tenant route
+// group; keeping registration in this helper gives the auth contract a focused
+// regression test without constructing the full server dependency graph.
+func registerGeoTopologyRoute(r gin.IRoutes, topologyMap gin.HandlerFunc) {
+	r.GET("/geo/topology-canvas", topologyMap)
 }
 
 func loggerMiddleware(log *zap.SugaredLogger) gin.HandlerFunc {

@@ -93,7 +93,7 @@ func TestDeviceCredentialSourceRoundTrip(t *testing.T) {
 	}
 
 	// 2. Write an encrypted credential.
-	if err := src.SetDeviceCredentials(ctx, businessID, deviceID, testAddr, testUser, "password", testSecret, 2222, "SHA256:abc"); err != nil {
+	if err := src.SetDeviceCredentials(ctx, businessID, deviceID, testAddr, testUser, "password", testSecret, 2222, "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"); err != nil {
 		t.Fatalf("SetDeviceCredentials: %v", err)
 	}
 
@@ -154,11 +154,12 @@ func TestDeviceCredentialSourceWrongKeyFailsClosed(t *testing.T) {
 	t.Cleanup(func() {
 		_, _ = db.Exec(`UPDATE devices
 		                   SET ssh_username = NULL, ssh_secret_ciphertext = NULL,
-		                       ssh_secret_kind = NULL, management_ip = NULL, ssh_port = 22
+		                       ssh_secret_kind = NULL, ssh_host_key_fingerprint = NULL,
+		                       management_ip = NULL, ssh_port = 22
 		                 WHERE device_id = $1`, deviceID)
 	})
 
-	if err := srcA.SetDeviceCredentials(ctx, businessID, deviceID, "10.1.1.1", "u", "password", "secret", 22, ""); err != nil {
+	if err := srcA.SetDeviceCredentials(ctx, businessID, deviceID, "10.1.1.1", "u", "password", "secret", 22, "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 

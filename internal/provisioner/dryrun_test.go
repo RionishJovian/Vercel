@@ -258,7 +258,7 @@ func TestTCPProber_readOnlyDial(t *testing.T) {
 	// No listener: the probe must return an offline observation, a checked
 	// connectivity record, and no error (a failed dial is evidence, not a crash).
 	pr := TCPProber{Endpoint: "127.0.0.1:1", Timeout: 200 * time.Millisecond}
-	obs, conn, err := pr.Observe(context.Background(), "peer-6")
+	obs, conn, err := pr.Observe(context.Background(), "", "peer-6")
 	if err != nil {
 		t.Fatalf("Observe: %v", err)
 	}
@@ -274,7 +274,7 @@ func TestTCPProber_readOnlyDial(t *testing.T) {
 
 type errProber struct{}
 
-func (errProber) Observe(context.Context, string) (Observation, Connectivity, error) {
+func (errProber) Observe(context.Context, string, string) (Observation, Connectivity, error) {
 	return Observation{}, Connectivity{}, errors.New("probe down")
 }
 

@@ -19,14 +19,16 @@
 //	go run ./cmd/router-register \
 //	  --business 4a437be9-... --device 141b83ff-... \
 //	  --address 118.27.148.183 --port 2222 \
-//	  --user admin --password-file /root/routeros-test/admin.pw
+//	  --user admin --password-file /root/routeros-test/admin.pw \
+//	  --fingerprint 'SHA256:...'
 //
 //	# Create the device first, then register it
 //	go run ./cmd/router-register \
 //	  --business 4a437be9-... --create \
 //	  --name "CHR lab router" --model "CHR 7.15.3" \
 //	  --address 118.27.148.183 --port 2222 \
-//	  --user admin --password-file /root/routeros-test/admin.pw
+//	  --user admin --password-file /root/routeros-test/admin.pw \
+//	  --fingerprint 'SHA256:...'
 //
 // The secret is never printed: the command reports only whether a ciphertext is
 // present, plus the non-secret fingerprint, and it resolves the stored target
@@ -46,6 +48,7 @@ import (
 
 	"mega-magic/internal/config"
 	"mega-magic/internal/database"
+	"mega-magic/internal/provisioner/routeros"
 	"mega-magic/internal/secretbox"
 )
 
@@ -63,7 +66,7 @@ func main() {
 		user       = flag.String("user", "", "SSH username (required)")
 		pwFile     = flag.String("password-file", "", "file containing the SSH password (never a flag)")
 		keyFile    = flag.String("key-file", "", "file containing an SSH private key instead of a password")
-		fingerprnt = flag.String("fingerprint", "", "optional SSH host key fingerprint (only meaningful with --key-file)")
+		fingerprnt = flag.String("fingerprint", "", "router SSH host key fingerprint in SHA256:... form (required)")
 		asJSON     = flag.Bool("json", false, "emit the result as JSON")
 		timeout    = flag.Duration("timeout", 15*time.Second, "database operation timeout")
 	)
@@ -100,6 +103,9 @@ func run(o runOpts) error {
 	}
 	if o.user == "" {
 		return errors.New("--user is required")
+	}
+	if err := routeros.ValidateHostKeyFingerprint(o.fingerprint); err != nil {
+		return errors.New("--fingerprint is required and must be a valid OpenSSH SHA256 fingerprint")
 	}
 	if o.device == "" && !o.create {
 		return errors.New("give --device <uuid>, or --create to make a new one")

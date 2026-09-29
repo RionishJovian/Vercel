@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 
 	"mega-magic/internal/provisioner/routeros"
 	"mega-magic/internal/secretbox"
@@ -105,6 +106,10 @@ func (s *DeviceCredentialSource) SetDeviceCredentials(ctx context.Context, busin
 	if address == "" || secret == "" || username == "" {
 		return errors.New("device ssh target: address, username and secret are required")
 	}
+	fingerprint = strings.TrimSpace(fingerprint)
+	if err := routeros.ValidateHostKeyFingerprint(fingerprint); err != nil {
+		return errors.New("device ssh target: valid SHA256 host-key fingerprint is required")
+	}
 	if kind != "password" && kind != "key" {
 		return fmt.Errorf("device ssh target: unknown secret kind %q", kind)
 	}
@@ -124,7 +129,7 @@ func (s *DeviceCredentialSource) SetDeviceCredentials(ctx context.Context, busin
 		       ssh_username = $3,
 		       ssh_secret_ciphertext = $4,
 		       ssh_secret_kind = $5,
-		       ssh_host_key_fingerprint = NULLIF($6, ''),
+		       ssh_host_key_fingerprint = $6,
 		       updated_at = now()
 		 WHERE device_id = $7
 		   AND business_id = $8`,

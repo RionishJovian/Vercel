@@ -31,10 +31,9 @@ func shouldEnableLiveApplier(flagEnabled bool, applier provisioner.Applier, prob
 // Disabled (the default): logs one line and returns nil — no live writes, no
 // live transport, recovery stays plan-only.
 //
-// Enabled: builds the live applier/prober via routeros.NewLive (which itself
-// fails closed on prod-shaped targets or missing credentials) and starts the
-// consumer. Any error fails server startup loudly — a mis-config must never
-// silently look "enabled".
+// Enabled: builds a tenant-scoped per-device applier/prober from encrypted
+// device credentials and starts the consumer. Any error fails server startup
+// loudly — a mis-config must never silently look "enabled".
 func startLiveApplier(cfg *config.Config, client *messaging.Client, sugar *zap.SugaredLogger, monitor *monitoring.MonitoringService, db *database.DB, backup *handler.BackupHandler, incidentAction *handler.IncidentActionHandler) error {
 	// Security-posture capture is wired FIRST, on its OWN flag. It never writes to
 	// a router, so it must not sit behind applier.enabled — that flag turns on
@@ -51,10 +50,28 @@ func startLiveApplier(cfg *config.Config, client *messaging.Client, sugar *zap.S
 		return nil
 	}
 
-	applier, prober, err := routeros.NewLive(routeros.LiveConfigFromConfig(appCfg))
-	if err != nil {
-		return fmt.Errorf("live applier: %w", err)
+	if db == nil {
+		return errors.New("live applier: database is required for per-device target resolution")
 	}
+	box, err := secretbox.New(appCfg.CredentialKey)
+	if err != nil {
+		return fmt.Errorf("live applier credential key: %w", err)
+	}
+	source := database.NewDeviceCredentialSource(db, box)
+	policySource, err := routeros.NewCIDRTargetSource(source, cfg.Provisioner.AllowedTargetCIDRs)
+	if err != nil {
+		return fmt.Errorf("live applier target policy: %w", err)
+	}
+	applier := routeros.NewDeviceApplier(
+		policySource,
+		appCfg.Timeout,
+		nil,
+		appCfg.Interface,
+		appCfg.ListenPortRotateTo,
+		appCfg.ResetHold,
+	).WithControlConfig(appCfg.PingTarget, appCfg.TDown)
+	prober := routeros.NewDeviceProber(policySource, appCfg.Timeout, nil).
+		WithControlConfig(appCfg.Interface, appCfg.PingTarget, appCfg.TDown)
 	if !shouldEnableLiveApplier(appCfg.Enabled, applier, prober) {
 		return fmt.Errorf("live applier: enabled but no applier/prober was constructed")
 	}
@@ -104,8 +121,8 @@ func startLiveApplier(cfg *config.Config, client *messaging.Client, sugar *zap.S
 		return fmt.Errorf("topology action consumer start: %w", err)
 	}
 
-	sugar.Infow("Live apply consumer started (flag-gated)",
-		"host", appCfg.Host, "interface", appCfg.Interface)
+	sugar.Infow("Live per-device apply consumer started (flag-gated)",
+		"interface", appCfg.Interface)
 
 	// Telegram approve bridge (Slice 3): answers provision.approval on behalf of
 	// the human Lead. The real bot transport is an injected seam; without a
@@ -167,7 +184,11 @@ func wirePostureCapture(cfg *config.Config, sugar *zap.SugaredLogger, monitor *m
 	// the fleet. The type system enforces this — Prober's ObserveVersion does not
 	// satisfy monitoring.VersionObserver, so that mistake will not compile.
 	src := database.NewDeviceCredentialSource(db, box)
-	deviceProber := routeros.NewDeviceProber(src, timeout, nil)
+	policySource, err := routeros.NewCIDRTargetSource(src, cfg.Provisioner.AllowedTargetCIDRs)
+	if err != nil {
+		return fmt.Errorf("security-posture capture target policy: %w", err)
+	}
+	deviceProber := routeros.NewDeviceProber(policySource, timeout, nil)
 	monitor.WithVersionCapture(db, database.NewDeviceRepository(db), deviceProber)
 	sugar.Info("security-posture capture wired (per-device transport)")
 	return nil

@@ -54,7 +54,7 @@ var _ provisioner.Applier = (*Applier)(nil)
 
 // Snapshot captures the pre-change state: an on-device .rsc export and a binary
 // backup, plus the current WireGuard values and routes needed to revert in place.
-func (a *Applier) Snapshot(ctx context.Context, peerID string, changes []provisioner.Change) (provisioner.RollbackSnapshot, error) {
+func (a *Applier) Snapshot(ctx context.Context, _, peerID string, changes []provisioner.Change) (provisioner.RollbackSnapshot, error) {
 	if a.run == nil {
 		return provisioner.RollbackSnapshot{}, fmt.Errorf("routeros: nil command runner")
 	}
@@ -98,7 +98,7 @@ func (a *Applier) Snapshot(ctx context.Context, peerID string, changes []provisi
 }
 
 // Apply translates and executes ONLY the given changes, in order.
-func (a *Applier) Apply(ctx context.Context, _ string, changes []provisioner.Change) error {
+func (a *Applier) Apply(ctx context.Context, _, _ string, changes []provisioner.Change) error {
 	if a.run == nil {
 		return fmt.Errorf("routeros: nil command runner")
 	}
@@ -212,7 +212,7 @@ func (a *Applier) Translate(c provisioner.Change) ([]Step, error) {
 // NOT be restored), while still exiting 0. We therefore restore the captured WG
 // values with targeted `set`, which is what "revert to the snapshot" actually
 // requires. The .rsc/.backup artifacts remain on the device as the audit trail.
-func (a *Applier) Restore(ctx context.Context, snap provisioner.RollbackSnapshot) error {
+func (a *Applier) Restore(ctx context.Context, _ string, snap provisioner.RollbackSnapshot) error {
 	if a.run == nil {
 		return fmt.Errorf("routeros: nil command runner")
 	}

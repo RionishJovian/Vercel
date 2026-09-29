@@ -4,8 +4,31 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Guest WiFi</title>
-<link rel="stylesheet" href="/assets/css/styles.css">
 <style>
+  /* This page carries NO external asset. Cloudflare serves /assets/* with
+     `max-age=604800, immutable` and deploy.sh only hash-stamps the URLs written
+     inside app.html, so a guest page linking /assets/css/styles.css unstamped can
+     be served fresh markup against week-stale CSS (audit finding D1). The rules
+     below are the ONLY ones the shared sheet was contributing to this page —
+     established by enumerating every rule in styles.css that mentions a class or
+     tag this page uses, then confirming with a computed-style A/B (18 elements at
+     the plans step, 25 at the pay step), not guessed. */
+  html { color-scheme: light; }
+  *, *::before, *::after { box-sizing: border-box; }
+  body { margin: 0; font-size: 15px; line-height: 1.45; color: #1d1b16; -webkit-font-smoothing: antialiased; }
+  h1, h2, h3, h4 { font-weight: 650; letter-spacing: -0.01em; }
+  h3 { font-size: 1.17em; margin: 1em 0; }
+  /* Form controls do NOT inherit the page font from the UA sheet, so the shared
+     sheet's `font: inherit` is reproduced here. Without it the confirm button
+     renders in Arial at `normal` line-height instead of the page font at 1.45 —
+     measured, not assumed. It sits BEFORE the .btn rule below so that rule's own
+     font-size still wins, exactly as it did with the stylesheet present. */
+  .btn { font: inherit; }
+  /* Reproduced from the shared sheet: it applies to this page's inputs below
+     900px. Harmless today (they are already width:100%) but carried over so the
+     mobile behaviour does not quietly depend on the UA default. */
+  @media (max-width: 900px) { input, select, textarea { max-width: 100%; } }
+
   /* Owner-set branding arrives as --brand / --tint (validated hex). Every other
      value here is a fallback so the page is complete before the config lands. */
   :root {

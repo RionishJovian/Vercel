@@ -110,7 +110,7 @@ func (h *BackupHandler) CreateBackup(c *gin.Context) {
 	}
 
 	// Capture over the SAME applier seam the live path uses.
-	snap, err := h.applier.Snapshot(context.Background(), deviceID, nil)
+	snap, err := h.applier.Snapshot(context.Background(), businessID, deviceID, nil)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": "backup capture failed: " + err.Error()})
 		return
@@ -240,7 +240,7 @@ func (h *BackupHandler) Restore(c *gin.Context) {
 		return
 	}
 
-	if err := h.applier.Restore(context.Background(), snap); err != nil {
+	if err := h.applier.Restore(context.Background(), businessID, snap); err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": "restore failed: " + err.Error()})
 		return
 	}

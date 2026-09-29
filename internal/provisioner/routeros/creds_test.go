@@ -9,6 +9,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"mega-magic/internal/provisioner"
 )
 
 // fakeSource is a TargetSource backed by a map. It records lookups so a test
@@ -18,6 +20,32 @@ type fakeSource struct {
 	targets map[string]*DeviceTarget // key: businessID + "/" + deviceID
 	errs    map[string]error
 	lookups []string
+}
+
+type rotatingTargetSource struct {
+	mu      sync.Mutex
+	targets []*DeviceTarget
+	calls   int
+}
+
+func (s *rotatingTargetSource) TargetForDevice(context.Context, string, string) (*DeviceTarget, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.targets) == 0 {
+		return nil, ErrNoTarget
+	}
+	index := s.calls
+	if index >= len(s.targets) {
+		index = len(s.targets) - 1
+	}
+	s.calls++
+	return s.targets[index], nil
+}
+
+func (s *rotatingTargetSource) callCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.calls
 }
 
 func newFakeSource() *fakeSource {
@@ -91,6 +119,37 @@ type recordingFactory struct {
 	configs []SSHConfig
 }
 
+type recordedCommand struct {
+	addr string
+	cmd  string
+}
+
+type commandRecordingFactory struct {
+	mu    sync.Mutex
+	calls []recordedCommand
+}
+
+type commandRunnerFunc func(context.Context, string) (string, error)
+
+func (f commandRunnerFunc) Run(ctx context.Context, cmd string) (string, error) {
+	return f(ctx, cmd)
+}
+
+func (rf *commandRecordingFactory) build(cfg SSHConfig) CommandRunner {
+	return commandRunnerFunc(func(_ context.Context, cmd string) (string, error) {
+		rf.mu.Lock()
+		rf.calls = append(rf.calls, recordedCommand{addr: cfg.Addr, cmd: cmd})
+		rf.mu.Unlock()
+		return "", nil
+	})
+}
+
+func (rf *commandRecordingFactory) snapshot() []recordedCommand {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	return append([]recordedCommand(nil), rf.calls...)
+}
+
 func (rf *recordingFactory) build(cfg SSHConfig) CommandRunner {
 	rf.mu.Lock()
 	rf.configs = append(rf.configs, cfg)
@@ -115,7 +174,7 @@ func (rf *recordingFactory) addrs() []string {
 }
 
 func pwTarget(id, addr, user, pw string) *DeviceTarget {
-	return &DeviceTarget{DeviceID: id, Addr: addr, User: user, Secret: pw, Kind: "password"}
+	return &DeviceTarget{DeviceID: id, Addr: addr, User: user, Secret: pw, Kind: "password", Fingerprint: "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}
 }
 
 // ---------------------------------------------------------------------------
@@ -161,6 +220,87 @@ func TestObserveVersionRoutesPerPeer(t *testing.T) {
 	}
 	if got := rf.count(); got != 2 {
 		t.Errorf("expected one transport per peer (2), built %d", got)
+	}
+}
+
+func TestDeviceApplierRoutesWritesPerTenantAndDevice(t *testing.T) {
+	src := newFakeSource()
+	src.put("biz-1", "dev-A", pwTarget("dev-A", "10.10.0.1:22", "admin", "pwA"))
+	src.put("biz-1", "dev-B", pwTarget("dev-B", "10.10.0.2:22", "admin", "pwB"))
+	// Same device id in another tenant must resolve to that tenant's own target.
+	src.put("biz-2", "dev-A", pwTarget("dev-A", "10.20.0.1:22", "admin", "pwC"))
+
+	rf := &commandRecordingFactory{}
+	applier := NewDeviceApplier(src, time.Second, rf.build, "wg-magichub", 0, 0)
+	change := []provisioner.Change{{Action: provisioner.ActionEnsureKeepalive}}
+
+	for _, target := range []struct {
+		businessID string
+		deviceID   string
+	}{
+		{"biz-1", "dev-A"},
+		{"biz-1", "dev-B"},
+		{"biz-2", "dev-A"},
+	} {
+		if err := applier.Apply(context.Background(), target.businessID, target.deviceID, change); err != nil {
+			t.Fatalf("apply %s/%s: %v", target.businessID, target.deviceID, err)
+		}
+	}
+
+	calls := rf.snapshot()
+	if len(calls) != 3 {
+		t.Fatalf("command count = %d, want 3: %+v", len(calls), calls)
+	}
+	wantAddrs := []string{"10.10.0.1:22", "10.10.0.2:22", "10.20.0.1:22"}
+	for i, want := range wantAddrs {
+		if calls[i].addr != want {
+			t.Fatalf("write %d went to %q, want %q", i, calls[i].addr, want)
+		}
+		if !strings.Contains(calls[i].cmd, "persistent-keepalive=25s") {
+			t.Fatalf("write %d used unexpected command %q", i, calls[i].cmd)
+		}
+	}
+
+	before := len(calls)
+	if err := applier.Apply(context.Background(), "biz-2", "dev-B", change); !errors.Is(err, ErrNoTarget) {
+		t.Fatalf("unresolved target error = %v, want ErrNoTarget", err)
+	}
+	if after := len(rf.snapshot()); after != before {
+		t.Fatalf("unresolved target issued a command: before=%d after=%d", before, after)
+	}
+}
+
+func TestApplyServicePinsOneResolvedTargetForWholeOperation(t *testing.T) {
+	// The source deliberately changes from router A to router B after its first
+	// lookup. A vulnerable implementation re-resolves between snapshot/apply/
+	// verify/rollback and emits commands to both addresses.
+	src := &rotatingTargetSource{targets: []*DeviceTarget{
+		pwTarget("dev", "10.77.0.10:22", "admin", "pwA"),
+		pwTarget("dev", "10.77.0.20:22", "admin", "pwB"),
+	}}
+	rf := &commandRecordingFactory{}
+	applier := NewDeviceApplier(src, time.Second, rf.build, "wg-magichub", 0, 0).
+		WithControlConfig("", time.Minute)
+	svc := provisioner.NewApplyService(applier, NewDeviceProber(src, time.Second, rf.build))
+
+	res, err := svc.ApplyFixes(context.Background(), provisioner.ApplyRequest{
+		BusinessID: "biz",
+		PeerID:     "dev",
+		Changes:    []provisioner.Change{{Action: provisioner.ActionEnsureKeepalive}},
+	})
+	if err != nil {
+		t.Fatalf("ApplyFixes: %v", err)
+	}
+	if !res.SnapshotCaptured || !res.RolledBack {
+		t.Fatalf("expected snapshot and rollback after empty fake verification: %+v", res)
+	}
+	if got := src.callCount(); got != 1 {
+		t.Fatalf("target resolved %d times, want exactly once for the whole operation", got)
+	}
+	for i, call := range rf.snapshot() {
+		if call.addr != "10.77.0.10:22" {
+			t.Fatalf("command %d drifted to %s: %q", i, call.addr, call.cmd)
+		}
 	}
 }
 
@@ -331,13 +471,37 @@ func TestSSHConfigFromTarget(t *testing.T) {
 		t.Error("password target carried a key")
 	}
 
-	key := &DeviceTarget{DeviceID: "d", Addr: "10.0.0.1:22", User: "admin", Secret: "PEM", Kind: "key"}
+	if pw.HostKeyFingerprint != "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" || pw.InsecureIgnoreHostKey {
+		t.Errorf("password target did not enforce its pinned host key: %+v", pw)
+	}
+
+	key := &DeviceTarget{DeviceID: "d", Addr: "10.0.0.1:22", User: "admin", Secret: "PEM", Kind: "key", Fingerprint: "SHA256:BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBA"}
 	kc, err := SSHConfigFromTarget(key, time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if string(kc.PrivateKeyPEM) != "PEM" || kc.Password != "" {
 		t.Errorf("key target mapped wrong: %+v", kc)
+	}
+	if kc.HostKeyFingerprint != "SHA256:BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBA" || kc.InsecureIgnoreHostKey {
+		t.Errorf("key target did not enforce its pinned host key: %+v", kc)
+	}
+
+	unpinned := pwTarget("d", "10.0.0.1:22", "admin", "s3cret")
+	unpinned.Fingerprint = ""
+	if _, err := SSHConfigFromTarget(unpinned, time.Second); !errors.Is(err, ErrHostKeyUnpinned) {
+		t.Fatalf("unpinned target error = %v, want ErrHostKeyUnpinned", err)
+	}
+	for _, invalid := range []string{
+		"SHA256:abc",
+		"SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+		"MD5:00:11:22:33",
+		"not-a-fingerprint",
+	} {
+		unpinned.Fingerprint = invalid
+		if _, err := SSHConfigFromTarget(unpinned, time.Second); !errors.Is(err, ErrHostKeyUnpinned) {
+			t.Errorf("invalid fingerprint %q: error = %v, want ErrHostKeyUnpinned", invalid, err)
+		}
 	}
 
 	// Incomplete / unknown kind / nil must all be refused, never defaulted.
@@ -353,6 +517,16 @@ func TestSSHConfigFromTarget(t *testing.T) {
 		if _, err := SSHConfigFromTarget(bad, time.Second); err == nil {
 			t.Errorf("%s: accepted an incomplete target", name)
 		}
+	}
+}
+
+func TestValidateHostKeyFingerprint(t *testing.T) {
+	valid := "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+	if err := ValidateHostKeyFingerprint(valid); err != nil {
+		t.Fatalf("valid fingerprint rejected: %v", err)
+	}
+	if err := ValidateHostKeyFingerprint("  " + valid + "\n"); err != nil {
+		t.Fatalf("trimmed valid fingerprint rejected: %v", err)
 	}
 }
 
