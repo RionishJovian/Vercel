@@ -2,6 +2,7 @@ package handler
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -197,6 +198,14 @@ func (h *MagicDudeHandler) Chat(c *gin.Context) {
 
 	reply, err := h.client.Chat(c.Request.Context(), systemPrompt, req.History, req.Question)
 	if err != nil {
+		var providerErr *ai.OpenRouterError
+		if errors.As(err, &providerErr) && providerErr.Status == http.StatusTooManyRequests {
+			c.JSON(http.StatusTooManyRequests, gin.H{
+				"error": "OpenRouter's free-model allowance is exhausted; try again after its daily reset",
+				"code":  "FREE_MODEL_LIMIT_REACHED",
+			})
+			return
+		}
 		c.JSON(http.StatusBadGateway, gin.H{"error": "Magic Dude is temporarily unavailable"})
 		return
 	}

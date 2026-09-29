@@ -3,6 +3,7 @@ package ai
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -96,6 +97,10 @@ func TestOpenRouterClient_statusError(t *testing.T) {
 	// The API key must never leak into error text.
 	if strings.Contains(err.Error(), key) {
 		t.Fatalf("error text leaked the API key: %v", err)
+	}
+	var providerErr *OpenRouterError
+	if !errors.As(err, &providerErr) || providerErr.Status != http.StatusInternalServerError {
+		t.Fatalf("expected typed provider error, got %T: %v", err, err)
 	}
 }
 

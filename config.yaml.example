@@ -55,7 +55,7 @@ ai:
   # only candidate returning parseable finding JSON with response_format=json_object.
   openrouter_url: https://openrouter.ai/api/v1
   openrouter_api_key: ""
-  openrouter_model: nvidia/nemotron-3-super-120b-a12b:free
+  openrouter_model: openrouter/free
   # Operator incident DM (Telegram). Off by default; ADDITIVE to webhooks. The
   # bot token is a SECRET — inject via config/env, never commit. Empty token or
   # chat id degrades to no-op (webhooks only).

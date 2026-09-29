@@ -2,6 +2,7 @@ package ai
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -49,5 +50,21 @@ func TestOpenRouterMagicDudeRequiresKey(t *testing.T) {
 	client := NewOpenRouterClient("https://openrouter.test/v1", "", "test/model:free")
 	if _, err := client.Chat(context.Background(), "system", nil, "question"); err == nil {
 		t.Fatal("expected missing-key error")
+	}
+}
+
+func TestOpenRouterMagicDudeRateLimitIsTyped(t *testing.T) {
+	client := NewOpenRouterClient("https://openrouter.test/v1", "key", "openrouter/free")
+	client.http = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusTooManyRequests,
+			Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"Rate limit exceeded"}}`)),
+			Request:    req,
+		}, nil
+	})}
+	_, err := client.Chat(context.Background(), "system", nil, "question")
+	var providerErr *OpenRouterError
+	if !errors.As(err, &providerErr) || providerErr.Status != http.StatusTooManyRequests {
+		t.Fatalf("expected typed 429, got %T: %v", err, err)
 	}
 }

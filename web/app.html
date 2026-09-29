@@ -1899,6 +1899,8 @@ async function renderMagicDude(main) {
     } catch (err) {
       if (err.status === 403 && err.data && err.data.code === "MAGIC_DUDE_UNLOCK_REQUIRED") {
         magicDudeTurns.push({role: "assistant", content: "This account role needs an active Magic Dude unlock key. Ask an owner or administrator to review access."});
+      } else if (err.status === 429 && err.data && err.data.code === "FREE_MODEL_LIMIT_REACHED") {
+        magicDudeTurns.push({role: "assistant", content: "OpenRouter’s free-model allowance has been used for today. I’ll be available again after OpenRouter’s daily reset; no paid model will be used."});
       } else {
         magicDudeTurns.push({role: "assistant", content: apiErrorText(err, "I’m temporarily unavailable. Your question was not used to make any fleet changes.")});
       }

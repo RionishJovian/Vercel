@@ -69,7 +69,7 @@ func (c *OpenRouterClient) Chat(ctx context.Context, systemPrompt string, histor
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("ai: openrouter status %d", resp.StatusCode)
+		return nil, decodeOpenRouterError(resp)
 	}
 
 	var out openRouterResponse

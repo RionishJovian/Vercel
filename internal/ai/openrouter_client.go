@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -14,8 +15,33 @@ import (
 
 const (
 	defaultOpenRouterURL   = "https://openrouter.ai/api/v1"
-	defaultOpenRouterModel = "nvidia/nemotron-3-super-120b-a12b:free"
+	defaultOpenRouterModel = "openrouter/free"
 )
+
+// OpenRouterError preserves only the safe provider status/message needed for
+// operator-facing recovery. It never includes request headers or API keys.
+type OpenRouterError struct {
+	Status  int
+	Message string
+}
+
+func (e *OpenRouterError) Error() string {
+	if e.Message == "" {
+		return fmt.Sprintf("ai: openrouter status %d", e.Status)
+	}
+	return fmt.Sprintf("ai: openrouter status %d: %s", e.Status, e.Message)
+}
+
+func decodeOpenRouterError(resp *http.Response) error {
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 32<<10))
+	var envelope struct {
+		Error struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	_ = json.Unmarshal(raw, &envelope)
+	return &OpenRouterError{Status: resp.StatusCode, Message: strings.TrimSpace(envelope.Error.Message)}
+}
 
 // OpenRouterClient classifies a telemetry sample via an OpenRouter chat
 // completion. response_format:json_object is MANDATORY — the probed model
@@ -102,8 +128,7 @@ func (c *OpenRouterClient) Analyze(ctx context.Context, sample model.TelemetrySa
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		// NOTE: never include the request/headers (and thus the key) in the error.
-		return nil, fmt.Errorf("ai: openrouter status %d", resp.StatusCode)
+		return nil, decodeOpenRouterError(resp)
 	}
 
 	var out openRouterResponse
