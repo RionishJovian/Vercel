@@ -304,10 +304,15 @@ body.page-pricing {
   letter-spacing: -.04em;
 }
 
-.page-app .stat:nth-child(2) .stat-value { color: var(--ok); }
-.page-app .stat:nth-child(3) .stat-value { color: var(--warn); }
-.page-app .stat:nth-child(4) .stat-value { color: var(--bad); }
-.page-app .stat:nth-child(5) .stat-value { color: var(--unknown); }
+.page-app .fleet-stats .stat:nth-child(2) .stat-value { color: var(--ok); }
+.page-app .fleet-stats .stat:nth-child(3) .stat-value { color: var(--warn); }
+.page-app .fleet-stats .stat:nth-child(4) .stat-value { color: var(--bad); }
+.page-app .fleet-stats .stat:nth-child(5) .stat-value { color: var(--unknown); }
+.page-app .security-stats .stat:nth-child(1) .stat-value { color: var(--bad); }
+.page-app .security-stats .stat:nth-child(2) .stat-value { color: var(--ok); }
+.page-app .security-stats .stat:nth-child(3) .stat-value { color: var(--unknown); }
+.page-app .security-stats .stat:nth-child(4) .stat-value { color: var(--warn); }
+.page-app .security-stats .stat:nth-child(5) .stat-value { color: var(--bad); }
 
 .page-app .panel {
   position: relative;
@@ -527,6 +532,28 @@ body.page-pricing {
 
 .page-app .health-banner strong { color: #dff8e9; font-size: 12px; }
 .page-app .health-banner span:last-child { color: #83a393; font-size: 11.5px; }
+
+.page-app .security-banner {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 13px;
+  margin: 14px 0 20px;
+  padding: 12px 14px;
+  background: var(--bad-wash);
+  border: 1px solid rgba(239, 123, 131, .22);
+  border-radius: 8px;
+}
+
+.page-app .security-banner > div {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.page-app .security-banner strong { color: #ffdadd; font-size: 12px; }
+.page-app .security-banner span:last-child { color: #b99599; font-size: 11.5px; }
 
 @keyframes mm-pulse {
   0%, 100% { opacity: .45; transform: scale(.82); }
@@ -1046,6 +1073,9 @@ body.page-pricing {
   .page-signin .signin-card { max-width: none; }
 
   .page-app .health-banner > div { align-items: flex-start; flex-direction: column; gap: 1px; }
+  .page-app .security-banner { grid-template-columns: auto minmax(0, 1fr); }
+  .page-app .security-banner > div { align-items: flex-start; flex-direction: column; gap: 1px; }
+  .page-app .security-banner .btn { grid-column: 1 / -1; justify-content: center; }
 }
 
 @media (max-width: 640px) {

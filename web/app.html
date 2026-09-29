@@ -335,15 +335,25 @@ function errorText(err, fallback = "The server did not return a usable response.
 async function renderOverview(main) {
   const fleet = await MM.get("/fleet/health");
   const topo = await MM.get("/topology/map");
+  let security = null;
+  try { security = await MM.get("/security/posture"); } catch (_) {}
   const content = main.querySelector("#content");
+  const securityAttention = security && Number(security.affected || 0) > 0
+    ? `<div class="security-banner">
+        <span class="status ${Number(security.exploited || 0) > 0 ? "bad" : "warn"}">${Number(security.affected || 0)} affected</span>
+        <div><strong>Security action required</strong><span>${Number(security.exploited || 0) > 0 ? `${Number(security.exploited)} device(s) match an actively exploited advisory.` : "Review affected RouterOS versions and mitigations."}${Number(security.unpatchable || 0) > 0 ? ` ${Number(security.unpatchable)} device(s) also match an advisory with no vendor fix.` : ""}</span></div>
+        <button class="btn btn-sm" id="overview-security" type="button">Review security</button>
+      </div>`
+    : "";
   content.innerHTML = `
-    <div class="stat-cluster" style="margin-top:18px">
+    <div class="stat-cluster fleet-stats" style="margin-top:18px">
       <div class="stat"><div class="stat-label">Peers</div><div class="stat-value">${fleet.total_peers}</div></div>
       <div class="stat"><div class="stat-label">Up</div><div class="stat-value">${fleet.up}</div></div>
       <div class="stat"><div class="stat-label">Stale</div><div class="stat-value">${fleet.stale}</div></div>
       <div class="stat"><div class="stat-label">Offline</div><div class="stat-value">${fleet.offline}</div></div>
       <div class="stat"><div class="stat-label">Unknown</div><div class="stat-value">${fleet.unknown}</div></div>
     </div>
+    ${securityAttention}
     <hr class="rule">
     <div class="panel"><div class="panel-head"><h2 class="panel-title">Fleet state</h2></div>
       <div class="panel-body" id="ov-fleet">${loading()}</div>
@@ -353,6 +363,11 @@ async function renderOverview(main) {
     </div>`;
   document.querySelector("#ov-fleet").innerHTML = fleetTable(fleet);
   document.querySelector("#ov-topo").innerHTML = topologySummary(topo);
+  const securityBtn = document.getElementById("overview-security");
+  if (securityBtn) securityBtn.addEventListener("click", () => {
+    const nav = document.querySelector('.nav-item[data-view="security"]');
+    if (nav) nav.click();
+  });
   await renderPulse(main);
 }
 
@@ -402,7 +417,7 @@ async function renderPulse(main) {
   strip.innerHTML = (attention ? `<div class="panel" style="margin-bottom:14px;border-left:3px solid var(--bad)"><div class="panel-head"><h2 class="panel-title">Needs attention</h2></div><div class="panel-body"><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">${sev(attention.severity)}<span class="num">${esc(attention.subject_label || "—")}</span><span class="muted small">${esc(attention.kind)}</span><span style="flex:1"></span>${applyFixCell(attention)}</div></div></div>` : "") +
     (head.length
       ? `<div class="panel" style="margin-bottom:14px"><div class="panel-head"><h2 class="panel-title">Open incidents</h2></div><div class="panel-body"><table><thead><tr><th>Severity</th><th>Subject</th><th>Kind</th><th></th></tr></thead><tbody>${headRows}</tbody></table></div></div>`
-      : `<div class="health-banner"><span class="status ok">Clear</span><div><strong>No open incidents</strong><span>No unresolved incidents right now.</span></div></div>`);
+      : `<div class="health-banner"><span class="status ok">Clear</span><div><strong>No recovery incidents</strong><span>No unresolved tunnel or policy incidents right now.</span></div></div>`);
   const stats = content.querySelector(".stat-cluster");
   if (attention) content.insertBefore(strip, content.firstChild);
   else if (stats) stats.insertAdjacentElement("afterend", strip);
@@ -2811,7 +2826,7 @@ async function renderSecurity(main) {
     : "";
 
   content.innerHTML = `
-    <div class="stat-cluster" style="margin-top:18px">
+    <div class="stat-cluster security-stats" style="margin-top:18px">
       <div class="stat"><div class="stat-label">Affected</div><div class="stat-value">${data.affected ?? 0}</div></div>
       <div class="stat"><div class="stat-label">Safe</div><div class="stat-value">${data.safe ?? 0}</div></div>
       <div class="stat"><div class="stat-label">Unknown</div><div class="stat-value">${data.unknown ?? 0}</div></div>
@@ -3170,7 +3185,8 @@ window.addEventListener("load", async () => {
     railMenu.classList.toggle("open", open);
     railToggle.setAttribute("aria-expanded", open ? "true" : "false");
   };
-  if (railToggle) railToggle.addEventListener("click", () => {
+  if (railToggle) railToggle.addEventListener("click", (event) => {
+    event.stopPropagation();
     setRailOpen(railToggle.getAttribute("aria-expanded") !== "true");
   });
   document.addEventListener("click", (e) => {
