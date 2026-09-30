@@ -1,4 +1,4 @@
-# Mega Magic Project - New Development Workspace
+# Mega — Mega Magic Project
 
 **Created:** 2026-09-23  
 **Source:** `/opt/mikromagic-app` (live production - DO NOT MODIFY)  
