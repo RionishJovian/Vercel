@@ -52,6 +52,21 @@ CREATE TABLE users (
 CREATE INDEX idx_users_business_id ON users(business_id);
 CREATE INDEX idx_users_email ON users(email);
 
+-- Per-user profile presentation and language preference. Binary assets are
+-- small, bounded account images served only through authenticated endpoints.
+CREATE TABLE user_profile_settings (
+    user_id uuid PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE,
+    business_id uuid NOT NULL REFERENCES businesses(business_id) ON DELETE CASCADE,
+    language text NOT NULL DEFAULT 'en' CHECK (language IN ('en', 'my', 'zh')),
+    avatar_data bytea CHECK (avatar_data IS NULL OR octet_length(avatar_data) <= 2097152),
+    avatar_mime text CHECK (avatar_mime IS NULL OR avatar_mime IN ('image/jpeg', 'image/png', 'image/webp')),
+    cover_data bytea CHECK (cover_data IS NULL OR octet_length(cover_data) <= 5242880),
+    cover_mime text CHECK (cover_mime IS NULL OR cover_mime IN ('image/jpeg', 'image/png', 'image/webp')),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_user_profile_settings_business ON user_profile_settings(business_id);
+
 -- ============================================================================
 -- DEVICE FLEET MANAGEMENT
 -- ============================================================================
@@ -179,7 +194,12 @@ CREATE TABLE portal_configs (
     -- Guest wifi (Option C): the free online-payment window (minutes) and the
     -- data plans the owner sets on the portal (JSON: [{key,label,minutes,amount}]).
     guest_grace_minutes integer NOT NULL DEFAULT 10,
+    guest_grace_data_mb integer NOT NULL DEFAULT 50 CHECK (guest_grace_data_mb BETWEEN 1 AND 10240),
     guest_plans jsonb NOT NULL DEFAULT '[]'::jsonb,
+    voucher_login_enabled boolean NOT NULL DEFAULT true,
+    mobile_payment_enabled boolean NOT NULL DEFAULT true,
+    CONSTRAINT portal_configs_access_method_check
+        CHECK (voucher_login_enabled OR mobile_payment_enabled),
     updated_at timestamptz NOT NULL DEFAULT now()
 );
 
@@ -440,6 +460,7 @@ CREATE TABLE IF NOT EXISTS guest_purchase_requests (
     receipt_path text,              -- uploaded successful-payment receipt
     grace_started_at timestamptz,
     grace_expires_at timestamptz,
+    grace_data_mb integer NOT NULL DEFAULT 50 CHECK (grace_data_mb BETWEEN 1 AND 10240),
     status text NOT NULL DEFAULT 'pending'
         CHECK (status IN ('pending', 'approved', 'rejected')),
     decided_at timestamptz,
@@ -449,6 +470,7 @@ CREATE TABLE IF NOT EXISTS guest_purchase_requests (
 
 CREATE INDEX idx_guest_requests_business ON guest_purchase_requests(business_id);
 CREATE INDEX idx_guest_requests_status ON guest_purchase_requests(status);
+CREATE INDEX idx_guest_requests_grace_client ON guest_purchase_requests (business_id, device_id, upper(client_mac), created_at DESC);
 
 -- ============================================================================
 -- ROW LEVEL SECURITY POLICIES
@@ -458,6 +480,7 @@ CREATE INDEX idx_guest_requests_status ON guest_purchase_requests(status);
 ALTER TABLE businesses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE business_metered_quotas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_profile_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE devices ENABLE ROW LEVEL SECURITY;
 ALTER TABLE telemetry_samples ENABLE ROW LEVEL SECURITY;
 ALTER TABLE peer_heartbeats ENABLE ROW LEVEL SECURITY;
@@ -497,6 +520,11 @@ CREATE POLICY business_metered_quotas_tenant_isolation ON business_metered_quota
 
 -- Users: Users can only see users in their business
 CREATE POLICY users_tenant_isolation ON users
+    FOR ALL TO authenticated
+    USING (business_id = current_setting('app.current_business_id')::uuid)
+    WITH CHECK (business_id = current_setting('app.current_business_id')::uuid);
+
+CREATE POLICY user_profile_settings_tenant_isolation ON user_profile_settings
     FOR ALL TO authenticated
     USING (business_id = current_setting('app.current_business_id')::uuid)
     WITH CHECK (business_id = current_setting('app.current_business_id')::uuid);
@@ -1212,9 +1240,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS owner_daily_closes_business_day_unique
 -- and sites separately. Kept as its own table rather than forced into either.
 CREATE TABLE IF NOT EXISTS device_allowances (
     business_id uuid PRIMARY KEY REFERENCES businesses(business_id) ON DELETE CASCADE,
-    routers integer NOT NULL DEFAULT 0,
-    controllers integer NOT NULL DEFAULT 0,
-    sites integer NOT NULL DEFAULT 0,
+    routers integer NOT NULL DEFAULT 1 CHECK (routers >= 0),
+    controllers integer NOT NULL DEFAULT 0 CHECK (controllers >= 0),
+    sites integer NOT NULL DEFAULT 0 CHECK (sites >= 0),
     included_router_id uuid REFERENCES router_connections(id) ON DELETE SET NULL,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now()
@@ -1226,6 +1254,7 @@ CREATE TABLE IF NOT EXISTS device_requests (
     business_id uuid NOT NULL REFERENCES businesses(business_id) ON DELETE CASCADE,
     user_id uuid REFERENCES users(user_id) ON DELETE SET NULL,
     kind text NOT NULL,
+    quantity integer NOT NULL DEFAULT 1 CHECK (quantity BETWEEN 1 AND 100),
     reason text,
     status text NOT NULL DEFAULT 'pending',
     decided_by uuid REFERENCES users(user_id) ON DELETE SET NULL,
@@ -1441,3 +1470,48 @@ ALTER TABLE devices ADD CONSTRAINT devices_ssh_port_valid CHECK (ssh_port BETWEE
 -- index the fleet sweep's per-device credential lookup scans devices.
 CREATE INDEX IF NOT EXISTS devices_ssh_target_idx
     ON devices(device_id) WHERE management_ip IS NOT NULL AND ssh_username IS NOT NULL;
+-- System-level authentication bootstrap table. Never grant tenant runtime access.
+CREATE TABLE IF NOT EXISTS auth_sessions (
+ session_id text PRIMARY KEY,
+ user_id uuid NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+ business_id uuid NOT NULL REFERENCES businesses(business_id) ON DELETE CASCADE,
+ password_digest text NOT NULL,
+ user_role text NOT NULL,
+ refresh_digest text NOT NULL,
+ expires_at timestamptz NOT NULL,
+ revoked boolean NOT NULL DEFAULT false
+);
+CREATE INDEX IF NOT EXISTS auth_sessions_user_id_idx ON auth_sessions(user_id);
+ALTER TABLE auth_sessions ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON auth_sessions FROM PUBLIC;
+REVOKE ALL ON auth_sessions FROM authenticated;
+-- Revoke permanently, including across later reactivation/restored roles.
+CREATE OR REPLACE FUNCTION public.revoke_changed_user_sessions() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog AS $$
+BEGIN
+ IF OLD.password_hash IS DISTINCT FROM NEW.password_hash
+ OR OLD.user_role IS DISTINCT FROM NEW.user_role
+ OR OLD.business_id IS DISTINCT FROM NEW.business_id
+ OR (OLD.is_active AND NOT NEW.is_active) THEN
+ UPDATE public.auth_sessions SET revoked=true WHERE user_id=NEW.user_id;
+ END IF;
+ RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.revoke_changed_user_sessions() FROM PUBLIC;
+DROP TRIGGER IF EXISTS revoke_changed_user_sessions ON public.users;
+CREATE TRIGGER revoke_changed_user_sessions AFTER UPDATE ON public.users
+FOR EACH ROW EXECUTE FUNCTION public.revoke_changed_user_sessions();
+CREATE OR REPLACE FUNCTION public.revoke_suspended_business_sessions() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog AS $$
+BEGIN
+ IF OLD.is_active AND NOT NEW.is_active THEN
+ UPDATE public.auth_sessions SET revoked=true WHERE business_id=NEW.business_id;
+ END IF;
+ RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.revoke_suspended_business_sessions() FROM PUBLIC;
+DROP TRIGGER IF EXISTS revoke_suspended_business_sessions ON public.businesses;
+CREATE TRIGGER revoke_suspended_business_sessions AFTER UPDATE ON public.businesses
+FOR EACH ROW EXECUTE FUNCTION public.revoke_suspended_business_sessions();

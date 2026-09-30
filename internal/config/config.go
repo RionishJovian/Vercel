@@ -268,6 +268,7 @@ type ApplierConfig struct {
 	ListenPortRotateTo    int           `mapstructure:"listen_port_rotate_to"`
 	ResetHold             time.Duration `mapstructure:"reset_hold"`
 	PingTarget            string        `mapstructure:"ping_target"`
+	ManagementCIDRs       []string      `mapstructure:"management_cidrs"`
 	TDown                 time.Duration `mapstructure:"t_down"`
 
 	// CredentialKey is the base64/hex 32-byte AES-256-GCM key used to encrypt
@@ -429,6 +430,9 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("database.password", defaultDatabasePassword)
 	v.SetDefault("billing.receipt_dir", "./data/receipts")
 	v.SetDefault("billing.quota_enforcement_interval", "60s")
+	v.SetDefault("billing.telegram.enabled", false)
+	v.SetDefault("billing.telegram.bot_token", "")
+	v.SetDefault("billing.telegram.chat_id", 0)
 	v.SetDefault("billing.telegram.poll_timeout", "10s")
 	v.SetDefault("ai.enabled", false)
 	v.SetDefault("ai.mode", "auto")
@@ -530,6 +534,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("provisioner.applier.timeout", "10s")
 	v.SetDefault("provisioner.applier.interface", "wg-magichub")
 	v.SetDefault("provisioner.applier.reset_hold", "30s")
+	v.SetDefault("provisioner.applier.management_cidrs", []string{})
 	v.SetDefault("provisioner.applier.t_down", "180s")
 	v.SetDefault("provisioner.applier.otp_secret", "")
 

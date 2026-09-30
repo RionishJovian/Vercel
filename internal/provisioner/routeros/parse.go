@@ -1,6 +1,7 @@
 package routeros
 
 import (
+	"net"
 	"strconv"
 	"strings"
 )
@@ -95,6 +96,19 @@ func pingOK(out string) bool {
 				end = len(rest)
 			}
 			if n, err := strconv.Atoi(rest[:end]); err == nil && n > 0 {
+				return true
+			}
+		}
+		// SSH captures from some RouterOS builds omit the final received= summary
+		// even though reply rows are present: `0 10.99.0.1 56 64 2ms627us`.
+		// Require the numeric sequence, IP, size, and TTL shape so headings or
+		// arbitrary output cannot be mistaken for a successful ping.
+		fields := strings.Fields(line)
+		if len(fields) >= 4 {
+			_, seqErr := strconv.Atoi(fields[0])
+			_, sizeErr := strconv.Atoi(fields[2])
+			_, ttlErr := strconv.Atoi(fields[3])
+			if seqErr == nil && net.ParseIP(fields[1]) != nil && sizeErr == nil && ttlErr == nil {
 				return true
 			}
 		}

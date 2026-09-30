@@ -23,11 +23,20 @@ type RollbackSnapshot struct {
 	// On-device snapshot artifacts and the parsed WireGuard values the live SSH
 	// Applier needs to revert in place. Empty for the in-memory/unit-test path;
 	// populated by internal/provisioner/routeros.
-	ExportFile           string `json:"export_file,omitempty"`
-	BackupName           string `json:"backup_name,omitempty"`
-	WGListenPort         int    `json:"wg_listen_port,omitempty"`
-	WGPeerKeepalive      string `json:"wg_peer_keepalive,omitempty"`
-	WGPeerAllowedAddress string `json:"wg_peer_allowed_address,omitempty"`
+	ExportFile           string                    `json:"export_file,omitempty"`
+	BackupName           string                    `json:"backup_name,omitempty"`
+	WGListenPort         int                       `json:"wg_listen_port,omitempty"`
+	WGPeerKeepalive      string                    `json:"wg_peer_keepalive,omitempty"`
+	WGPeerAllowedAddress string                    `json:"wg_peer_allowed_address,omitempty"`
+	RouterOSServices     []RouterOSServiceSnapshot `json:"routeros_services,omitempty"`
+}
+
+// RouterOSServiceSnapshot is the small, targeted portion of /ip service needed
+// to undo a management-surface hardening action without importing a full .rsc.
+type RouterOSServiceSnapshot struct {
+	Name     string `json:"name"`
+	Address  string `json:"address,omitempty"`
+	Disabled bool   `json:"disabled"`
 }
 
 // Applier applies validated changes to a peer's router and restores a snapshot.

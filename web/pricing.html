@@ -4,6 +4,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Pricing — Mega Magic</title>
+  <link rel="icon" type="image/x-icon" sizes="any" href="/favicon.ico?v=20260930-3">
+  <link rel="icon" type="image/png" sizes="64x64" href="/assets/images/mikromagic-favicon-green-v2-64.png?v=20260930-3">
+  <link rel="shortcut icon" type="image/x-icon" href="/favicon.ico?v=20260930-3">
+  <link rel="apple-touch-icon" sizes="180x180" href="/assets/images/mikromagic-touch-green-v2-180.png?v=20260930-3">
+  <link rel="manifest" href="/site.webmanifest?v=20260930-3">
+  <meta name="theme-color" content="#051f20">
   <meta name="description" content="Mega Magic pricing: one pass for the console, capacity by tier. Monthly or annual, billed in MMK. Manage up to 10, 100 or unlimited MikroTik routers.">
   <meta name="robots" content="index">
   <link rel="canonical" href="https://mikromagic.com/pricing.html">
@@ -14,6 +20,7 @@
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Pricing — Mega Magic">
   <meta name="twitter:description" content="One pass for the console, capacity by tier. Monthly or annual, billed in MMK.">
+  <script src="/assets/js/theme.js"></script>
   <style>
     /* ════════════════════════════════════════════════════════════════════
        Mega Magic — pricing page. Same Liquid-Glass language as the landing
@@ -178,7 +185,7 @@
 
 <div class="wrap">
   <div class="land-nav">
-    <a class="rail-brand" href="/"><span class="dot"></span>Mega Magic</a>
+    <a class="rail-brand" href="/"><img class="brand-logo" src="/assets/images/mikromagic-mark-20260930.png" alt="">Mega Magic</a>
     <div class="spacer"></div>
     <div><a class="land-signin" href="/signin.html">Sign in →</a></div>
   </div>
@@ -253,7 +260,7 @@
     </div>
 
     <footer>
-      <div id="source-line">Prices are loaded from the live price list.</div>
+      <div id="source-line">Current prices are loading.</div>
       <div>All prices in Myanmar Kyat (MMK). The annual pass is a single payment covering twelve months.</div>
       <div>Capacity is per account, not per router added.</div>
     </footer>
@@ -339,7 +346,7 @@
     }
     if (d.generated_at) {
       document.getElementById("source-line").textContent =
-        "Price list served by the API at " + d.generated_at + ".";
+        "Prices last updated " + d.generated_at + ".";
     }
   }
 
@@ -350,11 +357,8 @@
     })
     .then(render)
     .catch(function (err) {
-      // Honest failure: no figures rather than stale ones.
       document.getElementById("source-line").textContent = "Live price list unavailable.";
-      notice("We could not load the live price list just now (" + err.message +
-        "). The figures on this page are intentionally blank rather than out of date — " +
-        "please try again, or sign in and the console will show your account's rates.", true);
+      notice("We could not load current prices just now. Please refresh this page, or sign in to check your account's available plans.", true);
     });
 })();
 </script>

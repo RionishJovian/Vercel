@@ -89,6 +89,10 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("auth service: %w", err)
 	}
+	if err := database.CheckAuthSessionSchema(db); err != nil {
+		return nil, err
+	}
+	authService.UseSessions(db)
 	sugar.Info("Auth service initialized")
 
 	userRepo := database.NewUserRepository(db)
@@ -97,9 +101,11 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	notifierr := notifier.New(database.NewWebhookRepository(db), db, sugar)
 
 	authHandler := handler.NewAuthHandler(userRepo, authService, db)
+	allowRepo := database.NewDeviceAllowanceRepository(db)
 	routerHandler := handler.NewRouterHandler(
 		db,
 		database.NewDeviceRepository(db),
+		allowRepo,
 		messagingClient,
 	)
 	telemetryHandler := handler.NewTelemetryHandler(
@@ -128,11 +134,11 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	// Magic Coins — per-user balance + immutable ledger (ported from Mikromagic).
 	magicCoinHandler := handler.NewMagicCoinHandler(db, database.NewMagicCoinRepository(db))
 	// Sites — physical locations with the ported geo data (location/timezone/lat/lng).
-	siteHandler := handler.NewSiteHandler(db, database.NewSiteRepository(db))
+	siteHandler := handler.NewSiteHandler(db, database.NewSiteRepository(db), allowRepo)
 	// Router connections — saved management endpoints ported from Mikromagic.
 	connHandler := handler.NewRouterConnectionHandler(db, database.NewRouterConnectionRepository(db))
 	// Device allowances + requests — granted capacity and its approval workflow.
-	allowHandler := handler.NewDeviceAllowanceHandler(db, database.NewDeviceAllowanceRepository(db))
+	allowHandler := handler.NewDeviceAllowanceHandler(db, allowRepo)
 	// Syslog — the ported router event log (read-only, paged).
 	syslogHandler := handler.NewSyslogHandler(db, database.NewSyslogRepository(db))
 	// Terminal templates — the saved RouterOS REST call library.
@@ -220,6 +226,17 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		planDurations,
 		cfg.Billing.ReceiptDir,
 	)
+	operatorChat := ""
+	if cfg.Billing.Telegram.ChatID != 0 {
+		operatorChat = strconv.FormatInt(cfg.Billing.Telegram.ChatID, 10)
+	}
+	storeHandler := handler.NewStoreHandler(
+		db,
+		database.NewStorePurchaseRepository(db),
+		database.NewPricingRepository(db),
+		billingMessenger,
+		operatorChat,
+	)
 
 	// Guest wifi (Option C): the handler serves the WEB surface (guest purchase,
 	// owner approve/reject, owner bot binding) which is ALWAYS available — shop
@@ -278,6 +295,9 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	)
 
 	r := gin.New()
+	if err := r.SetTrustedProxies([]string{"127.0.0.1", "::1"}); err != nil {
+		return nil, err
+	}
 	r.Use(gin.Recovery())
 	r.Use(loggerMiddleware(sugar))
 
@@ -303,7 +323,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	pulseHandler := handler.NewPulseHandler(db, database.NewDeviceRepository(db), database.NewIncidentRepository(db))
 	incidentActionHandler := handler.NewIncidentActionHandler(db, database.NewIncidentRepository(db), database.NewDeviceRepository(db), messagingClient)
 
-	setupRoutes(r, authService, authHandler, routerHandler, telemetryHandler, incidentHandler, webhookHandler, voucherHandler, portalHandler, billingHandler, guestWifiHandler, monitorHandler, fleetHandler, topologyHandler, vpsHandler, platformHandler, securityHandler, backupHandler, teamHandler, pulseHandler, incidentActionHandler, magicCoinHandler, siteHandler, connHandler, allowHandler, syslogHandler, templateHandler, resellerHandler, scanHandler, usageHandler, magicDudeHandler, terminalHistoryHandler, unlockKeyHandler, i18nHandler, messagingClient, cacheClient, db, tenantMW)
+	setupRoutes(r, authService, authHandler, routerHandler, telemetryHandler, incidentHandler, webhookHandler, voucherHandler, portalHandler, billingHandler, storeHandler, guestWifiHandler, monitorHandler, fleetHandler, topologyHandler, vpsHandler, platformHandler, securityHandler, backupHandler, teamHandler, pulseHandler, incidentActionHandler, magicCoinHandler, siteHandler, connHandler, allowHandler, syslogHandler, templateHandler, resellerHandler, scanHandler, usageHandler, magicDudeHandler, terminalHistoryHandler, unlockKeyHandler, i18nHandler, messagingClient, cacheClient, db, tenantMW)
 
 	// Start the policy evaluator: watches NATS telemetry and auto-opens incidents.
 	evaluator := evaluator.New(
@@ -357,7 +377,8 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		if cfg.Billing.Telegram.ChatID != 0 {
 			target = strconv.FormatInt(cfg.Billing.Telegram.ChatID, 10)
 		}
-		bridge := telegram.NewPurchaseBridge(bm, billingMessenger, target, billingHandler)
+		decider := telegram.CompositePurchaseDecider{Deciders: []telegram.PurchaseDecider{storeHandler, billingHandler}}
+		bridge := telegram.NewPurchaseBridge(bm, billingMessenger, target, decider)
 		go func() { _ = bridge.Run(context.Background()) }()
 		sugar.Info("Telegram purchase approve/reject bridge started (inbound loop)")
 	}
@@ -397,7 +418,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	// When enabled, peer.recover intents reach the real RouterOS Applier through
 	// the approve -> apply -> verify -> rollback gate. A failure here must fail
 	// startup loudly.
-	if err := startLiveApplier(cfg, messagingClient, sugar, monitoringService, db, backupHandler, incidentActionHandler); err != nil {
+	if err := startLiveApplier(cfg, messagingClient, sugar, monitoringService, db, backupHandler, securityHandler, incidentActionHandler, guestWifiHandler); err != nil {
 		return nil, err
 	}
 
@@ -428,7 +449,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	}, nil
 }
 
-func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.AuthHandler, routerHandler *handler.RouterHandler, telemetryHandler *handler.TelemetryHandler, incidentHandler *handler.IncidentHandler, webhookHandler *handler.WebhookHandler, voucherHandler *handler.VoucherHandler, portalHandler *handler.PortalHandler, billingHandler *handler.BillingHandler, guestWifiHandler *handler.GuestWifiHandler, monitorHandler *handler.MonitorHandler, fleetHandler *handler.FleetHandler, topologyHandler *handler.TopologyHandler, vpsHandler *handler.VPSHandler, platformHandler *handler.PlatformHandler, securityHandler *handler.SecurityHandler, backupHandler *handler.BackupHandler, teamHandler *handler.TeamHandler, pulseHandler *handler.PulseHandler, incidentActionHandler *handler.IncidentActionHandler, magicCoinHandler *handler.MagicCoinHandler, siteHandler *handler.SiteHandler, connHandler *handler.RouterConnectionHandler, allowHandler *handler.DeviceAllowanceHandler, syslogHandler *handler.SyslogHandler, templateHandler *handler.TerminalTemplateHandler, resellerHandler *handler.VoucherResellerHandler, scanHandler *handler.FleetScanRunHandler, usageHandler *handler.AIUsageHandler, magicDudeHandler *handler.MagicDudeHandler, historyHandler *handler.TerminalHistoryHandler, unlockHandler *handler.UnlockKeyHandler, i18nH *handler.I18nHandler, msg *messaging.Client, cache *cache.Client, db *database.DB, tenantMW gin.HandlerFunc) {
+func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.AuthHandler, routerHandler *handler.RouterHandler, telemetryHandler *handler.TelemetryHandler, incidentHandler *handler.IncidentHandler, webhookHandler *handler.WebhookHandler, voucherHandler *handler.VoucherHandler, portalHandler *handler.PortalHandler, billingHandler *handler.BillingHandler, storeHandler *handler.StoreHandler, guestWifiHandler *handler.GuestWifiHandler, monitorHandler *handler.MonitorHandler, fleetHandler *handler.FleetHandler, topologyHandler *handler.TopologyHandler, vpsHandler *handler.VPSHandler, platformHandler *handler.PlatformHandler, securityHandler *handler.SecurityHandler, backupHandler *handler.BackupHandler, teamHandler *handler.TeamHandler, pulseHandler *handler.PulseHandler, incidentActionHandler *handler.IncidentActionHandler, magicCoinHandler *handler.MagicCoinHandler, siteHandler *handler.SiteHandler, connHandler *handler.RouterConnectionHandler, allowHandler *handler.DeviceAllowanceHandler, syslogHandler *handler.SyslogHandler, templateHandler *handler.TerminalTemplateHandler, resellerHandler *handler.VoucherResellerHandler, scanHandler *handler.FleetScanRunHandler, usageHandler *handler.AIUsageHandler, magicDudeHandler *handler.MagicDudeHandler, historyHandler *handler.TerminalHistoryHandler, unlockHandler *handler.UnlockKeyHandler, i18nH *handler.I18nHandler, msg *messaging.Client, cache *cache.Client, db *database.DB, tenantMW gin.HandlerFunc) {
 	r.GET("/", indexPage)
 	r.GET("/health", healthCheck)
 	r.GET("/ready", readinessCheck(&Server{cache: cache, db: db, messaging: msg}))
@@ -460,15 +481,16 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 			portalPublic.POST("/guest-purchase/:requestId/receipt", guestWifiHandler.PublicAttachReceipt)
 		}
 
-		authGroup := tv1.Group("/auth")
+		authGroup := tv1.Group("/auth", auth.CookieOrigin(), auth.BoundedAuthRateLimit())
 		{
 			authGroup.POST("/register", authHandler.Register)
 			authGroup.POST("/login", authHandler.Login)
 			authGroup.POST("/refresh", authHandler.RefreshToken)
+			authGroup.POST("/logout", authHandler.Logout)
 		}
 
 		protected := tv1.Group("")
-		protected.Use(auth.Middleware(authService))
+		protected.Use(auth.CookieOrigin(), auth.Middleware(authService))
 		// Runs immediately after the token is resolved, so a suspended tenant is
 		// refused even with a token minted before the suspension. Placed before the
 		// role gate so suspension outranks role: an OWNER of a suspended business
@@ -482,6 +504,12 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 		protected.Use(auth.RequireMinRole(model.RoleViewer))
 		{
 			protected.GET("/me", authHandler.Me)
+			protected.GET("/me/profile", authHandler.Profile)
+			protected.PUT("/me/profile", authHandler.UpdateProfile)
+			protected.POST("/me/password", authHandler.ChangePassword)
+			protected.GET("/me/profile/:kind", authHandler.ProfileAsset)
+			protected.POST("/me/profile/:kind", authHandler.PutProfileAsset)
+			protected.DELETE("/me/profile/:kind", authHandler.DeleteProfileAsset)
 
 			// Backward-compatible CoreBit/The Dude route. It deliberately reuses
 			// the real tenant-scoped topology handler instead of returning a static
@@ -492,6 +520,12 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 			routers := protected.Group("/routers")
 			{
 				routers.GET("", routerHandler.ListRouters)
+				routers.GET("/:id/capabilities", securityHandler.RouterCapabilities)
+				routers.GET("/:id/quick-config", securityHandler.ReadQuickConfig)
+				routers.PUT("/:id/quick-config", auth.RequireMinRole(model.RoleAdmin), securityHandler.ApplyQuickConfig)
+				routers.POST("/:id/gateway/:action", auth.RequireMinRole(model.RoleAdmin), securityHandler.GatewaySetup)
+				routers.GET("/:id/gateway/interfaces", securityHandler.GatewaySetup)
+				routers.POST("/:id/webfig/secure", auth.RequireMinRole(model.RoleAdmin), securityHandler.ConfigureWebFig)
 				routers.GET("/:id", routerHandler.GetRouter)
 				// Router write is OWNER/ADMIN (C3 hierarchy; explicit per RM).
 				routers.POST("", auth.RequireMinRole(model.RoleAdmin), routerHandler.CreateRouter)
@@ -525,6 +559,8 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 			// Read-only per-tenant fleet aggregate (peer-health overview).
 			protected.GET("/fleet/health", fleetHandler.FleetHealth)
 			protected.GET("/fleet/health/offline", fleetHandler.OfflineHealth)
+			protected.POST("/devices/:id/security/verify", securityHandler.VerifyDevice)
+			protected.POST("/devices/:id/security/harden", auth.RequireMinRole(model.RoleAdmin), securityHandler.HardenManagement)
 
 			// Read-only per-tenant network topology map + explicit device action
 			// (reboot, plan-gated — queues an intent for the flag-gated consumer).
@@ -565,6 +601,15 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 				coins.POST("/adjust", auth.RequireMinRole(model.RoleAdmin), magicCoinHandler.Adjust)
 			}
 
+			storePurchases := protected.Group("/store/purchases")
+			{
+				storePurchases.GET("", storeHandler.List)
+				storePurchases.POST("", storeHandler.Create)
+				storePurchases.POST("/:purchaseId/approve", auth.RequireMinRole(model.RoleOperator), storeHandler.Approve)
+				storePurchases.POST("/:purchaseId/reject", auth.RequireMinRole(model.RoleOperator), storeHandler.Reject)
+			}
+			protected.GET("/store/checkout-options", storeHandler.CheckoutOptions)
+
 			sites := protected.Group("/sites")
 			{
 				sites.GET("", siteHandler.ListSites)
@@ -590,7 +635,9 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 			{
 				requests.GET("", allowHandler.ListRequests)
 				requests.POST("", allowHandler.CreateRequest)
-				requests.POST("/:id/decide", auth.RequireMinRole(model.RoleAdmin), allowHandler.DecideRequest)
+				// Capacity is a platform grant. A tenant owner must never be able to
+				// approve their own request and mint capacity.
+				requests.POST("/:id/decide", auth.RequireRole(string(model.RoleDeveloper)), allowHandler.DecideRequest)
 			}
 
 			// Router event log — read-only, so any authenticated role may browse it.
@@ -676,8 +723,8 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 			gw := protected.Group("/guest-wifi")
 			{
 				gw.GET("/telegram-bot", guestWifiHandler.GetBotBinding)
-				gw.PUT("/telegram-bot", guestWifiHandler.PutBotBinding)
-				gw.POST("/telegram-bot/test", guestWifiHandler.TestBotBinding)
+				gw.PUT("/telegram-bot", auth.RequireMinRole(model.RoleAdmin), guestWifiHandler.PutBotBinding)
+				gw.POST("/telegram-bot/test", auth.RequireMinRole(model.RoleAdmin), guestWifiHandler.TestBotBinding)
 				gw.GET("/requests", guestWifiHandler.ListGuestRequests)
 				gw.POST("/approve/:requestId", guestWifiHandler.ApproveGuest)
 				gw.POST("/reject/:requestId", guestWifiHandler.RejectGuest)
@@ -725,7 +772,7 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 		// RequireRole(DEVELOPER) so no customer role (OWNER, VIEWER, etc.) can
 		// reach it. Deliberately does NOT use the tenant-scoped protected group
 		// or tenantMW.
-		platform := tv1.Group("/platform", auth.Middleware(authService), auth.RequireRole(string(model.RoleDeveloper)))
+		platform := tv1.Group("/platform", auth.CookieOrigin(), auth.Middleware(authService), auth.RequireRole(string(model.RoleDeveloper)))
 		{
 			platform.GET("/businesses", platformHandler.ListBusinesses)
 			platform.GET("/incidents", platformHandler.ListOpenIncidents)

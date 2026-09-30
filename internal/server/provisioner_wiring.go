@@ -34,7 +34,7 @@ func shouldEnableLiveApplier(flagEnabled bool, applier provisioner.Applier, prob
 // Enabled: builds a tenant-scoped per-device applier/prober from encrypted
 // device credentials and starts the consumer. Any error fails server startup
 // loudly — a mis-config must never silently look "enabled".
-func startLiveApplier(cfg *config.Config, client *messaging.Client, sugar *zap.SugaredLogger, monitor *monitoring.MonitoringService, db *database.DB, backup *handler.BackupHandler, incidentAction *handler.IncidentActionHandler) error {
+func startLiveApplier(cfg *config.Config, client *messaging.Client, sugar *zap.SugaredLogger, monitor *monitoring.MonitoringService, db *database.DB, backup *handler.BackupHandler, securityHandler *handler.SecurityHandler, incidentAction *handler.IncidentActionHandler, guestHandlers ...*handler.GuestWifiHandler) error {
 	// Security-posture capture is wired FIRST, on its OWN flag. It never writes to
 	// a router, so it must not sit behind applier.enabled — that flag turns on
 	// live router WRITES and the single-host live applier they require (which
@@ -77,6 +77,15 @@ func startLiveApplier(cfg *config.Config, client *messaging.Client, sugar *zap.S
 	}
 
 	svc := provisioner.NewApplyService(applier, prober)
+	for _, guest := range guestHandlers {
+		if guest != nil {
+			guest.EnableGuestGrace(applier)
+		}
+	}
+	if securityHandler != nil {
+		securityHandler.EnableLive(svc, applier, prober, appCfg.ManagementCIDRs)
+		sugar.Info("security verification and mitigation controls wired to the live applier")
+	}
 
 	// C2: attach the live applier + OTP verifier to the backup/restore handler so
 	// capture/restore stop failing closed. Same flag gates both.

@@ -1,0 +1,22 @@
+{
+  "name": "MikroMagic",
+  "short_name": "MikroMagic",
+  "description": "Network operations for MikroTik fleets.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#051f20",
+  "theme_color": "#051f20",
+  "icons": [
+    {
+      "src": "/assets/images/mikromagic-touch-green-v2-180.png?v=20260930-3",
+      "sizes": "180x180",
+      "type": "image/png"
+    },
+    {
+      "src": "/assets/images/mikromagic-app-green-v2-512.png?v=20260930-3",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

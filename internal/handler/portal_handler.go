@@ -136,6 +136,13 @@ func (h *PortalHandler) PublicRedeem(c *gin.Context) {
 		applied gin.H
 	)
 	err = database.WithTenant(tx, dev.BusinessID, func() error {
+		cfg, e := h.configRepo.GetByBusinessTXN(tx, dev.BusinessID)
+		if e != nil {
+			return e
+		}
+		if cfg == nil || !cfg.VoucherLoginEnabled {
+			return &httpError{status: http.StatusForbidden, msg: "voucher login is disabled for this portal"}
+		}
 		claimed, ap, e := redeemVoucherTx(tx, h.voucherRepo, h.quotaRepo, dev.BusinessID, req.Code, now)
 		if e != nil {
 			return e
@@ -282,25 +289,36 @@ func (h *PortalHandler) StaffUpdateConfig(c *gin.Context) {
 	}
 
 	var req struct {
-		BusinessName    *string            `json:"business_name"`
-		WelcomeText     *string            `json:"welcome_text"`
-		TermsText       *string            `json:"terms_text"`
-		PrimaryHex      *string            `json:"primary_hex"`
-		GlassTintHex    *string            `json:"glass_tint_hex"`
-		ConsentRequired *bool              `json:"consent_required"`
-		ConsentText     *string            `json:"consent_text"`
-		GraceMinutes    *int               `json:"guest_grace_minutes"`
-		MMQRURL         *string            `json:"mmqr_url"`
-		BankName        *string            `json:"bank_name"`
-		BankAccount     *string            `json:"bank_account"`
-		BankHolder      *string            `json:"bank_holder"`
-		GuestPlans      *[]model.GuestPlan `json:"guest_plans"`
+		BusinessName         *string            `json:"business_name"`
+		WelcomeText          *string            `json:"welcome_text"`
+		TermsText            *string            `json:"terms_text"`
+		PrimaryHex           *string            `json:"primary_hex"`
+		GlassTintHex         *string            `json:"glass_tint_hex"`
+		ConsentRequired      *bool              `json:"consent_required"`
+		ConsentText          *string            `json:"consent_text"`
+		GraceMinutes         *int               `json:"guest_grace_minutes"`
+		GraceDataMB          *int               `json:"guest_grace_data_mb"`
+		MMQRURL              *string            `json:"mmqr_url"`
+		BankName             *string            `json:"bank_name"`
+		BankAccount          *string            `json:"bank_account"`
+		BankHolder           *string            `json:"bank_holder"`
+		GuestPlans           *[]model.GuestPlan `json:"guest_plans"`
+		VoucherLoginEnabled  *bool              `json:"voucher_login_enabled"`
+		MobilePaymentEnabled *bool              `json:"mobile_payment_enabled"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
+	if req.GraceMinutes != nil && (*req.GraceMinutes < 1 || *req.GraceMinutes > 1440) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "grace time must be between 1 and 1440 minutes"})
+		return
+	}
+	if req.GraceDataMB != nil && (*req.GraceDataMB < 1 || *req.GraceDataMB > 10240) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "grace data must be between 1 and 10240 MB"})
+		return
+	}
 	// Brand colours are owner-supplied strings that end up in the GUEST page's
 	// CSS. Reject anything that is not a literal hex colour before it can reach
 	// a stylesheet — the client sanitises too, but a public page must not depend
@@ -341,7 +359,13 @@ func (h *PortalHandler) StaffUpdateConfig(c *gin.Context) {
 			return e
 		}
 		if existing == nil {
-			existing = &model.PortalConfig{BusinessID: businessID}
+			existing = &model.PortalConfig{
+				BusinessID:           businessID,
+				VoucherLoginEnabled:  true,
+				MobilePaymentEnabled: true,
+				GuestGraceMinutes:    10,
+				GuestGraceDataMB:     50,
+			}
 		}
 		if req.BusinessName != nil {
 			existing.BusinessName = strings.TrimSpace(*req.BusinessName)
@@ -373,6 +397,9 @@ func (h *PortalHandler) StaffUpdateConfig(c *gin.Context) {
 		if req.GraceMinutes != nil {
 			existing.GuestGraceMinutes = *req.GraceMinutes
 		}
+		if req.GraceDataMB != nil {
+			existing.GuestGraceDataMB = *req.GraceDataMB
+		}
 		if req.ConsentRequired != nil {
 			existing.ConsentRequired = *req.ConsentRequired
 		}
@@ -381,6 +408,15 @@ func (h *PortalHandler) StaffUpdateConfig(c *gin.Context) {
 		}
 		if req.GuestPlans != nil {
 			existing.GuestPlans = *req.GuestPlans
+		}
+		if req.VoucherLoginEnabled != nil {
+			existing.VoucherLoginEnabled = *req.VoucherLoginEnabled
+		}
+		if req.MobilePaymentEnabled != nil {
+			existing.MobilePaymentEnabled = *req.MobilePaymentEnabled
+		}
+		if !existing.VoucherLoginEnabled && !existing.MobilePaymentEnabled {
+			return errPortalAccessMethodRequired
 		}
 		// A portal with no business name renders a nameless guest page, so this
 		// stays required — it just may arrive from the stored row instead.
@@ -398,6 +434,10 @@ func (h *PortalHandler) StaffUpdateConfig(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "business_name is required"})
 			return
 		}
+		if errors.Is(err, errPortalAccessMethodRequired) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "enable voucher login or mobile payment"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update portal config"})
 		return
 	}
@@ -408,3 +448,5 @@ func (h *PortalHandler) StaffUpdateConfig(c *gin.Context) {
 // errBusinessNameRequired marks the empty-name case so it can answer 400 rather
 // than 500 without aborting the transaction from inside the closure.
 var errBusinessNameRequired = errors.New("business_name is required")
+
+var errPortalAccessMethodRequired = errors.New("at least one portal access method is required")

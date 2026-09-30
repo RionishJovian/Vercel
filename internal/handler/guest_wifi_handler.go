@@ -1,9 +1,11 @@
 package handler
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -15,6 +17,7 @@ import (
 	"mega-magic/internal/billing"
 	"mega-magic/internal/database"
 	"mega-magic/internal/model"
+	"mega-magic/internal/provisioner/routeros"
 	"mega-magic/internal/telegram"
 	"mega-magic/internal/voucher"
 )
@@ -59,6 +62,17 @@ type GuestWifiHandler struct {
 	quotaRepo   *database.BusinessMeteredQuotaRepository
 	receiptRoot string
 	svcFmt      func(token string) (telegram.Messenger, bool) // build messenger from an owner token
+	graceRouter interface {
+		ConfigureGuestGrace(context.Context, string, string, routeros.GuestGrace) error
+		DecideGuestAccess(context.Context, string, string, string, string, bool, int, int) error
+	}
+}
+
+func (h *GuestWifiHandler) EnableGuestGrace(router interface {
+	ConfigureGuestGrace(context.Context, string, string, routeros.GuestGrace) error
+	DecideGuestAccess(context.Context, string, string, string, string, bool, int, int) error
+}) {
+	h.graceRouter = router
 }
 
 // NewGuestWifiHandler wires the handler. svcFmt builds a Messenger lazily from a
@@ -125,6 +139,10 @@ func (h *GuestWifiHandler) PublicGuestPurchase(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "portal config unavailable"})
 		return
 	}
+	if !cfg.MobilePaymentEnabled {
+		c.JSON(http.StatusForbidden, gin.H{"error": "mobile payment is disabled for this portal"})
+		return
+	}
 
 	planKey := strings.TrimSpace(c.PostForm("plan_key"))
 	if planKey == "" {
@@ -143,32 +161,77 @@ func (h *GuestWifiHandler) PublicGuestPurchase(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "online purchase disabled for this business"})
 		return
 	}
+	if cfg.GuestGraceDataMB < 1 || cfg.GuestGraceDataMB > 10240 || graceMinutes > 1440 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "the hotspot owner must configure valid grace limits"})
+		return
+	}
+	mac, macErr := net.ParseMAC(strings.TrimSpace(c.PostForm("client_mac")))
+	if macErr != nil || len(mac) != 6 || mac[0]&1 != 0 || mac.String() == "00:00:00:00:00:00" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "valid client_mac required"})
+		return
+	}
+	clientMAC := strings.ToUpper(mac.String())
+	if h.graceRouter == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "temporary internet is unavailable; contact the hotspot owner"})
+		return
+	}
 
 	now := time.Now().UTC()
 	graceStart := now
 	graceExpires := voucher.ExtendExpiry(nil, now, graceMinutes)
 
 	var req *model.GuestPurchaseRequest
+	createdGrace := false
 	err = withDeviceTenant(h.db, dev.BusinessID, func(tx *sql.Tx) error {
+		// Serialize concurrent purchase clicks for this tenant/device/client. A
+		// retry resumes the same allowance rather than receiving another 50 MB.
+		if _, e := tx.Exec(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, dev.BusinessID+":"+deviceID+":"+clientMAC); e != nil {
+			return e
+		}
+		previous, e := h.reqRepo.LatestGraceTXN(tx, dev.BusinessID, deviceID, clientMAC)
+		if e != nil {
+			return e
+		}
+		if previous != nil {
+			if previous.Status != "pending" || previous.GraceExpiresAt == nil || !now.Before(*previous.GraceExpiresAt) {
+				return &httpError{status: http.StatusTooManyRequests, msg: "temporary access has already been used; contact the hotspot owner"}
+			}
+			if previous.PlanKey != plan.Key {
+				return &httpError{status: http.StatusConflict, msg: "a purchase is already pending for this device"}
+			}
+			req = previous
+			graceExpires = *previous.GraceExpiresAt
+			return nil
+		}
 		r, e := h.reqRepo.CreateTXN(tx, &model.GuestPurchaseRequest{
 			BusinessID:     dev.BusinessID,
 			DeviceID:       &deviceID,
-			ClientMAC:      strings.TrimSpace(c.PostForm("client_mac")),
+			ClientMAC:      clientMAC,
 			PlanKey:        plan.Key,
 			Amount:         plan.Amount,
 			DataMB:         plan.DataMB,
 			GraceStartedAt: &graceStart,
 			GraceExpiresAt: &graceExpires,
+			GraceDataMB:    cfg.GuestGraceDataMB,
 			Status:         "pending",
 		})
 		if e != nil {
 			return e
 		}
 		req = r
+		if e := h.graceRouter.ConfigureGuestGrace(c.Request.Context(), dev.BusinessID, deviceID, routeros.GuestGrace{RequestID: r.ID, ClientMAC: clientMAC, Minutes: graceMinutes, DataMB: r.GraceDataMB, ExpiresAt: graceExpires}); e != nil {
+			return &httpError{status: http.StatusBadGateway, msg: "temporary internet could not be configured; the hotspot owner should check router connectivity and MAC login settings"}
+		}
+		createdGrace = true
 		return nil
 	})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create guest purchase request"})
+		if createdGrace && req != nil {
+			// Compensate if persisting the pending request fails after the
+			// router write. This cleanup is scoped by the request comment.
+			_ = h.graceRouter.DecideGuestAccess(context.Background(), dev.BusinessID, deviceID, req.ID, clientMAC, false, 0, 0)
+		}
+		respondErr(c, err)
 		return
 	}
 
@@ -178,6 +241,9 @@ func (h *GuestWifiHandler) PublicGuestPurchase(c *gin.Context) {
 		"plan":             plan.Label,
 		"amount":           plan.Amount,
 		"grace_expires_at": graceExpires,
+		"grace_data_mb":    req.GraceDataMB,
+		"grace_minutes":    int(req.GraceExpiresAt.Sub(*req.GraceStartedAt) / time.Minute),
+		"grace_configured": true,
 		"message":          "attach your payment receipt within the grace window to request the time extension",
 	})
 }
@@ -353,8 +419,27 @@ func (h *GuestWifiHandler) PutBotBinding(c *gin.Context) {
 	}
 	token := strings.TrimSpace(body.BotToken)
 	if token == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "bot_token required"})
-		return
+		// An empty token means "keep the already-bound secret". This lets an
+		// owner change the chat or enabled state from a masked profile form without
+		// making the API echo the stored token back to the browser.
+		err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
+			existing, e := h.botRepo.GetByBusinessTXN(tx, businessID)
+			if e != nil {
+				return e
+			}
+			if existing != nil {
+				token = strings.TrimSpace(existing.BotToken)
+			}
+			return nil
+		})
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
+			return
+		}
+		if token == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "bot_token required for the first binding"})
+			return
+		}
 	}
 	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
 		return h.botRepo.Upsert(&model.BusinessTelegramBot{
@@ -441,7 +526,7 @@ func (h *GuestWifiHandler) DecideGuest(txSrc func() (*sql.Tx, error), businessID
 	defer tx.Rollback()
 
 	err = database.WithTenant(tx, businessID, func() error {
-		r, e := h.reqRepo.GetByIDTXN(tx, businessID, requestID)
+		r, e := h.reqRepo.GetForDecisionTXN(tx, businessID, requestID)
 		if e != nil {
 			return &httpError{status: http.StatusInternalServerError, msg: "database error"}
 		}
@@ -452,6 +537,14 @@ func (h *GuestWifiHandler) DecideGuest(txSrc func() (*sql.Tx, error), businessID
 			return &httpError{status: http.StatusConflict, msg: "request already decided"}
 		}
 		if !approve {
+			if r.DeviceID != nil {
+				if h.graceRouter == nil {
+					return &httpError{status: http.StatusServiceUnavailable, msg: "router access is unavailable"}
+				}
+				if e := h.graceRouter.DecideGuestAccess(context.Background(), businessID, *r.DeviceID, r.ID, r.ClientMAC, false, 0, 0); e != nil {
+					return e
+				}
+			}
 			_, e := h.reqRepo.RejectRequestTXN(tx, businessID, requestID, time.Now().UTC())
 			if e != nil {
 				return e
@@ -470,7 +563,7 @@ func (h *GuestWifiHandler) DecideGuest(txSrc func() (*sql.Tx, error), businessID
 				minutes = g.Minutes
 			}
 		}
-		if minutes <= 0 {
+		if minutes <= 0 && r.DataMB <= 0 {
 			return &httpError{status: http.StatusBadRequest, msg: "guest plan has no duration (fail closed)"}
 		}
 		now := time.Now().UTC()
@@ -481,7 +574,17 @@ func (h *GuestWifiHandler) DecideGuest(txSrc func() (*sql.Tx, error), businessID
 		if claimed == nil {
 			return &httpError{status: http.StatusConflict, msg: "request already decided"}
 		}
-		// Grant the wifi time extension (same entitlement core as voucher redemption).
+		if r.DeviceID != nil {
+			if h.graceRouter == nil {
+				return &httpError{status: http.StatusServiceUnavailable, msg: "router access is unavailable"}
+			}
+			if e := h.graceRouter.DecideGuestAccess(context.Background(), businessID, *r.DeviceID, r.ID, r.ClientMAC, true, minutes, r.DataMB); e != nil {
+				return e
+			}
+			return nil
+		}
+		// Compatibility for historical requests without a router anchor. New
+		// guest purchases always grant access on the exact tenant-owned router.
 		if h.quotaRepo == nil {
 			return &httpError{status: http.StatusInternalServerError, msg: "no quota repository configured"}
 		}

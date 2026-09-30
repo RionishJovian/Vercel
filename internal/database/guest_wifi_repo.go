@@ -89,7 +89,7 @@ func NewGuestPurchaseRequestRepository(db *DB) *GuestPurchaseRequestRepository {
 }
 
 const guestRequestCols = `id, business_id, device_id, client_mac, client_ip, plan_key, amount,
-	data_mb, paid_phone, tx_last6, bank_reference, receipt_path, grace_started_at, grace_expires_at, status,
+	data_mb, paid_phone, tx_last6, bank_reference, receipt_path, grace_started_at, grace_expires_at, grace_data_mb, status,
 	decided_at, created_at, updated_at`
 
 // scanGuestRequest is a shared row-scanner for guest purchase requests.
@@ -101,9 +101,9 @@ func scanGuestRequest(row guestRequestScan) (*model.GuestPurchaseRequest, error)
 	r := &model.GuestPurchaseRequest{}
 	var deviceID, planKey, paidPhone, txLast6, bankRef, receipt, status, clientIP sql.NullString
 	var graceStart, graceExpire, decided sql.NullTime
-	var amount, dataMB int
+	var amount, dataMB, graceDataMB int
 	if err := row.Scan(&r.ID, &r.BusinessID, &deviceID, &r.ClientMAC, &clientIP, &planKey,
-		&amount, &dataMB, &paidPhone, &txLast6, &bankRef, &receipt, &graceStart, &graceExpire, &status, &decided,
+		&amount, &dataMB, &paidPhone, &txLast6, &bankRef, &receipt, &graceStart, &graceExpire, &graceDataMB, &status, &decided,
 		&r.CreatedAt, &r.UpdatedAt); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
@@ -121,21 +121,25 @@ func scanGuestRequest(row guestRequestScan) (*model.GuestPurchaseRequest, error)
 	r.ClientIP = scanIP(clientIP)
 	r.GraceStartedAt = scanNullableTime(graceStart)
 	r.GraceExpiresAt = scanNullableTime(graceExpire)
+	r.GraceDataMB = graceDataMB
 	r.Status = status.String
 	r.DecidedAt = scanNullableTime(decided)
 	return r, nil
 }
 
 func (r *GuestPurchaseRequestRepository) CreateTXN(tx *sql.Tx, req *model.GuestPurchaseRequest) (*model.GuestPurchaseRequest, error) {
+	if req.GraceDataMB == 0 {
+		req.GraceDataMB = 50
+	}
 	row := tx.QueryRow(
 		`INSERT INTO guest_purchase_requests
 		   (business_id, device_id, client_mac, client_ip, plan_key, amount,
-			data_mb, bank_reference, receipt_path, grace_started_at, grace_expires_at, status)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+			data_mb, bank_reference, receipt_path, grace_started_at, grace_expires_at, grace_data_mb, status)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 		 RETURNING `+guestRequestCols,
 		req.BusinessID, req.DeviceID, req.ClientMAC, ipString(req.ClientIP), req.PlanKey,
 		req.Amount, req.DataMB, req.BankReference, req.ReceiptPath, req.GraceStartedAt, req.GraceExpiresAt,
-		req.Status)
+		req.GraceDataMB, req.Status)
 	return scanGuestRequest(row)
 }
 
@@ -147,6 +151,18 @@ func (r *GuestPurchaseRequestRepository) GetByIDOwnerTXN(tx *sql.Tx, id string) 
 
 func (r *GuestPurchaseRequestRepository) GetByIDTXN(tx *sql.Tx, businessID, id string) (*model.GuestPurchaseRequest, error) {
 	return scanGuestRequest(tx.QueryRow(`SELECT `+guestRequestCols+` FROM guest_purchase_requests WHERE id = $1 AND business_id = $2`, id, businessID))
+}
+
+func (r *GuestPurchaseRequestRepository) GetForDecisionTXN(tx *sql.Tx, businessID, id string) (*model.GuestPurchaseRequest, error) {
+	return scanGuestRequest(tx.QueryRow(`SELECT `+guestRequestCols+` FROM guest_purchase_requests WHERE id=$1 AND business_id=$2 FOR UPDATE`, id, businessID))
+}
+
+// LatestGraceTXN prevents a guest resetting the bank-transfer allowance through
+// repeated purchase requests. Tenant and router are both explicit anchors.
+func (r *GuestPurchaseRequestRepository) LatestGraceTXN(tx *sql.Tx, businessID, deviceID, mac string) (*model.GuestPurchaseRequest, error) {
+	return scanGuestRequest(tx.QueryRow(`SELECT `+guestRequestCols+` FROM guest_purchase_requests
+	 WHERE business_id=$1 AND device_id=$2 AND upper(client_mac)=$3
+	 AND created_at > now() - interval '24 hours' ORDER BY created_at DESC LIMIT 1`, businessID, deviceID, mac))
 }
 
 func (r *GuestPurchaseRequestRepository) ListByBusinessTXN(tx *sql.Tx, businessID string, limit int) ([]*model.GuestPurchaseRequest, error) {

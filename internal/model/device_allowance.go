@@ -59,6 +59,7 @@ type DeviceRequest struct {
 	UserID     *string    `json:"user_id,omitempty"`
 	UserEmail  *string    `json:"user_email,omitempty"`
 	Kind       string     `json:"kind"`
+	Quantity   int        `json:"quantity"`
 	Reason     *string    `json:"reason,omitempty"`
 	Status     string     `json:"status"`
 	DecidedBy  *string    `json:"decided_by,omitempty"`
@@ -70,8 +71,9 @@ type DeviceRequest struct {
 // DeviceRequestCreate is the body for opening a request. Any authenticated role
 // may ask; the decision is separately gated to ADMIN+.
 type DeviceRequestCreate struct {
-	Kind   string  `json:"kind"   binding:"required,min=1,max=32"`
-	Reason *string `json:"reason" binding:"omitempty,max=500"`
+	Kind     string  `json:"kind"   binding:"required,min=1,max=32"`
+	Quantity int     `json:"quantity" binding:"required,min=1,max=100"`
+	Reason   *string `json:"reason" binding:"omitempty,max=500"`
 }
 
 // DeviceRequestDecision is the body for approving/rejecting. Only the terminal

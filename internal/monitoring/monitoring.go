@@ -74,6 +74,17 @@ func (s *MonitoringService) EvaluatePeer(ctx context.Context, businessID, peerID
 
 	state := s.probe.ClassifyPeerState(hb, sample)
 
+	// A manually enrolled router can be fully reachable before a connector has
+	// started feeding heartbeat/telemetry rows. In that case the ordinary
+	// classifier has no evidence and reports unknown/offline forever, even
+	// though the per-device, host-key-pinned SSH probe succeeds on every sweep.
+	// Treat that real read as management-plane reachability only when there is no
+	// current telemetry sample to contradict it. A genuine WAN/tunnel-down
+	// sample therefore continues to win.
+	if sample == nil && s.captureVersion(ctx, businessID, peerID) {
+		state = "up"
+	}
+
 	key := s.cache.Key(businessID, "monitor:state:"+peerID)
 	if err := s.cache.SetJSON(ctx, key, state, 30*time.Second); err != nil {
 		return state, nil
@@ -91,9 +102,6 @@ func (s *MonitoringService) EvaluatePeer(ctx context.Context, businessID, peerID
 		}
 	}
 
-	// Best-effort security-posture capture (C1). Never affects the state result.
-	s.captureVersion(ctx, businessID, peerID)
-
 	return state, nil
 }
 
@@ -110,26 +118,34 @@ func (s *MonitoringService) EvaluatePeer(ctx context.Context, businessID, peerID
 //
 // The remaining safeguard is deliberate: skipping a device we cannot reach
 // leaves routeros_version NULL (honestly "unknown") rather than guessing.
-func (s *MonitoringService) captureVersion(ctx context.Context, businessID, peerID string) {
-	if s.versionObserver == nil || s.devices == nil || s.db == nil {
-		return
+func (s *MonitoringService) captureVersion(ctx context.Context, businessID, peerID string) bool {
+	if s.versionObserver == nil {
+		return false
 	}
 	version, channel, err := s.versionObserver.ObserveVersion(ctx, businessID, peerID)
 	if err != nil || version == "" {
-		return
+		return false
+	}
+
+	// The successful, pinned read above is useful reachability evidence even if
+	// posture persistence is unavailable. Persistence remains best-effort and
+	// must not turn a live router back into an unknown one.
+	if s.devices == nil || s.db == nil {
+		return true
 	}
 	posture := security.ClassifyPosture(version, channel)
 	tx, err := s.db.Begin()
 	if err != nil {
-		return
+		return true
 	}
 	defer tx.Rollback()
 	if err := database.WithTenant(tx, businessID, func() error {
 		return s.devices.SavePostureTXN(tx, businessID, peerID, version, channel, posture, time.Now().UTC())
 	}); err != nil {
-		return
+		return true
 	}
 	_ = tx.Commit()
+	return true
 }
 
 func (s *MonitoringService) StateForPeer(ctx context.Context, businessID, peerID string) (string, error) {

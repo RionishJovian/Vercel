@@ -175,11 +175,17 @@ type PortalConfig struct {
 	// MMQRURL is the owner's MMQR payment QR image (Myanmar QR) guests scan to
 	// make the bank transfer. Served path or https URL.
 	MMQRURL string `json:"mmqr_url,omitempty"`
-	// Guest wifi (Option C): free online-payment window (minutes) and the data
-	// plans the owner sets on the portal.
+	// Guest wifi (Option C): free online-payment window. RouterOS caps the
+	// temporary guest by both time and data; reaching either limit ends access.
 	GuestGraceMinutes int         `json:"guest_grace_minutes"`
+	GuestGraceDataMB  int         `json:"guest_grace_data_mb"`
 	GuestPlans        []GuestPlan `json:"guest_plans"`
-	UpdatedAt         time.Time   `json:"updated_at"`
+	// Guest entry methods are independently selectable. At least one must stay
+	// enabled; when both are enabled the portal opens on voucher login and links
+	// to mobile payment as a separate screen.
+	VoucherLoginEnabled  bool      `json:"voucher_login_enabled"`
+	MobilePaymentEnabled bool      `json:"mobile_payment_enabled"`
+	UpdatedAt            time.Time `json:"updated_at"`
 }
 
 // IsHexColor reports whether s is a literal CSS hex colour — `#rgb`, `#rgba`,
@@ -252,6 +258,7 @@ type GuestPurchaseRequest struct {
 	ReceiptPath    *string    `json:"receipt_path,omitempty"`
 	GraceStartedAt *time.Time `json:"grace_started_at,omitempty"`
 	GraceExpiresAt *time.Time `json:"grace_expires_at,omitempty"`
+	GraceDataMB    int        `json:"grace_data_mb"`
 	Status         string     `json:"status"`
 	DecidedAt      *time.Time `json:"decided_at,omitempty"`
 	CreatedAt      time.Time  `json:"created_at"`

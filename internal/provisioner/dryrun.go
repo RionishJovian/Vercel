@@ -42,6 +42,12 @@ const (
 	// state); reboot is a direct destructive device command for an owner who
 	// clicked "reboot" on the topology map. High-risk by definition (OTP-gated).
 	ActionReboot = "reboot"
+	// ActionHardenManagement closes legacy RouterOS management services and
+	// restricts the two retained operator services (SSH and Winbox) to explicit
+	// management CIDRs. It is a reversible configuration change: the live apply
+	// path snapshots /ip service before mutation and restores it if verification
+	// fails.
+	ActionHardenManagement = "harden_management"
 	// ActionEnforceGuestQuota applies a guest's bought-plan limits to a hotspot
 	// user on the router: a data cap (limit-bytes-total) and a time cap
 	// (limit-uptime, i.e. "1GB for 60 minutes"). Carried as Action fields: Target =

@@ -59,6 +59,17 @@ type User struct {
 	UpdatedAt    time.Time  `json:"updated_at" db:"updated_at"`
 }
 
+// UserProfileSettings contains personal presentation and preference fields
+// that do not belong in authorization claims or tenant team administration.
+type UserProfileSettings struct {
+	UserID     string    `json:"user_id"`
+	BusinessID string    `json:"business_id"`
+	Language   string    `json:"language"`
+	HasAvatar  bool      `json:"has_avatar"`
+	HasCover   bool      `json:"has_cover"`
+	UpdatedAt  time.Time `json:"updated_at"`
+}
+
 type Business struct {
 	BusinessID       string    `json:"business_id" db:"business_id"`
 	CompanyName      string    `json:"company_name" db:"company_name"`

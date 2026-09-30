@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "test": "vitest run",
+    "test:portal-ui": "node scripts/e2e-portal-ui.mjs",
     "test:critical": "vitest run tests/auth-signin.test.tsx tests/auth-query-cache.test.ts tests/create-app-user-write-safety.test.ts tests/production-security.test.ts tests/owner-operations-security.test.ts tests/captive-portal-security.test.ts tests/tenant-isolation.test.ts tests/voucher-print-layout.test.ts tests/client-access-contract.test.ts tests/production-operations.test.ts tests/security-hardening.test.ts tests/telegram-privilege.test.ts tests/owner-role-rls-sweep.test.ts",
     "format": "prettier --write .",
     "i18n:audit": "bun scripts/i18n-audit.mjs --json src/lib/i18n/report.generated.ts",

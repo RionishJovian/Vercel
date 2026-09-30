@@ -2,6 +2,7 @@ package handler
 
 import (
 	"database/sql"
+	"errors"
 	"net"
 	"net/http"
 	"time"
@@ -16,6 +17,7 @@ import (
 type RouterHandler struct {
 	db         *database.DB
 	deviceRepo *database.DeviceRepository
+	allowRepo  *database.DeviceAllowanceRepository
 	messaging  MessagingClient
 }
 
@@ -23,8 +25,8 @@ type MessagingClient interface {
 	Publish(businessID, subject string, data []byte) error
 }
 
-func NewRouterHandler(db *database.DB, deviceRepo *database.DeviceRepository, msg MessagingClient) *RouterHandler {
-	return &RouterHandler{db: db, deviceRepo: deviceRepo, messaging: msg}
+func NewRouterHandler(db *database.DB, deviceRepo *database.DeviceRepository, allowRepo *database.DeviceAllowanceRepository, msg MessagingClient) *RouterHandler {
+	return &RouterHandler{db: db, deviceRepo: deviceRepo, allowRepo: allowRepo, messaging: msg}
 }
 
 // withTenantTx runs fn in an RLS-bound tenant transaction (pinned conn when
@@ -188,6 +190,20 @@ func (h *RouterHandler) CreateRouter(c *gin.Context) {
 
 	var created *model.Device
 	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
+		kind := ""
+		if req.DeploymentLayer == "CONTROLLER" {
+			kind = "controllers"
+		}
+		if req.DeploymentLayer == "MAIN_GATEWAY" || req.DeploymentLayer == "DOWNSTREAM_SWITCH" {
+			kind = "routers"
+		}
+		// Access points are reported separately; the ported grant never defined
+		// an access-point limit, so do not invent one here.
+		if kind != "" {
+			if err := h.allowRepo.CheckCapacityTXN(tx, businessID, kind); err != nil {
+				return err
+			}
+		}
 		cr, err := h.deviceRepo.CreateDeviceTXN(tx, device)
 		if err != nil {
 			return err
@@ -196,6 +212,10 @@ func (h *RouterHandler) CreateRouter(c *gin.Context) {
 		return nil
 	})
 	if err != nil {
+		if errors.Is(err, database.ErrDeviceCapacityExceeded) {
+			c.JSON(http.StatusConflict, gin.H{"error": "capacity exceeded", "reason": "request additional capacity before adding this device"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to register router"})
 		return
 	}

@@ -15,13 +15,14 @@ import (
 // SiteHandler serves sites — physical locations with the geo data ported from
 // Mikromagic (location, timezone, latitude/longitude) plus the device count.
 type SiteHandler struct {
-	db       *database.DB
-	siteRepo *database.SiteRepository
+	db        *database.DB
+	siteRepo  *database.SiteRepository
+	allowRepo *database.DeviceAllowanceRepository
 }
 
 // NewSiteHandler wires the site repository.
-func NewSiteHandler(db *database.DB, siteRepo *database.SiteRepository) *SiteHandler {
-	return &SiteHandler{db: db, siteRepo: siteRepo}
+func NewSiteHandler(db *database.DB, siteRepo *database.SiteRepository, allowRepo *database.DeviceAllowanceRepository) *SiteHandler {
+	return &SiteHandler{db: db, siteRepo: siteRepo, allowRepo: allowRepo}
 }
 
 // ListSites returns every site in the caller's business.
@@ -65,6 +66,9 @@ func (h *SiteHandler) CreateSite(c *gin.Context) {
 
 	var site *model.Site
 	err := runInTenant(c, h.db, businessID, func(tx *sql.Tx) error {
+		if err := h.allowRepo.CheckCapacityTXN(tx, businessID, "sites"); err != nil {
+			return err
+		}
 		s, err := h.siteRepo.CreateSiteTXN(tx, businessID, &req)
 		if err != nil {
 			return err
@@ -73,6 +77,10 @@ func (h *SiteHandler) CreateSite(c *gin.Context) {
 		return nil
 	})
 	if err != nil {
+		if errors.Is(err, database.ErrDeviceCapacityExceeded) {
+			c.JSON(http.StatusConflict, gin.H{"error": "capacity exceeded", "reason": "request additional site capacity before adding a site"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}

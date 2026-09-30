@@ -16,6 +16,7 @@ const labIface = "         name: wg-magichub\n  listen-port: 13231\n"
 
 const pingFail = "    sent=2 received=0 packet-loss=100% \n"
 const pingOKOut = "    sent=2 received=2 packet-loss=0% min-rtt=105us avg-rtt=117us \n"
+const pingRowsOnly = "Columns: SEQ, HOST, SIZE, TTL, TIME\n0 10.99.0.1 56 64 2ms627us\n1 10.99.0.1 56 64 2ms179us\n"
 
 func TestObserve_classify(t *testing.T) {
 	cases := []struct {
@@ -28,6 +29,7 @@ func TestObserve_classify(t *testing.T) {
 		{"idle + no reply => offline", labPeersIdle, pingFail, provisioner.StateOffline, false},
 		{"traffic + reply => up", labPeersTraffic, pingOKOut, provisioner.StateUp, true},
 		{"idle + reply => stale", labPeersIdle, pingOKOut, provisioner.StateStale, true},
+		{"unit traffic + row replies => up", "persistent-keepalive: 25s\nrx: 197.6KiB\ntx: 12.5KiB\n", pingRowsOnly, provisioner.StateUp, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -106,6 +108,12 @@ func TestParseHelpers(t *testing.T) {
 	}
 	if !pingOK(pingOKOut) || pingOK(pingFail) {
 		t.Fatal("pingOK misclassified")
+	}
+	if !pingOK(pingRowsOnly) {
+		t.Fatal("pingOK must accept structurally valid RouterOS reply rows without a summary")
+	}
+	if !trafficPositive("197.6KiB") || !trafficPositive("12.5KiB") || trafficPositive("0B") || trafficPositive("") {
+		t.Fatal("trafficPositive misclassified RouterOS unit-formatted counters")
 	}
 	if got := pingSummary(pingFail); got == "" {
 		t.Fatal("pingSummary should return the sent= line")

@@ -52,7 +52,7 @@ func TestStartLiveApplier_disabledIsNoOp(t *testing.T) {
 	// Default posture: flag OFF -> no error, no live path, no transport.
 	cfg := &config.Config{}
 	cfg.Provisioner.Applier.Enabled = false
-	if err := startLiveApplier(cfg, nil, zap.NewNop().Sugar(), nil, nil, nil, nil); err != nil {
+	if err := startLiveApplier(cfg, nil, zap.NewNop().Sugar(), nil, nil, nil, nil, nil); err != nil {
 		t.Fatalf("disabled live applier must be a no-op, got %v", err)
 	}
 }
@@ -63,7 +63,7 @@ func TestStartLiveApplier_enabledWithoutDatabaseFailsLoudly(t *testing.T) {
 	cfg.Provisioner.Applier = config.ApplierConfig{
 		Enabled: true,
 	}
-	err := startLiveApplier(cfg, nil, zap.NewNop().Sugar(), nil, nil, nil, nil)
+	err := startLiveApplier(cfg, nil, zap.NewNop().Sugar(), nil, nil, nil, nil, nil)
 	if err == nil {
 		t.Fatal("enabled per-device control without a database must fail startup loudly")
 	}
@@ -76,7 +76,7 @@ func TestStartLiveApplier_enabledWithoutTargetAllowlistFailsLoudly(t *testing.T)
 	}
 	cfg := &config.Config{}
 	cfg.Provisioner.Applier = config.ApplierConfig{Enabled: true, CredentialKey: credentialKey}
-	err = startLiveApplier(cfg, nil, zap.NewNop().Sugar(), nil, &database.DB{}, nil, nil)
+	err = startLiveApplier(cfg, nil, zap.NewNop().Sugar(), nil, &database.DB{}, nil, nil, nil)
 	if err == nil {
 		t.Fatal("enabled router access without an explicit target CIDR allowlist must fail")
 	}
@@ -87,7 +87,7 @@ func TestStartLiveApplier_enabledMissingCredentialKeyFailsLoudly(t *testing.T) {
 	cfg.Provisioner.Applier = config.ApplierConfig{
 		Enabled: true,
 	}
-	if err := startLiveApplier(cfg, nil, zap.NewNop().Sugar(), nil, &database.DB{}, nil, nil); err == nil {
+	if err := startLiveApplier(cfg, nil, zap.NewNop().Sugar(), nil, &database.DB{}, nil, nil, nil); err == nil {
 		t.Fatal("enabled + missing credential encryption key must fail loudly")
 	}
 }
@@ -106,7 +106,7 @@ func TestStartLiveApplier_enabledButNoClientFailsLoudly(t *testing.T) {
 		CredentialKey: credentialKey,
 		Interface:     "wg-magichub",
 	}
-	if err := startLiveApplier(cfg, nil, zap.NewNop().Sugar(), nil, &database.DB{}, nil, nil); err == nil {
+	if err := startLiveApplier(cfg, nil, zap.NewNop().Sugar(), nil, &database.DB{}, nil, nil, nil); err == nil {
 		t.Fatal("enabled live path without a messaging client must fail loudly")
 	}
 }

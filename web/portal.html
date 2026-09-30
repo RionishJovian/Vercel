@@ -13,9 +13,9 @@
      established by enumerating every rule in styles.css that mentions a class or
      tag this page uses, then confirming with a computed-style A/B (18 elements at
      the plans step, 25 at the pay step), not guessed. */
-  html { color-scheme: light; }
+  html { color-scheme: dark; }
   *, *::before, *::after { box-sizing: border-box; }
-  body { margin: 0; font-size: 15px; line-height: 1.45; color: #1d1b16; -webkit-font-smoothing: antialiased; }
+  body { margin: 0; font-size: 15px; line-height: 1.45; color: #f6f8ff; -webkit-font-smoothing: antialiased; }
   h1, h2, h3, h4 { font-weight: 650; letter-spacing: -0.01em; }
   h3 { font-size: 1.17em; margin: 1em 0; }
   /* Form controls do NOT inherit the page font from the UA sheet, so the shared
@@ -32,54 +32,70 @@
   /* Owner-set branding arrives as --brand / --tint (validated hex). Every other
      value here is a fallback so the page is complete before the config lands. */
   :root {
-    --brand: #0e5a5a;
-    --brand-ink: #fff;
-    --tint: #7ad0ff;
-    --bg: #f3f6f7;
-    --card: #fff;
-    --line: #dbe2e5;
-    --muted: #52616a;
-    --faint: #7c8990;
-    --warn: #b45309;
-    --ok: #1e7d3e;
+    --brand: #ffb547; --brand-ink: #0b1020; --tint: #7ad0ff; --bg: #05070f;
+    --line: rgba(255,255,255,.22); --line-soft: rgba(255,255,255,.13);
+    --muted: rgba(255,255,255,.72); --faint: rgba(255,255,255,.52);
+    --warn: #ffd08a; --ok: #90e8b7;
   }
-  body { min-height: 100vh; padding: 56px 18px; background: var(--bg); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-  body::before { content: ""; position: fixed; inset: 0 0 auto; height: 5px; background: var(--brand); }
-  .guest { max-width: 540px; margin: 0 auto; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 30px; box-shadow: 0 18px 55px rgba(29, 48, 58, .09); }
-  .guest h1 { font-size: 26px; line-height: 1.15; margin: 0 0 8px; color: #172126; }
-  .guest .biz { color: var(--brand); margin: 0 0 7px; font-size: 13px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+  body { position: relative; min-height: 100vh; padding: 56px 18px; overflow-x: hidden; background: var(--bg); font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", "Segoe UI", sans-serif; isolation: isolate; }
+  body::before { content: ""; position: fixed; inset: -18%; z-index: -2; opacity: .92; background:
+    radial-gradient(35% 40% at 18% 22%, var(--brand) 0%, transparent 62%),
+    radial-gradient(32% 36% at 82% 18%, var(--tint) 0%, transparent 60%),
+    radial-gradient(42% 48% at 58% 92%, #7aa2ff 0%, transparent 66%),
+    radial-gradient(28% 34% at 8% 88%, #ff7ad9 0%, transparent 58%);
+    filter: blur(64px) saturate(145%); animation: portal-drift 22s ease-in-out infinite alternate; }
+  body::after { content: ""; position: fixed; inset: 0; z-index: -1; opacity: .07; pointer-events: none; background-image: radial-gradient(rgba(255,255,255,.9) .7px, transparent .7px); background-size: 3px 3px; }
+  @keyframes portal-drift { to { transform: translate3d(3%,-2%,0) rotate(2deg); } }
+  .guest { position: relative; z-index: 0; max-width: 520px; margin: 0 auto; padding: 30px; overflow: hidden; background: linear-gradient(180deg, rgba(255,255,255,.15), rgba(255,255,255,.065)); border: 1px solid var(--line); border-radius: 28px; box-shadow: 0 30px 80px -20px rgba(0,0,0,.66), inset 0 1px 0 rgba(255,255,255,.3); -webkit-backdrop-filter: blur(28px) saturate(175%); backdrop-filter: blur(28px) saturate(175%); }
+  .guest::before { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: linear-gradient(135deg, rgba(255,255,255,.08), transparent 42%); }
+  .guest h1 { font-size: 27px; line-height: 1.15; margin: 0 0 8px; color: #fff; letter-spacing: -.025em; }
+  .guest .biz { color: #fff; margin: 0 0 8px; font-size: 13px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
   .welcome { color: var(--muted); margin: 0 0 22px; line-height: 1.6; }
-  .steps { color: var(--faint); font-size: 12px; line-height: 1.55; margin: 0 0 18px; padding: 11px 13px; background: #f5f8f7; border-radius: 8px; }
-  .plan { position: relative; display: block; width: 100%; text-align: left; padding: 15px 44px 15px 15px; margin: 0 0 9px;
-          color: #172126; background: var(--card); border: 1px solid var(--line); border-radius: 10px; cursor: pointer; transition: border-color .15s, background .15s, transform .15s; }
-  .plan::after { content: "→"; position: absolute; right: 16px; top: 50%; color: var(--brand); font-size: 18px; transform: translateY(-50%); }
-  .plan:hover, .plan:focus-visible { border-color: var(--brand); background: #f7faf9; transform: translateY(-1px); }
+  .steps { color: var(--muted); font-size: 12px; line-height: 1.55; margin: 0 0 18px; padding: 11px 13px; background: rgba(5,7,15,.24); border: 1px solid var(--line-soft); border-radius: 12px; }
+  .plan { position: relative; display: block; width: 100%; text-align: left; padding: 15px 44px 15px 15px; margin: 0 0 9px; color: #fff; background: rgba(255,255,255,.075); border: 1px solid var(--line-soft); border-radius: 14px; cursor: pointer; transition: border-color .15s, background .15s, transform .15s; -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
+  .plan::after { content: "→"; position: absolute; right: 16px; top: 50%; color: #fff; font-size: 18px; transform: translateY(-50%); }
+  .plan:hover, .plan:focus-visible { border-color: color-mix(in srgb, var(--brand) 64%, white); background: rgba(255,255,255,.13); transform: translateY(-1px); outline: none; }
   .plan .nm { font-weight: 700; } .plan .sub { color: var(--muted); font-size: 13px; margin-top: 3px; }
-  .btn { display: inline-flex; align-items: center; justify-content: center; width: 100%; min-height: 46px; background: var(--brand); color: var(--brand-ink); border: 0; padding: 12px 18px;
-         border-radius: 9px; font-size: 15px; font-weight: 700; cursor: pointer; }
-  .btn:hover { filter: brightness(.94); }
+  .portal-or { display: flex; align-items: center; gap: 10px; margin: 22px 0 16px; color: var(--faint); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+  .portal-or::before, .portal-or::after { content: ""; flex: 1; height: 1px; background: var(--line-soft); }
+  .voucher-login { padding: 16px; background: rgba(5,7,15,.25); border: 1px solid var(--line-soft); border-radius: 16px; }
+  .voucher-login h3 { margin: 0 0 5px; }
+  .voucher-help { margin: 0 0 12px; color: var(--muted); font-size: 13px; }
+  .voucher-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+  .voucher-row input { width: 100%; min-height: 48px; padding: 11px 13px; color: #fff; background: rgba(255,255,255,.08); border: 1px solid var(--line); border-radius: 13px; font: 700 16px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .08em; text-transform: uppercase; -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+  .voucher-row input::placeholder { color: rgba(255,255,255,.48); }
+  .voucher-row input:focus { outline: 3px solid color-mix(in srgb, var(--brand) 32%, transparent); outline-offset: 1px; border-color: color-mix(in srgb, var(--brand) 70%, white); }
+  .voucher-row .btn { width: auto; min-width: 108px; }
+  .voucher-msg { min-height: 20px; margin: 9px 0 0; font-size: 13px; }
+  .btn { display: inline-flex; align-items: center; justify-content: center; width: 100%; min-height: 48px; color: var(--brand-ink); border: 0; padding: 12px 18px; border-radius: 13px; background: linear-gradient(180deg, #fff, color-mix(in srgb, var(--brand) 58%, #fff)); box-shadow: 0 12px 30px -12px color-mix(in srgb, var(--brand) 72%, transparent); font-size: 15px; font-weight: 700; cursor: pointer; }
+  .btn:hover { filter: brightness(1.04); }
   .btn:disabled { opacity: .5; }
+  .btn-secondary { margin-top: 14px; color: #fff; background: rgba(255,255,255,.08); border: 1px solid var(--line); box-shadow: none; }
+  .portal-nav { display: grid; gap: 8px; margin-top: 18px; }
+  .portal-nav-note { margin: 0; color: var(--faint); font-size: 12px; text-align: center; }
   .qr { text-align: center; margin: 16px 0; }
-  .qr img { width: 210px; height: 210px; padding: 8px; background: #fff; border: 1px solid var(--line); border-radius: 10px; }
+  .qr img { width: 210px; height: 210px; padding: 8px; background: #fff; border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 20px 45px -22px rgba(0,0,0,.8); }
   .qr .bank { color: var(--muted); font-size: 14px; margin-top: 8px; }
   .timer { font-family: ui-monospace, monospace; font-size: 28px; font-weight: 700; color: var(--warn); text-align: center; margin: 14px 0; }
-  .form-row { margin: 0 0 14px; } .form-row label { display: block; color: #34424a; font-size: 12px; font-weight: 650; margin: 0 0 6px; }
-  .form-row input { width: 100%; min-height: 44px; padding: 10px 11px; color: #172126; background: #fff; border: 1px solid #cbd5d9; border-radius: 8px; font-size: 15px; }
-  .form-row input:focus { outline: 2px solid rgba(14, 90, 90, .24); outline-offset: 1px; border-color: var(--brand); }
+  .form-row { margin: 0 0 14px; } .form-row label { display: block; color: var(--muted); font-size: 12px; font-weight: 650; margin: 0 0 6px; }
+  .form-row input { width: 100%; min-height: 46px; padding: 10px 12px; color: #fff; background: rgba(255,255,255,.08); border: 1px solid var(--line); border-radius: 12px; font-size: 16px; }
+  .form-row input:focus { outline: 3px solid color-mix(in srgb, var(--brand) 30%, transparent); outline-offset: 1px; border-color: color-mix(in srgb, var(--brand) 70%, white); }
   .msg { color: var(--warn); margin: 12px 0; }
   .ok { color: var(--ok); }
-  .terms { color: var(--faint); font-size: 12px; margin: 18px 0 0; border-top: 1px solid var(--line); padding-top: 10px; }
-  .lang { position: fixed; top: 16px; right: 18px; z-index: 2; background: var(--card); border: 1px solid var(--line);
-          border-radius: 999px; padding: 7px 12px; cursor: pointer; font-size: 12px; font-weight: 650; color: var(--brand); box-shadow: 0 3px 14px rgba(29,48,58,.08); }
+  .terms { color: var(--faint); font-size: 12px; margin: 18px 0 0; border-top: 1px solid var(--line-soft); padding-top: 12px; }
+  .lang { position: fixed; top: 16px; right: 18px; z-index: 2; color: #fff; background: rgba(5,7,15,.4); border: 1px solid var(--line); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); border-radius: 999px; padding: 8px 13px; cursor: pointer; font-size: 12px; font-weight: 650; box-shadow: 0 8px 24px rgba(0,0,0,.22); }
   /* Preview chrome: makes it unmistakable that this is not a live hotspot, and
      that its actions are inert. */
-  .pv-badge { position: fixed; top: 10px; left: 14px; background: var(--brand); color: var(--brand-ink);
-              border-radius: 6px; padding: 4px 10px; font-size: 12px; font-weight: 600; letter-spacing: .04em; }
+  .pv-badge { position: fixed; top: 12px; left: 14px; color: #fff; background: rgba(5,7,15,.42); border: 1px solid var(--line); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); border-radius: 999px; padding: 6px 11px; font-size: 11px; font-weight: 700; letter-spacing: .08em; }
+  .pv-sample-note { margin: 0 0 14px; color: var(--muted); font-size: 12px; }
   @media (max-width: 600px) {
-    body { padding: 52px 0 0; }
-    .guest { min-height: calc(100vh - 52px); margin: 0; padding: 26px 20px 36px; border-width: 1px 0 0; border-radius: 18px 18px 0 0; box-shadow: none; }
+    body { padding: 64px 14px 24px; }
+    .guest { min-height: 0; margin: 0 auto; padding: 24px 18px 26px; border-radius: 24px; }
     .lang { top: 13px; right: 14px; }
+    .voucher-row { grid-template-columns: 1fr; }
+    .voucher-row .btn { width: 100%; }
   }
+  @media (prefers-reduced-motion: reduce) { body::before { animation: none; } }
 </style>
 </head>
 <body>
@@ -112,9 +128,11 @@ var API = "/api/v1";
 var QS = new URLSearchParams(location.search);
 var DEVICE = QS.get("deviceId") || "";
 var PREVIEW = QS.get("preview") === "1";
+var CLIENT_IP = (QS.get("ip") || QS.get("client_ip") || "").trim();
 
 var LANG = (function () { try { return localStorage.getItem("mm_lang") || "my"; } catch (e) { return "my"; } })();
 var RERENDER = null;
+var GRACE_TIMER = null;
 
 var MM = {
   buy:      "WiFi ဝယ်ယူမှု",                                 // Buy WiFi  [needs native review]
@@ -156,7 +174,10 @@ function esc(s) {
   });
 }
 function clientMac() {
-  return "00:00:00:00:00:00";
+  var raw = QS.get("mac") || QS.get("client_mac") || QS.get("clientMac") || "";
+  var compact = raw.trim().replace(/[^0-9a-fA-F]/g, "").toUpperCase();
+  if (compact.length !== 12) return PREVIEW ? "00:00:00:00:00:00" : "";
+  return compact.match(/.{2}/g).join(":");
 }
 
 /* --- branding ------------------------------------------------------------ */
@@ -193,10 +214,50 @@ async function loadConfig() {
   try {
     var res = await fetch(API + "/portal/" + DEVICE + "/config");
     var d = await res.json();
-    renderPlans(d.config || d);
+    renderPortalHome(d.config || d);
   } catch (e) {
     root.innerHTML = '<p class="msg">' + t("Could not load this hotspot.", "loadErr") + '</p>';
   }
+}
+
+function accessMethodEnabled(cfg, key) {
+  return typeof cfg[key] === "boolean" ? cfg[key] : true;
+}
+
+function portalHeading(cfg, titleKey, titleEnglish) {
+  return '<h1>' + t(titleEnglish, titleKey) + '</h1>' +
+    (cfg.business_name ? '<p class="biz">' + esc(cfg.business_name) + '</p>' : '') +
+    (cfg.welcome_text ? '<p class="welcome">' + esc(cfg.welcome_text) + '</p>' : '');
+}
+
+// Voucher is the primary screen whenever it is enabled. Mobile payment is a
+// separate, explicitly navigated screen when the owner enables both methods.
+function renderPortalHome(cfg) {
+  if (accessMethodEnabled(cfg, "voucher_login_enabled")) renderVoucher(cfg);
+  else renderPlans(cfg);
+}
+
+function renderVoucher(cfg) {
+  applyBranding(cfg);
+  RERENDER = function () { renderVoucher(cfg); };
+  var paymentEnabled = accessMethodEnabled(cfg, "mobile_payment_enabled");
+  document.getElementById("root").innerHTML =
+    portalHeading(cfg, "voucherWelcome", "Connect to WiFi") +
+    '<section class="voucher-login" aria-labelledby="voucher-title">' +
+      '<h3 id="voucher-title">' + t("Use a voucher code", "voucherTitle") + '</h3>' +
+      '<p class="voucher-help">' + t("Enter the code printed on your WiFi voucher.", "voucherHelp") + '</p>' +
+      '<div class="voucher-row"><input id="voucher-code" inputmode="text" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" maxlength="64" placeholder="Voucher code" aria-label="Voucher code">' +
+      '<button class="btn" id="voucher-submit" type="button">' + t("Connect", "voucherConnect") + '</button></div>' +
+      '<p class="voucher-msg" id="voucher-msg" role="status" aria-live="polite"></p>' +
+    '</section>' +
+    (paymentEnabled ? '<div class="portal-nav"><button class="btn btn-secondary" id="portal-go-payment" type="button">' + t("Buy WiFi with mobile payment →", "goPayment") + '</button><p class="portal-nav-note">' + t("Continue to plans and MMQR payment", "goPaymentNote") + '</p></div>' : '') +
+    (cfg.terms_text ? '<p class="terms">' + esc(cfg.terms_text) + '</p>' : '');
+  document.getElementById("voucher-submit").addEventListener("click", function () { redeemVoucher(cfg); });
+  document.getElementById("voucher-code").addEventListener("keydown", function (e) {
+    if (e.key === "Enter") { e.preventDefault(); redeemVoucher(cfg); }
+  });
+  var goPayment = document.getElementById("portal-go-payment");
+  if (goPayment) goPayment.addEventListener("click", function () { renderPlans(cfg); });
 }
 
 function renderPlans(cfg) {
@@ -212,22 +273,72 @@ function renderPlans(cfg) {
       '<div class="sub">' + esc(mins) + esc(dm) + amt + '</div></button>';
   }).join("");
   document.getElementById("root").innerHTML =
-    '<h1>' + t("Buy WiFi", "buy") + '</h1>' +
-    (cfg.business_name ? '<p class="biz">' + esc(cfg.business_name) + '</p>' : '') +
-    (cfg.welcome_text ? '<p class="welcome">' + esc(cfg.welcome_text) + '</p>' : '') +
+    portalHeading(cfg, "buy", "Buy WiFi") +
     '<p class="steps">' + t("1) Choose a plan · 2) Pay by MMQR (free trial) · 3) Enter phone + last 6 digits", "steps") + '</p>' +
     '<h3>' + t("Choose a plan", "choose") + '</h3>' +
+    (PREVIEW && cfg.preview_sample ? '<p class="pv-sample-note">Sample preview data — add a plan to replace it.</p>' : '') +
     (rows || '<p class="msg">' + t("No plans are available yet.", "noPlans") + '</p>') +
+    (accessMethodEnabled(cfg, "voucher_login_enabled") ? '<button class="btn btn-secondary" id="portal-back-voucher" type="button">' + t("← Use a voucher code", "backVoucher") + '</button>' : '') +
     (cfg.terms_text ? '<p class="terms">' + esc(cfg.terms_text) + '</p>' : '');
   document.querySelectorAll(".plan").forEach(function (b) {
     b.addEventListener("click", function () { buy(cfg, b.dataset.key); });
   });
+  var backVoucher = document.getElementById("portal-back-voucher");
+  if (backVoucher) backVoucher.addEventListener("click", function () { renderVoucher(cfg); });
+}
+
+async function redeemVoucher(cfg) {
+  var input = document.getElementById("voucher-code");
+  var button = document.getElementById("voucher-submit");
+  var msg = document.getElementById("voucher-msg");
+  if (!input || !button || !msg) return;
+  var code = input.value.trim().replace(/\s+/g, "").toUpperCase();
+  input.value = code;
+  msg.className = "voucher-msg msg";
+  if (!code) { msg.textContent = t("Enter your voucher code.", "voucherRequired"); input.focus(); return; }
+  if (PREVIEW) {
+    msg.className = "voucher-msg ok";
+    msg.textContent = t("Preview only — a valid voucher connects this device.", "voucherPreview");
+    return;
+  }
+  var mac = clientMac();
+  if (!DEVICE || !mac) {
+    msg.textContent = t("Open this page from the hotspot login screen, then try again.", "hotspotContext");
+    return;
+  }
+  button.disabled = true;
+  button.textContent = t("Connecting…", "connecting");
+  try {
+    var payload = { client_mac: mac, code: code };
+    if (CLIENT_IP) payload.client_ip = CLIENT_IP;
+    var res = await fetch(API + "/portal/" + encodeURIComponent(DEVICE) + "/redeem", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    var data = await res.json().catch(function () { return {}; });
+    if (!res.ok) throw new Error(data.error || ("http-" + res.status));
+    applyBranding(cfg);
+    RERENDER = null;
+    document.getElementById("root").innerHTML =
+      '<h1 class="ok">' + t("Voucher accepted", "voucherAccepted") + '</h1>' +
+      '<p class="welcome">' + t("Your device is connected. You may close this page and continue browsing.", "voucherOnline") + '</p>' +
+      (cfg.terms_text ? '<p class="terms">' + esc(cfg.terms_text) + '</p>' : '');
+  } catch (e) {
+    msg.textContent = e.message || t("Could not redeem this voucher.", "voucherFailed");
+    button.disabled = false;
+    button.textContent = t("Connect", "voucherConnect");
+  }
 }
 
 async function buy(cfg, key) {
   var root = document.getElementById("root");
   // Preview must not create real purchase requests on the owner's queue.
-  if (PREVIEW) { renderPay(cfg, "preview-request", new Date(Date.now() + 600000).toISOString()); return; }
+  if (PREVIEW) { renderPay(cfg, "preview-request", new Date(Date.now() + (cfg.guest_grace_minutes || 10) * 60000).toISOString()); return; }
+  if (!DEVICE || !clientMac()) {
+    root.innerHTML = '<p class="msg">' + t("Open this page from the hotspot login screen, then try again.", "hotspotContext") + '</p>';
+    return;
+  }
   var fd = new FormData();
   fd.append("plan_key", key);
   fd.append("client_mac", clientMac());
@@ -235,7 +346,7 @@ async function buy(cfg, key) {
     var res = await fetch(API + "/portal/" + DEVICE + "/guest-purchase", { method: "POST", body: fd });
     var d = await res.json();
     if (!res.ok) throw new Error(d.error || ("http-" + res.status));
-    renderPay(cfg, d.request_id, d.grace_expires_at);
+    renderPay(Object.assign({}, cfg, { guest_grace_data_mb: d.grace_data_mb, guest_grace_minutes: d.grace_minutes }), d.request_id, d.grace_expires_at);
   } catch (e) {
     root.innerHTML = '<p class="msg">' + esc(e.message) + '</p>';
   }
@@ -253,6 +364,7 @@ function renderPay(cfg, reqId, graceExp) {
         ? '<div class="bank">' + esc(cfg.bank_name||"") + ' · ' + esc(cfg.bank_holder||"") + ' · ' + esc(cfg.bank_account||"") + '</div>' : '') +
     '</div>' +
     '<p class="timer" id="timer"></p>' +
+    '<p class="steps" id="grace-allowance">' + (LANG === "my" ? 'ယာယီအင်တာနက်: ' : 'Temporary internet: ') + esc(cfg.guest_grace_data_mb || 50) + ' MB · ' + esc(cfg.guest_grace_minutes || 10) + (LANG === "my" ? ' မိနစ်။ အချိန် သို့မဟုတ် ဒေတာ ကန့်သတ်ချက် ပြည့်လျှင် ရပ်ပါမည်။' : ' minutes. Access ends when either limit is reached. Uploads and downloads count.') + '</p>' +
     '<h3>' + t("After paying, confirm here", "afterPay") + '</h3>' +
     '<div class="form-row"><label>' + t("Phone number you paid from", "phone") + '</label><input id="phone" inputmode="tel"></div>' +
     '<div class="form-row"><label>' + t("Last 6 digits of the bank / transaction number", "last6") + '</label><input id="last6" inputmode="numeric" maxlength="6"></div>' +
@@ -265,15 +377,17 @@ function renderPay(cfg, reqId, graceExp) {
 }
 
 function tickTimer(end) {
+  clearInterval(GRACE_TIMER);
   var timerEl = document.getElementById("timer");
   if (!timerEl) return;
   var fn = function () {
     var diff = end - Date.now();
-    if (diff <= 0) { timerEl.textContent = t("Trial expired", "expired"); return; }
+    if (!timerEl.isConnected) { clearInterval(GRACE_TIMER); return; }
+    if (diff <= 0) { timerEl.textContent = t("Trial expired", "expired"); clearInterval(GRACE_TIMER); return; }
     var m = Math.floor(diff/60000), s = Math.floor(diff%60000/1000);
     timerEl.textContent = (m<10?"0":"")+m+":"+(s<10?"0":"")+s;
   };
-  fn(); setInterval(fn, 1000);
+  GRACE_TIMER = setInterval(fn, 1000); fn();
 }
 
 async function confirm(reqId) {
@@ -297,7 +411,7 @@ async function confirm(reqId) {
     if (!res.ok) throw new Error(d.error || ("http-" + res.status));
     document.getElementById("root").innerHTML =
       '<h1 class="ok">' + t("Request received", "requestRec") + '</h1>' +
-      '<p class="ok">' + t("The owner has been notified and will approve your connection. You can use the free trial until then.", "waiting") + '</p>';
+      '<p class="ok">' + t("The owner has been notified. Temporary access ends when its time or data allowance runs out; paid access starts after approval.", "waiting") + '</p>';
   } catch (e) {
     msg.textContent = t("Could not submit", "submitErr") + ": " + e.message;
   }
@@ -321,7 +435,7 @@ function wirePreview() {
     var d = ev.data;
     if (!d || d.type !== "mm-portal-preview" || !d.config) return;
     if (d.lang === "my" || d.lang === "en") { LANG = d.lang; applyLang(); }
-    renderPlans(d.config);
+    renderPortalHome(d.config);
   });
   if (window.parent && window.parent !== window) {
     window.parent.postMessage({ type: "mm-portal-preview-ready" }, location.origin);

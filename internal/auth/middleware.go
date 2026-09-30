@@ -21,10 +21,15 @@ const (
 )
 
 // Middleware returns a Gin middleware that validates JWT tokens and extracts
-// tenant context. It sets the business_id session variable in Postgres for RLS.
+// tenant context in Gin. TenantConnMiddleware/WithTenant establish Postgres RLS.
 func Middleware(authService *Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
+		if authHeader == "" {
+			if cookie, err := c.Cookie("mm_access"); err == nil {
+				authHeader = "Bearer " + cookie
+			}
+		}
 		if authHeader == "" {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
 				"error": "Authorization header required",
@@ -63,6 +68,11 @@ func Middleware(authService *Service) gin.HandlerFunc {
 func OptionalMiddleware(authService *Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
+		if authHeader == "" {
+			if cookie, err := c.Cookie("mm_access"); err == nil {
+				authHeader = "Bearer " + cookie
+			}
+		}
 		if authHeader == "" {
 			c.Next()
 			return

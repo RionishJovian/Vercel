@@ -4,8 +4,15 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Mega Magic — network operations for wireless ISPs</title>
+  <link rel="icon" type="image/x-icon" sizes="any" href="/favicon.ico?v=20260930-3">
+  <link rel="icon" type="image/png" sizes="64x64" href="/assets/images/mikromagic-favicon-green-v2-64.png?v=20260930-3">
+  <link rel="shortcut icon" type="image/x-icon" href="/favicon.ico?v=20260930-3">
+  <link rel="apple-touch-icon" sizes="180x180" href="/assets/images/mikromagic-touch-green-v2-180.png?v=20260930-3">
+  <link rel="manifest" href="/site.webmanifest?v=20260930-3">
+  <meta name="theme-color" content="#051f20">
   <meta name="description" content="Mega Magic operates your MikroTik fleet: self-healing recovery, provisioning, billing and guest Wi-Fi from one console.">
   <meta name="robots" content="index">
+  <script src="/assets/js/theme.js"></script>
   <link rel="stylesheet" href="/assets/css/styles.css">
   <style>
     /* ════════════════════════════════════════════════════════════════════
@@ -33,6 +40,20 @@
       font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
     }
     ::selection{background:rgba(125,211,252,.28);}
+
+    /* Short first-visit cinematic reveal: no sound, skippable, and far lighter
+       than an autoplay video on mobile connections. */
+    .brand-intro{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;overflow:hidden;background:#031816;transition:opacity .38s ease,visibility .38s ease;}
+    .brand-intro::before{content:"";position:absolute;width:min(84vw,720px);aspect-ratio:1;border-radius:50%;background:radial-gradient(circle,rgba(142,182,155,.34),transparent 68%);filter:blur(30px);animation:introAura 2.2s ease-out both;}
+    .brand-intro-mark{position:relative;width:clamp(132px,22vw,250px);filter:drop-shadow(0 0 34px rgba(167,243,208,.38));animation:introMark 2.2s cubic-bezier(.2,.72,.2,1) both;}
+    .brand-intro-line{position:absolute;top:50%;left:50%;width:min(72vw,620px);height:1px;background:linear-gradient(90deg,transparent,#a7f3d0,transparent);transform:translate(-50%,-50%) scaleX(0);animation:introLine 2.2s ease-out both;}
+    .brand-intro-name{position:absolute;top:calc(50% + clamp(92px,15vw,165px));color:#f3f3f3;font-size:13px;font-weight:650;letter-spacing:.28em;text-transform:uppercase;animation:introName 2.2s ease-out both;}
+    .brand-intro-skip{position:absolute;right:20px;bottom:20px;color:#8eb69b;background:transparent;border:1px solid rgba(142,182,155,.35);border-radius:8px;padding:8px 12px;cursor:pointer;}
+    .brand-intro.is-leaving{opacity:0;visibility:hidden;}
+    @keyframes introMark{0%{opacity:0;transform:scale(.72) rotate(-8deg);filter:blur(14px)}34%{opacity:1;filter:blur(0) drop-shadow(0 0 42px rgba(167,243,208,.6))}72%{transform:scale(1.04) rotate(0)}100%{opacity:1;transform:scale(1)}}
+    @keyframes introAura{0%{opacity:0;transform:scale(.45)}60%{opacity:1}100%{opacity:.45;transform:scale(1.2)}}
+    @keyframes introLine{0%,28%{opacity:0;transform:translate(-50%,-50%) scaleX(0)}54%{opacity:1;transform:translate(-50%,-50%) scaleX(1)}100%{opacity:0;transform:translate(-50%,-50%) scaleX(1.16)}}
+    @keyframes introName{0%,48%{opacity:0;transform:translateY(8px)}75%,100%{opacity:1;transform:none}}
 
     /* Ambient glow orbs + grain (decorative, behind the glass) */
     .lg-orb{position:fixed;border-radius:50%;filter:blur(88px);pointer-events:none;z-index:0;}
@@ -174,27 +195,34 @@
     @media (prefers-reduced-motion: reduce){
       *{transition:none!important;animation:none!important;}
       .land-hero::before,.cell::before{animation:none;display:none;}
+      .brand-intro{display:none;}
     }
   </style>
   <link rel="stylesheet" href="/assets/css/redesign.css">
 </head>
 <body class="page-marketing">
+<div class="brand-intro" id="brand-intro" role="dialog" aria-label="MikroTik Magic introduction">
+  <div class="brand-intro-line"></div>
+  <img class="brand-intro-mark" src="/assets/images/mikromagic-mark-20260930.png" alt="MikroTik Magic">
+  <div class="brand-intro-name">Network magic, controlled</div>
+  <button class="brand-intro-skip" id="brand-intro-skip" type="button">Skip</button>
+</div>
 <div class="lg-orb lg-orb-a"></div>
 <div class="lg-orb lg-orb-b"></div>
 <div class="lg-orb lg-orb-c"></div>
 <div class="lg-grain"></div>
 
 <div class="land-nav">
-  <div class="rail-brand"><span class="dot"></span>Mega Magic</div>
+  <div class="rail-brand"><img class="brand-logo" src="/assets/images/mikromagic-mark-20260930.png" alt="">Mega Magic</div>
   <div class="spacer"></div>
   <div><a class="land-signin" href="/signin.html">Sign in →</a></div>
 </div>
 
 <div class="landing">
   <section class="land-hero">
-    <span class="land-eyebrow">Self-healing network operations</span>
-    <h1>Your MikroTik fleet<br>runs <span class="accent">itself.</span></h1>
-    <p>Mega Magic watches every router, heals the tunnel when it drops, provisions peers, and lets guests pay for Wi-Fi — from one calm console. No dashboards you have to babysit.</p>
+    <span class="land-eyebrow">MikroTik cloud management</span>
+    <h1>Run your hotspot business<br>from <span class="accent">one place.</span></h1>
+    <p>Configure MikroTik gateways, monitor guests and routers, sell Wi-Fi access, and manage every site remotely through a simpler web console.</p>
     <div class="land-cta">
       <a class="btn btn-primary" href="/signin.html">Sign in</a>
       <a class="btn" href="/pricing.html">Pricing</a>
@@ -202,48 +230,90 @@
   </section>
 
   <section class="land-section">
-    <h2>What it does</h2>
+    <h2>Everything you need to operate</h2>
     <div class="land-rule"></div>
     <div class="land-grid">
       <div class="cell">
-        <div class="glyph">⌁</div>
-        <h3>Self-healing recovery</h3>
-        <p>Probes each peer, classifies the tunnel, and runs a measured recovery ladder — no thrash, no alert spam, and every change needs a human approval gate.</p>
+        <div class="glyph" data-lucide="activity"></div>
+        <h3>Fleet health</h3>
+        <p>See which routers are online, offline, or need attention, then open the right device controls from the same screen.</p>
       </div>
       <div class="cell">
-        <div class="glyph">⌬</div>
-        <h3>Provisioning &amp; topology</h3>
-        <p>Deterministic WireGuard peer blocks, a live network map, and explicit device actions like remote reboot.</p>
+        <div class="glyph" data-lucide="network"></div>
+        <h3>Live topology</h3>
+        <p>Follow the connection from your cloud hub to each gateway, port, access point, and downstream device.</p>
       </div>
       <div class="cell">
-        <div class="glyph">▰</div>
-        <h3>Monetization</h3>
-        <p>Vouchers, operator-approved purchases, and guest Wi-Fi with online-banking receipts — the money paths are tenant-scoped and audited.</p>
+        <div class="glyph" data-lucide="router"></div>
+        <h3>RouterBOARD control</h3>
+        <p>Check reachability, change supported RouterOS settings, create backups, reboot safely, and review every action.</p>
+      </div>
+      <div class="cell">
+        <div class="glyph" data-lucide="wifi"></div>
+        <h3>Guest Wi-Fi</h3>
+        <p>Offer voucher login, mobile payment, or both through a captive portal branded for your business.</p>
+      </div>
+      <div class="cell">
+        <div class="glyph" data-lucide="ticket"></div>
+        <h3>Vouchers &amp; revenue</h3>
+        <p>Create and print vouchers, manage resellers, approve guest payments, and track the money your hotspot earns.</p>
+      </div>
+      <div class="cell">
+        <div class="glyph" data-lucide="bot"></div>
+        <h3>Magic Dude</h3>
+        <p>Ask the floating assistant what is wrong, what a setting means, or what to do next without leaving your current page.</p>
       </div>
     </div>
   </section>
 
   <section class="land-section">
-    <h2>Built on your hardware</h2>
+    <h2>Designed for real hotspot businesses</h2>
     <div class="land-rule"></div>
     <div class="land-grid">
       <div class="cell">
-        <div class="glyph">◇</div>
-        <h3>MikroTik first</h3>
-        <p>The control plane speaks RouterOS and WireGuard natively. Vendor-neutral enough to grow, honest about what runs today.</p>
+        <div class="glyph" data-lucide="router"></div>
+        <h3>Works with your MikroTik</h3>
+        <p>Use gateway routers, wireless RouterBOARDs, or external access points. Available controls adapt to each device's real capabilities.</p>
       </div>
       <div class="cell">
-        <div class="glyph">◈</div>
-        <h3>One source of truth</h3>
-        <p>Every write is gated, every high-risk action needs a one-time code, and the state is yours — self-hosted Postgres, no SaaS lock-in.</p>
+        <div class="glyph" data-lucide="backup"></div>
+        <h3>Each business stays separate</h3>
+        <p>Every customer sees only their own routers, guests, vouchers, revenue, team, Telegram approvals, and activity history.</p>
       </div>
       <div class="cell">
-        <div class="glyph">▣</div>
-        <h3>A real approval gate</h3>
-        <p>Destructive changes don't happen by accident. Reboots and reconfigs pause for human approval and verify the device comes back.</p>
+        <div class="glyph" data-lucide="alert"></div>
+        <h3>Safer remote changes</h3>
+        <p>Important actions show exactly what will change, create a recovery point, and confirm that the router returns healthy.</p>
       </div>
     </div>
   </section>
+
+  <section class="land-section land-guide">
+    <div>
+      <span class="land-eyebrow">Help whenever you need it</span>
+      <h2>Understand every tool.</h2>
+      <p>Open the product guide or ask Magic Dude to learn what a page controls, how to use it, and what will happen before you apply a change.</p>
+      <a class="btn btn-primary" href="/signin.html">Open your console</a>
+    </div>
+    <img src="/assets/images/magic-dude-guide-network-20260930.png" alt="Magic Dude explaining a secure network topology">
+  </section>
 </div>
+<script>
+(() => {
+  const intro = document.getElementById("brand-intro");
+  const reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let seen = false;
+  try { seen = sessionStorage.getItem("mm_brand_intro_seen") === "1"; } catch (_) {}
+  if (reduced || seen) { intro.remove(); return; }
+  try { sessionStorage.setItem("mm_brand_intro_seen", "1"); } catch (_) {}
+  let removed = false;
+  const close = () => {
+    if (removed) return; removed = true; intro.classList.add("is-leaving");
+    setTimeout(() => intro.remove(), 420);
+  };
+  document.getElementById("brand-intro-skip").addEventListener("click", close);
+  setTimeout(close, 2600);
+})();
+</script>
 </body>
 </html>

@@ -3,6 +3,7 @@ package routeros
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -208,5 +209,18 @@ func classifyState(fresh, dataPlaneUp bool) string {
 // hasTraffic is the freshness proxy: any rx or tx bytes implies the tunnel has
 // carried traffic recently.
 func hasTraffic(kv map[string]string) bool {
-	return atoiOr(kv["rx"], 0) > 0 || atoiOr(kv["tx"], 0) > 0
+	return trafficPositive(kv["rx"]) || trafficPositive(kv["tx"])
+}
+
+func trafficPositive(raw string) bool {
+	s := strings.TrimSpace(raw)
+	end := 0
+	for end < len(s) && ((s[end] >= '0' && s[end] <= '9') || s[end] == '.') {
+		end++
+	}
+	if end == 0 {
+		return false
+	}
+	n, err := strconv.ParseFloat(s[:end], 64)
+	return err == nil && n > 0
 }

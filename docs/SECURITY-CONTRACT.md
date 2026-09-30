@@ -70,7 +70,10 @@ Non-negotiables:
 ## 4. Auth session hygiene
 
 - ✅ `TestDB_UserMe_tenantScoped`, `TestDB_PortalDeviceAnchored_isolation`
-- ⛔ no test for refresh-token rotation / reuse-after-refresh detection
+- Refresh rotation/reuse detection and account-change revocation now have
+  `TestSessionLifecycle` (requires `MM_TEST_DB_URL`; skipped without PostgreSQL).
+- JWT token-type, algorithm, expiry, issuer/audience rejection and cookie-origin
+  checks have unit regression coverage. Browser tokens use HttpOnly cookies.
 - ⛔ no test that an inactive user (business suspended) is refused (login path does
   check `users.is_active`; prove it)
 

@@ -4,7 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Sign in — Mega Magic</title>
+  <link rel="icon" type="image/x-icon" sizes="any" href="/favicon.ico?v=20260930-3">
+  <link rel="icon" type="image/png" sizes="64x64" href="/assets/images/mikromagic-favicon-green-v2-64.png?v=20260930-3">
+  <link rel="shortcut icon" type="image/x-icon" href="/favicon.ico?v=20260930-3">
+  <link rel="apple-touch-icon" sizes="180x180" href="/assets/images/mikromagic-touch-green-v2-180.png?v=20260930-3">
+  <link rel="manifest" href="/site.webmanifest?v=20260930-3">
+  <meta name="theme-color" content="#051f20">
   <meta name="robots" content="noindex">
+  <script src="/assets/js/theme.js"></script>
   <link rel="stylesheet" href="/assets/css/styles.css">
   <script src="/assets/js/api.js" defer></script>
   <style>
@@ -133,10 +140,10 @@
 <body class="page-signin">
 <div class="signin-wrap">
   <div class="signin-left">
-    <div class="rail-brand"><span class="dot"></span>Mega Magic</div>
+    <div class="rail-brand"><img class="brand-logo" src="/assets/images/mikromagic-mark-20260930.png" alt="">Mega Magic</div>
     <h1>Back to the network.</h1>
-    <p>Sign in to watch fleet health, run recovery, approve purchases, and manage your sites. One console for the whole business.</p>
-    <p class="muted small">Access is tenant-scoped. Every destructive action is gated for a human approval.</p>
+    <p>Sign in to manage routers, guest Wi-Fi, vouchers, payments, and every business location from one console.</p>
+    <p class="muted small">Your account opens only your business data. Important router changes always show a confirmation first.</p>
   </div>
   <div class="signin-card">
     <h2>Sign in</h2>
@@ -154,7 +161,7 @@
       </div>
       <button class="btn btn-primary" type="submit" style="width:100%" id="submit">Sign in</button>
     </form>
-    <p class="small muted" style="margin-top:18px">No account? Resources are provisioned per business by an administrator.</p>
+    <p class="small muted" style="margin-top:18px">Need an account? Ask your Mega Magic administrator to add your business or invite you to a team.</p>
   </div>
 </div>
 
@@ -171,8 +178,7 @@ document.getElementById("login-form").addEventListener("submit", async (e) => {
       email: document.getElementById("email").value.trim(),
       password: document.getElementById("password").value,
     });
-    localStorage.setItem("mm_token", data.token);
-    if (data.refresh_token) localStorage.setItem("mm_refresh", data.refresh_token);
+
     location.href = "/app.html";
   } catch (err) {
     alert.hidden = false;

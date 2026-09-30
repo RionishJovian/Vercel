@@ -88,6 +88,31 @@ func TestTranslate_failsClosed(t *testing.T) {
 	if _, err := NewApplier(&fakeRunner{}, "wg-magichub", 13241, 0).Translate(provisioner.Change{Action: "delete_everything"}); err == nil {
 		t.Fatal("unknown action must be refused")
 	}
+	if _, err := NewApplier(&fakeRunner{}, "wg-magichub", 13241, 0).Translate(provisioner.Change{Action: provisioner.ActionHardenManagement, Proposed: `{"trusted_cidrs":["0.0.0.0/999"]}`}); err == nil {
+		t.Fatal("harden_management must reject an invalid management CIDR")
+	}
+}
+
+func TestTranslate_hardenManagement(t *testing.T) {
+	a := NewApplier(&fakeRunner{}, "wg-magichub", 0, 0)
+	steps, err := a.Translate(provisioner.Change{Action: provisioner.ActionHardenManagement, Proposed: `{"trusted_cidrs":["10.99.0.0/24","10.77.0.9/32"]}`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var commands []string
+	for _, step := range steps {
+		commands = append(commands, step.Command)
+	}
+	joined := strings.Join(commands, "\n")
+	for _, want := range []string{
+		"name=telnet]", "name=ftp]", "name=www]", "name=api]", "name=api-ssl]",
+		"name=ssh] address=10.99.0.0/24,10.77.0.9/32 disabled=no",
+		"name=winbox] address=10.99.0.0/24,10.77.0.9/32 disabled=no",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("hardening commands missing %q in:\n%s", want, joined)
+		}
+	}
 }
 
 func TestApply_resetOrderAndError(t *testing.T) {
@@ -141,6 +166,36 @@ func TestSnapshot_populatesFields(t *testing.T) {
 	}
 	if len(snap.IPRoutes) == 0 {
 		t.Fatal("routes must be captured")
+	}
+}
+
+func TestSnapshotAndRestore_managementServices(t *testing.T) {
+	fr := &fakeRunner{out: map[string]string{
+		"print value-list detail where name=":            "name: wg-magichub\nlisten-port: 13231\n",
+		"peers print value-list detail where interface=": "persistent-keepalive: 25s\nallowed-address: 10.99.0.1/32\n",
+		"/ip route print detail":                         "DAc 10.99.0.0/30 wg-magichub main 0\n",
+		"/ip service print value-list detail":            "name: telnet\naddress:\ndisabled: false\n\nname: ssh\naddress: 192.168.99.0/24\ndisabled: false\n\nname: api\naddress:\ndisabled: true\n",
+	}}
+	a := NewApplier(fr, "wg-magichub", 0, 0)
+	snap, err := a.Snapshot(context.Background(), "biz-1", "peer2", []provisioner.Change{{Action: provisioner.ActionHardenManagement}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snap.RouterOSServices) != 3 {
+		t.Fatalf("services = %#v", snap.RouterOSServices)
+	}
+	if err := a.Restore(context.Background(), "biz-1", snap); err != nil {
+		t.Fatal(err)
+	}
+	joined := fr.joined()
+	for _, want := range []string{
+		`name=telnet] address="" disabled=no`,
+		"name=ssh] address=192.168.99.0/24 disabled=no",
+		`name=api] address="" disabled=yes`,
+	} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("restore missing %q in:\n%s", want, joined)
+		}
 	}
 }
 

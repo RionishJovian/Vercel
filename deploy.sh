@@ -31,17 +31,21 @@ deploy_web() {
   # that the edge has to fetch from origin. HTML is always revalidated. Stamp
   # every page that imports shared assets so marketing, auth, pricing, and the
   # console cannot drift across an immutable-cache deployment.
-  local vcss vredesign vapi vapp stamp_dir page
+  local vcss vredesign vapi vapp vtheme vi18n stamp_dir page
   vcss=$(md5sum "$ROOT/web/assets/css/styles.css" | cut -c1-8)
   vredesign=$(md5sum "$ROOT/web/assets/css/redesign.css" | cut -c1-8)
   vapi=$(md5sum "$ROOT/web/assets/js/api.js"       | cut -c1-8)
   vapp=$(md5sum "$ROOT/web/assets/js/app.js"       | cut -c1-8)
+  vtheme=$(md5sum "$ROOT/web/assets/js/theme.js"   | cut -c1-8)
+  vi18n=$(md5sum "$ROOT/web/assets/js/i18n.js"    | cut -c1-8)
   stamp_dir=$(mktemp -d /tmp/mm-web-stamp.XXXXXX)
   for page in app index signin pricing; do
     sed -e "s#\(/assets/css/styles\.css\)[^\"']*#\1?v=$vcss#" \
         -e "s#\(/assets/css/redesign\.css\)[^\"']*#\1?v=$vredesign#" \
         -e "s#\(/assets/js/api\.js\)[^\"']*#\1?v=$vapi#" \
         -e "s#\(/assets/js/app\.js\)[^\"']*#\1?v=$vapp#" \
+        -e "s#\(/assets/js/theme\.js\)[^\"']*#\1?v=$vtheme#" \
+        -e "s#\(/assets/js/i18n\.js\)[^\"']*#\1?v=$vi18n#" \
         "$ROOT/web/$page.html" > "$stamp_dir/$page.html"
     sudo install -m 644 "$stamp_dir/$page.html" "/opt/mega-magic-web/$page.html"
     rm -f "$stamp_dir/$page.html"
@@ -49,7 +53,7 @@ deploy_web() {
   rmdir "$stamp_dir"
 
   sudo systemctl reload nginx
-  echo ">> Frontend published (assets v: css=$vcss redesign=$vredesign js=$vapi app=$vapp) + nginx reloaded"
+  echo ">> Frontend published (assets v: css=$vcss redesign=$vredesign js=$vapi app=$vapp theme=$vtheme i18n=$vi18n) + nginx reloaded"
 }
 
 deploy_api() {
@@ -64,6 +68,9 @@ deploy_api() {
   # Apply and complete the two-stage rollout using docs/DATABASE-MIGRATIONS.md.
   # A stale schema stops the deploy before the binary or service is touched.
   ENVIRONMENT=production /usr/bin/go run ./cmd/device-ssh-schema --action check --config config.yaml
+  ENVIRONMENT=production /usr/bin/go run ./cmd/capacity-schema --action check --config config.yaml
+  ENVIRONMENT=production /usr/bin/go run ./cmd/store-schema --action check --config config.yaml
+  ENVIRONMENT=production /usr/bin/go run ./cmd/auth-session-schema --action check --config config.yaml
 
   echo ">> Building Go binary"
   # Build to a TEMPORARY file first. Two reasons:

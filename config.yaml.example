@@ -171,6 +171,8 @@ provisioner:
     listen_port_rotate_to: 0         # required for rotate_listen_port
     reset_hold: 30s                  # disable-peer hold (> UDP timeout)
     ping_target: "10.77.0.1"         # required IP: WireGuard hub probed after every live change
+    management_cidrs:                 # only these sources retain SSH/Winbox after hardening
+      - "10.77.0.0/24"
     t_down: 180s
     # RFC 6238 TOTP gate for HIGH-RISK actions (rotate_listen_port/escalate).
     # Empty secret => high-risk approvals stay DENIED. Inject the secret via

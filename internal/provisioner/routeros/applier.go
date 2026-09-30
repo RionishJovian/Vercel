@@ -2,7 +2,9 @@ package routeros
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net"
 	"strings"
 	"time"
 
@@ -83,6 +85,18 @@ func (a *Applier) Snapshot(ctx context.Context, _, peerID string, changes []prov
 	ifaceKV := parseValueList(wgIface)
 	peerKV := parseValueList(wgPeers)
 
+	var services []provisioner.RouterOSServiceSnapshot
+	if containsAction(changes, provisioner.ActionHardenManagement) {
+		serviceOut, serviceErr := a.run.Run(ctx, "/ip service print value-list detail")
+		if serviceErr != nil {
+			return provisioner.RollbackSnapshot{}, fmt.Errorf("routeros: snapshot services: %w", serviceErr)
+		}
+		services = parseServiceSnapshots(serviceOut)
+		if len(services) == 0 {
+			return provisioner.RollbackSnapshot{}, fmt.Errorf("routeros: snapshot services returned no records")
+		}
+	}
+
 	return provisioner.RollbackSnapshot{
 		PeerID:               peerID,
 		CapturedAt:           a.now(),
@@ -94,6 +108,7 @@ func (a *Applier) Snapshot(ctx context.Context, _, peerID string, changes []prov
 		WGListenPort:         atoiOr(ifaceKV["listen-port"], 0),
 		WGPeerKeepalive:      peerKV["persistent-keepalive"],
 		WGPeerAllowedAddress: peerKV["allowed-address"],
+		RouterOSServices:     services,
 	}, nil
 }
 
@@ -195,6 +210,26 @@ func (a *Applier) Translate(c provisioner.Change) ([]Step, error) {
 			Command: "/system reboot",
 			Note:    "force remote reboot (explicit owner action)",
 		}}, nil
+	case provisioner.ActionHardenManagement:
+		var proposal struct {
+			TrustedCIDRs []string `json:"trusted_cidrs"`
+		}
+		if err := json.Unmarshal([]byte(c.Proposed), &proposal); err != nil {
+			return nil, fmt.Errorf("routeros: harden_management invalid proposal: %w", err)
+		}
+		trusted, err := validatedCIDRList(proposal.TrustedCIDRs)
+		if err != nil {
+			return nil, err
+		}
+		return []Step{
+			{Command: "/ip service disable [find where name=telnet]", Note: "disable plaintext telnet management"},
+			{Command: "/ip service disable [find where name=ftp]", Note: "disable FTP management"},
+			{Command: "/ip service disable [find where name=www]", Note: "disable HTTP WebFig"},
+			{Command: "/ip service disable [find where name=api]", Note: "disable plaintext RouterOS API"},
+			{Command: "/ip service disable [find where name=api-ssl]", Note: "disable externally exposed API-SSL"},
+			{Command: fmt.Sprintf("/ip service set [find where name=ssh] address=%s disabled=no", trusted), Note: "retain SSH only on management networks"},
+			{Command: fmt.Sprintf("/ip service set [find where name=winbox] address=%s disabled=no", trusted), Note: "retain Winbox only on management networks"},
+		}, nil
 	case provisioner.ActionEscalate:
 		return []Step{{Note: "incident escalation; no device change"}}, nil
 	default:
@@ -231,11 +266,103 @@ func (a *Applier) Restore(ctx context.Context, _ string, snap provisioner.Rollba
 			return fmt.Errorf("routeros: restore allowed-address: %w", err)
 		}
 	}
+	for _, service := range snap.RouterOSServices {
+		if !validServiceName(service.Name) {
+			return fmt.Errorf("routeros: restore service has invalid name %q", service.Name)
+		}
+		address := strings.TrimSpace(service.Address)
+		if address == "" {
+			address = `""`
+		} else if _, err := validatedCIDRList(strings.Split(address, ",")); err != nil {
+			return fmt.Errorf("routeros: restore service %s: %w", service.Name, err)
+		}
+		disabled := "no"
+		if service.Disabled {
+			disabled = "yes"
+		}
+		cmd := fmt.Sprintf("/ip service set [find where name=%s] address=%s disabled=%s", service.Name, address, disabled)
+		if _, err := a.run.Run(ctx, cmd); err != nil {
+			return fmt.Errorf("routeros: restore service %s: %w", service.Name, err)
+		}
+	}
 	// Rollback must leave the peer ENABLED (committed design requirement).
 	if _, err := a.run.Run(ctx, fmt.Sprintf("/interface wireguard peers enable [find interface=%s]", a.iface)); err != nil {
 		return fmt.Errorf("routeros: restore enable peer: %w", err)
 	}
 	return nil
+}
+
+func containsAction(changes []provisioner.Change, action string) bool {
+	for _, change := range changes {
+		if change.Action == action {
+			return true
+		}
+	}
+	return false
+}
+
+func validatedCIDRList(cidrs []string) (string, error) {
+	if len(cidrs) == 0 {
+		return "", fmt.Errorf("routeros: harden_management needs at least one trusted management CIDR; refusing")
+	}
+	clean := make([]string, 0, len(cidrs))
+	for _, raw := range cidrs {
+		cidr := strings.TrimSpace(raw)
+		if _, _, err := net.ParseCIDR(cidr); err != nil {
+			return "", fmt.Errorf("routeros: invalid management CIDR %q; refusing", raw)
+		}
+		clean = append(clean, cidr)
+	}
+	return strings.Join(clean, ","), nil
+}
+
+func validServiceName(name string) bool {
+	switch name {
+	case "telnet", "ftp", "www", "www-ssl", "ssh", "api", "winbox", "api-ssl":
+		return true
+	default:
+		return false
+	}
+}
+
+func parseServiceSnapshots(out string) []provisioner.RouterOSServiceSnapshot {
+	services := make([]provisioner.RouterOSServiceSnapshot, 0, 8)
+	current := map[string]string{}
+	flush := func() {
+		name := strings.TrimSpace(current["name"])
+		if validServiceName(name) {
+			disabled := strings.TrimSpace(current["disabled"])
+			services = append(services, provisioner.RouterOSServiceSnapshot{
+				Name:     name,
+				Address:  strings.TrimSpace(current["address"]),
+				Disabled: strings.EqualFold(disabled, "true") || strings.EqualFold(disabled, "yes"),
+			})
+		}
+		current = map[string]string{}
+	}
+	for _, raw := range strings.Split(out, "\n") {
+		line := strings.TrimSpace(raw)
+		if line == "" {
+			if len(current) > 0 {
+				flush()
+			}
+			continue
+		}
+		i := strings.Index(line, ":")
+		if i < 0 {
+			continue
+		}
+		key, value := strings.TrimSpace(line[:i]), strings.TrimSpace(line[i+1:])
+		// Some RouterOS terminals omit blank lines between value-list records.
+		if key == "name" && current["name"] != "" {
+			flush()
+		}
+		current[key] = value
+	}
+	if len(current) > 0 {
+		flush()
+	}
+	return services
 }
 
 // snapshotName builds a filesystem-safe on-device snapshot name.
