@@ -1,6 +1,7 @@
 package hub
 
 import (
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
@@ -9,6 +10,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"golang.org/x/crypto/curve25519"
 )
 
 // Scripts keep the WireGuard private key on the router. They never reset WAN,
@@ -17,6 +20,24 @@ type RouterScripts struct {
 	Bootstrap  string `json:"bootstrap_script"`
 	Setup      string `json:"router_script"`
 	Disconnect string `json:"disconnect_script"`
+}
+
+// GenerateRouterKeypair creates a WireGuard keypair for the one-paste setup.
+// The private key is returned only to the authenticated operator as part of a
+// no-store script response; it is never persisted by the application.
+func GenerateRouterKeypair() (privateKey, publicKey string, err error) {
+	private := make([]byte, 32)
+	if _, err := rand.Read(private); err != nil {
+		return "", "", err
+	}
+	private[0] &= 248
+	private[31] &= 127
+	private[31] |= 64
+	public, err := curve25519.X25519(private, curve25519.Basepoint)
+	if err != nil {
+		return "", "", err
+	}
+	return base64.StdEncoding.EncodeToString(private), base64.StdEncoding.EncodeToString(public), nil
 }
 
 func scriptNames(deviceID string) (string, string, error) {
@@ -99,6 +120,7 @@ func BuildRouterScripts(deviceID string, peer Peer) (RouterScripts, error) {
   :if ([/interface/wireguard/peers get $peer disabled]) do={ :error "STOP: existing Hub peer disabled" }
   :if ([:tostr [/interface/wireguard/peers get $peer allowed-address]] != "%s") do={ :error "STOP: existing allowed addresses differ" }
 }
+
 :local addr [/ip/address find where interface="%s"]
 :if ([:len $addr] > 1) do={ :error "STOP: unexpected interface addresses" }
 :if ([:len $addr] = 1) do={
@@ -142,4 +164,34 @@ func BuildRouterScripts(deviceID string, peer Peer) (RouterScripts, error) {
 :put "Tunnel disconnected locally. Hub allocation and router key preserved."
 }`, name, marker, peer.RouterPublicKey, name, marker, peer.HubPublicKey, name, marker, name, marker, peer.TunnelAddress)
 	return RouterScripts{Bootstrap: bootstrap, Setup: setup, Disconnect: disconnect}, nil
+}
+
+// BuildQuickConnectScript preserves the original one-paste operator workflow
+// while keeping the private key out of the Hub and database. The key is shown
+// only in this authenticated, no-store response and is installed locally by
+// the router. The normal ownership and route checks remain in the setup block.
+func BuildQuickConnectScript(deviceID string, peer Peer, privateKey string) (string, error) {
+	if !scriptKey(privateKey) {
+		return "", fmt.Errorf("invalid router private key")
+	}
+	scripts, err := BuildRouterScripts(deviceID, peer)
+	if err != nil {
+		return "", err
+	}
+	name, marker, err := scriptNames(deviceID)
+	if err != nil {
+		return "", err
+	}
+	insert := fmt.Sprintf(`
+# One-paste Magic Hub setup. The private key is installed only on this router.
+:local existing [/interface/wireguard find where name="%s"]
+:if ([:len $existing] = 0) do={
+  /interface/wireguard add name="%s" mtu=1280 private-key="%s" comment="%s"
+}
+`, name, name, privateKey, marker)
+	idx := strings.Index(scripts.Setup, ":local iface")
+	if idx < 0 {
+		return "", fmt.Errorf("invalid generated setup script")
+	}
+	return scripts.Setup[:idx] + insert + scripts.Setup[idx:], nil
 }

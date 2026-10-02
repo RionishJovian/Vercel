@@ -53,20 +53,16 @@ export function mountHubEnrollment(root, {api, escape:esc}) {
       if(busy || submit.disabled || !form.reportValidity())return;
       const values=new FormData(form);
       if(values.get('confirm_enrollment')!=='on'){status.textContent='Confirm that you authorize enrolling this gateway.';return;}
-      const publicKey=String(values.get('router_public_key')||'').trim();
-      if(!/^[A-Za-z0-9+/]{43}=$/.test(publicKey)){status.textContent='Paste the WireGuard public key, not a password or private key.';return;}
       busy=true;submit.disabled=true;status.textContent='Creating or verifying the Hub allocation…';
       try {
-        const result=await api.post(`/vps/peers/${encodeURIComponent(gateway)}/enroll`,{
-          router_public_key:publicKey,management_rest_port:Number(values.get('management_rest_port')),
+        const result=await api.post(`/vps/peers/${encodeURIComponent(gateway)}/quick-enroll`,{
+          management_rest_port:Number(values.get('management_rest_port')),
           confirm_enrollment:values.get('confirm_enrollment')==='on'
         });
         if(!container.isConnected)return;
-        if(result.state!=='hub_peer_enrolled'||result.router_configuration_required!==true)throw Error('unverified');
-        const panels=scriptPanel('setup','Connection — paste in WinBox New Terminal',result.router_script)+
-          `<details><summary>Disconnect this tunnel</summary><p>Disconnects this enrollment locally, preserving the key for reconnection. This does not delete the Hub allocation.</p>${scriptPanel('disconnect','Disconnect script',result.disconnect_script)}</details>`;
-        status.innerHTML=`<strong>Hub allocation confirmed — paste the connection script next</strong>
-          <p>Review the script, then paste the entire block into WinBox New Terminal. It does not enable management services or change existing WAN/LAN/firewall settings.</p>${panels}
+        if(result.state!=='hub_peer_enrolled'||result.router_configuration_required!==true||result.one_paste!==true)throw Error('unverified');
+        status.innerHTML=`<strong>One-paste script ready</strong>
+          <p>Copy the entire block into WinBox → New Terminal and press Enter. The router private key stays on the router and is not stored by the app.</p>${scriptPanel('setup','Connection — paste in WinBox New Terminal',result.router_script)}
           <dl><dt>Assigned address</dt><dd><code>${esc(result.tunnel_address)}</code></dd>
           <dt>Hub public key</dt><dd><code>${esc(result.hub_public_key||'Not reported')}</code></dd>
           <dt>Endpoint</dt><dd><code>${esc(result.endpoint||'Not reported')}</code></dd>
@@ -76,7 +72,7 @@ export function mountHubEnrollment(root, {api, escape:esc}) {
         if(!container.isConnected)return;
         status.textContent=error.status===503?'Enrollment is not enabled on this deployment yet. No connection was confirmed.':
           error.status===403?'Your account needs gateway-management permission and an active plan.':
-          'Enrollment was not confirmed. Retry with the same public key; do not create a replacement key.';
+          'One-paste enrollment was not confirmed. Retry once; no router changes were made.';
       } finally {
         busy=false;if(submit.isConnected)submit.disabled=false;
       }

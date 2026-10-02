@@ -1392,16 +1392,13 @@ function routerBoardPanel(routers, fleet, capabilityByID = new Map()) {
       </div>
       ${canEdit && router.deployment_layer === "MAIN_GATEWAY" ? `<div class="router-hub-check"><button class="btn btn-sm" type="button" data-hub-check="${esc(router.device_id)}">Check Magic Hub</button><div data-hub-status role="status" hidden></div>
         <details data-hub-enrollment="${esc(router.device_id)}"><summary>Connect Magic Hub</summary>
-          <h3>1. Prepare this gateway</h3><p>RouterOS 7: generate the first script, copy it into WinBox → New Terminal and run the entire block. Copy the printed <strong>public key</strong> back here. The private key stays on the router.</p>
-          <button class="btn" type="button" data-hub-bootstrap>Get preparation script</button><div data-hub-bootstrap-output aria-live="polite"></div>
-          <h3>2. Connect to Magic Hub</h3>
-          <form class="quick-config-form"><label>Router WireGuard public key<input name="router_public_key" required autocomplete="off" maxlength="44" spellcheck="false" placeholder="Paste the 44-character public key"></label>
-            <label>Router HTTPS management port<input name="management_rest_port" type="number" min="1" max="65535" value="443" required></label>
-            <label class="check-label"><input name="confirm_enrollment" type="checkbox" required> I authorize enrolling this gateway with this public key.</label>
-            <p class="muted small">This creates a Hub peer only. It does not open public management ports or change your router's firewall. Existing key changes require a separate repair workflow.</p>
-            <button type="submit" class="btn">Generate connection script</button><div role="status" aria-live="polite"></div>
+          <h3>1. Connect with one paste</h3><p>Magic Hub creates a one-time RouterOS script. Copy the entire block into WinBox → New Terminal and press Enter. The router keeps its private WireGuard key; no public-key copy step is required.</p>
+          <form class="quick-config-form"><label>Router HTTPS management port<input name="management_rest_port" type="number" min="1" max="65535" value="443" required></label>
+            <label class="check-label"><input name="confirm_enrollment" type="checkbox" required> I authorize a one-time Magic Hub script for this gateway.</label>
+            <p class="muted small">The script is shown once, expires with this response, and does not expose SSH or public management ports.</p>
+            <button type="submit" class="btn">Generate one-paste script</button><div role="status" aria-live="polite"></div>
           </form>
-          <h3>3. Verify the tunnel</h3><p>After running the connection script in WinBox, select Check Magic Hub above. Continue only after a recent tunnel handshake is confirmed. A saved record alone is not a connection.</p>
+          <h3>2. Verify the tunnel</h3><p>After running the script in WinBox, select Check Magic Hub above. Continue only after a recent tunnel handshake is confirmed. A saved record alone is not a connection.</p>
           <h3>4. Authenticate router management</h3><p>After the tunnel is verified, use a dedicated RouterOS account with SSH access. Keep SSH private: allow the app's tunnel address (10.77.0.9) only on the Magic Hub interface, ahead of your input drop rule. Do not expose SSH to the internet or replace existing firewall rules.</p>
           <p>On your own computer, obtain the SSH host fingerprint over the trusted local network: <code>ssh-keyscan -p 22 ROUTER_LAN_IP | ssh-keygen -lf -</code>. Verify that you are using the correct router, then paste its <code>SHA256:…</code> fingerprint. No automatic trust-on-first-use is used.</p>
           <form data-hub-management class="quick-config-form">
@@ -1670,7 +1667,7 @@ async function renderSites(main, workspace = location.hash === "#gateways" ? "ga
 
   if (gatewayOnly) {
     wireHubLookup(content); wireConns(main, conns, sites);
-    const {mountHubEnrollment}=await import("/assets/js/hub-enrollment.js?v=20261002-management-1");
+    const {mountHubEnrollment}=await import("/assets/js/hub-enrollment.js?v=20261003-one-paste-1");
     if(content.isConnected)mountHubEnrollment(content,{api:MM,escape:esc});
   }
   else wireAllowance(main, allowance, requests, allowanceKinds);

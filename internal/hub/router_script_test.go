@@ -62,3 +62,25 @@ func TestRouterScriptRejectsUnsafeAllocation(t *testing.T) {
 		t.Fatal("identity script injection")
 	}
 }
+
+func TestQuickConnectKeepsPrivateKeyOnlyInOnePasteScript(t *testing.T) {
+	privateKey, publicKey, err := GenerateRouterKeypair()
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := scriptFixture()
+	p.RouterPublicKey = publicKey
+	script, err := BuildQuickConnectScript("gateway", p, privateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(script, `private-key="`+privateKey+`"`) {
+		t.Fatal("one-paste script does not install the router key")
+	}
+	if !strings.Contains(script, "router key differs") || !strings.Contains(script, "persistent-keepalive=25s") {
+		t.Fatal("one-paste script lost setup guards")
+	}
+	if _, err := BuildQuickConnectScript("gateway", p, "not-a-key"); err == nil {
+		t.Fatal("invalid private key accepted")
+	}
+}
