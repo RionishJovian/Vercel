@@ -1,5 +1,38 @@
 # Current agent handoff
 
+## 2026-10-02 subscription-only policy — DEPLOYED
+
+Supersedes the older legacy plan-gate status below. The user hit the still-live
+Sovereign restriction after Hub rollout. The complete monthly/annual policy is
+now active, with one 14-day new-business trial and one 14-day transition trial
+for existing unpaid businesses. Migration reruns never extend trials. Existing
+paid periods and ledgers are preserved. Shared subscription middleware covers
+tenant APIs and separate media owner routes; expiry retains renewal/account
+recovery routes but not a role or tenant bypass. Legacy Sovereign quota sweep is
+disabled in this mode. New registration writes trial under tenant RLS.
+
+Production config defaults now bind environment-only subscription keys, tested
+without YAML keys. Cookie-based browser login responses omit reusable tokens.
+Hub guide has four visible steps, spaced controls, an unenrolled-gateway hint,
+and console navigation now preserves /app.html on refresh. Live read-only
+preparation script retrieval succeeded with the existing signed-in annual account;
+Hub lookup no longer returns Sovereign denial. The CHR record still has no
+verified Hub enrollment, so no live router success is claimed.
+
+Staged full Go/race suites and all three disposable subscription DB/HTTP tests
+passed without skips. Store, navigation, layout and Hub UI tests passed.
+Canonical deployment and SSH/capacity/store/session preflights passed.
+API active, landing/app/health 200; anonymous Hub and subscription APIs 401.
+Production was selectively patched, preserving unrelated dirty baseline work.
+Guest recovery, LAN rollout and physical MikroTik verification remain separate.
+
+Protected backup: /home/ubuntu/deploy-backups/subscription-20261002/.
+Policy drop-in: /etc/systemd/system/mega-magic-api.service.d/98-subscription-policy.conf.
+API binary SHA256: 3efa7f90a0325985177758c87ca4728431cc2e780692852573538e20351817bc.
+DB backup was verified with pg_restore --list before applying migration.
+Do not restore a production database just to roll back app code: preserve issued
+trial dates. See docs/SUBSCRIPTION-ONLY-ROLLOUT.md.
+
 ## 2026-10-02 Hub enrollment + management authentication — DEPLOYED
 
 Supersedes the older LOCAL ONLY enrollment/script notes below. User explicitly

@@ -479,6 +479,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("database.user", "mega_admin")
 	v.SetDefault("database.password", defaultDatabasePassword)
 	v.SetDefault("billing.receipt_dir", "./data/receipts")
+	v.SetDefault("billing.subscription_only", false)
+	v.SetDefault("billing.existing_account_policy", "require_payment")
 	v.SetDefault("billing.quota_enforcement_interval", "60s")
 	v.SetDefault("billing.telegram.enabled", false)
 	v.SetDefault("billing.telegram.bot_token", "")

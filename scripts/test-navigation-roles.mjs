@@ -19,4 +19,6 @@ for (const view of ["coins","unlockkeys"]) {
   assert.equal(context.canOpenView(view,{user:{user_role:"OWNER"},subscription:{mode:"legacy"}}),true);
 }
 assert.ok(source.includes('router.deployment_layer === "MAIN_GATEWAY"'));
+assert.ok(source.includes('history.pushState({}, "", "/app.html#" + next)'), 'refresh must stay in the console');
+assert.ok(!source.includes('"/#overview"'), 'overview must not route to the marketing page');
 console.log("Navigation checks passed: tenant/admin visibility, gateway route and role filtering.");

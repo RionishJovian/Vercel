@@ -10,6 +10,7 @@ const context=vm.createContext({encodeURIComponent,Date,Map,Number,String,
 vm.runInContext(source.slice(start,end),context);
 const gateway={device_id:'gateway/a',hardware_name:'Gateway',deployment_layer:'MAIN_GATEWAY'};
 assert(context.routerBoardPanel([gateway],{}).includes('data-hub-check='));
+for (const step of ['1. Prepare this gateway','2. Connect to Magic Hub','3. Verify the tunnel','4. Authenticate router management']) assert(context.routerBoardPanel([gateway],{}).includes(step));
 assert(!context.routerBoardPanel([{...gateway,deployment_layer:'ACCESS_POINT'}],{}).includes('data-hub-check='));
 context.ME.user.user_role='VIEWER';
 assert(!context.routerBoardPanel([gateway],{}).includes('data-hub-check='));
@@ -23,10 +24,12 @@ const pending=click();assert(button.disabled);await click();assert.equal(calls,1
 resolve({handshake_status:'recent_handshake',tunnel_address:'<img src=x>',last_handshake_at:null});await pending;
 assert(!button.disabled);assert(status.innerHTML.includes('Recent tunnel handshake'));assert(!status.innerHTML.includes('<img'));assert(status.innerHTML.includes('does not verify LAN access'));
 assert(context.hubLookupMarkup({handshake_status:'no_recent_handshake'}).includes('No recent tunnel handshake'));
-for(const code of ['plan_required','hub_lookup_disabled','hub_lookup_failed']) {
+for(const code of ['plan_required','subscription_required','hub_lookup_disabled','hub_lookup_failed']) {
   context.MM={get:async()=>{throw {data:{code},message:'INTERNAL_SECRET'};}};
   await click();assert(!status.textContent.includes('INTERNAL_SECRET'));assert(!button.disabled);
 }
+context.MM={get:async()=>{throw {status:404,data:{},message:'INTERNAL_SECRET'};}};
+await click();assert(status.textContent.includes('Open Connect Magic Hub'));
 context.MM={get:()=>new Promise(r=>resolve=r)};
 const stale=click();const previous=status.innerHTML;status.isConnected=false;
 resolve({handshake_status:'inactive'});await stale;assert.equal(status.innerHTML,previous,'detached page updated');

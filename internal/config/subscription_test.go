@@ -1,9 +1,27 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestSubscriptionRolloutEnvironmentWithoutYAMLKeys(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte("environment: test\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("BILLING_SUBSCRIPTION_ONLY", "true")
+	t.Setenv("BILLING_EXISTING_ACCOUNT_POLICY", "require_payment")
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Billing.SubscriptionOnly || cfg.Billing.ExistingAccountPolicy != "require_payment" {
+		t.Fatal("subscription environment override ignored")
+	}
+}
 
 func TestSubscriptionRolloutRequiresPaymentPolicy(t *testing.T) {
 	for _, policy := range []string{"", "grandfather", "unknown"} {

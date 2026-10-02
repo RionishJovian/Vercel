@@ -2127,6 +2127,13 @@ body.page-pricing {
 .page-app .router-hub-check [data-hub-status] { margin-top: 12px; font-size: 13px; }
 .page-app .router-hub-check dl { padding: 12px 0; }
 .page-app .router-hub-check p { margin: 0; }
+.page-app [data-hub-enrollment] { margin-top: 16px; padding: 16px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); }
+.page-app [data-hub-enrollment] summary { cursor: pointer; font-weight: 650; }
+.page-app [data-hub-enrollment] h3 { margin: 24px 0 10px; font-size: 17px; line-height: 1.4; }
+.page-app [data-hub-enrollment] p { margin: 0 0 14px; line-height: 1.65; }
+.page-app [data-hub-enrollment] textarea { width: 100%; min-height: 140px; margin: 12px 0; padding: 12px; resize: vertical; font-family: var(--font-mono); }
+.page-app [data-hub-enrollment] .quick-config-form input:not([type="checkbox"]) { width: 100%; min-height: 44px; padding: 10px 12px; color: var(--foreground); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.page-app [data-hub-enrollment] .check-label { display: flex; gap: 10px; align-items: flex-start; line-height: 1.5; }
 
 .page-app .store-hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(210px, .35fr); gap: 24px; align-items: center; padding: 28px; background: linear-gradient(135deg, var(--surface), var(--surface-elevated)); }
 .page-app .store-wallet { display: grid; gap: 5px; padding: 20px; background: var(--primary-soft); border: 1px solid var(--border); border-radius: var(--radius-md); }

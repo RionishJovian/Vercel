@@ -1,11 +1,34 @@
-# Subscription-only rollout — NOT enabled
+# Subscription-only rollout — enabled on 2026-10-02
+
+## Live rollout
+
+The app now runs with `BILLING_SUBSCRIPTION_ONLY=true` and
+`BILLING_EXISTING_ACCOUNT_POLICY=require_payment`. New businesses get one
+14-day trial; existing unsubscribed businesses received one transition trial.
+The additive migration was applied after a protected, verified database backup.
+Existing trials and approved paid periods are preserved. No Sovereign pass is
+required for Hub operations during an active trial or monthly/annual subscription.
+Owner/admin, tenant, CSRF, suspension and router authentication checks remain.
+
+Production was patched selectively; unrelated guest recovery and LAN features
+were not enabled. Staged full Go and race suites passed. All three disposable
+subscription database/HTTP tests passed without skips, including renewal,
+concurrency, expiry recovery, role/tenant denial and cookie write protection.
+Environment-only policy loading now has explicit defaults and a regression test.
+
+Rollback source, binary and database backup:
+`/home/ubuntu/deploy-backups/subscription-20261002/` on the app VPS.
+The policy drop-in is `98-subscription-policy.conf`. An application rollback
+must also revert that drop-in; never delete or restart issued trial periods.
+
+## Previous implementation checklist (historical)
 
 User-confirmed policy: newly registered businesses receive one 14-day trial;
 monthly or annual payment is required afterwards. Guest internet/media sales,
 tenant isolation, roles, suspension, authentication and operational approvals
 are separate and must remain enforced.
 
-Current state: local startup/routes and Store UI wiring implemented, NOT deployed.
+Pre-rollout state: local startup/routes and Store UI wiring implemented, NOT deployed.
 Shared access middleware covers protected app routes and separate media/guest
 voucher owner groups. Registration and legacy-gate switches are configured together;
 legacy Sovereign expiry sweep is off only in subscription-only mode. Startup checks
