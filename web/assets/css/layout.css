@@ -1,0 +1,73 @@
+/* Shared frame contract. Guest artwork and media-specific design stay separate. */
+.page-app {
+  --workspace-gap: 20px;
+  --panel-inset: 20px;
+}
+.page-app [hidden] { display: none !important; }
+.page-app main, .page-app #content,
+.page-app .panel, .page-app .panel-body,
+.page-app .grid-2 > *, .page-app .profile-grid > * { min-width: 0; }
+.page-app #content {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--workspace-gap);
+}
+/* Empty alert/form anchors must not create invisible spacer tracks. */
+.page-app #content > :is([id$="-alert"], #tp-add, #pulse-strip):empty { display: none; }
+.page-app #content > :not(dialog) { margin-block: 0 !important; }
+.page-app #content > .panel + .panel { margin-top: 0 !important; }
+.page-app .panel-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+  padding: 16px var(--panel-inset);
+}
+.page-app .panel-head > :first-child { min-width: 0; }
+.page-app .panel-head .panel-title { margin: 0; }
+.page-app .panel-head p { margin: 6px 0 0; }
+.page-app .panel-head > .btn { flex-shrink: 0; }
+.page-app .panel-body { padding: var(--panel-inset); }
+.page-app .panel-body > :first-child { margin-top: 0; }
+.page-app .panel-body > :last-child { margin-bottom: 0; }
+.page-app .workspace-actions, .page-app .form-actions,
+.page-app .dialog-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.page-app .workspace-actions { justify-content: flex-start; }
+.page-app .field > label:has(input[type="checkbox"]),
+.page-app .field > label:has(input[type="radio"]) {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0;
+  line-height: 1.5;
+}
+.page-app .field input[type="checkbox"], .page-app .field input[type="radio"] {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  margin: 0;
+}
+.page-app select.input { min-height: 40px; padding: 8px 12px; }
+.page-app .record-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 20px;
+}
+.page-app .record-form-grid > .field { min-width: 0; margin: 0; }
+.page-app .record-form-grid > .btn { justify-self: start; grid-column: 1 / -1; }
+.page-app .record-form-grid > .workspace-actions { grid-column: 1 / -1; }
+.page-app .record-form-grid > [role="status"],
+.page-app .record-form-grid > #cs-msg { grid-column: 1 / -1; }
+.page-app .panel-body:has(> table), .page-app .tablewrap { overflow-x: auto; }
+.page-app .routerboard-card, .page-app .store-product { min-width: 0; }
+.page-app .routerboard-card dd { overflow-wrap: anywhere; }
+.page-app dialog { max-width: calc(100vw - 32px); max-height: calc(100dvh - 32px); overflow: auto; }
+@media (max-width: 700px) {
+  .page-app { --workspace-gap: 16px; --panel-inset: 16px; }
+  .page-app .record-form-grid { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .page-app .panel-head { align-items: flex-start; }
+  .page-app .panel-head > .btn { margin-left: 0; }
+  .page-app .workspace-actions > .btn { max-width: 100%; white-space: normal; }
+}

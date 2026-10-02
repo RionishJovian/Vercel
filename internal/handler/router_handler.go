@@ -15,10 +15,11 @@ import (
 )
 
 type RouterHandler struct {
-	db         *database.DB
-	deviceRepo *database.DeviceRepository
-	allowRepo  *database.DeviceAllowanceRepository
-	messaging  MessagingClient
+	SubscriptionOnly bool
+	db               *database.DB
+	deviceRepo       *database.DeviceRepository
+	allowRepo        *database.DeviceAllowanceRepository
+	messaging        MessagingClient
 }
 
 type MessagingClient interface {
@@ -199,7 +200,7 @@ func (h *RouterHandler) CreateRouter(c *gin.Context) {
 		}
 		// Access points are reported separately; the ported grant never defined
 		// an access-point limit, so do not invent one here.
-		if kind != "" {
+		if kind != "" && !h.SubscriptionOnly {
 			if err := h.allowRepo.CheckCapacityTXN(tx, businessID, kind); err != nil {
 				return err
 			}

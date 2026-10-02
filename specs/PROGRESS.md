@@ -6,6 +6,11 @@
 
 # Mega Magic — Progress Status
 
+> **Historical progress record:** this document contains dated and sometimes
+> conflicting milestones. Its former “canonical status” claim is superseded by
+> [CURRENT-HANDOFF.md](../docs/CURRENT-HANDOFF.md). Preserve the history, but do
+> not infer current migration, deployment or production verification from it.
+
 **Updated:** 2026-09-26 · **Repo:** `mega-magic-project` (V-language VSL, ~11,600 LOC) · **Tree:** clean, vet+build green
 
 This file is the canonical, git-tracked status snapshot. Re-run it after any significant milestone. It survives context compaction — treat it as source of truth for "where the project stands."
@@ -150,3 +155,30 @@ Two queued follow-ups (require an explicit decision):
 1. **DB integration harness — DONE (`e5604c5`)** — money-path SQL (claim race → 409, rollback) now DB-proven, then reused to prove RLS isolation (`aa9ee10`).
 2. **RLS enforcement — locked down through keystone + portal/device + webhook (`aa9ee10`→`d39a553`)** — restricted pool + tenant connection pinning (flag `database.rls_enforce`, default off) applies RLS at the **connection level**, DB-proven cross-business-blocked. **~43 of 67 bare calls converted + real-DB-proven** across money path, alerting, telemetry, portal config/session, device request paths, and webhook (schema-drift fixed + notifier worker tenant-wrapped — outbound webhooks survive enforcement). 4 same-class policy fixes (quota, alert_policies, telemetry, webhook). **System-level by design (NOT converted):** sweep worker / `ListAllPeerKeys` (cross-tenant hub loop), `GetActiveByMAC` (anonymous seam), login-time `FindByEmail`/`UpdateLastLogin` (pre-context). **Remaining slices:** user (register-only), heartbeat (worker pattern), audit (system-appended). Cross-tenant probes return 404 (no existence leak).
 3. **Portal — PRODUCT BUILT (`cf46329`)** — the captive-portal surface now exists, built on the RLS-secure foundation. Decision (yours, earlier): **anonymous customer at the portal, MAC-anchored**. Resolution is **device-anchored**: a client's tenant = the business of the AP/router (`device_id`) they're attached to, not the code (codes are only business-unique) and not a session. Public `/api/v1/portal/:deviceId/{config,redeem}` + `/status` (anonymous, no auth) re-use the ONE shared redemption core (owner endpoint + portal both call it) — cross-business redemption impossible by construction, real-DB-proven. Staff `protected./portal/config` GET/PUT. Follow-ups: HTTP-boot integration test (harness proves mechanism, not a booted server); the ~34/67 remaining bare sites if full RLS coverage is wanted.
+## 2026-10-02 GitHub progress checkpoint (not a deployment)
+
+This checkpoint saves the remaining local source, migrations, UI assets, tests
+and rollout notes. It is not a claim that all features are production-ready.
+See `docs/CURRENT-HANDOFF.md` for deployed-versus-local status and open work.
+
+- Hub: create-only signed enrollment backend and guided admin UI implemented
+  locally; live Hub patch/flag rollout remains pending.
+- LAN: gateway-pinned SSH forwarding, expiry/revocation session lifecycle and
+  authenticated control handlers tested locally. Fresh LAN discovery, runtime
+  wiring, isolated device-access frontend and analytics integration remain open.
+- Guest access: provisioning/recovery/reconciliation and receipt-fencing code
+  saved with explicit migrations; opt-in rollout and remaining integration checks
+  are still required. Physical MikroTik acceptance is deferred.
+- Subscriptions: monthly/annual policy and 14-day new/transition trials saved;
+  production migration and activation must follow the rollout checklist.
+- Media, portal hardening, layout and Magic Dude progress are included with their
+  tests and feature-specific documentation; consult handoff before deploying.
+
+Validation for this checkpoint: full `go test ./...` passed; database/hardware
+integration tests requiring external fixtures are not claimed by that run.
+Local Hub enrollment, guest voucher, layout, Magic Dude, media, navigation,
+network workspace, map, subscription and voucher-pagination JS checks passed.
+Hub source-snapshot and VPS revenue SQL checks were not revalidated here:
+the former requires an inspected source fixture; the latter needs SSH access.
+Secret scan findings were only deliberate invalid-credential test examples.
+Local `config.yaml`, environment secrets and build binaries remain excluded.

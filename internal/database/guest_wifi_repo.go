@@ -20,11 +20,11 @@ func NewBusinessTelegramBotRepository(db *DB) *BusinessTelegramBotRepository {
 	return &BusinessTelegramBotRepository{db: db}
 }
 
-const botCols = `business_id, bot_token, target_chat_id, enabled, created_at, updated_at`
+const botCols = `business_id, bot_token, target_chat_id, approver_user_id, enabled, created_at, updated_at`
 
 func scanBot(row interface{ Scan(...interface{}) error }) (*model.BusinessTelegramBot, error) {
 	b := &model.BusinessTelegramBot{}
-	err := row.Scan(&b.BusinessID, &b.BotToken, &b.TargetChatID, &b.Enabled, &b.CreatedAt, &b.UpdatedAt)
+	err := row.Scan(&b.BusinessID, &b.BotToken, &b.TargetChatID, &b.ApproverUserID, &b.Enabled, &b.CreatedAt, &b.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -46,15 +46,26 @@ func (r *BusinessTelegramBotRepository) GetByBusinessTXN(tx *sql.Tx, businessID 
 
 // Upsert binds/writes a business's own bot. IF NOT EXISTS semantics via upsert.
 func (r *BusinessTelegramBotRepository) Upsert(b *model.BusinessTelegramBot) error {
-	_, err := r.db.Exec(
-		`INSERT INTO business_telegram_bots (business_id, bot_token, target_chat_id, enabled, updated_at)
-		 VALUES ($1, $2, $3, $4, now())
+	return upsertBot(r.db, b)
+}
+
+func (r *BusinessTelegramBotRepository) UpsertTXN(tx *sql.Tx, b *model.BusinessTelegramBot) error {
+	return upsertBot(tx, b)
+}
+
+func upsertBot(exec interface {
+	Exec(string, ...any) (sql.Result, error)
+}, b *model.BusinessTelegramBot) error {
+	_, err := exec.Exec(
+		`INSERT INTO business_telegram_bots (business_id, bot_token, target_chat_id, approver_user_id, enabled, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, now())
 		 ON CONFLICT (business_id) DO UPDATE SET
 			bot_token = EXCLUDED.bot_token,
 			target_chat_id = EXCLUDED.target_chat_id,
+			approver_user_id = EXCLUDED.approver_user_id,
 			enabled = EXCLUDED.enabled,
 			updated_at = now()`,
-		b.BusinessID, b.BotToken, b.TargetChatID, b.Enabled)
+		b.BusinessID, b.BotToken, b.TargetChatID, b.ApproverUserID, b.Enabled)
 	return err
 }
 
@@ -162,7 +173,7 @@ func (r *GuestPurchaseRequestRepository) GetForDecisionTXN(tx *sql.Tx, businessI
 func (r *GuestPurchaseRequestRepository) LatestGraceTXN(tx *sql.Tx, businessID, deviceID, mac string) (*model.GuestPurchaseRequest, error) {
 	return scanGuestRequest(tx.QueryRow(`SELECT `+guestRequestCols+` FROM guest_purchase_requests
 	 WHERE business_id=$1 AND device_id=$2 AND upper(client_mac)=$3
-	 AND created_at > now() - interval '24 hours' ORDER BY created_at DESC LIMIT 1`, businessID, deviceID, mac))
+	 ORDER BY created_at DESC, id DESC LIMIT 1`, businessID, deviceID, mac))
 }
 
 func (r *GuestPurchaseRequestRepository) ListByBusinessTXN(tx *sql.Tx, businessID string, limit int) ([]*model.GuestPurchaseRequest, error) {
@@ -203,6 +214,19 @@ func (r *GuestPurchaseRequestRepository) RejectRequestTXN(tx *sql.Tx, businessID
 func (r *GuestPurchaseRequestRepository) SetReceiptPathTXN(tx *sql.Tx, businessID, id, path string) error {
 	_, err := tx.Exec(`UPDATE guest_purchase_requests SET receipt_path=$3, updated_at=now() WHERE id=$1 AND business_id=$2`, id, businessID, path)
 	return err
+}
+
+// SubmitPaymentDetailsTXN atomically checks that the request is still awaiting
+// payment inside its deadline. A decision or expiry racing an upload wins.
+func (r *GuestPurchaseRequestRepository) SubmitPaymentDetailsTXN(tx *sql.Tx, businessID, id, phone, last6, path string) (bool, error) {
+	result, err := tx.Exec(`UPDATE guest_purchase_requests
+	 SET paid_phone=$3, tx_last6=$4, receipt_path=COALESCE(NULLIF($5,''),receipt_path), updated_at=now()
+	 WHERE id=$1 AND business_id=$2 AND status='pending' AND grace_expires_at > clock_timestamp()`, id, businessID, phone, last6, path)
+	if err != nil {
+		return false, err
+	}
+	rows, err := result.RowsAffected()
+	return rows == 1, err
 }
 
 // SetMMQRDetailsTXN records the payer's phone + last-6 transaction digits after

@@ -1,0 +1,21 @@
+--- a/service.mjs
++++ b/service.mjs
+@@ -662,6 +662,18 @@
+     }
+   }
+ 
++  if (req.method === "GET" && byRouter) {
++    if (auth.scope !== "peers:inspect") return json(res, 401, { error: "unauthorized" });
++    const routerId = decodeURIComponent(byRouter[1]);
++    if (routerId !== auth.routerId) return json(res, 401, { error: "unauthorized" });
++    const peer = peers.find(
++      (p) => p.routerId === routerId &&
++        p.tenantId === auth.tenantId && p.state !== "removed",
++    );
++    if (!peer) return json(res, 404, { error: "not_found" });
++    return json(res, 200, publicPeer(peer));
++  }
++
+   if (req.method === "PUT" && byRouter) {
+     if (auth.scope !== "peers:create") return json(res, 401, { error: "unauthorized" });
+     const routerId = decodeURIComponent(byRouter[1]);

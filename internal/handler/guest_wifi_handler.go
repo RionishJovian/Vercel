@@ -2,7 +2,9 @@ package handler
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"io"
 	"net"
@@ -54,15 +56,16 @@ func findGuestPlan(plans []model.GuestPlan, key string) *model.GuestPlan {
 //   - BRIDGE: the same shared decide-core is used by the owner's per-business
 //     Telegram bot so HTTP and bot act identically (single money path).
 type GuestWifiHandler struct {
-	db          *database.DB
-	deviceRepo  *database.DeviceRepository
-	botRepo     *database.BusinessTelegramBotRepository
-	reqRepo     *database.GuestPurchaseRequestRepository
-	configRepo  *database.PortalConfigRepository
-	quotaRepo   *database.BusinessMeteredQuotaRepository
-	receiptRoot string
-	svcFmt      func(token string) (telegram.Messenger, bool) // build messenger from an owner token
-	graceRouter interface {
+	db             *database.DB
+	deviceRepo     *database.DeviceRepository
+	botRepo        *database.BusinessTelegramBotRepository
+	reqRepo        *database.GuestPurchaseRequestRepository
+	configRepo     *database.PortalConfigRepository
+	quotaRepo      *database.BusinessMeteredQuotaRepository
+	receiptRoot    string
+	graceCookieKey []byte
+	svcFmt         func(token string) (telegram.Messenger, bool) // build messenger from an owner token
+	graceRouter    interface {
 		ConfigureGuestGrace(context.Context, string, string, routeros.GuestGrace) error
 		DecideGuestAccess(context.Context, string, string, string, string, bool, int, int) error
 	}
@@ -143,6 +146,10 @@ func (h *GuestWifiHandler) PublicGuestPurchase(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "mobile payment is disabled for this portal"})
 		return
 	}
+	if cfg.ConsentRequired && c.PostForm("consent") != "true" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "accept the hotspot terms before starting payment"})
+		return
+	}
 
 	planKey := strings.TrimSpace(c.PostForm("plan_key"))
 	if planKey == "" {
@@ -177,31 +184,64 @@ func (h *GuestWifiHandler) PublicGuestPurchase(c *gin.Context) {
 	}
 
 	now := time.Now().UTC()
+	cookieClaim, cookieErr := h.readGuestGraceCookie(c, dev.BusinessID, deviceID, now)
+	if cookieErr != nil {
+		respondErr(c, cookieErr)
+		return
+	}
 	graceStart := now
 	graceExpires := voucher.ExtendExpiry(nil, now, graceMinutes)
 
 	var req *model.GuestPurchaseRequest
 	createdGrace := false
 	err = withDeviceTenant(h.db, dev.BusinessID, func(tx *sql.Tx) error {
-		// Serialize concurrent purchase clicks for this tenant/device/client. A
-		// retry resumes the same allowance rather than receiving another 50 MB.
+		// Keep lock order consistent with the non-cookie purchase path.
 		if _, e := tx.Exec(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, dev.BusinessID+":"+deviceID+":"+clientMAC); e != nil {
 			return e
 		}
+		if cookieClaim != nil {
+			// Lock the original request against concurrent owner decisions. The
+			// cookie proves only possession; all state comes from tenant storage.
+			prior, e := h.reqRepo.GetForDecisionTXN(tx, dev.BusinessID, cookieClaim.Request)
+			if e != nil {
+				return e
+			}
+			if e := checkGuestCookieRequest(prior, *cookieClaim, clientMAC, now); e != nil {
+				return e
+			}
+		}
+		// Serialize concurrent purchase clicks for this tenant/device/client. A
+		// retry resumes the same allowance rather than receiving another 50 MB.
 		previous, e := h.reqRepo.LatestGraceTXN(tx, dev.BusinessID, deviceID, clientMAC)
 		if e != nil {
 			return e
 		}
 		if previous != nil {
-			if previous.Status != "pending" || previous.GraceExpiresAt == nil || !now.Before(*previous.GraceExpiresAt) {
-				return &httpError{status: http.StatusTooManyRequests, msg: "temporary access has already been used; contact the hotspot owner"}
+			resume, retryErr := guestGraceRetry(previous, now)
+			if retryErr != nil {
+				return retryErr
 			}
-			if previous.PlanKey != plan.Key {
+			if resume && previous.PlanKey != plan.Key {
 				return &httpError{status: http.StatusConflict, msg: "a purchase is already pending for this device"}
 			}
-			req = previous
-			graceExpires = *previous.GraceExpiresAt
-			return nil
+			if !resume {
+				// Remove only this failed request's router user, never a paid or
+				// unrelated account. Close its pending decision before retrying.
+				if e := h.graceRouter.DecideGuestAccess(c.Request.Context(), dev.BusinessID, deviceID, previous.ID, clientMAC, false, 0, 0); e != nil {
+					return &httpError{status: http.StatusBadGateway, msg: "could not close the previous temporary session"}
+				}
+				if previous.Status == "pending" {
+					if _, e := h.reqRepo.RejectRequestTXN(tx, dev.BusinessID, previous.ID, now); e != nil {
+						return e
+					}
+				}
+				previous = nil
+			}
+			if resume {
+				req = previous
+				graceExpires = *previous.GraceExpiresAt
+				return nil
+			}
 		}
 		r, e := h.reqRepo.CreateTXN(tx, &model.GuestPurchaseRequest{
 			BusinessID:     dev.BusinessID,
@@ -219,6 +259,9 @@ func (h *GuestWifiHandler) PublicGuestPurchase(c *gin.Context) {
 			return e
 		}
 		req = r
+		// PostgreSQL stores microsecond precision. Use its returned deadline for
+		// both router provisioning and the response, including future resumes.
+		graceExpires = *r.GraceExpiresAt
 		if e := h.graceRouter.ConfigureGuestGrace(c.Request.Context(), dev.BusinessID, deviceID, routeros.GuestGrace{RequestID: r.ID, ClientMAC: clientMAC, Minutes: graceMinutes, DataMB: r.GraceDataMB, ExpiresAt: graceExpires}); e != nil {
 			return &httpError{status: http.StatusBadGateway, msg: "temporary internet could not be configured; the hotspot owner should check router connectivity and MAC login settings"}
 		}
@@ -235,6 +278,7 @@ func (h *GuestWifiHandler) PublicGuestPurchase(c *gin.Context) {
 		return
 	}
 
+	h.writeGuestGraceCookie(c, dev.BusinessID, deviceID, req.ID, now)
 	c.JSON(http.StatusCreated, gin.H{
 		"request_id":       req.ID,
 		"status":           req.Status,
@@ -280,37 +324,70 @@ func (h *GuestWifiHandler) PublicAttachReceipt(c *gin.Context) {
 		return
 	}
 	// Grace-window gate: the receipt must arrive while the free session is live.
-	if req.GraceExpiresAt == nil || now.After(*req.GraceExpiresAt) {
+	if req.GraceExpiresAt == nil || !now.Before(*req.GraceExpiresAt) {
 		c.JSON(http.StatusGone, gin.H{"error": "grace window expired; contact the hotspot owner"})
 		return
 	}
 
-	// Capture the receipt (0600, tenant-scoped) then bind its path in-tenant.
-	if fileHeader, ferr := c.FormFile("receipt"); ferr == nil && fileHeader != nil {
-		if f, oerr := fileHeader.Open(); oerr == nil {
-			data, rerr := io.ReadAll(io.LimitReader(f, maxReceiptBytes))
-			_ = f.Close()
-			if rerr == nil {
-				var savedPath string
-				if path, serr := billing.SaveReceipt(h.receiptRoot, req.BusinessID, req.ID, data); serr == nil {
-					savedPath = path
-				}
-				if savedPath != "" {
-					_ = withDeviceTenant(h.db, req.BusinessID, func(rtx *sql.Tx) error {
-						return h.reqRepo.SetReceiptPathTXN(rtx, req.BusinessID, req.ID, savedPath)
-					})
-				}
-			}
-		}
-	}
-
-	// Capture the payer's phone + last-6 (MMQR) so the OWNER can verify.
 	phone := strings.TrimSpace(c.PostForm("paid_phone"))
 	last6 := strings.TrimSpace(c.PostForm("tx_last6"))
-	if phone != "" || last6 != "" {
-		_ = withDeviceTenant(h.db, req.BusinessID, func(ptx *sql.Tx) error {
-			return h.reqRepo.SetMMQRDetailsTXN(ptx, req.BusinessID, req.ID, phone, last6)
-		})
+	if !validGuestPaymentDetails(phone, last6) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "enter a valid payer phone and six transaction digits"})
+		return
+	}
+	var savedPath string
+	fileHeader, ferr := c.FormFile("receipt")
+	if ferr != nil && !errors.Is(ferr, http.ErrMissingFile) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid receipt upload"})
+		return
+	}
+	if fileHeader != nil {
+		f, err := fileHeader.Open()
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "cannot read receipt"})
+			return
+		}
+		data, err := io.ReadAll(io.LimitReader(f, maxReceiptBytes+1))
+		_ = f.Close()
+		if err != nil || len(data) == 0 || len(data) > maxReceiptBytes {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "receipt must be a photo no larger than 5 MiB"})
+			return
+		}
+		mime := http.DetectContentType(data)
+		if mime != "image/jpeg" && mime != "image/png" && mime != "image/webp" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "receipt must be JPEG, PNG or WebP"})
+			return
+		}
+		var nonce [16]byte
+		if _, err = rand.Read(nonce[:]); err == nil {
+			savedPath, err = billing.SaveReceipt(h.receiptRoot, req.BusinessID, req.ID+"-"+hex.EncodeToString(nonce[:]), data)
+		}
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "receipt could not be saved; try again"})
+			return
+		}
+	}
+	err = database.WithTenant(tx, req.BusinessID, func() error {
+		updated, err := h.reqRepo.SubmitPaymentDetailsTXN(tx, req.BusinessID, req.ID, phone, last6, savedPath)
+		if err != nil {
+			return err
+		}
+		if !updated {
+			return &httpError{http.StatusGone, "payment window expired or request already decided"}
+		}
+		return nil
+	})
+	if err == nil {
+		err = tx.Commit()
+	}
+	if err != nil {
+		var he *httpError
+		if errors.As(err, &he) {
+			c.JSON(he.status, gin.H{"error": he.msg})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "payment details could not be saved"})
+		}
+		return
 	}
 
 	// Ping the OWNER's own bot (per-business binding) so they know a guest
@@ -318,7 +395,27 @@ func (h *GuestWifiHandler) PublicAttachReceipt(c *gin.Context) {
 	// missing/inactive bot binding must NOT fail the guest's submission.
 	h.notifyOwnerPurchase(req, phone, last6)
 
-	c.JSON(http.StatusOK, gin.H{"request_id": req.ID, "status": req.Status, "receipt_attached": true})
+	c.JSON(http.StatusOK, gin.H{"request_id": req.ID, "status": req.Status, "receipt_attached": savedPath != "", "payment_details_saved": true})
+}
+
+func validGuestPaymentDetails(phone, last6 string) bool {
+	if len(phone) < 7 || len(phone) > 16 || len(last6) != 6 {
+		return false
+	}
+	for i, r := range phone {
+		if r == '+' && i == 0 {
+			continue
+		}
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	for _, r := range last6 {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // notifyOwnerPurchase sends the owner's bound bot a verification prompt for a
@@ -346,12 +443,12 @@ func (h *GuestWifiHandler) notifyOwnerPurchase(req *model.GuestPurchaseRequest, 
 		return
 	}
 	text := "🛜 Guest paid — approve?"
-	text += "\nRequest: " + req.ID
+	text += "\nOrder: " + telegram.OrderReference(req.ID)
 	if req.PlanKey != "" {
 		text += "\nPlan: " + req.PlanKey
 	}
 	if req.Amount > 0 {
-		text += "\nAmount: " + strconv.Itoa(req.Amount) + " MMK"
+		text += "\nAmount: " + telegram.FormatMMK(req.Amount)
 	}
 	if phone != "" {
 		text += "\nPaid phone: " + phone
@@ -365,7 +462,7 @@ func (h *GuestWifiHandler) notifyOwnerPurchase(req *model.GuestPurchaseRequest, 
 		_ = bot.SendButtons(target, text, req.ID)
 		return
 	}
-	_ = msg.SendMessage(target, text+"\n\nReply: approve "+req.ID+"  /  reject "+req.ID)
+	_ = msg.SendMessage(target, text+"\n\nReview this payment in Mega Magic to approve or reject it.")
 }
 
 // GetBotBinding: GET /api/v1/guest-wifi/telegram-bot — returns the owner's own
@@ -389,12 +486,13 @@ func (h *GuestWifiHandler) GetBotBinding(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
 		return
 	}
-	out := gin.H{"enabled": false, "target_chat_id": 0, "bot_token": ""}
+	out := gin.H{"enabled": false, "target_chat_id": 0, "approver_user_id": 0, "bot_token": ""}
 	if bot != nil {
 		out = gin.H{
-			"enabled":        bot.Enabled,
-			"target_chat_id": bot.TargetChatID,
-			"bot_token":      maskToken(bot.BotToken),
+			"enabled":          bot.Enabled,
+			"target_chat_id":   bot.TargetChatID,
+			"approver_user_id": bot.ApproverUserID,
+			"bot_token":        maskToken(bot.BotToken),
 		}
 	}
 	c.JSON(http.StatusOK, out)
@@ -409,12 +507,17 @@ func (h *GuestWifiHandler) PutBotBinding(c *gin.Context) {
 		return
 	}
 	var body struct {
-		BotToken     string `json:"bot_token"`
-		TargetChatID int64  `json:"target_chat_id"`
-		Enabled      bool   `json:"enabled"`
+		BotToken       string `json:"bot_token"`
+		TargetChatID   int64  `json:"target_chat_id"`
+		ApproverUserID int64  `json:"approver_user_id"`
+		Enabled        bool   `json:"enabled"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if body.ApproverUserID < 0 || body.ApproverUserID > 9007199254740991 || (body.Enabled && (body.ApproverUserID == 0 || body.TargetChatID == 0)) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Enter a positive Telegram user ID and an approval chat ID before enabling approvals"})
 		return
 	}
 	token := strings.TrimSpace(body.BotToken)
@@ -442,18 +545,19 @@ func (h *GuestWifiHandler) PutBotBinding(c *gin.Context) {
 		}
 	}
 	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
-		return h.botRepo.Upsert(&model.BusinessTelegramBot{
-			BusinessID:   businessID,
-			BotToken:     token,
-			TargetChatID: body.TargetChatID,
-			Enabled:      body.Enabled,
+		return h.botRepo.UpsertTXN(tx, &model.BusinessTelegramBot{
+			BusinessID:     businessID,
+			BotToken:       token,
+			TargetChatID:   body.TargetChatID,
+			ApproverUserID: body.ApproverUserID,
+			Enabled:        body.Enabled,
 		})
 	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"enabled": body.Enabled, "target_chat_id": body.TargetChatID, "bot_token": maskToken(token)})
+	c.JSON(http.StatusOK, gin.H{"enabled": body.Enabled, "target_chat_id": body.TargetChatID, "approver_user_id": body.ApproverUserID, "bot_token": maskToken(token)})
 }
 
 // TestBotBinding: POST /api/v1/guest-wifi/telegram-bot/test — verifies the

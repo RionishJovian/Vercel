@@ -258,7 +258,7 @@ func TestPurchaseBridge_decidesApprove(t *testing.T) {
 		t.Fatalf("decisions = %v, want one approve", dec.decisions)
 	}
 	// ack sent
-	if len(msgr.sent) != 1 || !strings.Contains(msgr.sent[0], "pur-1 approved") {
+	if len(msgr.sent) != 1 || !strings.Contains(msgr.sent[0], "Order #PUR1 approved") {
 		t.Fatalf("acks = %v, want success ack", msgr.sent)
 	}
 }

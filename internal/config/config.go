@@ -8,10 +8,12 @@ import (
 
 	"github.com/spf13/viper"
 
+	"mega-magic/internal/hub"
 	"mega-magic/internal/secretbox"
 )
 
 type Config struct {
+	Media       MediaConfig       `mapstructure:"media"`
 	Environment string            `mapstructure:"environment"`
 	Server      ServerConfig      `mapstructure:"server"`
 	Database    DatabaseConfig    `mapstructure:"database"`
@@ -32,6 +34,11 @@ type Config struct {
 	GuestWifi   GuestWifiConfig   `mapstructure:"guest_wifi"`
 }
 
+// Pilot integration is disabled until its migration and acceptance checks pass.
+type MediaConfig struct {
+	ConnectorEnabled bool `mapstructure:"connector_enabled"`
+}
+
 // AIConfig configures the AI/scanning service. Disabled by default.
 type AIConfig struct {
 	Enabled         bool   `mapstructure:"enabled"`
@@ -43,6 +50,10 @@ type AIConfig struct {
 	OpenRouterURL    string `mapstructure:"openrouter_url"`
 	OpenRouterAPIKey string `mapstructure:"openrouter_api_key"`
 	OpenRouterModel  string `mapstructure:"openrouter_model"`
+	// Magic Dude can use Gemini independently of automated fleet scanning.
+	MagicDudeProvider string `mapstructure:"magic_dude_provider"`
+	GeminiAPIKey      string `mapstructure:"gemini_api_key"`
+	GeminiModel       string `mapstructure:"gemini_model"`
 	// Operator incident notification (Telegram). Disabled by default; the bot
 	// token is a secret — inject via config/env, never commit.
 	NotifyTelegramEnabled  bool   `mapstructure:"notify_telegram_enabled"`
@@ -55,9 +66,10 @@ type AIConfig struct {
 // endpoint (the shared core either way). BridgeScanInterval sets how often the
 // supervisor re-scans for newly-enabled/disabled owner bots.
 type GuestWifiConfig struct {
-	Enabled            bool          `mapstructure:"enabled"`
-	BridgeScanInterval time.Duration `mapstructure:"bridge_scan_interval"`
-	ReceiptDir         string        `mapstructure:"receipt_dir"`
+	VoucherAccessEnabled bool          `mapstructure:"voucher_access_enabled"`
+	Enabled              bool          `mapstructure:"enabled"`
+	BridgeScanInterval   time.Duration `mapstructure:"bridge_scan_interval"`
+	ReceiptDir           string        `mapstructure:"receipt_dir"`
 }
 
 // BillingConfig configures the billing module. ReceiptDir is the tenant-scoped
@@ -65,6 +77,8 @@ type GuestWifiConfig struct {
 // the plan -> duration source (plan.<planKey>.duration_minutes); a plan with no
 // duration FAILS CLOSED at request time.
 type BillingConfig struct {
+	SubscriptionOnly         bool                  `mapstructure:"subscription_only"`
+	ExistingAccountPolicy    string                `mapstructure:"existing_account_policy"`
 	ReceiptDir               string                `mapstructure:"receipt_dir"`
 	Plans                    map[string]PlanConfig `mapstructure:"plans"`
 	QuotaEnforcementInterval time.Duration         `mapstructure:"quota_enforcement_interval"`
@@ -147,7 +161,12 @@ type WireGuardConfig struct {
 // the public address routers connect to for the tunnel; empty omits the
 // endpoint from responses (operator hasn't pinned one yet).
 type VPSConfig struct {
-	EndpointHost string `mapstructure:"endpoint_host"`
+	EndpointHost         string `mapstructure:"endpoint_host"`
+	HubLookupEnabled     bool   `mapstructure:"hub_lookup_enabled"`
+	HubEnrollmentEnabled bool   `mapstructure:"hub_enrollment_enabled"`
+	HubURL               string `mapstructure:"hub_url"`
+	HubKeyID             string `mapstructure:"hub_key_id"`
+	HubSigningKey        string `mapstructure:"hub_signing_key" json:"-"`
 }
 
 type TelemetryConfig struct {
@@ -308,6 +327,9 @@ func Load(path string) (*Config, error) {
 	if err := v.BindEnv("ai.openrouter_api_key", "AI_OPENROUTER_API_KEY", "OPENROUTER_API_KEY"); err != nil {
 		return nil, err
 	}
+	if err := v.BindEnv("ai.gemini_api_key", "AI_GEMINI_API_KEY", "GEMINI_API_KEY"); err != nil {
+		return nil, err
+	}
 
 	setDefaults(v)
 
@@ -336,6 +358,9 @@ const (
 // convenient local defaults, while production refuses to boot in a state that
 // can silently bypass tenant isolation or reuse repository-known secrets.
 func (cfg *Config) Validate() error {
+	if cfg.Billing.SubscriptionOnly && cfg.Billing.ExistingAccountPolicy != "require_payment" {
+		return fmt.Errorf("billing.existing_account_policy must be require_payment when subscription_only is enabled; existing accounts receive the one-time transition trial, not indefinite free access")
+	}
 	env := strings.ToLower(strings.TrimSpace(cfg.Environment))
 	switch env {
 	case "development", "test":
@@ -350,6 +375,14 @@ func (cfg *Config) Validate() error {
 	}
 
 	var problems []string
+	if cfg.VPS.HubEnrollmentEnabled && !cfg.VPS.HubLookupEnabled {
+		problems = append(problems, "Hub enrollment requires Hub lookup configuration")
+	}
+	if cfg.VPS.HubLookupEnabled {
+		if _, err := hub.New(hub.Options{URL: cfg.VPS.HubURL, KeyID: cfg.VPS.HubKeyID, SigningKey: cfg.VPS.HubSigningKey}); err != nil {
+			problems = append(problems, "vps Hub lookup requires a valid HTTPS endpoint, key identifier and 32-byte hex signing key")
+		}
+	}
 	routerAccess := cfg.Provisioner.Applier.Enabled || cfg.Provisioner.PostureCapture.Enabled
 	if routerAccess {
 		if len(cfg.Provisioner.AllowedTargetCIDRs) == 0 {
@@ -405,6 +438,17 @@ func (cfg *Config) Validate() error {
 	if modelName := strings.ToLower(strings.TrimSpace(cfg.AI.OpenRouterModel)); modelName != "" && modelName != "openrouter/free" && !strings.HasSuffix(modelName, ":free") {
 		problems = append(problems, "ai.openrouter_model must be an OpenRouter free model (:free or openrouter/free)")
 	}
+	if cfg.AI.MagicDudeProvider != "" && cfg.AI.MagicDudeProvider != "openrouter" && cfg.AI.MagicDudeProvider != "gemini" {
+		problems = append(problems, "ai.magic_dude_provider must be openrouter or gemini")
+	}
+	if cfg.AI.MagicDudeProvider == "gemini" {
+		if strings.TrimSpace(cfg.AI.GeminiAPIKey) == "" {
+			problems = append(problems, "ai.gemini_api_key is required for Gemini Magic Dude")
+		}
+		if !strings.HasPrefix(cfg.AI.GeminiModel, "gemini-") || strings.ContainsAny(cfg.AI.GeminiModel, "/?:# \r\n") {
+			problems = append(problems, "ai.gemini_model must be a Gemini model ID")
+		}
+	}
 	if len(problems) > 0 {
 		return fmt.Errorf("unsafe %s configuration: %s", env, strings.Join(problems, "; "))
 	}
@@ -417,6 +461,12 @@ func weakSecret(value, knownDefault string, minLength int) bool {
 }
 
 func setDefaults(v *viper.Viper) {
+	v.SetDefault("vps.hub_lookup_enabled", false)
+	v.SetDefault("vps.hub_enrollment_enabled", false)
+	v.SetDefault("vps.hub_url", "")
+	v.SetDefault("vps.hub_key_id", "")
+	v.SetDefault("vps.hub_signing_key", "")
+	v.SetDefault("media.connector_enabled", false)
 	v.SetDefault("server.host", "0.0.0.0")
 	v.SetDefault("server.port", 8080)
 	v.SetDefault("server.grpc_port", 9090)
@@ -440,6 +490,9 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("ai.cost_per_analysis", 1)
 	v.SetDefault("ai.openrouter_url", "https://openrouter.ai/api/v1")
 	v.SetDefault("ai.openrouter_model", "nvidia/nemotron-3-super-120b-a12b:free")
+	v.SetDefault("ai.magic_dude_provider", "openrouter")
+	v.SetDefault("ai.gemini_api_key", "")
+	v.SetDefault("ai.gemini_model", "gemini-3.8-flash")
 	v.SetDefault("ai.notify_telegram_enabled", false)
 	// Production database: the merged data. `mega_magic_dev` is the pristine
 	// baseline and `mega_merge` the ETL working copy — neither should be the

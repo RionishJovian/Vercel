@@ -40,6 +40,16 @@ func CookieOrigin() gin.HandlerFunc {
 // Bounded process-local rate limit. Deployments with multiple API instances
 // should enforce a shared limit at their proxy as well.
 func BoundedAuthRateLimit() gin.HandlerFunc {
+	return boundedRateLimit("too many authentication attempts", true)
+}
+
+// Public portal writes and lookups are anonymous but still bounded. This is
+// process-local protection; multiple replicas also need a shared proxy limit.
+func BoundedPortalRateLimit() gin.HandlerFunc {
+	return boundedRateLimit("too many portal requests", false)
+}
+
+func boundedRateLimit(message string, skipLogout bool) gin.HandlerFunc {
 	type bucket struct {
 		count int
 		until time.Time
@@ -47,7 +57,7 @@ func BoundedAuthRateLimit() gin.HandlerFunc {
 	var mu sync.Mutex
 	entries := map[string]bucket{}
 	return func(c *gin.Context) {
-		if strings.HasSuffix(c.Request.URL.Path, "/logout") {
+		if skipLogout && strings.HasSuffix(c.Request.URL.Path, "/logout") {
 			c.Next()
 			return
 		}
@@ -74,7 +84,7 @@ func BoundedAuthRateLimit() gin.HandlerFunc {
 		mu.Unlock()
 		if blocked {
 			c.Header("Retry-After", "60")
-			c.AbortWithStatusJSON(429, gin.H{"error": "too many authentication attempts"})
+			c.AbortWithStatusJSON(429, gin.H{"error": message})
 			return
 		}
 		c.Next()

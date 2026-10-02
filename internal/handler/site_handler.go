@@ -15,9 +15,10 @@ import (
 // SiteHandler serves sites — physical locations with the geo data ported from
 // Mikromagic (location, timezone, latitude/longitude) plus the device count.
 type SiteHandler struct {
-	db        *database.DB
-	siteRepo  *database.SiteRepository
-	allowRepo *database.DeviceAllowanceRepository
+	SubscriptionOnly bool
+	db               *database.DB
+	siteRepo         *database.SiteRepository
+	allowRepo        *database.DeviceAllowanceRepository
 }
 
 // NewSiteHandler wires the site repository.
@@ -66,8 +67,10 @@ func (h *SiteHandler) CreateSite(c *gin.Context) {
 
 	var site *model.Site
 	err := runInTenant(c, h.db, businessID, func(tx *sql.Tx) error {
-		if err := h.allowRepo.CheckCapacityTXN(tx, businessID, "sites"); err != nil {
-			return err
+		if !h.SubscriptionOnly {
+			if err := h.allowRepo.CheckCapacityTXN(tx, businessID, "sites"); err != nil {
+				return err
+			}
 		}
 		s, err := h.siteRepo.CreateSiteTXN(tx, businessID, &req)
 		if err != nil {

@@ -1,143 +1,173 @@
-# Mega — Mega Magic Project
+# Mega Magic
 
-**Created:** 2026-09-23  
-**Source:** `/opt/mikromagic-app` (live production - DO NOT MODIFY)  
-**Purpose:** Parallel development of enterprise-grade MikroTik Magic SaaS platform
+Mega Magic is a multi-tenant web application for MikroTik network operators and
+hotspot businesses. Customers should be able to configure their own networks,
+manage guests and vouchers, review payments, track approved revenue, and perform
+remote operations through practical browser tools. Each business owns its
+devices, settings, purchases and Telegram bot binding.
 
----
+**Current agent handoff:** [docs/CURRENT-HANDOFF.md](docs/CURRENT-HANDOFF.md)
 
-## 📁 Project Structure
+**Status date:** 2026-10-01 (Asia/Yangon). Deployment claims describe recorded
+results on that date, not continuous health monitoring.
 
+## Actively maintained application
+
+This repository contains the current Go API and static browser frontend,
+deployed at <https://mikromagic.com>.
+
+- `cmd/server/`, `internal/`, `pkg/`: authentication, tenant repositories,
+  payment/quota services, monitoring, Telegram integration and RouterOS control.
+- `web/`: deployed frontend. `app.html` is the authenticated console;
+  `portal.html` is the guest captive portal; `index.html`, `signin.html` and
+  `pricing.html` are public pages. Shared assets live in `web/assets/`.
+- `database/`, `migrations/`: database baseline and schema changes. Migration
+  files require explicit application and checks in each environment.
+- `scripts/`, `lab/`, `deploy.sh`: validation, migration helpers, CHR lab tooling
+  and the canonical production deployment script.
+- `docs/`, `specs/`: contracts, guides and dated development records. Use the
+  current handoff to interpret older status claims.
+
+The runtime uses Go/Gin (`go.mod` requires Go 1.26), PostgreSQL 16, Redis 7,
+NATS 2 and RouterOS over SSH with pinned host keys. WireGuard provides management
+transport. The maintained frontend is HTML/CSS/JavaScript; inherited React and
+TanStack references are not the deployed console.
+
+## Current development phase
+
+The project is in **functional workflow completion and production acceptance**.
+The API, database and console exist. Work now completes network and business
+operations and proves that customer actions change the intended state, survive
+reloads and respect tenant boundaries. The entire product is not yet certified
+as complete.
+
+The latest deployed batch includes customer-network setup (existing uplink,
+LAN/optional VLAN, DHCP, client DNS, scoped NAT, optional Hotspot and an existing
+RADIUS server), secure WebFig service setup, authentication-session hardening,
+and frontend behavior repairs. Go tests, static UI checks and browser acceptance
+passed. Production schema preflights, page publication, protected routes and
+health were checked.
+
+The new gateway and WebFig mutation paths were **not executed on the live CHR**
+during rollout. They require disposable-lab acceptance and real connectivity
+checks. WebFig service configuration also does not by itself provide a cloud
+browser proxy to the private management address. Detailed evidence and outstanding
+work are in the [current handoff](docs/CURRENT-HANDOFF.md).
+
+The Magic Media connection/library pilot was migrated and deployed on
+2026-10-01 with approval. PostgreSQL isolation/concurrency tests and a
+production-schema rehearsal passed; live dashboard and security smoke checks
+passed. Real local Jellyfin pairing is still pending. The connector is a local
+terminal pilot, not yet a one-click installer; paid guest media and playback are
+not implemented. See [Magic Media integration](docs/MAGIC-MEDIA-INTEGRATION.md).
+
+The follow-up media overview was tested, migrated and deployed on 2026-10-01.
+It collects Jellyfin counts/sessions and computer CPU,
+memory and local-drive readings. Guest themes are preserved, with a new poster
+layout selector; guest design remains a browser-only preview. The dashboard
+uses `20261001140000_magic_media_dashboard.sql` and requires an updated local
+connector. Production health/access-control and CDN asset checks passed; real
+paired-computer readings remain unverified.
+
+## Delivery stages
+
+Track every feature or release slice as:
+
+**implemented → tested → migrated → deployed → verified**
+
+1. **Implemented:** source exists and the intended UI/API is wired.
+2. **Tested:** record suites, results and whether they used mocks, a disposable
+   database, CHR or physical hardware. Skipped tests remain unverified.
+3. **Migrated:** required schema/data/permission changes were applied and checked
+   in the named environment. Use `N/A` if none are needed.
+4. **Deployed:** the tested release reached the named environment; record the
+   revision, date, backup and deployment result.
+5. **Verified:** record the actual behavior observed in that environment.
+   Health `200` proves availability, not payment activation, guest internet,
+   RouterOS mutation, rollback or tenant isolation.
+
+Use **partial**, **awaiting**, **unverified** and **N/A** where appropriate. Never
+replace these stages with a single “done” checkbox. Code completion is not
+production completion. Update the handoff after each release with concrete
+evidence and remaining checks.
+
+## Development and validation
+
+Use a development configuration and protected local secrets. Service templates
+are in `config.yaml.example` and `docker-compose.yml`. Compose is a development
+template, not the production release procedure; review its credentials before use.
+
+Run from the repository root:
+
+```sh
+go test ./...
+node scripts/auth-client.test.cjs
+node scripts/audit-web-ui.mjs
+node scripts/e2e-portal-ui.mjs
+git diff --check
 ```
-mega-magic-project/
-├── docs/                    # Mega Magic Project specification documents (6 files)
-├── migrations/              # All Supabase SQL migrations (schema reference)
-├── provisioning/            # RouterOS provisioning script v1.1
-├── lib/                     # Core business logic (TypeScript reference for Go port)
-├── shared/                  # Shared types & utilities
-├── ui-reference/            # Key React UI components (reference for new frontend)
-├── specs/                   # New specifications (to be created)
-├── scripts/                 # Build/deploy scripts (to be created)
-├── package.json             # Reference only - new project uses Go
-├── tsconfig.json            # Reference only
-├── vite.config.ts           # Reference only
-└── bunfig.toml              # Reference only
+
+Browser acceptance uses a loopback mock API and temporary Chrome profile;
+`CHROME_BIN` can select another Chrome/Chromium installation. Database integration
+tests require `MM_TEST_DB_URL` pointing to a disposable-test-capable PostgreSQL
+server. RouterOS certification uses the separately configured lab described in
+[HARDWARE-CERTIFICATION.md](docs/HARDWARE-CERTIFICATION.md). Report skipped
+integration/hardware tests explicitly even if the overall Go suite passes.
+
+The inherited `package.json` contains Vite/Vitest commands from the first app.
+Those commands do not validate the deployed Go/static application.
+`test:portal-ui` is a current browser test entry point.
+
+## Production layout and release procedure
+
+The recorded layout is:
+
+- Application source/API binary: `/home/ubuntu/mega-magic-project` on
+  `mikromagic-app`; systemd service: `mega-magic-api`.
+- Served frontend: `/opt/mega-magic-web`, published from the repository's `web/`.
+- Traffic: Cloudflare → nginx → static pages/API at `127.0.0.1:8080`.
+- Separate management hub: `mikromagic-hub`.
+
+Follow [DATABASE-MIGRATIONS.md](docs/DATABASE-MIGRATIONS.md), then run the canonical
+script on the production host:
+
+```sh
+./deploy.sh api
+./deploy.sh web
+# Or publish both:
+./deploy.sh all
 ```
 
----
+API deployment validates production configuration and required schemas before
+building/restarting; it does not apply migrations automatically. Web deployment
+stamps shared asset URLs for cache invalidation. Deployment must be followed by
+production smoke and feature-specific checks. Existing authorization and actions
+requiring further owner authorization are recorded in the handoff.
 
-## 📋 What Was Copied (Reference Only)
+## Historical source
 
-### **Migrations (58 files)**
-Complete Supabase schema evolution - reference for new PostgreSQL schema design
+This repository began on 2026-09-23 as a rewrite using material from the first
+MikroMagic project. `/opt/mikromagic-app` and
+`/Users/aces/Nish/mikromagic/app` identify historical source, not the current
+application's maintained production paths.
 
-### **Core Business Logic (lib/ - 30 files)**
-| File | Purpose | Port Target |
-|------|---------|-------------|
-| `fleet-health.ts` | Health calculations, formatting | Go telemetry service |
-| `fleet.functions.ts` | Fleet operations, AI scans | Go fleet service |
-| `health.functions.ts` | Health history, incidents, sweeps | Go monitoring service |
-| `health.server.ts` | Router probing, cloud peer status | Go probe service |
-| `fleet-probe.server.ts` | RouterOS data collection | Go collector |
-| `cloud-peer-status.ts` | WireGuard handshake analysis | Go tunnel monitor |
-| `guards.server.ts` | Auth, expiry, ownership checks | Go auth middleware |
-| `cloud-vps.server.ts` | VPS API communication | Go VPS client |
-| `routers.functions.ts` | Router CRUD, operations | Go router service |
-| `topology.functions.ts` | Network topology, relay ops | Go topology service |
-| `voucher-*.ts` | Voucher lifecycle, printing | Go voucher service |
-| `portal.functions.ts` | Captive portal, consent | Go portal service |
-| `business.functions.ts` | Business snapshots, revenue | Go billing service |
-| `monetization.functions.ts` | Magic Coins, tiers, pricing | Go monetization |
-| `ai-scan-quota.ts` / `ai-quota.server.ts` | AI scan limits | Go AI service |
-| `gateway-bootstrap/*.ts` | Provisioning planner, CIDR | Go provisioner |
-| `devices/` | Vendor drivers, port mapping | Go device abstraction |
+`lib/`, `shared/`, `ui-reference/`, inherited React/TypeScript build configuration
+and older provisioning assets preserve first-project behavior and migration
+context. Historical Supabase migrations coexist with current migrations; do not
+execute the entire directory as a fresh-install migration sequence.
 
-### **UI Reference (ui-reference/ - 13 routes + 3 components)**
-Key user-facing pages for frontend redesign reference
+The previous README's “backend to build”, proposed React frontend, weekly phase
+schedule and “isolated from production” statements are superseded.
+[PROGRESS.md](specs/PROGRESS.md), [ROADMAP.md](specs/ROADMAP.md) and recovery audits
+contain dated claims. Preserve their recorded requirements and decisions, but
+use current code, the handoff and environment checks for present delivery status.
 
-### **Provisioning Script**
-`MagicHub_Provisioning_v1.1.rsc` - RouterOS v7 edge integration script
+Useful references:
 
-### **Documentation (docs/ - 6 files)**
-Complete Mega Magic Project specification
-
----
-
-## 🚀 New Project Stack (Per Mega Magic Spec)
-
-| Layer | Technology | Status |
-|-------|------------|--------|
-| **API Backend** | Go 1.23 + NATS | 🟢 To build |
-| **Database** | PostgreSQL 16 + RLS | 🟢 Schema from migrations |
-| **Cache** | Redis 7 | 🟢 To configure |
-| **Message Bus** | NATS 2 | 🟢 To configure |
-| **Tunnel** | WireGuard (stateless) | 🟢 Provisioning script exists |
-| **Frontend** | React + TanStack (or new) | 🟢 UI reference exists |
-| **Testing** | RouterOS CHR VMs | 🟢 Spec defined |
-| **CI/CD** | Blue/Green + Rolling | 🟢 Spec defined |
-
----
-
-## 🎯 Development Phases
-
-### **Phase 1: Infrastructure (Weeks 1-4)**
-- [ ] Go project setup with NATS, PostgreSQL, Redis clients
-- [ ] Database schema from migrations → new PostgreSQL design
-- [ ] NATS subject design for async command bus
-- [ ] WireGuard hub container deployment
-- [ ] Docker Compose orchestration (from spec)
-
-### **Phase 2: Core Services (Weeks 5-8)**
-- [ ] Tenant isolation (`business_id` + RLS)
-- [ ] Fleet management (register, health, config)
-- [ ] Provisioning automation (v1.1 script → API)
-- [ ] Telemetry ingestion (60s + 25s heartbeats)
-- [ ] Quota enforcement (Test Profile Alpha)
-
-### **Phase 3: Enterprise Features (Weeks 9-12)**
-- [ ] Tiered access (Small WISP / Enterprise ISP)
-- [ ] Metered quotas (devices, WebFig passes, AI tokens)
-- [ ] Advanced routing panels (BGP, OSPF, MPLS)
-- [ ] Queue tree designer
-- [ ] Interactive topology canvas
-
-### **Phase 4: Compliance & Scale (Weeks 13-16)**
-- [ ] AES-256-GCM key management
-- [ ] Immutable audit logging
-- [ ] SOC2/GDPR audit readiness
-- [ ] Blue/green deployment pipeline
-- [ ] Rolling proxy updates
-
----
-
-## ⚠️ Rules
-
-1. **NEVER modify `/opt/mikromagic-app`** - It's live production
-2. **All new code goes in `~/mega-magic-project/`**
-3. **Reference only** - Copy patterns, don't copy-paste TypeScript to Go
-4. **Test against CHR VMs** - Use virtual RouterOS for validation
-5. **Deploy to staging first** - Never directly to production VPS
-
----
-
-## 🔗 Key References
-
-- **Mega Magic Specs:** `docs/*.md` (6 documents)
-- **Current Schema:** `migrations/*.sql` (58 files)
-- **Business Logic:** `lib/*.ts` (30 files)
-- **Provisioning:** `provisioning/MagicHub_Provisioning_v1.1.rsc`
-- **UI Patterns:** `ui-reference/*.tsx`
-
----
-
-## 📝 Next Steps
-
-1. **Initialize Go module** in `~/mega-magic-project/`
-2. **Design PostgreSQL schema** from migrations reference
-3. **Define NATS subjects** for command/telemetry topics
-4. **Create docker-compose.yml** from spec
-5. **Start Phase 1 implementation**
-
----
-
-**This workspace is isolated from production. Develop freely here.**
+- [Current agent handoff](docs/CURRENT-HANDOFF.md)
+- [Magic Dude provider/key setup](docs/MAGIC-DUDE-PROVIDER.md)
+- [Database migration procedure](docs/DATABASE-MIGRATIONS.md)
+- [RouterOS certification](docs/HARDWARE-CERTIFICATION.md)
+- [Acceptance requirements](docs/ACCEPTANCE-TEST-REGISTER.md)
+- [Security contract](docs/SECURITY-CONTRACT.md)
+- [First-project recovery audit](docs/FIRST-PROJECT-RECOVERY-AUDIT.md)

@@ -214,7 +214,9 @@ async function loadConfig() {
   try {
     var res = await fetch(API + "/portal/" + DEVICE + "/config");
     var d = await res.json();
-    renderPortalHome(d.config || d);
+    var cfg = d.config || d;
+    cfg.guest_voucher_access = d.guest_voucher_access === true;
+    renderPortalHome(cfg);
   } catch (e) {
     root.innerHTML = '<p class="msg">' + t("Could not load this hotspot.", "loadErr") + '</p>';
   }
@@ -237,6 +239,22 @@ function renderPortalHome(cfg) {
   else renderPlans(cfg);
 }
 
+function consentMarkup(cfg) {
+  return (cfg.terms_text ? '<p class="terms">' + esc(cfg.terms_text) + '</p>' : '') +
+    (cfg.consent_required ? '<label class="terms"><input type="checkbox" id="portal-consent"> ' + esc(cfg.consent_text || 'I agree to the hotspot terms.') + '</label>' : '') +
+    '<p id="consent-message" class="msg" role="status"></p>';
+}
+function portalConsent(cfg) {
+  var checkbox = document.getElementById('portal-consent');
+  var accepted = !!(checkbox && checkbox.checked);
+  if (cfg.consent_required && !accepted) {
+    var message = document.getElementById('consent-message');
+    if (message) message.textContent = 'Please agree to the hotspot terms before continuing.';
+    if (checkbox) checkbox.focus();
+    return null;
+  }
+  return accepted;
+}
 function renderVoucher(cfg) {
   applyBranding(cfg);
   RERENDER = function () { renderVoucher(cfg); };
@@ -251,7 +269,7 @@ function renderVoucher(cfg) {
       '<p class="voucher-msg" id="voucher-msg" role="status" aria-live="polite"></p>' +
     '</section>' +
     (paymentEnabled ? '<div class="portal-nav"><button class="btn btn-secondary" id="portal-go-payment" type="button">' + t("Buy WiFi with mobile payment →", "goPayment") + '</button><p class="portal-nav-note">' + t("Continue to plans and MMQR payment", "goPaymentNote") + '</p></div>' : '') +
-    (cfg.terms_text ? '<p class="terms">' + esc(cfg.terms_text) + '</p>' : '');
+    consentMarkup(cfg);
   document.getElementById("voucher-submit").addEventListener("click", function () { redeemVoucher(cfg); });
   document.getElementById("voucher-code").addEventListener("keydown", function (e) {
     if (e.key === "Enter") { e.preventDefault(); redeemVoucher(cfg); }
@@ -279,7 +297,7 @@ function renderPlans(cfg) {
     (PREVIEW && cfg.preview_sample ? '<p class="pv-sample-note">Sample preview data — add a plan to replace it.</p>' : '') +
     (rows || '<p class="msg">' + t("No plans are available yet.", "noPlans") + '</p>') +
     (accessMethodEnabled(cfg, "voucher_login_enabled") ? '<button class="btn btn-secondary" id="portal-back-voucher" type="button">' + t("← Use a voucher code", "backVoucher") + '</button>' : '') +
-    (cfg.terms_text ? '<p class="terms">' + esc(cfg.terms_text) + '</p>' : '');
+    consentMarkup(cfg);
   document.querySelectorAll(".plan").forEach(function (b) {
     b.addEventListener("click", function () { buy(cfg, b.dataset.key); });
   });
@@ -296,6 +314,8 @@ async function redeemVoucher(cfg) {
   input.value = code;
   msg.className = "voucher-msg msg";
   if (!code) { msg.textContent = t("Enter your voucher code.", "voucherRequired"); input.focus(); return; }
+  var consent = portalConsent(cfg);
+  if (consent === null) return;
   if (PREVIEW) {
     msg.className = "voucher-msg ok";
     msg.textContent = t("Preview only — a valid voucher connects this device.", "voucherPreview");
@@ -309,20 +329,23 @@ async function redeemVoucher(cfg) {
   button.disabled = true;
   button.textContent = t("Connecting…", "connecting");
   try {
-    var payload = { client_mac: mac, code: code };
+    var payload = { client_mac: mac, code: code, consent: consent };
     if (CLIENT_IP) payload.client_ip = CLIENT_IP;
-    var res = await fetch(API + "/portal/" + encodeURIComponent(DEVICE) + "/redeem", {
+    var redeemPath = cfg.guest_voucher_access === true ? "/guest-voucher" : "/redeem";
+    var res = await fetch(API + "/portal/" + encodeURIComponent(DEVICE) + redeemPath, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
     var data = await res.json().catch(function () { return {}; });
     if (!res.ok) throw new Error(data.error || ("http-" + res.status));
+    var verifiedGuestAccess = cfg.guest_voucher_access === true && data.product === "guest-internet" && data.state === "active";
+    if (cfg.guest_voucher_access === true && !verifiedGuestAccess) throw new Error("Gateway access verification incomplete. Contact the hotspot owner.");
     applyBranding(cfg);
     RERENDER = null;
     document.getElementById("root").innerHTML =
-      '<h1 class="ok">' + t("Voucher accepted", "voucherAccepted") + '</h1>' +
-      '<p class="welcome">' + t("Your device is connected. You may close this page and continue browsing.", "voucherOnline") + '</p>' +
+      '<h1 class="ok">' + (verifiedGuestAccess ? t("Voucher accepted", "voucherAccepted") : esc("Voucher recorded")) + '</h1>' +
+      '<p class="welcome">' + (verifiedGuestAccess ? t("Your device is connected. You may close this page and continue browsing.", "voucherOnline") : esc("Gateway internet access has not been verified. Contact the hotspot owner before using another code.")) + '</p>' +
       (cfg.terms_text ? '<p class="terms">' + esc(cfg.terms_text) + '</p>' : '');
   } catch (e) {
     msg.textContent = e.message || t("Could not redeem this voucher.", "voucherFailed");
@@ -333,6 +356,8 @@ async function redeemVoucher(cfg) {
 
 async function buy(cfg, key) {
   var root = document.getElementById("root");
+  var consent = portalConsent(cfg);
+  if (consent === null) return;
   // Preview must not create real purchase requests on the owner's queue.
   if (PREVIEW) { renderPay(cfg, "preview-request", new Date(Date.now() + (cfg.guest_grace_minutes || 10) * 60000).toISOString()); return; }
   if (!DEVICE || !clientMac()) {
@@ -342,6 +367,7 @@ async function buy(cfg, key) {
   var fd = new FormData();
   fd.append("plan_key", key);
   fd.append("client_mac", clientMac());
+  fd.append("consent", String(consent));
   try {
     var res = await fetch(API + "/portal/" + DEVICE + "/guest-purchase", { method: "POST", body: fd });
     var d = await res.json();

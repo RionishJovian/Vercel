@@ -267,6 +267,7 @@ func (r *VoucherRepository) UpdateVoucherStatusByBusiness(businessID, id, status
 		UPDATE vouchers
 		SET status = $3, first_seen_at = COALESCE($4, first_seen_at), updated_at = $5
 		WHERE id = $1 AND business_id = $2
+		  AND (status = $3 OR (status IN ('active','unused') AND $3 IN ('revoked','banned','expired')))
 		RETURNING id, business_id, device_id, plan_key, plan_label, code,
 		          price_mmk, duration_minutes, device_mac, status,
 		          first_seen_at, expires_at, created_at, updated_at`
@@ -518,6 +519,7 @@ func (r *VoucherRepository) UpdateVoucherStatusByBusinessTXN(tx *sql.Tx, busines
 		UPDATE vouchers
 		SET status = $3, first_seen_at = COALESCE($4, first_seen_at), updated_at = $5
 		WHERE id = $1 AND business_id = $2
+		  AND (status = $3 OR (status IN ('active','unused') AND $3 IN ('revoked','banned','expired')))
 		RETURNING id, business_id, device_id, plan_key, plan_label, code,
 		          price_mmk, duration_minutes, device_mac, status,
 		          first_seen_at, expires_at, created_at, updated_at`

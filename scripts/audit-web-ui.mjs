@@ -13,6 +13,7 @@ const escapeRE = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 for (const file of htmlFiles) {
   const fullPath = path.join(webRoot, file);
   const source = fs.readFileSync(fullPath, "utf8");
+  const behaviorSource = source + (file === "app.html" ? fs.readFileSync(path.join(webRoot, "assets/js/site-map.js"), "utf8") : "");
 
   for (const match of source.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)) {
     try {
@@ -44,7 +45,7 @@ for (const file of htmlFiles) {
   for (const match of source.matchAll(/<button([^>]*)\bid="([^"]+)"([^>]*)>/gi)) {
     const attrs = `${match[1]} ${match[3]}`;
     if (/type="submit"/i.test(attrs) || /value="cancel"/i.test(attrs)) continue;
-    const occurrences = (source.match(new RegExp(escapeRE(match[2]), "g")) || []).length;
+    const occurrences = (behaviorSource.match(new RegExp(escapeRE(match[2]), "g")) || []).length;
     if (occurrences < 2) fail(file, `button #${match[2]} has no visible script reference`);
   }
 }

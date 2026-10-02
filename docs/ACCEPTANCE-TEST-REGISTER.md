@@ -1,5 +1,9 @@
 # MikroTik Magic acceptance register
 
+> The acceptance requirements below remain applicable. Coverage and known-gap
+> lists are an older snapshot; reconcile them with the maintained code and
+> [CURRENT-HANDOFF.md](CURRENT-HANDOFF.md) before treating them as current status.
+
 This is the release gate, not a manual checklist for the product owner. A feature is **not accepted** because its page renders or its endpoint returns `200`.
 
 ## Required proof for every mutable feature

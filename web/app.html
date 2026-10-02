@@ -38,6 +38,7 @@
   <script src="/assets/js/api.js" defer></script>
   <script src="/assets/js/app.js" defer></script>
   <script src="/assets/js/i18n.js" defer></script>
+  <link rel="stylesheet" href="/assets/vendor/maplibre/maplibre-gl.css">
   <style>
     /* ════════════════════════════════════════════════════════════════════
        Mega Magic — Liquid-Glass luxury overlay (inline, scoped to this page)
@@ -212,6 +213,8 @@
     }
   </style>
   <link rel="stylesheet" href="/assets/css/redesign.css">
+  <link rel="stylesheet" href="/assets/css/media-appearance.css?v=5">
+  <link rel="stylesheet" href="/assets/css/layout.css?v=20261001-1">
 </head>
 <body class="page-app">
 <div class="lg-orb lg-orb-a"></div>
@@ -240,7 +243,8 @@
       <button class="nav-item" data-view="topology">Topology</button>
       <button class="nav-item" data-view="incidents">Incidents</button>
       <button class="nav-item" data-view="sites">Sites</button>
-      <button class="nav-item" data-view="routers">Routers</button>
+      <button class="nav-item" data-view="gateways">Gateways</button>
+      <button class="nav-item" data-view="routers">Downstream devices</button>
       <div class="rail-section">Automation</div>
       <button class="nav-item" data-view="security">Security</button>
       <button class="nav-item" data-view="backups">Backups</button>
@@ -249,6 +253,7 @@
       <button class="nav-item" data-view="termlog">Terminal log</button>
       <div class="rail-section">Business</div>
       <button class="nav-item" data-view="portal">Captive portal</button>
+      <button class="nav-item" data-view="media">Magic Media</button>
       <button class="nav-item" data-view="vouchers">Vouchers</button>
       <button class="nav-item" data-view="store">Store</button>
       <button class="nav-item" data-view="revenue">Revenue</button>
@@ -261,7 +266,7 @@
       <button class="nav-item" data-view="i18n">Translations</button>
       <button class="nav-item" data-view="guide">Product guide</button>
       <div class="rail-section">Operator</div>
-      <button class="nav-item" data-view="platform" id="nav-platform" hidden>Platform</button>
+      <button class="nav-item" data-view="platform" hidden>Platform</button>
       </div>
       <div class="rail-footer">
       <button class="rail-profile" data-view="profile" type="button" aria-label="Open your profile">
@@ -284,24 +289,24 @@
 <button class="magic-dude-launcher" id="magic-dude-launcher" data-md-open type="button" aria-controls="magic-dude-popup" aria-expanded="false">
   <img class="md-avatar md-avatar-launcher" src="/assets/images/magic-dude-mascot-20260930.png" alt=""><span>Magic Dude</span>
 </button>
-<section class="md-popup" id="magic-dude-popup" role="dialog" aria-modal="false" aria-labelledby="md-popup-title" hidden>
+<section class="md-popup" id="magic-dude-popup" lang="my" role="dialog" aria-modal="false" aria-labelledby="md-popup-title" hidden>
   <header class="md-popup-head">
     <div class="md-popup-identity">
       <img class="md-avatar" src="/assets/images/magic-dude-mascot-20260930.png" alt="Magic Dude mascot">
-      <div><h2 id="md-popup-title">Magic Dude</h2><p>Fleet assistant · Read-only</p></div>
+      <div><h2 id="md-popup-title">Magic Dude</h2><p>ကူညီပေးမယ်နော် · အကြံပေးသီးသန့်</p></div>
     </div>
     <div class="md-popup-actions">
-      <span class="status ok">No action access</span>
+      <span class="status ok">ပြင်ဆင်မှု မလုပ်ပါ</span>
       <button class="icon-btn md-close" id="md-close" type="button" aria-label="Close Magic Dude">×</button>
     </div>
   </header>
   <div class="md-messages" id="md-messages" aria-live="polite"></div>
   <form class="md-composer" id="md-form">
     <label class="sr-only" for="md-question">Ask Magic Dude</label>
-    <textarea id="md-question" maxlength="4000" rows="2" placeholder="Ask about fleet health or troubleshooting…" required></textarea>
+    <textarea id="md-question" maxlength="4000" rows="2" placeholder="ဘာကူညီပေးရမလဲ?" required></textarea>
     <div class="md-compose-row">
-      <span class="muted small" id="md-note">Advice only. Changes require approval.</span>
-      <button class="btn btn-primary" id="md-send" type="submit">Send</button>
+      <span class="muted small" id="md-note">အကြံပေးသီးသန့်ပါ။ ပြင်ဆင်ဖို့ ခွင့်ပြုချက်လိုပါတယ်။</span>
+      <button class="btn btn-primary" id="md-send" type="submit">ပို့မယ်</button>
     </div>
   </form>
 </section>
@@ -311,7 +316,8 @@ const VIEWS = {
   overview: { title: "Overview", lead: "See what is healthy, what needs attention, and where to act next." },
   fleet:    { title: "Fleet health", lead: "Check the connection state of every managed router." },
   sites:    { title: "Sites", lead: "Organize routers by location and prepare each site to go live." },
-  routers:  { title: "Routers", lead: "Connect, inspect, configure, back up, and safely control your MikroTik devices." },
+  routers:  { title: "Downstream devices", lead: "Manage switches, access points and controllers behind your gateway." },
+  gateways: { title: "Gateways", lead: "Manage your site's gateway, remote connection and customer-network configuration." },
   topology: { title: "Topology", lead: "See how the cloud hub, gateways, access points, and client devices connect." },
   incidents:{ title: "Incidents", lead: "Review network problems, take action, and track their resolution." },
   security: { title: "Security", lead: "Find exposed services and RouterOS versions that need attention." },
@@ -328,6 +334,7 @@ const VIEWS = {
   coins:    { title: "Magic Coins", lead: "Check your balance and review every credit or purchase." },
   unlockkeys:{ title: "Unlock keys", lead: "See which additional product capabilities your business has activated." },
   portal:   { title: "Captive portal", lead: "Choose how guests connect and customize the Wi-Fi page they see." },
+  media:    { title: "Magic Media", lead: "Connect your media computer, manage libraries, and design your guest lounge." },
   team:     { title: "Team", lead: "Invite staff and choose what each person is allowed to manage." },
   platform: { title: "Platform", lead: "Manage customer businesses, service health, and platform-wide incidents." },
   profile:  { title: "Your profile", lead: "Manage your photo, language, password, and Telegram approvals." },
@@ -335,12 +342,27 @@ const VIEWS = {
 };
 
 let ME = null;
+function canOpenView(name, me = ME) {
+  const role = me?.user?.user_role;
+  if (me?.subscription?.mode === "subscription_only" && ["coins", "unlockkeys"].includes(name)) return false;
+  if (["platform", "i18n"].includes(name)) return role === "DEVELOPER";
+  if (["templates", "termlog", "aiusage", "team", "media"].includes(name)) return ["OWNER", "ADMIN", "DEVELOPER"].includes(role);
+  return true;
+}
+let disposeSiteMap = null;
+let disposeSitePicker = null;
 // A portal save re-renders the entire view from a fresh API read. Keep the
 // one-shot confirmation outside that discarded DOM so a successful action does
 // not appear to do nothing when its old status element disappears.
 let PORTAL_NOTICE = "";
 
 async function loadView(name, main, me) {
+  if (!canOpenView(name, me)) {
+    main.innerHTML = '<div class="panel"><div class="panel-body" role="alert">This workspace is not available for your role.</div></div>';
+    return;
+  }
+  disposeSiteMap?.(); disposeSiteMap = null;
+  disposeSitePicker?.(); disposeSitePicker = null;
   const v = VIEWS[name] || VIEWS.overview;
   main.innerHTML = `<div class="page-head"><div><h1 class="page-title">${v.title}</h1><p class="page-lead">${v.lead}</p></div>${name === "guide" ? "" : `<button class="btn btn-sm" id="view-guide" type="button">How this works</button>`}</div><div id="content" aria-live="polite">${loading()}</div>`;
   // Route changes must start at the page heading. Safari otherwise preserves
@@ -357,6 +379,7 @@ async function loadView(name, main, me) {
     else if (name === "fleet") await renderFleet(main);
     else if (name === "sites") await renderSiteWorkspace(main);
     else if (name === "routers") await renderSites(main);
+    else if (name === "gateways") await renderSites(main, "gateways");
     else if (name === "topology") await renderTopology(main);
     else if (name === "incidents") await renderIncidents(main);
     else if (name === "security") await renderSecurity(main);
@@ -373,6 +396,7 @@ async function loadView(name, main, me) {
     else if (name === "coins") await renderMagicCoins(main);
     else if (name === "unlockkeys") await renderUnlockKeys(main);
     else if (name === "portal") await renderPortal(main);
+    else if (name === "media") await renderMediaAppearance(main);
     else if (name === "team") await renderTeam(main);
     else if (name === "platform") await renderPlatform(main);
     else if (name === "profile") await renderProfile(main);
@@ -382,6 +406,7 @@ async function loadView(name, main, me) {
     content.innerHTML = `<div class="panel"><div class="empty error-empty" role="alert">
       <div class="empty-title">Couldn’t load ${esc(v.title.toLowerCase())}</div>
       <p>${esc(errorText(err, "The server did not return this view."))}</p>
+      ${err.status === 402 && err.data?.code === "subscription_required" ? `<a class="btn btn-primary" href="/app.html#store">Choose monthly or annual access</a>` : ""}
       <button class="btn" id="view-retry" type="button">Try again</button>
     </div></div>`;
     content.querySelector("#view-retry").addEventListener("click", () => loadView(name, main, me));
@@ -390,6 +415,12 @@ async function loadView(name, main, me) {
 
 function loading() {
   return `<div class="loading-state" role="status"><span class="loading-pulse"></span><span>Loading…</span></div>`;
+}
+
+async function renderMediaAppearance(main) {
+  const content = main.querySelector("#content");
+  const {mountDashboard} = await import("/assets/js/media-dashboard.js?v=6");
+  if (content?.isConnected) mountDashboard(content, ME?.business, ME?.user, MM);
 }
 
 function errorText(err, fallback = "The server did not return a usable response.") {
@@ -579,45 +610,21 @@ function asArray(v) { return Array.isArray(v) ? v : []; }
 function siteGeoPanel(sites) {
   const canEdit = SITE_EDITOR_ROLES.indexOf((ME && ME.user && ME.user.user_role) || "") >= 0;
 
-  const rows = sites.length ? sites.map(s => {
-    const hasGeo = s.latitude !== null && s.latitude !== undefined
-                && s.longitude !== null && s.longitude !== undefined;
-    const geo = hasGeo
-      ? `<a class="mono" target="_blank" rel="noopener"
-            href="https://www.openstreetmap.org/?mlat=${s.latitude}&mlon=${s.longitude}#map=14/${s.latitude}/${s.longitude}">
-           ${Number(s.latitude).toFixed(5)}, ${Number(s.longitude).toFixed(5)}</a>`
-      : `<span class="muted small">no coordinates</span>`;
-    return `<tr>
-      <td><span class="num">${esc(s.name)}</span></td>
-      <td>${s.location ? esc(s.location) : `<span class="muted small">—</span>`}</td>
-      <td>${s.timezone ? esc(s.timezone) : `<span class="muted small">—</span>`}</td>
-      <td>${geo}</td>
-      <td class="num">${s.device_count || 0}</td>
-      ${canEdit ? `<td>
-        <button class="btn btn-sm" data-gedit="${esc(s.site_id)}">Edit</button>
-        <button class="btn btn-sm" data-gdel="${esc(s.site_id)}">Delete</button>
-      </td>` : "<td></td>"}
-    </tr>`;
-  }).join("") : `<tr><td colspan="6" class="muted small">No sites yet — add one to place your routers on the map.</td></tr>`;
-
-  return `<div class="panel"><div class="panel-head"><h2 class="panel-title">Sites</h2></div>
-      <div class="panel-body">
-        <table><thead><tr><th>Site</th><th>Location</th><th>Timezone</th><th>Coordinates</th><th>Devices</th><th></th></tr></thead>
-        <tbody>${rows}</tbody></table>
-      </div></div>
-    ${canEdit ? `<div style="display:flex;justify-content:flex-end;margin:10px 0">
+  return `${canEdit ? `<div style="display:flex;justify-content:flex-end;margin:10px 0">
       <button class="btn btn-primary" id="geo-add">Add site</button>
     </div>
-    <div class="panel" id="geo-form" hidden><div class="panel-head"><h2 class="panel-title">New site</h2></div>
+    <div class="panel" id="geo-form" hidden><div class="panel-head"><h2 class="panel-title" id="geo-form-title">New site</h2></div>
       <div class="panel-body">
         <div class="field"><label>Name *</label><input class="input" id="gs-name"></div>
         <div class="field"><label>Location</label><input class="input" id="gs-location" placeholder="Town / campus / address"></div>
-        <div class="field"><label>Timezone</label><input class="input" id="gs-tz" placeholder="e.g. Asia/Yangon"></div>
+        <div class="field"><label>Timezone</label><input class="input" id="gs-tz" value="Asia/Yangon"></div>
+        ${siteLocationPicker("gs")}
         <div class="field"><label>Latitude</label><input class="input" id="gs-lat" type="number" step="any" min="-90" max="90" placeholder="16.866"></div>
         <div class="field"><label>Longitude</label><input class="input" id="gs-lng" type="number" step="any" min="-180" max="180" placeholder="96.195"></div>
         <div class="field"><label>Notes</label><input class="input" id="gs-notes"></div>
         <button class="btn btn-primary" id="gs-save">Create site</button>
-        <span id="gs-msg" class="muted small"></span>
+        <button class="btn" type="button" id="gs-cancel">Cancel</button>
+        <span id="gs-msg" class="muted small" role="status"></span>
       </div></div>` : ""}
     <div id="geo-alert"></div>`;
 }
@@ -634,10 +641,24 @@ function wireSiteGeo(main, sites, refresh = () => renderSites(main)) {
   };
 
   const addBtn = document.getElementById("geo-add");
-  if (addBtn) addBtn.addEventListener("click", () => {
+  let editingSite = null;
+  const open = async site => {
+    editingSite = site;
     const f = document.getElementById("geo-form");
-    f.hidden = !f.hidden;
-    if (!f.hidden) document.getElementById("gs-name").focus();
+    f.hidden = false;
+    document.getElementById("geo-form-title").textContent = site ? "Edit site" : "New site";
+    document.getElementById("gs-save").textContent = site ? "Save site" : "Create site";
+    document.getElementById("gs-msg").textContent = "";
+    for (const [field,value] of Object.entries({name:site?.name||"",location:site?.location||"",tz:site?.timezone||"Asia/Yangon",lat:site?.latitude??"",lng:site?.longitude??"",notes:site?.notes||""})) document.getElementById("gs-"+field).value=value;
+    content.querySelectorAll("[data-site-select], [data-gedit], [data-gdel], #geo-add, #site-clear-filter").forEach(button=>{button.disabled=true;});
+    await wireSiteLocationPicker("gs");
+    document.getElementById("site-global-map")?.scrollIntoView({behavior:"smooth",block:"center"});
+  };
+  if (addBtn) addBtn.addEventListener("click", () => open(null));
+  document.getElementById("gs-cancel")?.addEventListener("click",()=>{
+    disposeSitePicker?.();disposeSitePicker=null;editingSite=null;
+    document.getElementById("geo-form").hidden=true;
+    content.querySelectorAll("[data-site-select], [data-gedit], [data-gdel], #geo-add, #site-clear-filter").forEach(button=>{button.disabled=false;});
   });
 
   const saveBtn = document.getElementById("gs-save");
@@ -657,9 +678,9 @@ function wireSiteGeo(main, sites, refresh = () => renderSites(main)) {
       return;
     }
     saveBtn.disabled = true; saveBtn.textContent = "…";
-    try { await MM.post("/sites", body); await refresh(); }
+    try { if(editingSite) await MM.put("/sites/"+encodeURIComponent(editingSite.site_id),body); else await MM.post("/sites", body); await refresh(); }
     catch (e) {
-      saveBtn.disabled = false; saveBtn.textContent = "Create site";
+      saveBtn.disabled = false; saveBtn.textContent = editingSite ? "Save site" : "Create site";
       notify((e.data && e.data.error) ? e.data.error : e.message);
     }
   });
@@ -672,73 +693,37 @@ function wireSiteGeo(main, sites, refresh = () => renderSites(main)) {
   }));
 
   content.querySelectorAll("button[data-gedit]").forEach(btn => btn.addEventListener("click", () => {
-    openEditSite(main, sites.find(x => x.site_id === btn.dataset.gedit), refresh);
+    open(sites.find(x => x.site_id === btn.dataset.gedit));
   }));
 }
 
-function openEditSite(main, s, refresh = () => renderSites(main)) {
-  if (!s) return;
-  const content = main.querySelector("#content");
-  content.innerHTML = `
-    <div class="panel"><div class="panel-head"><h2 class="panel-title">Edit site</h2></div>
-      <div class="panel-body">
-        <div class="field"><label>Name *</label><input class="input" id="es-name" value="${esc(s.name || "")}"></div>
-        <div class="field"><label>Location</label><input class="input" id="es-location" value="${esc(s.location || "")}"></div>
-        <div class="field"><label>Timezone</label><input class="input" id="es-tz" value="${esc(s.timezone || "")}"></div>
-        <div class="field"><label>Latitude</label><input class="input" id="es-lat" type="number" step="any" min="-90" max="90" value="${s.latitude ?? ""}"></div>
-        <div class="field"><label>Longitude</label><input class="input" id="es-lng" type="number" step="any" min="-180" max="180" value="${s.longitude ?? ""}"></div>
-        <div class="field"><label>Notes</label><input class="input" id="es-notes" value="${esc(s.notes || "")}"></div>
-        <button class="btn btn-primary" id="es-save">Save</button>
-        <button class="btn" id="es-cancel">Cancel</button>
-        <div id="geo-alert"></div>
-      </div></div>`;
 
-  document.getElementById("es-cancel").addEventListener("click", () => refresh());
-  document.getElementById("es-save").addEventListener("click", async () => {
-    const num = (id) => {
-      const v = document.getElementById(id).value.trim();
-      return v === "" ? null : Number(v);
-    };
-    const body = {
-      name: document.getElementById("es-name").value.trim(),
-      location: document.getElementById("es-location").value.trim() || null,
-      timezone: document.getElementById("es-tz").value.trim() || null,
-      latitude: num("es-lat"),
-      longitude: num("es-lng"),
-      notes: document.getElementById("es-notes").value.trim() || null,
-    };
-    const el = document.getElementById("geo-alert");
-    if (!body.name) { el.innerHTML = `<div class="alert" role="alert">Name is required.</div>`; return; }
-    if ((body.latitude === null) !== (body.longitude === null)) {
-      el.innerHTML = `<div class="alert" role="alert">Give both latitude and longitude, or neither.</div>`;
-      return;
-    }
-    try { await MM.put("/sites/" + encodeURIComponent(s.site_id), body); await refresh(); }
-    catch (e) { el.innerHTML = `<div class="alert" role="alert">${esc((e.data && e.data.error) ? e.data.error : e.message)}</div>`; }
-  });
+function siteLocationPicker(prefix) {
+  return `<div class="field"><label>Pin site location</label>
+    <p class="muted small">Use the main map above: click to place a pin, then drag it to fine-tune. Save or cancel below.</p>
+    <div class="site-map-toolbar"><button class="btn btn-sm" type="button" id="${prefix}-pin-center">Pin map centre</button><button class="btn btn-sm" type="button" id="${prefix}-pin-clear">Clear pin</button></div>
+    <span class="muted small" id="${prefix}-pin-status" role="status">Click the map to place a pin. Coordinates fill automatically.</span></div>`;
+}
+
+async function wireSiteLocationPicker(prefix) {
+  disposeSitePicker?.(); disposeSitePicker = null;
+  if (disposeSiteMap?.beginPicking) {
+    disposeSitePicker = disposeSiteMap.beginPicking(
+      document.getElementById(prefix + "-lat"), document.getElementById(prefix + "-lng"),
+      document.getElementById(prefix + "-pin-status"), document.getElementById(`${prefix}-pin-center`),
+      document.getElementById(`${prefix}-pin-clear`));
+  } else document.getElementById(prefix + "-pin-status").textContent = "Main map unavailable or still loading. You can enter coordinates below.";
 }
 
 function siteOperationsMap(sites, conns) {
   const tr = (key, vars) => window.MM_I18N ? MM_I18N.t(key, vars) : key;
   const selectedID = localStorage.getItem("mm_selected_site") || "";
-  const positioned = sites.filter(s => Number.isFinite(Number(s.latitude)) && Number.isFinite(Number(s.longitude)));
-  const latitudes = positioned.map(s => Number(s.latitude));
-  const longitudes = positioned.map(s => Number(s.longitude));
-  const minLat = positioned.length ? Math.min(...latitudes) : 0, maxLat = positioned.length ? Math.max(...latitudes) : 0;
-  const minLng = positioned.length ? Math.min(...longitudes) : 0, maxLng = positioned.length ? Math.max(...longitudes) : 0;
-  const spanLat = Math.max(maxLat - minLat, 0.02), spanLng = Math.max(maxLng - minLng, 0.02);
   const siteState = site => {
     const paths = conns.filter(c => c.site_id === site.site_id);
-    if (paths.some(c => String(c.cloud_status || "").toLowerCase() === "online")) return "online";
+    if (paths.some(connectionIsFresh)) return "online";
     if (paths.length) return "offline";
     return "unassigned";
   };
-  const pins = positioned.map(site => {
-    const left = 10 + ((Number(site.longitude) - minLng) / spanLng) * 80;
-    const top = 10 + ((maxLat - Number(site.latitude)) / spanLat) * 80;
-    const state = siteState(site);
-    return `<button class="site-map-pin ${state}${site.site_id === selectedID ? " is-selected" : ""}" type="button" data-site-select="${esc(site.site_id)}" style="left:${left.toFixed(2)}%;top:${top.toFixed(2)}%" aria-label="${esc(tr("Select {name}", { name: site.name }))}"><span></span><strong>${esc(site.name)}</strong></button>`;
-  }).join("");
   const cards = sites.map(site => {
     const state = siteState(site);
     const paths = conns.filter(c => c.site_id === site.site_id);
@@ -746,9 +731,9 @@ function siteOperationsMap(sites, conns) {
     const deviceCount = Number(site.device_count || 0);
     const deviceLabel = tr(deviceCount === 1 ? "{count} device" : "{count} devices", { count: deviceCount });
     const pathLabel = tr(paths.length === 1 ? "{count} management path" : "{count} management paths", { count: paths.length });
-    return `<button class="site-location-card${site.site_id === selectedID ? " is-selected" : ""}" type="button" data-site-select="${esc(site.site_id)}">
+    return `<div class="site-location-entry"><button class="site-location-card${site.site_id === selectedID ? " is-selected" : ""}" type="button" data-site-select="${esc(site.site_id)}">
       <span class="site-location-state ${state}"></span><span><strong>${esc(site.name)}</strong><small>${esc(site.location || tr("Location not set"))}</small></span><span class="site-location-meta"><b>${esc(deviceLabel)}</b><small>${esc(pathLabel)}</small></span><em>${esc(stateLabel)}</em>
-    </button>`;
+    </button>${SITE_EDITOR_ROLES.includes(ME?.user?.user_role) ? `<div class="site-location-actions"><button class="btn btn-sm" type="button" data-gedit="${esc(site.site_id)}">Edit site</button><button class="btn btn-sm" type="button" data-gdel="${esc(site.site_id)}">Delete site</button></div>` : ""}</div>`;
   }).join("");
   const selected = sites.find(s => s.site_id === selectedID);
   const selectedPaths = selected ? conns.filter(c => c.site_id === selected.site_id) : [];
@@ -756,31 +741,34 @@ function siteOperationsMap(sites, conns) {
     [selected.latitude != null && selected.longitude != null, tr("Coordinates")],
     [Number(selected.device_count || 0) > 0, tr("Managed device")],
     [selectedPaths.length > 0, tr("Management path")],
-    [selectedPaths.some(c => String(c.cloud_status || "").toLowerCase() === "online"), tr("Live signal")],
+    [selectedPaths.some(connectionIsFresh), tr("Live signal")],
   ] : [];
   const locationCount = tr(sites.length === 1 ? "{count} physical location" : "{count} physical locations", { count: sites.length });
   return `<section class="site-ops-console">
     <header><div><span class="fleet-kicker">${esc(tr("SITE OPERATIONS"))}</span><h2>${esc(locationCount)}</h2><p>${esc(tr("Choose a location to see its routers, connection state, and setup progress."))}</p></div>${selected ? `<button class="btn btn-sm" id="site-clear-filter" type="button">${esc(tr("Show all sites"))}</button>` : ""}</header>
     <div class="site-map-shell">
-      <div class="site-map-grid" aria-label="${esc(tr("Site coordinate map"))}">${pins || `<div class="site-map-empty">${esc(tr("Add latitude and longitude to place sites on this map."))}</div>`}</div>
+      <div class="site-map-toolbar"><button class="btn btn-sm" id="site-map-2d" type="button" aria-pressed="true">2D</button><button class="btn btn-sm" id="site-map-3d" type="button" aria-pressed="false">3D buildings</button><button class="btn btn-sm" id="site-map-fit" type="button">Show all locations</button><span class="muted small" id="site-map-status" role="status">Loading global map…</span></div>
+      <div class="site-global-map" id="site-global-map" aria-label="Global site map"></div>
+      <p class="muted small">Zoom in for building detail. 3D coverage varies by location. Map tiles are provided by OpenFreeMap; site names and router details stay in Mega Magic.</p>
       <div class="site-map-legend"><span><i class="online"></i>${esc(tr("Online path"))}</span><span><i class="offline"></i>${esc(tr("Needs attention"))}</span><span><i class="unassigned"></i>${esc(tr("Unassigned"))}</span></div>
     </div>
     <div class="site-location-list">${cards || `<div class="empty compact-empty"><div class="empty-title">${esc(tr("No sites yet"))}</div>${esc(tr("Add a physical location below."))}</div>`}</div>
-    ${selected ? `<div class="site-readiness"><div><span class="fleet-kicker">${esc(tr("GO LIVE READINESS"))}</span><strong>${esc(selected.name)}</strong></div>${checks.map(([ready, label]) => `<span class="${ready ? "ready" : "missing"}">${ready ? "✓" : "○"} ${esc(label)}</span>`).join("")}<button class="btn btn-sm" type="button" id="site-open-routers">${esc(tr("Open routers"))}</button></div>` : ""}
+    ${selected ? `<div class="site-readiness"><div><span class="fleet-kicker">${esc(tr("GO LIVE READINESS"))}</span><strong>${esc(selected.name)}</strong></div>${checks.map(([ready, label]) => `<span class="${ready ? "ready" : "missing"}">${ready ? "✓" : "○"} ${esc(label)}</span>`).join("")}<button class="btn btn-sm" type="button" id="site-open-routers">${esc(tr("Open gateways"))}</button></div>` : ""}
   </section>`;
 }
 
 async function renderSiteWorkspace(main) {
-  const [siteResult, connResult, allowanceResult] = await Promise.all([
+  const [siteResult, connResult] = await Promise.all([
     MM.get("/sites"),
     MM.get("/router-connections").catch(() => ({ connections: [] })),
-    MM.get("/device-allowances").catch(() => ({ allowance: null })),
   ]);
   const sites = asArray(siteResult && siteResult.sites);
   const conns = asArray(connResult && connResult.connections);
-  const allowance = allowanceResult && allowanceResult.allowance;
   const content = main.querySelector("#content");
-  content.innerHTML = `${siteOperationsMap(sites, conns)}${allowancePanel(allowance)}${siteGeoPanel(sites)}`;
+  if (!content?.isConnected) return;
+  disposeSiteMap?.(); disposeSiteMap = null;
+  disposeSitePicker?.(); disposeSitePicker = null;
+  content.innerHTML = `${siteOperationsMap(sites, conns)}${siteGeoPanel(sites)}`;
   wireSiteGeo(main, sites, () => renderSiteWorkspace(main));
   content.querySelectorAll("[data-site-select]").forEach(button => button.addEventListener("click", async () => {
     localStorage.setItem("mm_selected_site", button.dataset.siteSelect);
@@ -790,13 +778,30 @@ async function renderSiteWorkspace(main) {
     localStorage.removeItem("mm_selected_site");
     await renderSiteWorkspace(main);
   });
-  content.querySelector("#site-open-routers")?.addEventListener("click", () => { location.hash = "routers"; });
+  content.querySelector("#site-open-routers")?.addEventListener("click", () => { location.hash = "gateways"; });
+  const mapContainer = content.querySelector("#site-global-map");
+  try {
+    const { mountSiteMap } = await import("/assets/js/site-map.js?v=3");
+    if (!mapContainer.isConnected) return;
+    disposeSiteMap = mountSiteMap(mapContainer, sites, conns, id => {
+      localStorage.setItem("mm_selected_site", id);
+      renderSiteWorkspace(main);
+    });
+    if (!document.getElementById("geo-form")?.hidden && document.getElementById("gs-lat")) await wireSiteLocationPicker("gs");
+  } catch (_) {
+    if (mapContainer.isConnected) content.querySelector("#site-map-status").textContent = "Map unavailable. Your locations and router controls below still work.";
+  }
 }
 
 /* ---------- Router connections ---------- */
 // Saved management connections ported from Mikromagic. The API never returns the
 // ported password ciphertext — only a flag saying it must be re-entered.
 const CONN_CLOUD_CLASS = { online: "ok", pending: "warn", offline: "bad", error: "bad" };
+
+function connectionIsFresh(connection, now = Date.now()) {
+  const seen = Date.parse(connection.cloud_last_seen_at);
+  return String(connection.cloud_status || "").toLowerCase() === "online" && Number.isFinite(seen) && seen <= now + 30000 && now - seen <= 300000;
+}
 
 function connCloudBadge(status) {
   if (!status) return `<span class="muted small">unknown</span>`;
@@ -816,7 +821,7 @@ function connPanel(conns) {
       <td><span class="num">${esc(c.name)}</span>${c.is_default ? ` <span class="muted small">default</span>` : ""}</td>
       <td>${endpoint}</td>
       <td>${c.connection_mode ? esc(c.connection_mode) : `<span class="muted small">—</span>`}</td>
-      <td>${connCloudBadge(c.cloud_status)}</td>
+      <td>${connCloudBadge(c.cloud_status === "online" && !connectionIsFresh(c) ? "unverified" : c.cloud_status)}</td>
       <td>${c.site_name ? esc(c.site_name) : `<span class="muted small">unassigned</span>`}</td>
       <td class="num">${c.device_count || 0}</td>
       <td>${c.credentials_need_reentry ? `<span class="status warn">re-entry needed</span>` : `<span class="muted small">—</span>`}</td>
@@ -827,18 +832,17 @@ function connPanel(conns) {
     </tr>`;
   }).join("") : `<tr><td colspan="8" class="muted small">No router connections yet.</td></tr>`;
 
-  return `<div class="panel"><div class="panel-head"><h2 class="panel-title">Router connections</h2></div>
+  return `<div class="panel"><div class="panel-head"><h2 class="panel-title">Saved connection records</h2>${canEdit ? `<button class="btn btn-primary" type="button" id="conn-add">Add connection record</button>` : ""}</div>
       <div class="panel-body">
-        ${needReentry ? `<div class="alert" role="status">${needReentry} connection(s) carry a password saved by the old system that cannot be decrypted here — re-enter it from Edit before the connection can authenticate.</div>` : ""}
+        <p class="muted small">These records describe management paths. Saving an endpoint or selecting hub mode does not enroll a gateway, establish a tunnel or configure router authentication.</p>
+        ${needReentry ? `<div class="alert" role="status">${needReentry} connection(s) have unusable legacy credentials. Editing this record does not replace router credentials; authenticated Magic Hub onboarding is still required.</div>` : ""}
         <table><thead><tr><th>Name</th><th>Endpoint</th><th>Mode</th><th>Cloud</th><th>Site</th><th>Devices</th><th>Credentials</th><th></th></tr></thead>
         <tbody>${rows}</tbody></table>
       </div></div>
-    ${canEdit ? `<div style="display:flex;justify-content:flex-end;margin:10px 0">
-      <button class="btn btn-primary" id="conn-add">Add connection</button>
-    </div>
+    ${canEdit ? `
     <div class="panel" id="conn-form" hidden><div class="panel-head"><h2 class="panel-title">New router connection</h2></div>
-      <div class="panel-body">
-        <div class="field"><label>Name *</label><input class="input" id="cs-name" placeholder="e.g. CCR2004"></div>
+      <div class="panel-body record-form-grid">
+        <div class="field"><label for="cs-name">Name *</label><input class="input" id="cs-name" placeholder="e.g. CCR2004"></div>
         <div class="field"><label>Host</label><input class="input" id="cs-host" placeholder="router hostname or IP"></div>
         <div class="field"><label>Port</label><input class="input" id="cs-port" type="number" min="1" max="65535" placeholder="443"></div>
         <div class="field"><label>Mode</label><input class="input" id="cs-mode" placeholder="hub"></div>
@@ -926,7 +930,7 @@ function openEditConn(main, c, sites) {
   content.innerHTML = `
     <div class="panel"><div class="panel-head"><h2 class="panel-title">Edit router connection</h2></div>
       <div class="panel-body">
-        ${c.credentials_need_reentry ? `<div class="alert" role="status">The saved password was encrypted by the old system and cannot be decrypted here. It has been cleared from view — re-enter it through your router tooling to restore authentication.</div>` : ""}
+        ${c.credentials_need_reentry ? `<div class="alert" role="status">The legacy password cannot be used. This form edits metadata only; it does not configure or restore router authentication.</div>` : ""}
         <div class="field"><label>Name *</label><input class="input" id="ec-name" value="${esc(c.name || "")}"></div>
         <div class="field"><label>Host</label><input class="input" id="ec-host" value="${esc(c.host || "")}"></div>
         <div class="field"><label>Port</label><input class="input" id="ec-port" type="number" min="1" max="65535" value="${c.port ?? ""}"></div>
@@ -1018,7 +1022,6 @@ function requestPanel(requests) {
       </div></div>
     <div class="sites-actions">
       <button class="btn btn-primary" type="button" id="req-add">Request capacity</button>
-      <button class="btn btn-primary" type="button" id="site-add">Add router</button>
     </div>
     <div class="panel" id="req-form" hidden><div class="panel-head"><h2 class="panel-title">New capacity request</h2></div>
       <div class="panel-body">
@@ -1332,9 +1335,41 @@ function routerCapabilityButton(deviceID, kind, label, available, title) {
   return `<button class="routerboard-capability ${available ? "available" : "pending"}" type="button" data-router-capability="${esc(kind)}" data-router-capability-device="${esc(deviceID)}"${title ? ` title="${esc(title)}"` : ""}>${esc(label)}</button>`;
 }
 
+function hubLookupMarkup(peer) {
+  const label = peer.handshake_status === "recent_handshake" ? "Recent tunnel handshake"
+    : peer.handshake_status === "inactive" ? "Hub connection inactive" : "No recent tunnel handshake";
+  return `<strong>${esc(label)}</strong><dl><dt>Tunnel address</dt><dd>${esc(peer.tunnel_address || "Not reported")}</dd><dt>Last handshake</dt><dd>${peer.last_handshake_at ? esc(ts(peer.last_handshake_at)) : "Never observed"}</dd></dl><p class="muted small">Read-only Hub check. This does not verify LAN access or router authentication and does not change the connection.</p>`;
+}
+
+function wireHubLookup(content) {
+  content.querySelectorAll("button[data-hub-check]").forEach(button => button.addEventListener("click", async () => {
+    if (button.disabled || !SITE_EDITOR_ROLES.includes(ME?.user?.user_role)) return;
+    const status = button.closest("article").querySelector("[data-hub-status]");
+    button.disabled = true;
+    button.textContent = "Checking Magic Hub…";
+    status.hidden = false;
+    status.textContent = "Reading this gateway's Hub connection…";
+    try {
+      const peer = await MM.get(`/vps/peers/${encodeURIComponent(button.dataset.hubCheck)}/live`);
+      if (!status.isConnected) return;
+      status.innerHTML = hubLookupMarkup(peer);
+    } catch (error) {
+      if (!status.isConnected) return;
+      const code = error.data?.code;
+      status.textContent = code === "plan_required" ? "An active Sovereign pass is required to check Magic Hub."
+        : code === "hub_lookup_disabled" ? "Magic Hub lookup is not enabled for this app."
+        : error.message === "unauthorized" ? "Please sign in again to check this gateway."
+        : "Magic Hub lookup could not be completed. Verify that this gateway is enrolled and try again. No connection changes were made.";
+    } finally {
+      if (button.isConnected) { button.disabled = false; button.textContent = "Check Magic Hub"; }
+    }
+  }));
+}
+
 function routerBoardPanel(routers, fleet, capabilityByID = new Map()) {
+  const canEdit = SITE_EDITOR_ROLES.includes(ME?.user?.user_role);
   const stateByID = new Map(asArray(fleet && fleet.peers).map(peer => [peer.device_id, String(peer.state || "unknown").toLowerCase()]));
-  if (!routers.length) return `<div class="panel"><div class="panel-body"><div class="empty"><div class="empty-title">No RouterBOARD devices registered</div>Add the first router below, then connect it through Magic Hub or a local management path.</div></div></div>`;
+  if (!routers.length) return `<div class="panel"><div class="panel-body"><div class="empty"><div class="empty-title">No devices registered in this workspace</div>Add a device record, then verify its management connection.</div></div></div>`;
   const cards = routers.map(router => {
     const state = stateByID.get(router.device_id) || (router.is_online ? "up" : "unknown");
     const stateLabel = state === "up" ? "ONLINE" : state.toUpperCase();
@@ -1350,20 +1385,35 @@ function routerBoardPanel(routers, fleet, capabilityByID = new Map()) {
       <header><span class="routerboard-glyph">${MMTheme.icon("router", 22)}</span><div><span class="fleet-kicker">${esc(topologyLayerLabel(router.deployment_layer))}</span><h3>${esc(router.hardware_name || "Unnamed RouterBOARD")}</h3><p>${esc([router.vendor, router.device_model].filter(Boolean).join(" · ") || "MikroTik device")}</p></div><span class="status ${state === "up" ? "ok" : (state === "offline" ? "bad" : "unknown")}">${esc(stateLabel)}</span></header>
       <dl><dt>Transport</dt><dd>${esc(router.transport || "direct")}</dd><dt>Management IP</dt><dd class="mono">${esc(router.management_ip || "Not registered")}</dd><dt>Last signal</dt><dd>${router.last_seen_at ? esc(ts(router.last_seen_at)) : "No verified signal"}</dd><dt>Device ID</dt><dd class="mono">${esc(router.device_id)}</dd></dl>
       <div class="routerboard-capabilities">
-        ${routerCapabilityButton(router.device_id, "gateway", "Configure gateway", !!(caps && caps.gateway), capabilityTitle)}
-        ${routerCapabilityButton(router.device_id, "hotspot", "Hotspot readiness", hotspot, hotspot ? "View this router's hotspot readiness" : capabilityTitle)}
-        ${routerCapabilityButton(router.device_id, "wireless", localRadios ? `Wi-Fi & APs · ${localRadios}` : (managedAPs ? `Managed APs · ${managedAPs}` : "Wi-Fi & APs"), localRadios > 0 || controller || !!(caps && caps.external_aps_likely), capabilityTitle)}
+        ${router.deployment_layer === "MAIN_GATEWAY" ? routerCapabilityButton(router.device_id, "gateway", canEdit ? "Configure gateway" : "Gateway settings", !!(caps && caps.gateway), capabilityTitle) : ""}
+        ${router.deployment_layer === "MAIN_GATEWAY" ? routerCapabilityButton(router.device_id, "hotspot", "Hotspot readiness", hotspot, hotspot ? "View this router's hotspot readiness" : capabilityTitle) : ""}
+        ${localRadios > 0 || controller || ["ACCESS_POINT","CONTROLLER"].includes(router.deployment_layer) ? routerCapabilityButton(router.device_id, "wireless", "Wi-Fi readiness", localRadios > 0 || controller, "Read-only capability information; SSID configuration is not available here yet") : ""}
         ${routerCapabilityButton(router.device_id, "webfig", "WebFig status", true, webfig ? "HTTPS WebFig is available" : "View what is needed for secure WebFig access")}
       </div>
-      <footer><button class="btn btn-sm" type="button" data-edit="${esc(router.device_id)}">Edit record</button><button class="btn btn-sm" type="button" data-router-topology="${esc(router.device_id)}">Topology</button><button class="btn btn-sm" type="button" data-reboot="${esc(router.device_id)}"${state === "unknown" ? " disabled title=\"No verified reachability\"" : ""}>Reboot</button></footer>
+      ${canEdit && router.deployment_layer === "MAIN_GATEWAY" ? `<div class="router-hub-check"><button class="btn btn-sm" type="button" data-hub-check="${esc(router.device_id)}">Check Magic Hub</button><div data-hub-status role="status" hidden></div>
+        <details data-hub-enrollment="${esc(router.device_id)}"><summary>Connect Magic Hub</summary>
+          <p>RouterOS 7: open WinBox → WireGuard. Create an interface for Magic Hub, or use your existing dedicated interface. Copy its <strong>public key</strong>. Never share its private key.</p>
+          <form class="quick-config-form"><label>Router WireGuard public key<input name="router_public_key" required autocomplete="off" maxlength="44" spellcheck="false" placeholder="Paste the 44-character public key"></label>
+            <label>Router HTTPS management port<input name="management_rest_port" type="number" min="1" max="65535" value="443" required></label>
+            <label class="check-label"><input name="confirm_enrollment" type="checkbox" required> I authorize enrolling this gateway with this public key.</label>
+            <p class="muted small">This creates a Hub peer only. It does not open public management ports or change your router's firewall. Existing key changes require a separate repair workflow.</p>
+            <button type="submit" class="btn">Enroll gateway</button><div role="status" aria-live="polite"></div>
+          </form>
+        </details></div>` : ""}
+      <footer>${canEdit ? `<button class="btn btn-sm" type="button" data-edit="${esc(router.device_id)}">Edit record</button>` : ""}<button class="btn btn-sm" type="button" data-router-topology="${esc(router.device_id)}">Topology</button>${canEdit ? `<button class="btn btn-sm" type="button" data-reboot="${esc(router.device_id)}"${state !== "up" ? " disabled title=\"No verified reachability\"" : ""}>Reboot</button>` : ""}</footer>
     </article>`;
   }).join("");
   return `<section class="routerboard-console"><header><div><span class="fleet-kicker">ROUTER MANAGEMENT</span><h2>${routers.length} managed device${routers.length === 1 ? "" : "s"}</h2><p>Choose a router to manage its settings. Mega Magic shows the tools that this device and RouterOS installation support.</p></div></header><div class="routerboard-grid mobile-device-list">${cards}</div></section>`;
 }
 
-async function renderSites(main) {
+async function renderSites(main, workspace = location.hash === "#gateways" ? "gateways" : "routers") {
+  const gatewayOnly = workspace === "gateways";
+  const canEdit = SITE_EDITOR_ROLES.includes(ME?.user?.user_role);
+  const content = main.querySelector("#content");
   const data = await MM.get("/routers");
-  const routers = Array.isArray(data.routers) ? data.routers : asArray(data);
+  const allRouters = Array.isArray(data.routers) ? data.routers : asArray(data);
+  const routers = allRouters.filter(router => gatewayOnly
+    ? router.deployment_layer === "MAIN_GATEWAY" : router.deployment_layer !== "MAIN_GATEWAY");
   let fleet = { peers: [] };
   try { fleet = await MM.get("/fleet/health"); } catch (_) {}
   const routerStateByID = new Map(asArray(fleet.peers).map(peer => [peer.device_id, String(peer.state || "unknown").toLowerCase()]));
@@ -1390,52 +1440,37 @@ async function renderSites(main) {
     allowanceKinds = ar.kinds || [];
   } catch (_) {}
   try { const qr = await MM.get("/device-requests"); requests = qr.requests || []; } catch (_) {}
-  const content = main.querySelector("#content");
-  const layers = ["MAIN_GATEWAY", "DOWNSTREAM_SWITCH", "ACCESS_POINT", "CONTROLLER"];
+  if (!content?.isConnected) return;
+  const layers = gatewayOnly ? ["MAIN_GATEWAY"] : ["DOWNSTREAM_SWITCH", "ACCESS_POINT", "CONTROLLER"];
 
-  const rows = routers.map(r => {
-    const state = routerStateByID.get(r.device_id) || (r.is_online ? "up" : "unknown");
-    return `
-    <tr>
-      <td><span class="num">${esc(r.hardware_name)}</span></td>
-      <td><span class="mono">${esc(r.deployment_layer)}</span></td>
-      <td>${esc(r.vendor)}</td>
-      <td>${badge(state)}</td>
-      <td class="mono">${esc(r.device_id)}</td>
-      <td>
-        <button class="btn btn-sm" type="button" data-edit="${esc(r.device_id)}">Edit</button>
-        <button class="btn btn-sm" type="button" data-reboot="${esc(r.device_id)}">Reboot</button>
-      </td>
-    </tr>`;
-  }).join("");
 
   content.innerHTML = `
     ${routerBoardPanel(routers, fleet, capabilityByID)}
     <dialog class="router-capability-dialog" id="router-capability-dialog"><div class="router-capability-shell"><button type="button" class="dialog-close" data-capability-close aria-label="Close">×</button><div id="router-capability-content"></div><div class="dialog-actions"><button type="button" class="btn" data-capability-close>Close</button></div></div></dialog>
-    ${connPanel(conns)}
-    ${allowancePanel(allowance)}
-    ${requestPanel(requests)}
-    <div class="panel" id="site-form" hidden><div class="panel-head"><h2 class="panel-title">Add router</h2></div>
-      <div class="panel-body">
+    ${gatewayOnly ? connPanel(conns) : ""}
+    ${canEdit ? `<div class="workspace-actions"><button class="btn btn-primary" type="button" id="site-add">${gatewayOnly ? "Add gateway record" : "Add downstream device record"}</button></div>` : ""}
+    ${gatewayOnly ? "" : allowancePanel(allowance)}
+    ${gatewayOnly ? "" : requestPanel(requests)}
+    <div class="panel" id="site-form" hidden><div class="panel-head"><h2 class="panel-title">Add device record</h2></div>
+      <div class="panel-body record-form-grid">
         <div class="field"><label>Hardware name *</label><input class="input" id="sr-name"></div>
         <div class="field"><label>Model</label><input class="input" id="sr-model"></div>
         <div class="field"><label>Deployment layer</label><select class="input" id="sr-layer">${layers.map(l => `<option value="${l}">${l}</option>`).join("")}</select></div>
         <div class="field"><label>Management IP</label><input class="input" id="sr-ip"></div>
         <div class="field"><label>MAC address</label><input class="input" id="sr-mac"></div>
-        <button class="btn btn-primary" type="button" id="sr-save">Create router</button>
+        <button class="btn btn-primary" type="button" id="sr-save">Create device record</button>
         <span id="sr-msg" class="muted small" role="status"></span>
       </div></div>
     <div id="site-alert"></div>
-    ${routers.length ? `<div class="desktop-devices router-record-table"><table><thead><tr><th>Device</th><th>Layer</th><th>Vendor</th><th>Status</th><th>ID</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
+    ${routers.length ? ""
+      : gatewayOnly ? '<div class="panel"><div class="panel-body">No gateways registered. Adding a record does not establish a Magic Hub connection; a verified tunnel and router authentication are required before remote management.</div></div>'
       : `<div class="panel"><div class="panel-body">
-          <div class="empty"><div class="empty-title">Welcome — let's get you running</div>Three short steps and your network is managed.</div>
+          <div class="empty"><div class="empty-title">No downstream devices registered</div>Register switches, access points or controllers behind your gateway. Records alone do not connect devices; connector binding and verified authentication are still required.</div>
           <ol style="margin:0 0 4px 18px;line-height:1.9">
-            <li><b>Step 1 — Add your first router.</b> Register the device we'll watch and self-heal.
-              <div style="margin:6px 0 14px"><button class="btn btn-primary" id="wz-add">Add your first router</button></div></li>
-            <li><b>Step 2 — We're watching it.</b> Once added it appears in Fleet health and self-heals.
+            <li><b>Add a device record.</b> Record the device's identity and management address.
+              ${canEdit ? '<div style="margin:6px 0 14px"><button class="btn btn-primary" id="wz-add">Add device record</button></div>' : ""}</li>
+            <li><b>Step 2 — Verify its connection.</b> A saved device record is not a live connection. Check its management path in Fleet health.
               <div style="margin:6px 0 14px"><button class="btn" id="wz-fleet">See live fleet</button></div></li>
-            <li><b>Step 3 — Turn on guest Wi-Fi payments.</b> Set plans and MMQR in the Captive portal.
-              <div style="margin:6px 0 4px"><button class="btn" id="wz-portal">Open Captive portal</button></div></li>
           </ol>
         </div></div>`}`;
 
@@ -1464,7 +1499,7 @@ async function renderSites(main) {
     alert((e.data && (e.data.reason || e.data.error)) ? (e.data.reason || e.data.error) : e.message);
   };
 
-  document.getElementById("site-add").addEventListener("click", () => {
+  document.getElementById("site-add")?.addEventListener("click", () => {
     const f = document.getElementById("site-form");
     f.hidden = !f.hidden;
     if (!f.hidden) refreshRouterCapacityState();
@@ -1493,8 +1528,8 @@ async function renderSites(main) {
       management_ip: document.getElementById("sr-ip").value.trim() || null,
       mac_address: document.getElementById("sr-mac").value.trim() || null,
       vendor: "mikrotik",
-      category: "router",
-      transport: "direct",
+      category: ({MAIN_GATEWAY: "gateway", DOWNSTREAM_SWITCH: "switch", ACCESS_POINT: "ap", CONTROLLER: "controller"})[document.getElementById("sr-layer").value],
+      transport: gatewayOnly ? "tunnel" : "direct",
     };
     if (!body.hardware_name) { document.getElementById("sr-msg").textContent = "Hardware name is required."; return; }
     try { await MM.post("/routers", body); await renderSites(main); }
@@ -1540,15 +1575,15 @@ async function renderSites(main) {
       try {
         const [response, inventory] = await Promise.all([MM.get(`/routers/${encodeURIComponent(router.device_id)}/quick-config`), MM.get(`/routers/${encodeURIComponent(router.device_id)}/gateway/interfaces`)]);
         const current = response.config || {};
-        body = `${common}<h3>Gateway basics</h3><p>Change the router name and DNS settings. Mega Magic saves a backup first, confirms the new values after applying them, and restores the previous values if the check fails.</p>
+        body = `${common}<h3>Gateway basics</h3><p>${canEdit ? "Change the router name and DNS settings. Mega Magic saves a backup first, confirms the new values after applying them, and restores the previous values if the check fails." : "Read-only settings. An owner or administrator is required to change router configuration."}</p>
           <div class="router-capability-facts">${capabilityFact("Board", caps.board_name || "Reported by RouterOS")}${capabilityFact("RouterOS", caps.routeros_version || "Unknown")}${capabilityFact("DHCP server", menuState(caps.dhcp_server))}${capabilityFact("Hotspot", menuState(caps.hotspot))}</div>
-          <div class="quick-config-form">
+          ${canEdit ? `<div class="quick-config-form">
             <label>Router identity<input class="input" id="quick-identity" maxlength="63" value="${esc(current.identity || "")}" autocomplete="off"></label>
             <label>DNS servers<input class="input" id="quick-dns" value="${esc(asArray(current.dns_servers).join(", "))}" placeholder="1.1.1.1, 8.8.8.8" inputmode="text" autocomplete="off"><span>Comma-separated IPv4 or IPv6 addresses.</span></label>
             <label class="quick-config-check"><input id="quick-remote-dns" type="checkbox"${current.allow_remote_dns ? " checked" : ""}><span><strong>Answer DNS requests from clients</strong><small>Needed when hotspot and LAN clients use this router as their DNS resolver.</small></span></label>
             <div id="quick-config-status" role="status"></div>
             <button class="btn btn-primary" type="button" id="quick-config-apply">Backup and apply to RouterOS</button>
-          </div>${gatewaySetupForm(asArray(inventory.interfaces))}`;
+          </div>${gatewaySetupForm(asArray(inventory.interfaces))}` : `<dl><dt>Identity</dt><dd>${esc(current.identity || "Not reported")}</dd><dt>DNS servers</dt><dd>${esc(asArray(current.dns_servers).join(", ") || "Not reported")}</dd></dl>`}`;
       } catch (error) {
         body = `${common}<div class="alert">${esc((error.data && error.data.error) || error.message)}</div>`;
       }
@@ -1559,7 +1594,7 @@ async function renderSites(main) {
     } else {
       const httpsEnabled = !!(caps.webfig && caps.webfig.https_enabled);
       const ready = httpsEnabled && !!(caps.webfig && caps.webfig.trusted_only);
-      body = `${common}<h3>Secure WebFig</h3><div class="router-capability-facts">${capabilityFact("HTTPS WebFig", httpsEnabled ? "Enabled" : "Not enabled")}${capabilityFact("HTTPS port", caps.webfig && caps.webfig.https_port ? String(caps.webfig.https_port) : "—")}${capabilityFact("Restricted to trusted addresses", caps.webfig && caps.webfig.trusted_only ? "Yes" : "Needs attention")}</div><p>${ready ? "HTTPS WebFig is restricted to the management networks configured for this Mega Magic deployment." : "Mega Magic can create a router certificate when needed, enable HTTPS WebFig only on trusted management networks, disable plaintext WebFig, and verify the result."}</p><p class="muted">A router-generated certificate can show a browser trust warning until its certificate is installed on your device. Access also requires a route to the trusted management network.</p><div id="webfig-status" role="status"></div><button class="btn btn-primary" type="button" id="webfig-secure">${ready ? "Re-verify and enforce secure WebFig" : "Backup and configure secure WebFig"}</button>`;
+      body = `${common}<h3>Secure WebFig</h3><div class="router-capability-facts">${capabilityFact("HTTPS WebFig", httpsEnabled ? "Enabled" : "Not enabled")}${capabilityFact("HTTPS port", caps.webfig && caps.webfig.https_port ? String(caps.webfig.https_port) : "—")}${capabilityFact("Restricted to trusted addresses", caps.webfig && caps.webfig.trusted_only ? "Yes" : "Needs attention")}</div><p>${ready ? "HTTPS WebFig is restricted to the management networks configured for this Mega Magic deployment." : "Mega Magic can create a router certificate when needed, enable HTTPS WebFig only on trusted management networks, disable plaintext WebFig, and verify the result."}</p><p class="muted">A router-generated certificate can show a browser trust warning until its certificate is installed on your device. Access also requires a route to the trusted management network.</p><div id="webfig-status" role="status"></div>${canEdit ? `<button class="btn btn-primary" type="button" id="webfig-secure">${ready ? "Re-verify and enforce secure WebFig" : "Backup and configure secure WebFig"}</button>` : ""}`;
     }
     capabilityContent.innerHTML = body;
     const quickApply = capabilityContent.querySelector("#quick-config-apply");
@@ -1609,8 +1644,12 @@ async function renderSites(main) {
     if (!capabilityDialog.open) capabilityDialog.showModal();
   }));
 
-  wireConns(main, conns, sites);
-  wireAllowance(main, allowance, requests, allowanceKinds);
+  if (gatewayOnly) {
+    wireHubLookup(content); wireConns(main, conns, sites);
+    const {mountHubEnrollment}=await import("/assets/js/hub-enrollment.js?v=1");
+    if(content.isConnected)mountHubEnrollment(content,{api:MM,escape:esc});
+  }
+  else wireAllowance(main, allowance, requests, allowanceKinds);
 }
 
 function gatewaySetupForm(interfaces) {
@@ -1638,13 +1677,14 @@ function wireGatewaySetup(container, router) {
   const form = container.querySelector("#gateway-setup-form");
   if (!form || !router) return;
   const status = form.querySelector("#gateway-status"), apply = form.querySelector("#gateway-apply"), preview = form.querySelector("#gateway-preview");
-  let approved = null;
+  let approved = null, revision = 0;
   const payload = () => { const f = new FormData(form); return {name:f.get("name").trim(),wan_interface:f.get("wan_interface"),lan_interface:f.get("lan_interface"),vlan_id:Number(f.get("vlan_id")),gateway_cidr:f.get("gateway_cidr").trim(),pool_start:f.get("pool_start").trim(),pool_end:f.get("pool_end").trim(),dns_servers:f.get("dns_servers").split(",").map(s=>s.trim()).filter(Boolean),hotspot:f.has("hotspot"),radius_address:f.get("radius_address").trim(),radius_secret:f.get("radius_secret")}; };
   const endpoint = `/routers/${encodeURIComponent(router.device_id)}/gateway/`;
-  form.addEventListener("input", () => { approved=null; apply.hidden=true; status.textContent="Settings changed. Preview again before applying."; });
+  form.addEventListener("input", () => { revision++; approved=null; apply.hidden=true; status.textContent="Settings changed. Preview again before applying."; });
   form.addEventListener("submit", async e => {
     e.preventDefault(); approved=null; apply.hidden=true; preview.disabled=true; status.textContent="Checking the live router…";
-    try { const request=payload(); const response=await MM.post(endpoint+"preview",request); if (!form.isConnected) return; approved={request,confirmation:response.plan.confirmation}; status.innerHTML=`<strong>Review changes to ${esc(router.hardware_name)}</strong><ol>${asArray(response.plan.steps).map(step=>`<li>${esc(step)}</li>`).join("")}</ol><p>Existing addresses, DHCP servers and management configuration will not be replaced.</p>`; apply.hidden=false; }
+    const requestedRevision = ++revision;
+    try { const request=payload(); const response=await MM.post(endpoint+"preview",request); if (!form.isConnected) return; if (requestedRevision !== revision) {status.textContent="Settings changed while checking. Preview again before applying.";return;} approved={request,confirmation:response.plan.confirmation}; status.innerHTML=`<strong>Review changes to ${esc(router.hardware_name)}</strong><ol>${asArray(response.plan.steps).map(step=>`<li>${esc(step)}</li>`).join("")}</ol><p>Existing addresses, DHCP servers and management configuration will not be replaced.</p>`; apply.hidden=false; }
     catch(e) { status.textContent=(e.data && e.data.error) || e.message; }
     finally { preview.disabled=false; }
   });
@@ -2316,6 +2356,18 @@ function usageRows(groups) {
 
 /* ---------- Magic Dude ---------- */
 let magicDudeTurns = [];
+let magicDudePending = false;
+let magicDudeScrollFrame = null;
+let magicDudeResizeObserver = null;
+
+function scrollMagicDudeToLatest() {
+  if (magicDudeScrollFrame !== null) cancelAnimationFrame(magicDudeScrollFrame);
+  magicDudeScrollFrame = requestAnimationFrame(() => {
+    magicDudeScrollFrame = null;
+    const list = document.getElementById("md-messages");
+    if (list && !document.getElementById("magic-dude-popup")?.hidden) list.scrollTop = list.scrollHeight;
+  });
+}
 
 function magicDudeText(value) {
   return esc(String(value || "")).replace(/\n/g, "<br>");
@@ -2327,22 +2379,33 @@ function drawMagicDudeMessages() {
   if (!magicDudeTurns.length) {
     list.innerHTML = `<div class="md-welcome">
       <img class="md-avatar md-avatar-welcome" src="/assets/images/magic-dude-mascot-20260930.png" alt="">
-      <div><strong>I’m ready to help with your fleet.</strong>
-      <p>I can explain health, security exposure, incidents, and safe troubleshooting steps. I cannot make changes or run commands.</p>
+      <div><strong>ဘာကူညီပေးရမလဲ? 🙂</strong>
+      <p>စက်အခြေအနေ၊ ပြဿနာနဲ့ app ထဲက နေရာတွေ ရှာပေးမယ်။ ကိုယ်တိုင်တော့ ပြင်ဆင်မှု မလုပ်ပါဘူး။</p>
       <div class="md-quick-prompts" aria-label="Suggested questions">
-        <button class="md-prompt" type="button">Summarize my fleet health and the most urgent issue.</button>
-        <button class="md-prompt" type="button">Explain my current security exposure in plain language.</button>
-        <button class="md-prompt" type="button">Give me a safe checklist for offline routers.</button>
+        <button class="md-prompt" type="button">စက်တွေ အခြေအနေ ဘယ်လိုလဲ?</button>
+        <button class="md-prompt" type="button">Jellyfin library ဘယ်မှာ ထည့်ရမလဲ?</button>
+        <button class="md-prompt" type="button">Gateway ဘယ်မှာ ချိတ်ရမလဲ?</button>
       </div></div>
     </div>`;
     bindMagicDudePrompts();
-    return;
-  }
+  } else {
   list.innerHTML = magicDudeTurns.map(m => `<div class="md-message ${m.role}">
-    <div class="md-message-label">${m.role === "user" ? "You" : "Magic Dude"}</div>
+    <div class="md-message-label">${m.role === "user" ? "သင်" : "Magic Dude"}</div>
     <div class="md-message-body">${magicDudeText(m.content)}</div>
   </div>`).join("");
-  list.scrollTop = list.scrollHeight;
+  }
+  // Observe content, not the scroller: fonts/images and responsive wrapping can
+  // change its height after a reply is drawn. Never scroll the surrounding page.
+  const stack = document.createElement("div");
+  stack.className = "md-message-stack";
+  while (list.firstChild) stack.appendChild(list.firstChild);
+  list.appendChild(stack);
+  if (typeof ResizeObserver !== "undefined") {
+    if (!magicDudeResizeObserver) magicDudeResizeObserver = new ResizeObserver(scrollMagicDudeToLatest);
+    magicDudeResizeObserver.disconnect();
+    magicDudeResizeObserver.observe(stack);
+  }
+  scrollMagicDudeToLatest();
 }
 
 function bindMagicDudePrompts() {
@@ -2361,7 +2424,7 @@ function setMagicDudeOpen(open) {
   document.querySelectorAll("[data-md-open]").forEach(btn => btn.setAttribute("aria-expanded", open ? "true" : "false"));
   if (open) {
     drawMagicDudeMessages();
-    requestAnimationFrame(() => document.getElementById("md-question")?.focus());
+    requestAnimationFrame(() => document.getElementById("md-question")?.focus({preventScroll: true}));
   }
 }
 
@@ -2381,33 +2444,38 @@ function initMagicDudePopup() {
   const send = document.getElementById("md-send");
   const note = document.getElementById("md-note");
   input.addEventListener("keydown", e => {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); }
+    if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); if (!magicDudePending) form.requestSubmit(); }
   });
   form.addEventListener("submit", async e => {
     e.preventDefault();
     const question = input.value.trim();
-    if (!question) return;
+    if (!question || magicDudePending) return;
+    magicDudePending = true;
     const history = magicDudeTurns.slice(-6).map(({role, content}) => ({role, content}));
     magicDudeTurns.push({role: "user", content: question});
     input.value = ""; input.disabled = true; send.disabled = true;
-    note.textContent = "Reviewing the current fleet snapshot…";
+    note.textContent = "ခဏလေး စစ်ကြည့်ပေးမယ်နော်…";
     drawMagicDudeMessages();
     try {
       const reply = await MM.post("/magic-dude/chat", {question, history});
-      magicDudeTurns.push({role: "assistant", content: reply.answer || "No answer was returned."});
-      note.textContent = `Read-only response · ${tok(reply.usage && reply.usage.total_tokens || 0)} tokens`;
+      magicDudeTurns.push({role: "assistant", content: reply.answer || "အဖြေ မရသေးဘူး။ ပြန်မေးပေးပါနော်။"});
+      note.textContent = "အကြံပေးသီးသန့်ပါ။ ပြင်ဆင်မှု မလုပ်ထားပါဘူး။";
     } catch (err) {
       if (err.status === 403 && err.data && err.data.code === "MAGIC_DUDE_UNLOCK_REQUIRED") {
-        magicDudeTurns.push({role: "assistant", content: "This account role needs an active Magic Dude unlock key. Ask an owner or administrator to review access."});
-      } else if (err.status === 429 && err.data && err.data.code === "FREE_MODEL_LIMIT_REACHED") {
-        magicDudeTurns.push({role: "assistant", content: "OpenRouter’s free-model allowance has been used for today. I’ll be available again after OpenRouter’s daily reset; no paid model will be used."});
-        note.textContent = "Free allowance exhausted · resets daily";
+        magicDudeTurns.push({role: "assistant", content: "Magic Dude သုံးဖို့ unlock key လိုပါတယ်။ Owner ဒါမှမဟုတ် Admin ကို မေးပေးပါနော်။"});
+        note.textContent = "အသုံးပြုခွင့် လိုအပ်ပါတယ်။";
+      } else if (err.status === 429) {
+        magicDudeTurns.push({role: "assistant", content: "AI အသုံးပြုမှု ကန့်သတ်ချက် ပြည့်နေပါတယ်။ ခဏနေရင် ပြန်မေးပေးပါနော်။"});
+        note.textContent = "လောလောဆယ် အသုံးပြုမှု ကန့်သတ်ထားပါတယ်။";
       } else {
-        magicDudeTurns.push({role: "assistant", content: apiErrorText(err, "I’m temporarily unavailable. Your question was not used to make any fleet changes.")});
-        note.textContent = "The request did not complete.";
+        magicDudeTurns.push({role: "assistant", content: "လောလောဆယ် အဖြေ မပေးနိုင်သေးဘူး။ ပြန်ကြိုးစားပေးပါနော်။ စက်တွေကို မပြင်ထားပါဘူး။"});
+        note.textContent = "မေးခွန်း ပို့ခြင်း မအောင်မြင်ပါ။";
       }
     } finally {
-      input.disabled = false; send.disabled = false; input.focus(); drawMagicDudeMessages();
+      magicDudePending = false;
+      input.disabled = false; send.disabled = false;
+      if (!popup.hidden) input.focus({preventScroll: true});
+      drawMagicDudeMessages();
     }
   });
 }
@@ -2761,17 +2829,42 @@ function sheetTile(lay, dens, v) {
   return `<div class="sheet-tile" style="height:${dens.rowHeightMm.toFixed(2)}mm;padding:${dens.padMm.toFixed(2)}mm">${parts.join("")}</div>`;
 }
 
+function voucherPrintSelection(vouchers, size, page, status) {
+  const count = Math.max(1, Math.min(100, Math.trunc(Number(size)) || 100));
+  const eligible = (vouchers || []).filter(v => v && v.code &&
+    (status === "all" || (status === "available" ? ["active", "unused"].includes(v.status) : v.status === status)));
+  const pages = Math.max(1, Math.ceil(eligible.length / count));
+  const current = Math.max(1, Math.min(pages, Math.trunc(Number(page)) || 1));
+  const start = (current - 1) * count;
+  return { vouchers: eligible.slice(start, start + count), page: current, pages, total: eligible.length, start, size: count };
+}
+
 function wirePrintPreview(main, vouchers, canEdit) {
   const stage = main.querySelector("#pl-stage");
   const hint = main.querySelector("#pl-hint");
   if (!stage) return;
-  const real = (vouchers || []).filter(v => v && v.code);
+  const sizeInput = main.querySelector("#pl-batch-size");
+  const statusInput = main.querySelector("#pl-batch-status");
+  const pageInput = main.querySelector("#pl-batch-page");
+  let selectedPage = 1;
+  const selection = () => voucherPrintSelection(vouchers, sizeInput ? sizeInput.value : 100, selectedPage, statusInput ? statusInput.value : "available");
   let mode = "a4";
   const styleEl = document.createElement("style");
   styleEl.textContent = SHEET_CSS;
   document.head.appendChild(styleEl);
 
   const draw = () => {
+    const batch = selection();
+    selectedPage = batch.page;
+    const real = batch.vouchers;
+    if (pageInput) {
+      pageInput.innerHTML = Array.from({ length: batch.pages }, (_, i) => `<option value="${i + 1}" ${i + 1 === batch.page ? "selected" : ""}>Page ${i + 1}</option>`).join("");
+    }
+    const range = main.querySelector("#pl-batch-range");
+    if (range) range.textContent = batch.total ? `${batch.start + 1}–${batch.start + real.length} of ${batch.total} vouchers · page ${batch.page}/${batch.pages}` : "No vouchers match this filter.";
+    const previous = main.querySelector("#pl-batch-prev"), next = main.querySelector("#pl-batch-next");
+    if (previous) previous.disabled = batch.page <= 1;
+    if (next) next.disabled = batch.page >= batch.pages;
     const lay = readPrintLayout();
     const cols = mode === "a4" ? lay.a4_columns : lay.thermal_columns;
     const rows = mode === "a4" ? lay.a4_rows_per_page : lay.thermal_rows_per_strip;
@@ -2809,9 +2902,16 @@ function wirePrintPreview(main, vouchers, canEdit) {
 
   const pbtn = main.querySelector("#pl-print");
   if (pbtn) pbtn.addEventListener("click", () => {
+    const real = selection().vouchers;
     if (!real.length) { hint.textContent = "Nothing to print yet — create vouchers first."; return; }
     printSheet(readPrintLayout(), mode, real);
   });
+
+  [sizeInput, statusInput].filter(Boolean).forEach(el => el.addEventListener("change", () => { selectedPage = 1; draw(); }));
+  if (pageInput) pageInput.addEventListener("change", () => { selectedPage = Number(pageInput.value); draw(); });
+  const previous = main.querySelector("#pl-batch-prev"), next = main.querySelector("#pl-batch-next");
+  if (previous) previous.addEventListener("click", () => { selectedPage--; draw(); });
+  if (next) next.addEventListener("click", () => { selectedPage++; draw(); });
 
   draw();
 }
@@ -2857,18 +2957,23 @@ async function renderVouchers(main) {
   const canEdit = SITE_EDITOR_ROLES.indexOf((ME && ME.user && ME.user.user_role) || "") >= 0;
   const content = main.querySelector("#content");
 
-  const [vRes, rRes, lRes] = await Promise.all([
+  const [vRes, rRes, lRes, guestVoucherConfig, gatewayRes] = await Promise.all([
     MM.get("/vouchers").catch(() => null),
     MM.get("/voucher-resellers").catch(() => null),
     MM.get("/voucher-print-layout").catch(() => null),
+    canEdit ? MM.get("/guest-vouchers/config").catch(() => null) : null,
+    canEdit ? MM.get("/routers").catch(() => null) : null,
   ]);
+
+  const guestGateways = asArray(gatewayRes && gatewayRes.routers).filter(d => d.deployment_layer === "MAIN_GATEWAY");
+  const guestIssuanceEnabled = canEdit && guestVoucherConfig && guestVoucherConfig.enabled === true;
 
   const list = vRes ? asArray(vRes.vouchers) : [];
   const vRows = list.slice(0, 50).map(v => `
     <tr>
       <td class="mono">${esc(v.code)}</td>
       <td>${v.plan_key ? esc(v.plan_key) : "—"}</td>
-      <td class="num">${esc(v.amount)}</td>
+      <td class="num">${esc(v.price_mmk ?? v.amount ?? 0)}</td>
       <td>${badge((v.status||"unknown").toLowerCase())}</td>
       <td>${ts(v.created_at)}</td>
     </tr>`).join("");
@@ -2890,6 +2995,17 @@ async function renderVouchers(main) {
   const laySaved = !!(lRes && lRes.saved);
 
   content.innerHTML = `
+    ${guestIssuanceEnabled ? `<div class="panel"><div class="panel-head"><h2 class="panel-title">Create guest internet vouchers</h2></div><div class="panel-body">
+      <p class="muted small">Time begins when the guest first uses the code. Reconnecting does not replenish data or restart validity. These codes do not activate a business subscription.</p>
+      <form id="guest-voucher-form" class="record-form-grid">
+        <div class="field"><label for="gv-gateway">Gateway</label><select class="input" id="gv-gateway" required><option value="">Choose a gateway</option>${guestGateways.map(d => `<option value="${esc(d.device_id)}">${esc(d.hardware_name)}</option>`).join("")}</select></div>
+        <div class="field"><label for="gv-label">Printed plan name</label><input class="input" id="gv-label" maxlength="100" required placeholder="Daily Wi-Fi"></div>
+        <div class="field"><label for="gv-minutes">Elapsed validity (minutes)</label><input class="input" id="gv-minutes" type="number" min="1" max="525600" value="1440" required></div>
+        <div class="field"><label for="gv-data">Total upload + download (MB)</label><input class="input" id="gv-data" type="number" min="1" max="1048576" value="1024" required></div>
+        <div class="field"><label for="gv-price">Price (MMK)</label><input class="input" id="gv-price" type="number" min="0" max="1000000000" value="1000" required></div>
+        <div class="field"><label for="gv-count">Number of codes</label><input class="input" id="gv-count" type="number" min="1" max="1000" value="10" required></div>
+        <div class="workspace-actions"><button class="btn btn-primary" id="gv-create" type="submit">Create codes</button><span class="muted small" id="gv-message" role="status"></span></div>
+      </form></div></div>` : ""}
     <div class="panel"><div class="panel-head"><h2 class="panel-title">Vouchers</h2></div>
       <div class="panel-body">
         ${list.length ? `<table>
@@ -2950,12 +3066,32 @@ async function renderVouchers(main) {
                 <button class="btn btn-sm" id="pl-mode-thermal">Thermal strip</button>
                 <button class="btn btn-sm" id="pl-print">Print…</button>
               </div></div>
+            <div class="pl-grid">
+              <div class="field"><label for="pl-batch-size">Vouchers per selection (1–100)</label><input class="input" id="pl-batch-size" type="number" min="1" max="100" value="100"></div>
+              <div class="field"><label for="pl-batch-status">Print filter</label><select class="input" id="pl-batch-status"><option value="available">Available codes</option><option value="all">All codes</option><option value="used">Used codes</option><option value="expired">Expired codes</option></select></div>
+            </div>
+            <div class="workspace-actions"><button class="btn btn-sm" id="pl-batch-prev" type="button">Previous</button><select class="input" id="pl-batch-page" aria-label="Voucher selection page"></select><button class="btn btn-sm" id="pl-batch-next" type="button">Next</button></div>
+            <p class="muted small" id="pl-batch-range"></p>
+            <p class="muted small">Print uses only the selected batch. Paper sheets follow the layout dimensions; the preview shows its first sheet.</p>
             <div class="sheet-stage"><div id="pl-stage"></div></div>
             <p class="muted small pv-hint" id="pl-hint"></p>
           </div>
         </div>
       </div></div>
     <div id="vr-alert"></div>`;
+
+  const guestVoucherForm = document.getElementById("guest-voucher-form");
+  if (guestVoucherForm) guestVoucherForm.addEventListener("submit", async event => {
+    event.preventDefault();
+    if (!guestVoucherForm.reportValidity()) return;
+    const button = document.getElementById("gv-create"), message = document.getElementById("gv-message");
+    if (button.disabled) return;
+    const value = id => document.getElementById(id).value;
+    const body = { device_id: value("gv-gateway"), plan_label: value("gv-label").trim(), duration_minutes: Number(value("gv-minutes")), data_mb: Number(value("gv-data")), price_mmk: Number(value("gv-price")), count: Number(value("gv-count")) };
+    button.disabled = true; message.textContent = "Creating codes…";
+    try { await MM.post("/guest-vouchers", body); await renderVouchers(main); }
+    catch (error) { message.textContent = error.message || "Codes could not be created."; button.disabled = false; }
+  });
 
   if (canEdit) {
     const addBtn = document.getElementById("vr-add");
@@ -3147,13 +3283,21 @@ function storePrice(value) {
 }
 
 async function renderStore(main) {
-  const [pricingResult, walletResult, keyResult, historyResult, optionsResult] = await Promise.allSettled([
+  const [pricingResult, walletResult, keyResult, historyResult, optionsResult, subscriptionResult] = await Promise.allSettled([
     MM.get("/pricing"),
     MM.get("/magic-coins/wallet"),
     MM.get("/unlock-keys?limit=8&offset=0"),
     MM.get("/store/purchases"),
     MM.get("/store/checkout-options"),
+    MM.get("/subscription"),
   ]);
+  const subscriptionStatus = subscriptionResult.status === "fulfilled" ? subscriptionResult.value : null;
+  const subscriptionOnly = subscriptionStatus && subscriptionStatus.mode === "subscription_only";
+  const checkoutReady = !!subscriptionStatus && optionsResult.status === "fulfilled" && asArray(optionsResult.value.bank_accounts).length > 0;
+  const subscriptionNotice = !subscriptionStatus ? "Subscription status is unavailable. Please refresh before purchasing."
+    : subscriptionOnly ? (subscriptionStatus.state === "trial" ? `Your 14-day trial ends ${ts(subscriptionStatus.trial_expires_at)}. Monthly or annual payment is required afterwards.`
+    : subscriptionStatus.state === "paid" ? `Subscription active until ${ts(subscriptionStatus.paid_expires_at)}. Renewal keeps your remaining time.`
+    : "Your trial or subscription has ended. Choose a monthly or annual plan to restore access.") : "";
   const pricing = pricingResult.status === "fulfilled" ? pricingResult.value : null;
   const wallet = walletResult.status === "fulfilled" ? walletResult.value.wallet : null;
   const keys = keyResult.status === "fulfilled" ? asArray(keyResult.value.keys) : [];
@@ -3164,22 +3308,23 @@ async function renderStore(main) {
   const promo = pricing && pricing.promo;
   const tiers = pricing ? asArray(pricing.tiers) : [];
   const product = (key, cadence, detail, amount, featured = false) => `<article class="store-product${featured ? " featured" : ""}">
-    <span class="fleet-kicker">${esc(cadence)}</span><h3>${storePrice(amount)}</h3><p>${esc(detail)}</p><ul><li>Available only to your business</li><li>Approve the payment in Telegram</li><li>Access turns on after approval</li></ul><button class="btn ${featured ? "btn-primary" : ""}" type="button" data-store-buy="${esc(key)}" ${bankAccounts.length ? "" : "disabled"}>${bankAccounts.length ? "Buy now" : "Payment account unavailable"}</button>
+    <span class="fleet-kicker">${esc(cadence)}</span><h3>${storePrice(amount)}</h3><p>${esc(detail)}</p><ul><li>Available only to your business</li><li>Payment requires operator approval</li><li>Access turns on after approval</li></ul><button class="btn ${featured ? "btn-primary" : ""}" type="button" data-store-buy="${esc(key)}" ${checkoutReady ? "" : "disabled"}>${checkoutReady ? "Buy now" : "Checkout unavailable"}</button>
   </article>`;
   const historyRows = purchases.slice(0, 8).map(item => `<tr><td>${esc(ts(item.created_at))}</td><td>${esc(item.service_label || item.service_key || "service")}</td><td class="num">${storePrice(item.price_mmk)}</td><td>${requestStatusBadge(item.status || "pending")}</td></tr>`).join("");
   const content = main.querySelector("#content");
   content.innerHTML = `<section class="store-hero">
-      <div><span class="fleet-kicker">MEGA MAGIC SERVICES</span><h2>Choose what your business needs.</h2><p>Buy a plan or additional capability, submit your bank reference, and follow its approval and activation status here.</p></div>
-      <div class="store-wallet"><span>Your Magic Coins</span><strong>${coinAmt(wallet && wallet.balance)}</strong><small>${keys.filter(key => key.status === "active").length} active unlock key${keys.filter(key => key.status === "active").length === 1 ? "" : "s"}</small></div>
+      <div><span class="fleet-kicker">MEGA MAGIC SERVICES</span><h2>Choose what your business needs.</h2><p>${subscriptionOnly ? "Choose monthly or annual access, submit your bank reference, and follow approval here. Guest internet and media purchases are separate." : "Buy a plan or additional capability, submit your bank reference, and follow its approval and activation status here."}</p></div>
+      ${subscriptionOnly ? "" : `<div class="store-wallet"><span>Your Magic Coins</span><strong>${coinAmt(wallet && wallet.balance)}</strong><small>${keys.filter(key => key.status === "active").length} active unlock key${keys.filter(key => key.status === "active").length === 1 ? "" : "s"}</small></div>`}
     </section>
+    ${subscriptionNotice ? `<div class="alert" role="status" id="store-subscription-status">${esc(subscriptionNotice)}</div>` : ""}
     ${promo && promo.live ? `<div class="alert" role="status">${esc(promo.label || "Published promotion")} is active.</div>` : ""}
     <section class="store-products">
       ${product("monthly", "MONTHLY PASS", "Flexible access billed one month at a time.", monthly.current_mmk || monthly.standard_mmk)}
       ${product("annual", "ANNUAL PASS", annual.saving_vs_monthly_mmk != null ? `Annual access · save ${storePrice(annual.saving_vs_monthly_mmk)} versus twelve monthly payments.` : "Annual account access.", annual.current_mmk || annual.standard_mmk, true)}
-      <article class="store-product"><span class="fleet-kicker">MAGIC COINS</span><h3>${coinAmt(wallet && wallet.balance)}</h3><p>Your available balance for Mega Magic purchases.</p><ul><li>Complete credit and spending history</li><li>Balance belongs to this business</li><li>Every adjustment shows its reason</li></ul><button class="btn" type="button" data-store-open="coins">Open wallet</button></article>
-      <article class="store-product"><span class="fleet-kicker">CAPABILITY KEYS</span><h3>${keys.length} recorded</h3><p>Router and platform capabilities activated through the key ledger.</p><ul><li>Expiry and consumption state</li><li>Non-transferable activation</li><li>Purchase cost retained</li></ul><button class="btn" type="button" data-store-open="unlockkeys">View keys</button></article>
+      ${subscriptionOnly ? "" : `<article class="store-product"><span class="fleet-kicker">MAGIC COINS</span><h3>${coinAmt(wallet && wallet.balance)}</h3><p>Your available balance for Mega Magic purchases.</p><ul><li>Complete credit and spending history</li><li>Balance belongs to this business</li><li>Every adjustment shows its reason</li></ul><button class="btn" type="button" data-store-open="coins">Open wallet</button></article>
+      <article class="store-product"><span class="fleet-kicker">CAPABILITY KEYS</span><h3>${keys.length} recorded</h3><p>Router and platform capabilities activated through the key ledger.</p><ul><li>Expiry and consumption state</li><li>Non-transferable activation</li><li>Purchase cost retained</li></ul><button class="btn" type="button" data-store-open="unlockkeys">View keys</button></article>`}
     </section>
-    <section class="panel"><div class="panel-head"><div><h2 class="panel-title">Published capacity tiers</h2><p class="muted small">These limits come from the same server defaults used during provisioning.</p></div></div><div class="panel-body"><div class="store-tier-list">${tiers.map(tier => `<div><strong>${esc(tier.label || tier.key)}</strong><span>${Number(tier.device_quota || 0).toLocaleString()} devices</span></div>`).join("") || `<p class="muted">Price list is not currently published.</p>`}</div></div></section>
+    ${subscriptionOnly ? "" : `<section class="panel"><div class="panel-head"><div><h2 class="panel-title">Published capacity tiers</h2><p class="muted small">These limits come from the same server defaults used during provisioning.</p></div></div><div class="panel-body"><div class="store-tier-list">${tiers.map(tier => `<div><strong>${esc(tier.label || tier.key)}</strong><span>${Number(tier.device_quota || 0).toLocaleString()} devices</span></div>`).join("") || `<p class="muted">Price list is not currently published.</p>`}</div></div></section>`}
     <section class="panel"><div class="panel-head"><div><h2 class="panel-title">Purchase history</h2><p class="muted small">Submitted, approved-and-activated, or rejected—never a fake success.</p></div></div><div class="panel-body">${historyRows ? `<table><thead><tr><th>When</th><th>Product</th><th>Amount</th><th>Status</th></tr></thead><tbody>${historyRows}</tbody></table>` : `<div class="empty compact-empty"><div class="empty-title">No purchases yet</div>Completed checkout activity will appear here.</div>`}</div></section>
     <dialog class="store-checkout" id="store-checkout"><form method="dialog"><button class="dialog-close" value="cancel" aria-label="Close">×</button><span class="fleet-kicker">BANK-SLIP CHECKOUT</span><h2 id="store-checkout-title">Complete payment</h2><p class="muted">Transfer the exact amount, then enter the transaction reference. Your operator receives Approve/Reject buttons in Telegram.</p><label>Pay to<select id="store-bank">${bankAccounts.map(a=>`<option value="${esc(a.id)}">${esc(a.bank_name)} · ${esc(a.account_number)} · ${esc(a.holder_name)}</option>`).join("")}</select></label><label>Bank transaction reference<input id="store-reference" maxlength="120" autocomplete="off" placeholder="Reference from your transfer" /></label><div id="store-checkout-alert"></div><div class="dialog-actions"><button class="btn" value="cancel">Cancel</button><button class="btn btn-primary" type="button" id="store-submit">Submit for approval</button></div></form></dialog>`;
   content.querySelectorAll("[data-store-open]").forEach(button => button.addEventListener("click", () => { location.hash = button.dataset.storeOpen; }));
@@ -3188,6 +3333,7 @@ async function renderStore(main) {
   content.querySelectorAll("[data-store-buy]").forEach(button => button.addEventListener("click",()=>{ selectedProduct=button.dataset.storeBuy; document.getElementById("store-checkout-title").textContent=selectedProduct === "annual" ? "Buy annual pass" : "Buy monthly pass"; dialog.showModal(); }));
   const submit=document.getElementById("store-submit");
   submit.addEventListener("click",async()=>{
+    if (!checkoutReady || submit.disabled || !["monthly", "annual"].includes(selectedProduct)) return;
     const reference=document.getElementById("store-reference").value.trim();
     const alert=document.getElementById("store-checkout-alert");
     if(!reference){alert.innerHTML='<div class="alert">Enter the bank transaction reference.</div>';return}
@@ -3318,14 +3464,16 @@ function revenueDayKey(value) {
 }
 
 async function renderRevenue(main) {
-  // The product has two supported purchase pipelines: the current captive
-  // portal MMQR flow and the earlier receipt-based billing flow. Revenue must
-  // read both or a successfully approved hotspot sale can disappear from the
-  // owner's totals simply because it was created by the newer portal.
-  const [guestResult, billingResult] = await Promise.allSettled([
+  // Full-ledger hotspot totals are separate from the limited review inbox.
+  // Legacy business-pass purchases are visible for review but are not WiFi sales.
+  const canDecide = ["OPERATOR", "ADMIN", "OWNER", "DEVELOPER"].includes(ME?.user?.user_role);
+  const [guestResult, billingResult, summaryResult] = await Promise.allSettled([
     MM.get("/guest-wifi/requests"),
     MM.get("/billing/requests"),
+    MM.get("/guest-wifi/revenue"),
   ]);
+  if (summaryResult.status !== "fulfilled") throw new Error("Complete hotspot revenue is unavailable. Totals are not shown from a partial request list.");
+  const summary = summaryResult.value;
   if (guestResult.status === "rejected" && billingResult.status === "rejected") {
     throw guestResult.reason || billingResult.reason || new Error("Revenue records unavailable");
   }
@@ -3337,43 +3485,17 @@ async function renderRevenue(main) {
     ...sourced(guestResult, "guest-wifi"),
     ...sourced(billingResult, "billing"),
   ];
-  const approved = requests.filter(r => String(r.status).toLowerCase() === "approved");
-  const pending = requests.filter(r => String(r.status).toLowerCase() === "pending");
-  const rejected = requests.filter(r => String(r.status).toLowerCase() === "rejected");
   const now = new Date();
   const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const start7 = new Date(startToday); start7.setDate(start7.getDate() - 6);
   const start30 = new Date(startToday); start30.setDate(start30.getDate() - 29);
-  const sumSince = start => approved.reduce((total, r) => {
-    const at = new Date(r.decided_at || r.updated_at || r.created_at);
-    return total + (at >= start ? Number(r.amount || 0) : 0);
-  }, 0);
-  const all = approved.reduce((total, r) => total + Number(r.amount || 0), 0);
+  const sumSince = start => Number(start === startToday ? summary.today : start === start7 ? summary.last7 : summary.last30);
+  const all = Number(summary.all_time);
 
-  const days = [];
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date(startToday); d.setDate(d.getDate() - i);
-    const key = revenueDayKey(d);
-    const amount = approved.reduce((total, r) => {
-      const at = r.decided_at || r.updated_at || r.created_at;
-      return total + (revenueDayKey(at) === key ? Number(r.amount || 0) : 0);
-    }, 0);
-    days.push({ key, label: d.toLocaleDateString(undefined, { weekday: "short" }), amount });
-  }
+  const days = asArray(summary.days).map(d => ({ ...d, amount: Number(d.amount), label: new Date(`${d.key}T12:00:00+06:30`).toLocaleDateString(undefined, { weekday: "short", timeZone: "Asia/Yangon" }) }));
   const dayMax = Math.max(1, ...days.map(d => d.amount));
 
-  const planMap = new Map();
-  requests.forEach(r => {
-    const key = r.plan_key || "Unspecified";
-    const row = planMap.get(key) || { key, requests: 0, approved: 0, revenue: 0 };
-    row.requests += 1;
-    if (String(r.status).toLowerCase() === "approved") {
-      row.approved += 1;
-      row.revenue += Number(r.amount || 0);
-    }
-    planMap.set(key, row);
-  });
-  const plans = Array.from(planMap.values()).sort((a, b) => b.revenue - a.revenue || b.requests - a.requests);
+  const plans = asArray(summary.plans);
 
   const planRows = plans.length ? plans.map(p => `<tr>
     <td><span class="num">${esc(p.key)}</span></td><td class="num">${p.requests}</td>
@@ -3385,10 +3507,10 @@ async function renderRevenue(main) {
     const state = String(r.status || "unknown").toLowerCase();
     const source = r._revenue_source === "guest-wifi" ? "guest-wifi" : "billing";
     const reference = r.bank_reference || (r.tx_last6 ? `MMQR ••••••${r.tx_last6}` : "—");
-    const actions = state === "pending" ? `<div class="revenue-actions">
+    const actions = state === "pending" && canDecide ? `<div class="revenue-actions">
       <button class="btn btn-sm" data-purchase-action="approve" data-purchase-source="${source}" data-request-id="${esc(r.id)}">Approve</button>
       <button class="btn btn-sm" data-purchase-action="reject" data-purchase-source="${source}" data-request-id="${esc(r.id)}">Reject</button>
-    </div>` : `<span class="muted small">Decided</span>`;
+    </div>` : `<span class="muted small">${state === "pending" ? "Read only" : "Decided"}</span>`;
     return `<tr><td>${ts(r.created_at)}</td><td class="num">${esc(r.plan_key || "—")}</td>
       <td class="num">${esc(mmk(r.amount))}</td><td class="mono">${esc(reference)}</td>
       <td>${badge(state)}</td><td>${actions}</td></tr>`;
@@ -3396,29 +3518,32 @@ async function renderRevenue(main) {
 
   main.querySelector("#content").innerHTML = `
     <div class="revenue-summary" aria-label="Revenue summary">
-      <div class="stat"><div class="stat-label">Today</div><div class="stat-value revenue-value">${esc(mmk(sumSince(startToday)))}</div><div class="muted small">Verified approved sales</div></div>
+      <div class="stat"><div class="stat-label">Today</div><div class="stat-value revenue-value">${esc(mmk(sumSince(startToday)))}</div><div class="muted small">Owner-approved hotspot sales · Yangon time</div></div>
       <div class="stat"><div class="stat-label">Last 7 days</div><div class="stat-value revenue-value">${esc(mmk(sumSince(start7)))}</div><div class="muted small">Rolling window</div></div>
       <div class="stat"><div class="stat-label">Last 30 days</div><div class="stat-value revenue-value">${esc(mmk(sumSince(start30)))}</div><div class="muted small">Rolling window</div></div>
-      <div class="stat"><div class="stat-label">All time</div><div class="stat-value revenue-value">${esc(mmk(all))}</div><div class="muted small">${approved.length} approved sale${approved.length === 1 ? "" : "s"}</div></div>
+      <div class="stat"><div class="stat-label">All time</div><div class="stat-value revenue-value">${esc(mmk(all))}</div><div class="muted small">${Number(summary.approved)} approved hotspot sales · full ledger</div></div>
     </div>
     <div class="revenue-grid">
       <section class="panel"><div class="panel-head"><div><h2 class="panel-title">Seven-day earnings</h2><p class="muted small">Current database totals from approved portal payments; refresh the page to fetch new sales.</p></div><button class="btn btn-sm" id="revenue-export" type="button">Export CSV</button></div>
         <div class="panel-body"><div class="revenue-bars">${days.map(d => `<div class="revenue-bar-item" title="${esc(d.key)} · ${esc(mmk(d.amount))}"><span class="revenue-bar-value">${d.amount ? esc(mmk(d.amount)) : "—"}</span><span class="revenue-bar-track"><i style="height:${Math.max(d.amount ? 8 : 2, Math.round(d.amount / dayMax * 100))}%"></i></span><span>${esc(d.label)}</span></div>`).join("")}</div></div>
       </section>
       <section class="panel"><div class="panel-head"><h2 class="panel-title">Payment funnel</h2></div><div class="panel-body">
-        <div class="funnel-row"><span>Submitted</span><strong>${requests.length}</strong></div>
-        <div class="funnel-row"><span>Approved</span><strong>${approved.length}</strong></div>
-        <div class="funnel-row"><span>Pending review</span><strong>${pending.length}</strong></div>
-        <div class="funnel-row"><span>Rejected</span><strong>${rejected.length}</strong></div>
-        <div class="funnel-rate"><span style="width:${requests.length ? Math.round(approved.length / requests.length * 100) : 0}%"></span></div>
-        <p class="muted small">Approval rate: ${requests.length ? Math.round(approved.length / requests.length * 100) : 0}%</p>
+        <div class="funnel-row"><span>Submitted</span><strong>${Number(summary.total)}</strong></div>
+        <div class="funnel-row"><span>Approved</span><strong>${Number(summary.approved)}</strong></div>
+        <div class="funnel-row"><span>Pending review</span><strong>${Number(summary.pending)}</strong></div>
+        <div class="funnel-row"><span>Rejected</span><strong>${Number(summary.rejected)}</strong></div>
+        <p class="muted small">Approval rate: ${summary.total ? Math.round(summary.approved / summary.total * 100) : 0}% · manual approval, not bank settlement verification</p>
       </div></section>
     </div>
     <section class="panel" style="margin-top:14px"><div class="panel-head"><h2 class="panel-title">Plan performance</h2></div><div class="panel-body tablewrap"><table><thead><tr><th>Plan</th><th>Requests</th><th>Approved</th><th>Approval rate</th><th>Revenue</th></tr></thead><tbody>${planRows}</tbody></table></div></section>
-    <section class="panel" style="margin-top:14px"><div class="panel-head"><div><h2 class="panel-title">Payment requests</h2><p class="muted small">Review each guest payment and approve or reject it for this business.</p></div><span id="revenue-message" class="muted small" role="status" aria-live="polite"></span></div><div class="panel-body tablewrap"><table><thead><tr><th>Submitted</th><th>Plan</th><th>Amount</th><th>Bank reference</th><th>Status</th><th>Decision</th></tr></thead><tbody>${requestRows}</tbody></table></div></section>`;
+    <section class="panel" style="margin-top:14px"><div class="panel-head"><div><h2 class="panel-title">Payment inbox</h2><p class="muted small">Latest 50 guest requests and legacy business-pass requests. Legacy passes are excluded from hotspot totals. ${guestResult.status === "rejected" || billingResult.status === "rejected" ? "Warning: one inbox source is unavailable." : ""}</p></div><span id="revenue-message" class="muted small" role="status" aria-live="polite"></span></div><div class="panel-body tablewrap"><table><thead><tr><th>Submitted</th><th>Plan</th><th>Amount</th><th>Bank reference</th><th>Status</th><th>Decision</th></tr></thead><tbody>${requestRows}</tbody></table></div></section>`;
 
   main.querySelector("#revenue-export").addEventListener("click", () => {
-    const cell = value => `"${String(value == null ? "" : value).replaceAll('"', '""')}"`;
+    const cell = value => {
+      let text = String(value == null ? "" : value);
+      if (/^(?:\s*[=+\-@]|\t|\r)/.test(text)) text = "'" + text;
+      return `"${text.replaceAll('"', '""')}"`;
+    };
     const lines = [["submitted_at", "decided_at", "plan", "amount_mmk", "bank_reference", "status"],
       ...requests.map(r => [r.created_at, r.decided_at || "", r.plan_key || "", Number(r.amount || 0), r.bank_reference || "", r.status || ""])]
       .map(row => row.map(cell).join(","));
@@ -3481,7 +3606,7 @@ async function renderPortal(main) {
   </div><p class="muted small portal-method-hint">Select one or both. At least one guest access method must remain enabled.</p>`;
   html += `<h3 class="small" style="margin:14px 0 6px">MMQR payment QR<span class="muted"> — image URL guests scan to pay by bank</span></h3>`;
   html += `<input id="mmqr-url" value="${esc((cfg&&cfg.mmqr_url)||"")}" placeholder="https://…/mmqr.jpg or /assets/mmqr.jpg" style="width:100%">`;
-  html += `<div class="grid-2" style="margin-top:16px"><div class="form-row"><label for="grace-min">Grace time (minutes)</label><input id="grace-min" type="number" min="1" max="1440" step="1" value="${cfg?.guest_grace_minutes ?? 10}"></div><div class="form-row"><label for="grace-data">Grace data (MB)</label><input id="grace-data" type="number" min="1" max="10240" step="1" value="${cfg?.guest_grace_data_mb ?? 50}"></div></div><p class="muted small">Temporary internet for completing a bank transfer ends when either limit is reached. Data includes uploads and downloads.</p>`;
+  html += `<div class="grid-2" style="margin-top:16px"><div class="form-row"><label for="grace-min">Grace time (minutes)</label><input id="grace-min" type="number" min="1" max="1440" step="1" value="${cfg?.guest_grace_minutes ?? 10}"></div><div class="form-row"><label for="grace-data">Grace data (MB)</label><input id="grace-data" type="number" min="1" max="10240" step="1" value="${cfg?.guest_grace_data_mb ?? 50}"></div></div><p class="muted small">Temporary internet for completing a bank transfer ends when either limit is reached. Data includes uploads and downloads.</p><p class="muted small">Browser recognition guard: on the HTTPS guest portal, a secure cookie remembers the payment request. Reconnecting does not reset its allowance. A recognized MAC change cannot start fresh grace during the existing window or six-hour failed-payment cooldown; reconnect support requires the owner. Clearing cookies or using another browser can evade this extra guard. Banking-only access is not enabled.</p>`;
   html += `<h3 class="small" style="margin:14px 0 6px">Guest data plans</h3>`;
   html += `<table id="plans-table"><thead><tr><th>Key</th><th>Label</th><th>Minutes</th><th>Price (MMK)</th><th>Data (MB)</th><th></th></tr></thead><tbody>`;
   plans.forEach((p, i) => {
@@ -4146,6 +4271,7 @@ async function renderProfile(main) {
       <section class="panel"><div class="panel-head"><div><h2 class="panel-title">Telegram action approvals</h2><p class="muted small">This binding belongs only to ${esc(profile.full_name)}’s business. Tokens from another tenant are never used for its devices.</p></div></div><form class="panel-body form-grid" id="telegram-form">
         <div class="field"><label for="telegram-token">Bot token</label><input class="input" id="telegram-token" type="password" autocomplete="off" placeholder="${telegram.bot_token ? `Bound token ${esc(telegram.bot_token)} — leave blank to keep it` : "Paste a new BotFather token"}"><p class="muted small">The token is never displayed again after saving. Revoke a leaked token in BotFather before replacing it here.</p></div>
         <div class="field"><label for="telegram-chat">Approval chat ID</label><input class="input" id="telegram-chat" inputmode="numeric" value="${telegram.target_chat_id || ""}" placeholder="e.g. 123456789"></div>
+        <div class="field"><label for="telegram-user">Approver Telegram user ID</label><input class="input" id="telegram-user" inputmode="numeric" value="${telegram.approver_user_id || ""}" placeholder="Your numeric Telegram user ID"><p class="muted small">Open @userinfobot in Telegram and copy your numeric user ID (not your @username). Only this person can approve or reject guest payments. For private approvals, use your user ID as the chat ID too. For a group, keep its separate chat ID. Open your own bot and press Start before using private approvals.</p></div>
         <label class="check-row"><input id="telegram-enabled" type="checkbox" ${telegram.enabled ? "checked" : ""}> Enable this business’s Telegram approvals and notifications</label>
         <div class="form-actions"><button class="btn btn-primary" type="submit">Save Telegram binding</button><button class="btn" id="telegram-test" type="button">Test bot</button><span class="muted small" id="telegram-message" role="status"></span></div>
       </form></section>
@@ -4190,10 +4316,16 @@ async function renderProfile(main) {
     const message = main.querySelector("#telegram-message"); message.textContent = "Saving…";
     try {
       const rawChat = main.querySelector("#telegram-chat").value.trim();
+      const rawUser = main.querySelector("#telegram-user").value.trim();
+      const enabled = main.querySelector("#telegram-enabled").checked;
+      if ((rawChat && (!/^-?[1-9]\d*$/.test(rawChat) || !Number.isSafeInteger(Number(rawChat)))) ||
+          (rawUser && (!/^[1-9]\d*$/.test(rawUser) || !Number.isSafeInteger(Number(rawUser)))) ||
+          (enabled && (!rawChat || !rawUser))) throw new Error("Enter a valid chat ID and a positive numeric Telegram user ID before enabling approvals.");
       await MM.put("/guest-wifi/telegram-bot", {
         bot_token: main.querySelector("#telegram-token").value.trim(),
         target_chat_id: rawChat ? Number(rawChat) : 0,
-        enabled: main.querySelector("#telegram-enabled").checked,
+        approver_user_id: rawUser ? Number(rawUser) : 0,
+        enabled,
       });
       message.textContent = "Telegram binding saved for this business.";
       main.querySelector("#telegram-token").value = "";
@@ -4235,6 +4367,7 @@ const PRODUCT_GUIDE = [
   ["templates", "Automation", "Templates", "Save common RouterOS tasks for your team instead of rebuilding the same request each time."],
   ["termlog", "Automation", "Terminal log", "Review which commands were sent to a router, who started them, and whether they succeeded."],
   ["portal", "Business", "Captive portal", "Choose voucher login, mobile payment, or both; customize the guest page; and publish it to the selected router."],
+  ["media", "Business", "Magic Media", "Pair a media computer and manage its Jellyfin libraries when connections are enabled. Guest design drafts stay in this browser. One-click installation, paid media access and guest playback are not available yet."],
   ["vouchers", "Business", "Vouchers", "Create guest codes, organize resellers, choose a RouterOS access profile, and print vouchers for sale."],
   ["store", "Business", "Store", "Buy a Mega Magic plan or capability, submit the bank reference, and follow approval and activation progress."],
   ["revenue", "Business", "Revenue", "See approved hotspot sales, review pending guest payments, and compare which access plans earn the most."],
@@ -4252,7 +4385,7 @@ async function renderGuide(main) {
   main.querySelector("#content").innerHTML = `
     <section class="guide-hero panel"><div><span class="fleet-kicker">MEGA MAGIC GUIDE</span><h2>Find the tool you need.</h2><p>Choose a task below to open the right workspace. Each description explains what you can accomplish there.</p></div><img src="/assets/images/magic-dude-guide-network-20260930.png" alt="Magic Dude explaining a network operations map"></section>
     <div class="guide-tools"><div class="field"><label for="guide-search">Find a feature</label><input class="input" id="guide-search" placeholder="Search routers, vouchers, security…"></div></div>
-    <div class="guide-grid" id="guide-grid">${PRODUCT_GUIDE.map(([view, group, title, text], index) => `<article class="guide-card panel${focus === view ? " is-focused" : ""}" data-guide-card data-guide-search="${esc(`${group} ${title} ${text}`.toLowerCase())}">
+    <div class="guide-grid" id="guide-grid">${PRODUCT_GUIDE.filter(([view]) => canOpenView(view)).map(([view, group, title, text], index) => `<article class="guide-card panel${focus === view ? " is-focused" : ""}" data-guide-card data-guide-search="${esc(`${group} ${title} ${text}`.toLowerCase())}">
       <div class="guide-card-number">${String(index + 1).padStart(2, "0")}</div><div><span class="fleet-kicker">${esc(group)}</span><h3>${esc(title)}</h3><p>${esc(text)}</p><button class="btn btn-sm" data-guide-open="${esc(view)}" type="button">Open ${esc(title)}</button></div>
     </article>`).join("")}</div>`;
   main.querySelector("#guide-search").addEventListener("input", event => {
@@ -4270,6 +4403,7 @@ window.addEventListener("load", async () => {
   const me = await whoami();
   if (!me) return;
   ME = me;
+  try { me.subscription = await MM.get("/subscription"); } catch (_) { /* API remains the access authority. */ }
   document.querySelector("#rail-biz").textContent = (me.business && me.business.company_name) || "—";
   document.querySelector("#rail-user-name").textContent = (me.user && (me.user.full_name || me.user.email)) || "Signed in";
   document.querySelector("#rail-user-role").textContent = (me.user && me.user.user_role) || "Member";
@@ -4286,11 +4420,18 @@ window.addEventListener("load", async () => {
     image.onload = () => URL.revokeObjectURL(url);
     const target = document.querySelector("#rail-user-avatar"); target.textContent = ""; target.appendChild(image);
   }).catch(() => {});
-  // The Platform console is DEVELOPER-only: reveal the rail item only for that role.
-  if (me.user && me.user.user_role === "DEVELOPER") {
-    const navP = document.getElementById("nav-platform");
-    if (navP) navP.hidden = false;
-  }
+  // Visibility is presentation only; API authorization remains mandatory.
+  document.querySelectorAll(".nav-item[data-view]").forEach(button => {
+    button.hidden = !canOpenView(button.dataset.view, me);
+  });
+  document.querySelectorAll(".rail-section").forEach(section => {
+    let sibling = section.nextElementSibling, visible = false;
+    while (sibling && !sibling.classList.contains("rail-section")) {
+      if (sibling.matches(".nav-item") && !sibling.hidden) visible = true;
+      sibling = sibling.nextElementSibling;
+    }
+    section.hidden = !visible;
+  });
   const main = document.getElementById("main");
   initMagicDudePopup();
 

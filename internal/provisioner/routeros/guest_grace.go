@@ -222,6 +222,11 @@ func (a *DeviceApplier) DecideGuestAccess(ctx context.Context, businessID, devic
 	if minutes == 0 && dataMB == 0 {
 		return fmt.Errorf("the paid plan requires a time or data allowance")
 	}
+	if minutes > 0 {
+		if err := schedulePaidGuestExpiry(ctx, runner, requestID, name, paidComment, minutes); err != nil {
+			return err
+		}
+	}
 	var bytes int64
 	if dataMB > 0 {
 		in, e := strconv.ParseInt(user["bytes-in"], 10, 64)

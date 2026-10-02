@@ -34,6 +34,9 @@ database:
 # Billing: plan-driven pass durations (minutes). A plan with no duration is NOT
 # purchasable (fail closed). The Lead sets the real numbers here.
 billing:
+  # Enable only after the one-time transition-trial migration and verified rollout.
+  subscription_only: false
+  existing_account_policy: require_payment
   receipt_dir: ./data/receipts
   quota_enforcement_interval: 60s   # periodic sweep emitting quota.pass.expired
   plans:
@@ -56,6 +59,10 @@ ai:
   openrouter_url: https://openrouter.ai/api/v1
   openrouter_api_key: ""
   openrouter_model: openrouter/free
+  # Magic Dude chat provider (independent of ai.mode for fleet scans).
+  magic_dude_provider: openrouter # openrouter | gemini
+  gemini_api_key: ""             # set AI_GEMINI_API_KEY or GEMINI_API_KEY securely
+  gemini_model: gemini-3.8-flash  # availability/quota checked by setup script
   # Operator incident DM (Telegram). Off by default; ADDITIVE to webhooks. The
   # bot token is a SECRET — inject via config/env, never commit. Empty token or
   # chat id degrades to no-op (webhooks only).
@@ -181,3 +188,14 @@ provisioner:
     otp_digits: 6
     otp_step: 30s
     otp_skew: 1
+ # Magic Media pilot: apply 20261001120000_magic_media_connector.sql and verify
+ # its RLS/queue integration before enabling. No automatic installation.
+media:
+  connector_enabled: false
+
+# Guest internet vouchers: apply the guest_voucher_grants migration and verify
+# real-router quota/elapsed-expiry acceptance before enabling. Not business passes.
+guest_wifi:
+  enabled: false
+  voucher_access_enabled: false
+  bridge_scan_interval: 30s

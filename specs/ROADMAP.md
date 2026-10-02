@@ -1,5 +1,10 @@
 # ROADMAP — Path to "Fully Developed"
 
+> **Historical planning snapshot:** the dates and gap/feature-flag claims below
+> are not current production status. Preserve recorded owner decisions; consult
+> [CURRENT-HANDOFF.md](../docs/CURRENT-HANDOFF.md) and the maintained code before
+> selecting work or declaring a delivery stage complete.
+
 > Working mode (2026-09-26): I do NOT stop to ask before each step. This doc is
 > the forward plan + your advance decisions. When something needs a decision, a
 > numbered OPTION is listed below; you pre-answer once here, and I execute

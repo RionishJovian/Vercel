@@ -20,9 +20,11 @@ const (
 
 // AuthHandler handles authentication endpoints
 type AuthHandler struct {
-	userRepo    *database.UserRepository
-	authService *auth.Service
-	db          *database.DB
+	SubscriptionOnly           bool
+	SubscriptionExistingPolicy string
+	userRepo                   *database.UserRepository
+	authService                *auth.Service
+	db                         *database.DB
 }
 
 // NewAuthHandler creates a new auth handler
@@ -126,6 +128,19 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create user"})
 		return
+	}
+
+	// Trial RLS applies even to the table owner. Bind the newly created tenant
+	// after system-level registration writes; failure rolls back the whole signup.
+	if h.SubscriptionOnly {
+		err := database.WithTenant(tx, business.BusinessID, func() error {
+			_, e := tx.Exec(`INSERT INTO business_subscription_trials(business_id,trial_started_at,trial_expires_at) VALUES ($1,now(),now()+interval '336 hours')`, business.BusinessID)
+			return e
+		})
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to initialize trial"})
+			return
+		}
 	}
 
 	// Commit transaction

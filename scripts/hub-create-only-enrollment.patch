@@ -1,0 +1,42 @@
+--- a/service.mjs
++++ b/service.mjs
+@@ -36,1 +36,2 @@
+ import { pathToFileURL } from "node:url";
++import { enrollCreateOnly } from "./hub-enrollment.mjs";
+@@ -683,1 +684,35 @@
+-  if (req.method === "PUT" && byRouter) {
++  if (req.method === "POST" && byRouter) {
++    const result = enrollCreateOnly({auth,routerId:decodeURIComponent(byRouter[1]),body,
++      load() {
++        const parsed = JSON.parse(fs.readFileSync(PEERS_PATH,"utf8"));
++        const value = Array.isArray(parsed) ? parsed : parsed.peers;
++        if (!Array.isArray(value)) throw new Error("invalid peer store");
++        return value;
++      },
++      save(value) {
++        const temporary = PEERS_PATH + ".enroll-" + randomUUID();
++        let fd;
++        try {
++          fd = fs.openSync(temporary,"wx",0o600);
++          fs.writeFileSync(fd,JSON.stringify({peers:value},null,2));
++          fs.fsyncSync(fd);fs.closeSync(fd);fd=undefined;
++          fs.renameSync(temporary,PEERS_PATH);
++          const directory = fs.openSync(path.dirname(PEERS_PATH),"r");
++          try { fs.fsyncSync(directory); } finally { fs.closeSync(directory); }
++        } finally {
++          if (fd !== undefined) fs.closeSync(fd);
++          if (fs.existsSync(temporary)) fs.unlinkSync(temporary);
++        }
++      },
++      allocate:allocateAddress,sync:wgSyncPeer,
++      verify(peer) {
++        const dump = execFileSync("wg",["show",WG_IFACE,"dump"],{encoding:"utf8"});
++        const rows = dump.trim().split("\n").slice(1).map(row=>row.split("\t"));
++        const matches = rows.filter(row=>row[0]===peer.routerPublicKey);
++        return matches.length===1 && matches[0][3]===peer.tunnelAddress;
++      },uuid:randomUUID,now:()=>new Date().toISOString()});
++    return result.peer ? json(res,200,{...publicPeer(result.peer),
++      routerPublicKey:result.peer.routerPublicKey,enrollmentVersion:1}) : json(res,result.status,result.body);
++  }
++
++  if (req.method === "PUT" && byRouter) {

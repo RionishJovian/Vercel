@@ -22,10 +22,11 @@ import (
 // connection) and hands the slice to the pure BuildMap function; device actions
 // are published as intents for the topology action consumer to drive.
 type TopologyHandler struct {
-	db         *database.DB
-	deviceRepo *database.DeviceRepository
-	quotaRepo  *database.BusinessMeteredQuotaRepository
-	msg        *messaging.Client
+	SubscriptionOnly bool
+	db               *database.DB
+	deviceRepo       *database.DeviceRepository
+	quotaRepo        *database.BusinessMeteredQuotaRepository
+	msg              *messaging.Client
 }
 
 func NewTopologyHandler(db *database.DB, deviceRepo *database.DeviceRepository, quotaRepo *database.BusinessMeteredQuotaRepository, msg *messaging.Client) *TopologyHandler {
@@ -63,6 +64,9 @@ func (h *TopologyHandler) Map(c *gin.Context) {
 // planActive reports whether the tenant's Sovereign pass is currently active —
 // the same condition the quota-enforcement sweep and VPS handler use.
 func (h *TopologyHandler) planActive(businessID string) bool {
+	if h.SubscriptionOnly {
+		return true
+	} // Shared subscription middleware enforces base access.
 	q, err := h.quotaRepo.GetByBusiness(businessID)
 	if err != nil || q == nil || q.WebfigPassExpiresAt == nil {
 		return false

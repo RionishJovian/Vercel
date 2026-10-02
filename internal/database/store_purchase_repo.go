@@ -133,6 +133,20 @@ func (r *StorePurchaseRepository) ResolveBusiness(requestID string) (string, err
 // DecideTXN locks and decides exactly once, then activates the purchased product
 // before returning. Any error rolls back both the decision and activation.
 func (r *StorePurchaseRepository) DecideTXN(tx *sql.Tx, businessID, requestID, actorUserID string, approve bool, rejectReason string, now time.Time) (*model.StorePurchase, error) {
+	return r.decideTXN(tx, businessID, requestID, actorUserID, approve, rejectReason, now, false)
+}
+
+// DecideSubscriptionTXN serializes approvals across every purchaser in a tenant.
+// The durable purchase ledger, not a user's legacy entitlement, owns the deadline.
+func (r *StorePurchaseRepository) DecideSubscriptionTXN(tx *sql.Tx, businessID, requestID, actorUserID string, approve bool, rejectReason string, now time.Time) (*model.StorePurchase, error) {
+	// Acquire before purchase/account locks; never hold this transaction over I/O.
+	if _, err := tx.Exec(`SELECT pg_advisory_xact_lock(hashtextextended('subscription:' || $1::text, 0))`, businessID); err != nil {
+		return nil, fmt.Errorf("lock business subscription: %w", err)
+	}
+	return r.decideTXN(tx, businessID, requestID, actorUserID, approve, rejectReason, now, true)
+}
+
+func (r *StorePurchaseRepository) decideTXN(tx *sql.Tx, businessID, requestID, actorUserID string, approve bool, rejectReason string, now time.Time, subscriptionOnly bool) (*model.StorePurchase, error) {
 	p, err := scanStorePurchase(tx.QueryRow(`SELECT `+storePurchaseColumns+` FROM service_purchases WHERE business_id=$1 AND id=$2 FOR UPDATE`, businessID, requestID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrStorePurchaseNotFound
@@ -142,6 +156,9 @@ func (r *StorePurchaseRepository) DecideTXN(tx *sql.Tx, businessID, requestID, a
 	}
 	if p.Status != "pending" {
 		return nil, errors.New("store purchase already decided")
+	}
+	if subscriptionOnly && p.ServiceKey != store.ProductMonthly && p.ServiceKey != store.ProductAnnual {
+		return nil, errors.New("only monthly or annual subscriptions are available")
 	}
 	status, action := "rejected", "rejected"
 	var expires any
@@ -154,13 +171,39 @@ func (r *StorePurchaseRepository) DecideTXN(tx *sql.Tx, businessID, requestID, a
 				days = 365
 			}
 			var expiry time.Time
-			err = tx.QueryRow(`INSERT INTO account_entitlements
+			if subscriptionOnly {
+				err = tx.QueryRow(`SELECT GREATEST(clock_timestamp(),
+					COALESCE((SELECT trial_expires_at FROM business_subscription_trials WHERE business_id=$1), '-infinity'::timestamptz),
+					COALESCE((SELECT max(activated_expires_at) FROM service_purchases
+					 WHERE business_id=$1 AND status='approved' AND service_key IN ('monthly','annual')), '-infinity'::timestamptz))
+					+ ($2 * interval '24 hours')`, businessID, days).Scan(&expiry)
+				if err != nil {
+					return nil, fmt.Errorf("calculate business renewal: %w", err)
+				}
+				var result sql.Result
+				result, err = tx.Exec(`INSERT INTO account_entitlements
+					(user_id,business_id,tier,tier_expires_at,plus,plus_since,created_at,updated_at)
+					SELECT $1,$2,$3,$4,true,now(),now(),now()
+					WHERE EXISTS (SELECT 1 FROM users WHERE user_id=$1 AND business_id=$2)
+					ON CONFLICT (user_id) DO UPDATE SET tier=EXCLUDED.tier,tier_expires_at=EXCLUDED.tier_expires_at,
+					plus=true,plus_since=COALESCE(account_entitlements.plus_since,now()),updated_at=now()
+					WHERE account_entitlements.business_id=EXCLUDED.business_id`, p.UserID, businessID, p.ServiceKey, expiry)
+				if err == nil {
+					var affected int64
+					affected, err = result.RowsAffected()
+					if err == nil && affected != 1 {
+						err = errors.New("entitlement tenant mismatch")
+					}
+				}
+			} else {
+				err = tx.QueryRow(`INSERT INTO account_entitlements
 				(user_id,business_id,tier,tier_expires_at,plus,plus_since,created_at,updated_at)
 				VALUES ($1,$2,$4,now()+($3||' days')::interval,true,now(),now(),now())
 				ON CONFLICT (user_id) DO UPDATE SET business_id=EXCLUDED.business_id,tier=EXCLUDED.tier,plus=true,
 				tier_expires_at=GREATEST(COALESCE(account_entitlements.tier_expires_at,now()),now())+($3||' days')::interval,
 				plus_since=COALESCE(account_entitlements.plus_since,now()),updated_at=now()
 				RETURNING tier_expires_at`, p.UserID, businessID, days, p.ServiceKey).Scan(&expiry)
+			}
 			if err != nil {
 				return nil, fmt.Errorf("activate entitlement: %w", err)
 			}

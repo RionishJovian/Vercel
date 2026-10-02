@@ -436,6 +436,7 @@ CREATE TABLE IF NOT EXISTS business_telegram_bots (
     business_id uuid PRIMARY KEY REFERENCES businesses(business_id) ON DELETE CASCADE,
     bot_token text,                 -- stored masked/redacted on read-back
     target_chat_id bigint,          -- operator chat for this bot
+    approver_user_id bigint NOT NULL DEFAULT 0 CHECK (approver_user_id >= 0),
     enabled boolean NOT NULL DEFAULT false,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now()

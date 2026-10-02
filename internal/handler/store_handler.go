@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -18,11 +17,12 @@ import (
 )
 
 type StoreHandler struct {
-	db           *database.DB
-	purchases    *database.StorePurchaseRepository
-	pricing      *database.PricingRepository
-	messenger    telegram.Messenger
-	operatorChat string
+	SubscriptionOnly bool
+	db               *database.DB
+	purchases        *database.StorePurchaseRepository
+	pricing          *database.PricingRepository
+	messenger        telegram.Messenger
+	operatorChat     string
 }
 
 func NewStoreHandler(db *database.DB, purchases *database.StorePurchaseRepository, pricing *database.PricingRepository, messenger telegram.Messenger, operatorChat string) *StoreHandler {
@@ -44,6 +44,10 @@ func (h *StoreHandler) Create(c *gin.Context) {
 		return
 	}
 	in.BankReference, in.IdempotencyKey = strings.TrimSpace(in.BankReference), strings.TrimSpace(in.IdempotencyKey)
+	if h.SubscriptionOnly && in.ProductKey != store.ProductMonthly && in.ProductKey != store.ProductAnnual {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Only monthly and annual plans are available", "code": "product_disabled"})
+		return
+	}
 	if in.BankReference == "" || len(in.BankReference) > 120 || in.IdempotencyKey == "" || len(in.IdempotencyKey) > 120 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid bank reference or idempotency key"})
 		return
@@ -116,7 +120,7 @@ func (h *StoreHandler) decideHTTP(c *gin.Context, approve bool) {
 	var purchase *model.StorePurchase
 	err := runInTenant(c, h.db, businessID, func(tx *sql.Tx) error {
 		var e error
-		purchase, e = h.purchases.DecideTXN(tx, businessID, c.Param("purchaseId"), actor, approve, reason, time.Now().UTC())
+		purchase, e = h.decidePurchaseTXN(tx, businessID, c.Param("purchaseId"), actor, approve, reason)
 		return e
 	})
 	if err != nil {
@@ -134,12 +138,27 @@ func (h *StoreHandler) notify(p *model.StorePurchase) {
 	if h.messenger == nil || h.operatorChat == "" {
 		return
 	}
-	text := "MEGA MAGIC STORE - approval required\nrequest: " + p.ID + "\nbusiness: " + p.BusinessID + "\nproduct: " + p.ServiceLabel + "\namount: " + strconv.Itoa(p.PriceMMK) + " MMK\nreference: " + value(p.BankReference)
+	// Resolve the display name with the same tenant boundary as the order.
+	// A failed name lookup must not undo a submitted purchase or expose its UUID.
+	businessName := "Business name unavailable"
+	if tx, err := h.db.Begin(); err == nil {
+		var name string
+		err = database.WithTenant(tx, p.BusinessID, func() error {
+			var e error
+			name, e = database.NewVoucherResellerRepository(h.db).BusinessNameTXN(tx, p.BusinessID)
+			return e
+		})
+		if err == nil && strings.TrimSpace(name) != "" {
+			businessName = name
+		}
+		_ = tx.Rollback()
+	}
+	text := telegram.StoreApprovalMessage(p.ID, businessName, p.ServiceLabel, p.PriceMMK, value(p.BankReference))
 	if buttons, ok := h.messenger.(telegram.ButtonMessenger); ok {
 		_ = buttons.SendButtons(h.operatorChat, text, p.ID)
 		return
 	}
-	_ = h.messenger.SendMessage(h.operatorChat, text+"\naction: approve "+p.ID+" or reject "+p.ID)
+	_ = h.messenger.SendMessage(h.operatorChat, text+"\nReview this order in Mega Magic Store to approve or reject it.")
 }
 
 func value(v *string) string {
@@ -161,11 +180,18 @@ func (h *StoreHandler) DecidePurchaseRequest(businessID, requestID string, appro
 	}
 	defer tx.Rollback()
 	err = database.WithTenant(tx, businessID, func() error {
-		_, e := h.purchases.DecideTXN(tx, businessID, requestID, "", approve, "Rejected from Telegram", time.Now().UTC())
+		_, e := h.decidePurchaseTXN(tx, businessID, requestID, "", approve, "Rejected from Telegram")
 		return e
 	})
 	if err != nil {
 		return err
 	}
 	return tx.Commit()
+}
+
+func (h *StoreHandler) decidePurchaseTXN(tx *sql.Tx, businessID, requestID, actor string, approve bool, reason string) (*model.StorePurchase, error) {
+	if h.SubscriptionOnly {
+		return h.purchases.DecideSubscriptionTXN(tx, businessID, requestID, actor, approve, reason, time.Now().UTC())
+	}
+	return h.purchases.DecideTXN(tx, businessID, requestID, actor, approve, reason, time.Now().UTC())
 }

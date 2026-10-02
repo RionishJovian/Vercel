@@ -9,6 +9,29 @@ import (
 
 const validCredentialKey = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
 
+func TestLoadGeminiEnvironmentAndMissingKey(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte("environment: development\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ENVIRONMENT", "development")
+	t.Setenv("AI_MAGIC_DUDE_PROVIDER", "gemini")
+	t.Setenv("AI_GEMINI_MODEL", "gemini-3.8-flash")
+	t.Setenv("AI_GEMINI_API_KEY", "")
+	t.Setenv("GEMINI_API_KEY", "test-alias-key")
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.AI.MagicDudeProvider != "gemini" || cfg.AI.GeminiAPIKey != "test-alias-key" {
+		t.Fatal("Gemini environment settings not loaded")
+	}
+	t.Setenv("GEMINI_API_KEY", "")
+	if _, err = Load(path); err == nil || !strings.Contains(err.Error(), "ai.gemini_api_key") {
+		t.Fatalf("missing key should fail validation: %v", err)
+	}
+}
+
 // TestLoad_provisionerApplierDefaultsOff proves the live applier is DISABLED by
 // default (deliverable 4) even when the config file says nothing about it.
 func TestLoad_provisionerApplierDefaultsOff(t *testing.T) {

@@ -2037,6 +2037,17 @@ body.page-pricing {
 .page-app .routerboard-console header p,
 .page-app .store-hero p { max-width: 760px; margin: 0; color: var(--foreground-muted); line-height: 1.55; }
 .page-app .site-map-shell { padding: 16px 16px 0; }
+.page-app .site-map-toolbar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:10px; }
+.page-app .site-map-toolbar [aria-pressed="true"] { background:var(--primary); color:var(--primary-foreground); }
+.page-app .site-global-map { position:relative; height:420px; width:100%; border:1px solid var(--border); border-radius:var(--radius-md); overflow:hidden; }
+.page-app .site-global-map .maplibregl-ctrl-attrib { max-width:calc(100% - 12px); color:#222; background:rgba(255,255,255,.95); font-size:11px; line-height:18px; }
+.page-app .site-global-pin { border:0; padding:0; background:transparent; display:grid; justify-items:center; gap:4px; cursor:pointer; color:var(--foreground); }
+.page-app .site-global-pin > span { width:20px; height:20px; border:3px solid white; border-radius:50%; background:var(--neutral-status); box-shadow:0 2px 6px #0008; }
+.page-app .site-global-pin.online > span { background:var(--success); }
+.page-app .site-global-pin.offline > span { background:var(--destructive); }
+.page-app .site-global-pin.is-selected > span { outline:3px solid var(--primary); }
+.page-app .site-global-pin strong { max-width:140px; overflow:hidden; text-overflow:ellipsis; padding:3px 6px; border-radius:5px; background:var(--surface); font-size:11px; }
+@media(max-width:600px) { .page-app .site-global-map { height:340px; } }
 .page-app .site-map-grid { position: relative; min-height: 360px; overflow: hidden; background-color: var(--background); background-image: radial-gradient(circle at 72% 28%, color-mix(in srgb, var(--primary) 18%, transparent), transparent 32%), linear-gradient(color-mix(in srgb, var(--border) 48%, transparent) 1px, transparent 1px), linear-gradient(90deg, color-mix(in srgb, var(--border) 48%, transparent) 1px, transparent 1px); background-size: auto, 36px 36px, 36px 36px; border: 1px solid var(--border); border-radius: var(--radius-md); }
 .page-app .site-map-empty { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; color: var(--foreground-muted); text-align: center; }
 .page-app .site-map-pin { position: absolute; z-index: 1; display: grid; gap: 5px; max-width: 150px; padding: 0; color: var(--foreground); text-align: left; cursor: pointer; background: transparent; border: 0; transform: translate(-50%, -50%); }
@@ -2055,6 +2066,7 @@ body.page-pricing {
 .page-app .site-location-card { display: grid; grid-template-columns: 10px minmax(160px, 1.3fr) minmax(125px, .65fr) minmax(180px, .9fr); align-items: center; gap: 14px; min-height: 70px; padding: 12px 14px; color: var(--foreground); text-align: left; cursor: pointer; background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-sm); }
 .page-app .site-location-card:hover,
 .page-app .site-location-card.is-selected { background: var(--surface-hover); border-color: var(--border-strong); }
+.page-app .site-location-entry{min-width:0}.page-app .site-location-entry .site-location-card{width:100%}.page-app .site-location-actions{display:flex;gap:8px;justify-content:flex-end;padding:8px 0 14px}.page-app #geo-form{margin-top:16px}.page-app .site-location-card:disabled{cursor:default}
 .page-app .site-location-state { width: 9px; height: 9px; background: var(--neutral-status); border-radius: 50%; }
 .page-app .site-location-state.online { background: var(--success); }
 .page-app .site-location-state.offline { background: var(--destructive); }
@@ -2111,6 +2123,10 @@ body.page-pricing {
 .page-app #quick-config-status:empty { display: none; }
 @media (max-width: 620px) { .page-app .router-capability-facts { grid-template-columns: 1fr; } }
 .page-app .routerboard-card > footer { display: flex; flex-wrap: wrap; gap: 7px; padding: 12px 16px; background: color-mix(in srgb, var(--surface) 55%, transparent); border-top: 1px solid var(--line-soft); }
+.page-app .router-hub-check { padding: 0 16px 16px; }
+.page-app .router-hub-check [data-hub-status] { margin-top: 12px; font-size: 13px; }
+.page-app .router-hub-check dl { padding: 12px 0; }
+.page-app .router-hub-check p { margin: 0; }
 
 .page-app .store-hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(210px, .35fr); gap: 24px; align-items: center; padding: 28px; background: linear-gradient(135deg, var(--surface), var(--surface-elevated)); }
 .page-app .store-wallet { display: grid; gap: 5px; padding: 20px; background: var(--primary-soft); border: 1px solid var(--border); border-radius: var(--radius-md); }
@@ -2426,3 +2442,6 @@ body.page-pricing {
   .page-app .mobile-device-actions { display: flex; gap: 8px; }
   .page-app .portal-method-grid { grid-template-columns: 1fr; }
 }
+.page-app [hidden] { display: none !important; }
+.page-app .nav-item[hidden],
+.page-app .rail-section[hidden] { display: none !important; }

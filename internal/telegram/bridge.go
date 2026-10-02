@@ -25,11 +25,18 @@ type PurchaseDecider interface {
 // unparseable verdict or a business-resolution error means NO decision is
 // issued. Acks are best-effort via the same messenger.
 type PurchaseBridge struct {
-	src      InboundSource
-	msg      Messenger
-	target   string // chat the operator replies from (ack destination)
-	decider  PurchaseDecider
-	minDelay time.Duration // optional spacing between decisions
+	src       InboundSource
+	msg       Messenger
+	target    string // chat the operator replies from (ack destination)
+	decider   PurchaseDecider
+	minDelay  time.Duration // optional spacing between decisions
+	authorize func(InboundMessage, string) bool
+}
+
+// SetAuthorization installs a fail-closed guard for tenant-owned guest bots.
+// It runs before lookup and again with the resolved business before any decision.
+func (b *PurchaseBridge) SetAuthorization(guard func(InboundMessage, string) bool) {
+	b.authorize = guard
 }
 
 // NewPurchaseBridge builds the bridge.
@@ -53,6 +60,12 @@ func (b *PurchaseBridge) Run(ctx context.Context) error {
 }
 
 func (b *PurchaseBridge) handle(m InboundMessage) {
+	if b.authorize != nil && !b.authorize(m, "") {
+		if bot, ok := b.msg.(*Bot); ok && m.CallbackID != "" {
+			_ = bot.AnswerCallback(m.CallbackID, "You are not authorized to approve this payment")
+		}
+		return
+	}
 	requestID, approve, ok := ParsePurchaseReply(m.Text)
 	if !ok {
 		// Unparseable (or an inline tap we already consumed): ack so the tap
@@ -65,14 +78,20 @@ func (b *PurchaseBridge) handle(m InboundMessage) {
 	verdict := "unreadable"
 	businessID, err := b.decider.ResolveRequestBusiness(requestID)
 	if err != nil {
-		b.ack("request not found or unreadable: " + m.Text)
+		b.ack("We couldn't find this order. Please review it in Mega Magic.")
 		if bot, down := b.msg.(*Bot); down && m.CallbackID != "" {
 			_ = bot.AnswerCallback(m.CallbackID, "Request not found")
 		}
 		return
 	}
+	if b.authorize != nil && !b.authorize(m, businessID) {
+		if bot, ok := b.msg.(*Bot); ok && m.CallbackID != "" {
+			_ = bot.AnswerCallback(m.CallbackID, "You are not authorized to approve this payment")
+		}
+		return
+	}
 	if err := b.decider.DecidePurchaseRequest(businessID, requestID, approve); err != nil {
-		b.ack("decision failed for " + requestID)
+		b.ack("Couldn't update order " + OrderReference(requestID) + ". Please check its status in Mega Magic before trying again.")
 		if bot, down := b.msg.(*Bot); down && m.CallbackID != "" {
 			_ = bot.AnswerCallback(m.CallbackID, "Decision failed")
 		}
@@ -82,7 +101,7 @@ func (b *PurchaseBridge) handle(m InboundMessage) {
 	if !approve {
 		verdict = "rejected"
 	}
-	b.ack("MEGA MAGIC: purchase " + requestID + " " + verdict)
+	b.ack("Mega Magic: Order " + OrderReference(requestID) + " " + verdict + ".")
 	// Answer the button tap so Telegram clears the loading spinner, then drop
 	// the inline keyboard so there are no buttons left to tap (idempotent UI).
 	if bot, down := b.msg.(*Bot); down {

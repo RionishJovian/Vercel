@@ -85,6 +85,10 @@ func (h *VoucherHandler) CreateVoucher(c *gin.Context) {
 	if req.Status == "" {
 		req.Status = voucher.StatusActive
 	}
+	if req.Status != "active" && req.Status != "unused" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "new vouchers must be active or unused"})
+		return
+	}
 	count := req.Count
 	if count <= 0 {
 		count = 1
@@ -235,6 +239,10 @@ func (h *VoucherHandler) UpdateVoucherStatus(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	if req.FirstSeenAt != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "first use is recorded by redemption, not editable"})
+		return
+	}
 
 	var updated *model.Voucher
 	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
@@ -252,6 +260,9 @@ func (h *VoucherHandler) UpdateVoucherStatus(c *gin.Context) {
 		if status == "" {
 			status = existing.Status
 		}
+		if !voucherStatusTransitionAllowed(existing.Status, status) {
+			return &httpError{status: http.StatusConflict, msg: "voucher status cannot be reset or redeemed through an edit"}
+		}
 
 		upd, err := h.voucherRepo.UpdateVoucherStatusByBusinessTXN(tx, businessID, id, status, req.FirstSeenAt)
 		if err != nil {
@@ -264,6 +275,11 @@ func (h *VoucherHandler) UpdateVoucherStatus(c *gin.Context) {
 		return nil
 	})
 	if err != nil {
+		var transitionErr *httpError
+		if errors.As(err, &transitionErr) {
+			respondErr(c, err)
+			return
+		}
 		if errors.Is(err, errVoucherNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "voucher not found"})
 			return

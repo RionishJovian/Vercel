@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -20,6 +21,7 @@ import (
 	"mega-magic/internal/evaluator"
 	"mega-magic/internal/fleet"
 	"mega-magic/internal/handler"
+	"mega-magic/internal/hub"
 	"mega-magic/internal/messaging"
 	"mega-magic/internal/model"
 	"mega-magic/internal/monitoring"
@@ -32,24 +34,27 @@ import (
 )
 
 type Server struct {
-	cfg            *config.Config
-	log            *logger.Logger
-	sugar          *zap.SugaredLogger
-	http           *http.Server
-	gin            *gin.Engine
-	db             *database.DB
-	cache          *cache.Client
-	messaging      *messaging.Client
-	authService    *auth.Service
-	userRepo       *database.UserRepository
-	authHandler    *handler.AuthHandler
-	evaluator      *evaluator.Evaluator
-	voucherHandler *handler.VoucherHandler
-	monitorHandler *handler.MonitorHandler
-	sweep          *monitoring.Sweep
-	quotaSweep     *quota.Sweep
-	recovery       *recovery.RecoveryService
-	restricted     *database.DB
+	cfg               *config.Config
+	log               *logger.Logger
+	sugar             *zap.SugaredLogger
+	http              *http.Server
+	gin               *gin.Engine
+	db                *database.DB
+	cache             *cache.Client
+	messaging         *messaging.Client
+	authService       *auth.Service
+	userRepo          *database.UserRepository
+	authHandler       *handler.AuthHandler
+	evaluator         *evaluator.Evaluator
+	voucherHandler    *handler.VoucherHandler
+	monitorHandler    *handler.MonitorHandler
+	sweep             *monitoring.Sweep
+	quotaSweep        *quota.Sweep
+	recovery          *recovery.RecoveryService
+	restricted        *database.DB
+	guestRepairMu     sync.Mutex
+	guestRepairCancel context.CancelFunc
+	guestRepairDone   chan struct{}
 }
 
 func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
@@ -152,12 +157,16 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	usageHandler := handler.NewAIUsageHandler(db, usageRepo)
 	// Magic Dude — a read-only tenant-aware operations assistant. It intentionally
 	// receives no messaging or provisioner dependency, so chat can never mutate a router.
+	var magicDudeClient ai.MagicDudeClient = ai.NewOpenRouterClient(cfg.AI.OpenRouterURL, cfg.AI.OpenRouterAPIKey, cfg.AI.OpenRouterModel)
+	if cfg.AI.MagicDudeProvider == "gemini" {
+		magicDudeClient = ai.NewGeminiChatClient(cfg.AI.GeminiAPIKey, cfg.AI.GeminiModel)
+	}
 	magicDudeHandler := handler.NewMagicDudeHandler(
 		db,
 		database.NewDeviceRepository(db),
 		database.NewIncidentRepository(db),
 		usageRepo,
-		ai.NewOpenRouterClient(cfg.AI.OpenRouterURL, cfg.AI.OpenRouterAPIKey, cfg.AI.OpenRouterModel),
+		magicDudeClient,
 	)
 	// Terminal history — commands run against routers (read-only).
 	terminalHistoryHandler := handler.NewTerminalHistoryHandler(db, database.NewTerminalHistoryRepository(db))
@@ -256,6 +265,9 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		cfg.GuestWifi.ReceiptDir,
 		guestSvcFmt,
 	)
+	if err := guestWifiHandler.EnableGuestCookies(cfg.Security.JWTSecret); err != nil {
+		return nil, err
+	}
 
 	// Probe + monitoring: peer reachability classification and state fan-out.
 	probeService := probe.NewProbeService(cacheClient, 5*time.Minute)
@@ -294,6 +306,16 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		cfg.VPS.EndpointHost,
 	)
 
+	if cfg.VPS.HubLookupEnabled {
+		client, err := hub.New(hub.Options{URL: cfg.VPS.HubURL, KeyID: cfg.VPS.HubKeyID, SigningKey: cfg.VPS.HubSigningKey})
+		if err != nil {
+			return nil, fmt.Errorf("invalid Magic Hub lookup configuration")
+		}
+		vpsHandler.ConfigureHubLookup(client)
+		if cfg.VPS.HubEnrollmentEnabled {
+			vpsHandler.ConfigureHubEnrollment(client)
+		}
+	}
 	r := gin.New()
 	if err := r.SetTrustedProxies([]string{"127.0.0.1", "::1"}); err != nil {
 		return nil, err
@@ -322,10 +344,26 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	teamHandler := handler.NewTeamHandler(db, database.NewUserRepository(db), authService)
 	pulseHandler := handler.NewPulseHandler(db, database.NewDeviceRepository(db), database.NewIncidentRepository(db))
 	incidentActionHandler := handler.NewIncidentActionHandler(db, database.NewIncidentRepository(db), database.NewDeviceRepository(db), messagingClient)
+	if cfg.Billing.SubscriptionOnly {
+		if err := database.CheckSubscriptionSchema(db); err != nil {
+			return nil, fmt.Errorf("subscription schema must be explicitly migrated before enabling: %w", err)
+		}
+	}
+	configureSubscriptionHandlers(cfg.Billing, authHandler, routerHandler, siteHandler, storeHandler, topologyHandler, vpsHandler, magicDudeHandler)
 
 	setupRoutes(r, authService, authHandler, routerHandler, telemetryHandler, incidentHandler, webhookHandler, voucherHandler, portalHandler, billingHandler, storeHandler, guestWifiHandler, monitorHandler, fleetHandler, topologyHandler, vpsHandler, platformHandler, securityHandler, backupHandler, teamHandler, pulseHandler, incidentActionHandler, magicCoinHandler, siteHandler, connHandler, allowHandler, syslogHandler, templateHandler, resellerHandler, scanHandler, usageHandler, magicDudeHandler, terminalHistoryHandler, unlockKeyHandler, i18nHandler, messagingClient, cacheClient, db, tenantMW)
+	if err := registerGuestVoucherRoutes(r, cfg, db, authService, voucherHandler); err != nil {
+		return nil, fmt.Errorf("guest voucher routes: %w", err)
+	}
+	portalHandler.GuestVoucherAccess = cfg.GuestWifi.VoucherAccessEnabled
 
 	// Start the policy evaluator: watches NATS telemetry and auto-opens incidents.
+	if cfg.Media.ConnectorEnabled {
+		if err := registerMediaRoutes(r, authService, db, handler.SubscriptionAccess(db, cfg.Billing.SubscriptionOnly, cfg.Billing.ExistingAccountPolicy)); err != nil {
+			return nil, fmt.Errorf("media connector schema/routes: %w", err)
+		}
+	}
+
 	evaluator := evaluator.New(
 		messagingClient,
 		database.NewAlertPolicyRepository(db),
@@ -346,9 +384,12 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 
 	// Quota-ENFORCEMENT sweep: detects lapsed Sovereign passes and emits
 	// quota.pass.expired. Started once here; it never touches HTTP.
-	quotaSweep := quota.NewSweep(database.NewBusinessMeteredQuotaRepository(db), messagingClient, sugar, cfg.Billing.QuotaEnforcementInterval)
-	quotaSweep.Start()
-	sugar.Infow("Quota enforcement sweep started", "interval", cfg.Billing.QuotaEnforcementInterval)
+	var quotaSweep *quota.Sweep
+	if !cfg.Billing.SubscriptionOnly {
+		quotaSweep = quota.NewSweep(database.NewBusinessMeteredQuotaRepository(db), messagingClient, sugar, cfg.Billing.QuotaEnforcementInterval)
+		quotaSweep.Start()
+		sugar.Infow("Quota enforcement sweep started", "interval", cfg.Billing.QuotaEnforcementInterval)
+	}
 
 	// AI/scanning service: consumes telemetry.ingest, meters AI tokens, emits
 	// ai.finding. Construction is unconditional; the worker only subscribes when
@@ -467,7 +508,7 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 		// PUBLIC captive-portal endpoints — anonymous, NO auth middleware. The
 		// tenant is resolved from the DEVICE the client is attached to (not from
 		// the voucher code).
-		portalPublic := tv1.Group("/portal")
+		portalPublic := tv1.Group("/portal", auth.BoundedPortalRateLimit(), boundedPortalBody())
 		{
 			portalPublic.GET("/:deviceId/config", portalHandler.PublicConfig)
 			portalPublic.POST("/:deviceId/redeem", portalHandler.PublicRedeem)
@@ -502,7 +543,9 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 		// C3 baseline: every tenant route requires at least VIEWER in the role
 		// hierarchy (unknown roles are refused). Stricter per-group minimums below.
 		protected.Use(auth.RequireMinRole(model.RoleViewer))
+		protected.Use(handler.SubscriptionAccess(db, authHandler.SubscriptionOnly, authHandler.SubscriptionExistingPolicy))
 		{
+			protected.GET("/subscription", handler.SubscriptionStatus)
 			protected.GET("/me", authHandler.Me)
 			protected.GET("/me/profile", authHandler.Profile)
 			protected.PUT("/me/profile", authHandler.UpdateProfile)
@@ -573,6 +616,8 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 				vpsg.GET("/config", vpsHandler.HubConfig)
 				vpsg.GET("/peers/:deviceId", vpsHandler.Peer)
 				vpsg.GET("/peers/:deviceId/health", vpsHandler.Health)
+				vpsg.GET("/peers/:deviceId/live", auth.RequireMinRole(model.RoleAdmin), vpsHandler.LivePeer)
+				vpsg.POST("/peers/:deviceId/enroll", auth.RequireMinRole(model.RoleAdmin), vpsHandler.EnrollGateway)
 			}
 
 			policies := protected.Group("/alert-policies")
@@ -586,10 +631,10 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 			vouchers := protected.Group("/vouchers")
 			{
 				vouchers.GET("", voucherHandler.ListVouchers)
-				vouchers.POST("", voucherHandler.CreateVoucher)
-				vouchers.GET("/:id", voucherHandler.GetVoucherByCode) // Note: reused handler for redemption
-				vouchers.PUT("/:id", voucherHandler.UpdateVoucherStatus)
-				vouchers.DELETE("/:id", voucherHandler.DeleteVoucher)
+				vouchers.POST("", auth.RequireMinRole(model.RoleOperator), voucherHandler.CreateVoucher)
+				vouchers.GET("/:code", voucherHandler.GetVoucherByCode)
+				vouchers.PUT("/:id", auth.RequireMinRole(model.RoleOperator), voucherHandler.UpdateVoucherStatus)
+				vouchers.DELETE("/:id", auth.RequireMinRole(model.RoleAdmin), voucherHandler.DeleteVoucher)
 				vouchers.POST("/:code/redeem", voucherHandler.RedeemVoucher) // For voucher redemption
 			}
 
@@ -707,7 +752,7 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 			portalStaff := protected.Group("/portal")
 			{
 				portalStaff.GET("/config", portalHandler.StaffGetConfig)
-				portalStaff.PUT("/config", portalHandler.StaffUpdateConfig)
+				portalStaff.PUT("/config", auth.RequireMinRole(model.RoleAdmin), portalHandler.StaffUpdateConfig)
 			}
 
 			billing := protected.Group("/billing", auth.RequireMinRole(model.RoleOperator))
@@ -726,8 +771,9 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 				gw.PUT("/telegram-bot", auth.RequireMinRole(model.RoleAdmin), guestWifiHandler.PutBotBinding)
 				gw.POST("/telegram-bot/test", auth.RequireMinRole(model.RoleAdmin), guestWifiHandler.TestBotBinding)
 				gw.GET("/requests", guestWifiHandler.ListGuestRequests)
-				gw.POST("/approve/:requestId", guestWifiHandler.ApproveGuest)
-				gw.POST("/reject/:requestId", guestWifiHandler.RejectGuest)
+				gw.GET("/revenue", guestWifiHandler.GuestRevenue)
+				gw.POST("/approve/:requestId", auth.RequireMinRole(model.RoleOperator), guestWifiHandler.ApproveGuest)
+				gw.POST("/reject/:requestId", auth.RequireMinRole(model.RoleOperator), guestWifiHandler.RejectGuest)
 			}
 
 			webhooks := protected.Group("/webhooks", auth.RequireMinRole(model.RoleAdmin))
@@ -849,12 +895,42 @@ func version(c *gin.Context) {
 }
 
 func (s *Server) Start() error {
+	worker, err := s.buildGuestRepairWorker()
+	if err != nil {
+		return fmt.Errorf("guest recovery worker: %w", err)
+	}
+	if worker != nil {
+		ctx, cancel := context.WithCancel(context.Background())
+		s.guestRepairMu.Lock()
+		if s.guestRepairCancel != nil {
+			s.guestRepairMu.Unlock()
+			cancel()
+			return fmt.Errorf("guest recovery worker already started")
+		}
+		s.guestRepairCancel = cancel
+		done := make(chan struct{})
+		s.guestRepairDone = done
+		s.guestRepairMu.Unlock()
+		go func() { defer close(done); worker(ctx) }()
+		defer cancel()
+	}
 	s.sugar.Infow("Starting HTTP server", "addr", s.http.Addr)
 	return s.http.ListenAndServe()
 }
 
 func (s *Server) Shutdown(ctx context.Context) error {
 	s.sugar.Info("Shutting down HTTP server")
+	s.guestRepairMu.Lock()
+	cancel, done := s.guestRepairCancel, s.guestRepairDone
+	s.guestRepairMu.Unlock()
+	if cancel != nil {
+		cancel()
+		select {
+		case <-done:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
 	if s.restricted != nil {
 		_ = s.restricted.Close()
 	}

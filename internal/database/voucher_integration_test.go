@@ -834,9 +834,9 @@ func TestDB_TXN_moneyPathIsolation(t *testing.T) {
 		return nil
 	})
 
-	// cross-business update blocked; own update succeeds.
+	// Cross-business mutations are blocked even for an allowed status change.
 	inTenant(t, db, bizB, func(tx *sql.Tx) error {
-		upd, err := repo.UpdateVoucherStatusByBusinessTXN(tx, bizB, vA.ID, voucher.StatusUsed, nil)
+		upd, err := repo.UpdateVoucherStatusByBusinessTXN(tx, bizB, vA.ID, "revoked", nil)
 		if err != nil {
 			return err
 		}
@@ -845,12 +845,31 @@ func TestDB_TXN_moneyPathIsolation(t *testing.T) {
 		}
 		return nil
 	})
+	// Administrative status edits cannot claim guest redemption authority.
 	inTenant(t, db, bizA, func(tx *sql.Tx) error {
 		upd, err := repo.UpdateVoucherStatusByBusinessTXN(tx, bizA, vA.ID, voucher.StatusUsed, nil)
 		if err != nil {
 			return err
 		}
-		if upd == nil || upd.Status != voucher.StatusUsed {
+		if upd != nil {
+			t.Fatal("administrative status edit marked voucher used")
+		}
+		got, err := repo.GetVoucherByCodeTXN(tx, bizA, vA.Code)
+		if err != nil {
+			return err
+		}
+		if got == nil || got.Status != voucher.StatusActive || got.FirstSeenAt != nil {
+			t.Fatal("denied administrative redemption changed voucher")
+		}
+		return nil
+	})
+	// Own-business revocation remains an allowed administrative operation.
+	inTenant(t, db, bizA, func(tx *sql.Tx) error {
+		upd, err := repo.UpdateVoucherStatusByBusinessTXN(tx, bizA, vA.ID, "revoked", nil)
+		if err != nil {
+			return err
+		}
+		if upd == nil || upd.Status != "revoked" {
 			t.Fatalf("own update failed: %+v", upd)
 		}
 		return nil

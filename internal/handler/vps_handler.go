@@ -20,12 +20,17 @@ import (
 // gated (an ACTIVE Webfig pass — the same condition the quota sweep enforces)
 // and tenant-bound. No live-router writes; relay/apply stays behind the applier gate.
 type VPSHandler struct {
-	db           *database.DB
-	deviceRepo   *database.DeviceRepository
-	quotaRepo    *database.BusinessMeteredQuotaRepository
-	monitoring   *monitoring.MonitoringService
-	wg           config.WireGuardConfig
-	endpointHost string
+	SubscriptionOnly bool
+	db               *database.DB
+	deviceRepo       *database.DeviceRepository
+	quotaRepo        *database.BusinessMeteredQuotaRepository
+	monitoring       *monitoring.MonitoringService
+	wg               config.WireGuardConfig
+	endpointHost     string
+	liveHub          hubInspector
+	enrollmentHub    hubEnroller
+	liveDevice       func(*gin.Context, string, string) (*model.Device, error)
+	livePlan         func(string) bool
 }
 
 func NewVPSHandler(db *database.DB, deviceRepo *database.DeviceRepository, quotaRepo *database.BusinessMeteredQuotaRepository, mon *monitoring.MonitoringService, wg config.WireGuardConfig, endpointHost string) *VPSHandler {
@@ -35,6 +40,9 @@ func NewVPSHandler(db *database.DB, deviceRepo *database.DeviceRepository, quota
 // planActive reports whether the tenant's Sovereign pass is currently active —
 // the same condition the quota-enforcement sweep uses to gate the product.
 func (h *VPSHandler) planActive(businessID string) bool {
+	if h.SubscriptionOnly {
+		return true
+	} // Shared subscription middleware enforces base access.
 	q, err := h.quotaRepo.GetByBusiness(businessID)
 	if err != nil || q == nil || q.WebfigPassExpiresAt == nil {
 		return false

@@ -231,12 +231,13 @@ type GuestPlan struct {
 // loop (notify + approve/reject). The owner binds it under their platform
 // account; the platform never uses their token for anything else.
 type BusinessTelegramBot struct {
-	BusinessID   string    `json:"business_id"`
-	BotToken     string    `json:"bot_token,omitempty"` // masked on read-back
-	TargetChatID int64     `json:"target_chat_id"`
-	Enabled      bool      `json:"enabled"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	BusinessID     string    `json:"business_id"`
+	BotToken       string    `json:"bot_token,omitempty"` // masked on read-back
+	TargetChatID   int64     `json:"target_chat_id"`
+	ApproverUserID int64     `json:"approver_user_id"`
+	Enabled        bool      `json:"enabled"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }
 
 // GuestPurchaseRequest is an owner-approved online-banking wifi submit from a

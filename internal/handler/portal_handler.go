@@ -3,7 +3,9 @@ package handler
 import (
 	"database/sql"
 	"errors"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -21,6 +23,7 @@ import (
 // from the voucher code (codes are only business-scoped-unique). STAFF endpoints
 // are owner-authenticated and mounted under `protected`.
 type PortalHandler struct {
+	GuestVoucherAccess  bool
 	db                  *database.DB
 	deviceRepo          *database.DeviceRepository
 	configRepo          *database.PortalConfigRepository
@@ -97,7 +100,7 @@ func (h *PortalHandler) PublicConfig(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"config": cfg})
+	c.JSON(http.StatusOK, gin.H{"config": cfg, "guest_voucher_access": h.GuestVoucherAccess})
 }
 
 // PublicRedeem: POST /api/v1/portal/:deviceId/redeem
@@ -106,11 +109,18 @@ func (h *PortalHandler) PublicRedeem(c *gin.Context) {
 		ClientMAC string  `json:"client_mac" binding:"required"`
 		Code      string  `json:"code" binding:"required"`
 		ClientIP  *string `json:"client_ip"`
+		Consent   bool    `json:"consent"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	mac, macErr := net.ParseMAC(req.ClientMAC)
+	if macErr != nil || len(mac) != 6 || mac[0]&1 != 0 || mac.String() == "00:00:00:00:00:00" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "valid client_mac required"})
+		return
+	}
+	req.ClientMAC = strings.ToUpper(mac.String())
 
 	deviceID := c.Param("deviceId")
 	dev, err := h.businessForDevice(deviceID)
@@ -143,6 +153,9 @@ func (h *PortalHandler) PublicRedeem(c *gin.Context) {
 		if cfg == nil || !cfg.VoucherLoginEnabled {
 			return &httpError{status: http.StatusForbidden, msg: "voucher login is disabled for this portal"}
 		}
+		if cfg.ConsentRequired && !req.Consent {
+			return &httpError{status: http.StatusBadRequest, msg: "accept the hotspot terms before connecting"}
+		}
 		claimed, ap, e := redeemVoucherTx(tx, h.voucherRepo, h.quotaRepo, dev.BusinessID, req.Code, now)
 		if e != nil {
 			return e
@@ -164,7 +177,7 @@ func (h *PortalHandler) PublicRedeem(c *gin.Context) {
 			AuthenticatedAt: now,
 			ExpiresAt:       expiresAt,
 			IsActive:        true,
-			ConsentGiven:    false,
+			ConsentGiven:    req.Consent,
 		})
 		if e != nil {
 			return e
@@ -319,6 +332,10 @@ func (h *PortalHandler) StaffUpdateConfig(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "grace data must be between 1 and 10240 MB"})
 		return
 	}
+	if req.MMQRURL != nil && !safePortalImageURL(*req.MMQRURL) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "QR image must be an HTTPS URL or a same-origin path"})
+		return
+	}
 	// Brand colours are owner-supplied strings that end up in the GUEST page's
 	// CSS. Reject anything that is not a literal hex colour before it can reach
 	// a stylesheet — the client sanitises too, but a public page must not depend
@@ -443,6 +460,23 @@ func (h *PortalHandler) StaffUpdateConfig(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"status": "ok", "config": merged})
+}
+
+func safePortalImageURL(raw string) bool {
+	if raw == "" {
+		return true
+	}
+	if strings.ContainsAny(raw, "\r\n\x00\\") {
+		return false
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.User != nil {
+		return false
+	}
+	if strings.HasPrefix(raw, "/") {
+		return !strings.HasPrefix(raw, "//") && u.Host == "" && u.Scheme == ""
+	}
+	return u.Scheme == "https" && u.Hostname() != ""
 }
 
 // errBusinessNameRequired marks the empty-name case so it can answer 400 rather

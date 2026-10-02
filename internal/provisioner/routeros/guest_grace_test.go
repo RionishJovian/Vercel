@@ -86,9 +86,23 @@ func TestGuestApprovalGrantsPaidQuotaAndRetryDoesNotGrantTwice(t *testing.T) {
 	paid := fmt.Sprintf("name: AA:BB:CC:DD:EE:FE\ncomment: mega-magic:paid:%s\nlimit-uptime: 1h30s\nlimit-bytes-total: 1024003000", graceTestID)
 	var commands []string
 	user := initial
+	scheduled := false
 	r := commandRunnerFunc(func(_ context.Context, cmd string) (string, error) {
 		commands = append(commands, cmd)
 		switch {
+		case cmd == "/system clock print":
+			return "date: 2026-12-31\ntime: 23:59:30", nil
+		case strings.Contains(cmd, " scheduler print count-only "):
+			if scheduled {
+				return "1", nil
+			}
+			return "0", nil
+		case strings.Contains(cmd, " scheduler add "):
+			if !strings.Contains(cmd, "start-date=2027-01-01 start-time=00:59:30") {
+				t.Fatal("elapsed deadline did not cross year boundary")
+			}
+			scheduled = true
+			return "", nil
 		case strings.Contains(cmd, " user print "):
 			return user, nil
 		case strings.Contains(cmd, " user set "):

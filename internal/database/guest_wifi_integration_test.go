@@ -23,19 +23,21 @@ func TestDB_GuestWifi_crossBusinessIsolation(t *testing.T) {
 
 	// Each business binds its OWN bot (cross-business insert is against its own row).
 	inTenant(t, db, bizA, func(tx *sql.Tx) error {
-		return botRepo.Upsert(&model.BusinessTelegramBot{
-			BusinessID:   bizA,
-			BotToken:     "AAA:token",
-			TargetChatID: 111,
-			Enabled:      true,
+		return botRepo.UpsertTXN(tx, &model.BusinessTelegramBot{
+			BusinessID:     bizA,
+			BotToken:       "AAA:token",
+			TargetChatID:   111,
+			ApproverUserID: 111,
+			Enabled:        true,
 		})
 	})
 	inTenant(t, db, bizB, func(tx *sql.Tx) error {
-		return botRepo.Upsert(&model.BusinessTelegramBot{
-			BusinessID:   bizB,
-			BotToken:     "BBB:token",
-			TargetChatID: 222,
-			Enabled:      true,
+		return botRepo.UpsertTXN(tx, &model.BusinessTelegramBot{
+			BusinessID:     bizB,
+			BotToken:       "BBB:token",
+			TargetChatID:   222,
+			ApproverUserID: 222,
+			Enabled:        true,
 		})
 	})
 
@@ -47,6 +49,9 @@ func TestDB_GuestWifi_crossBusinessIsolation(t *testing.T) {
 			return err
 		}
 		aToken = b.BotToken
+		if b.ApproverUserID != 111 {
+			t.Fatalf("approver did not round-trip: %d", b.ApproverUserID)
+		}
 		other, err := botRepo.GetByBusinessTXN(tx, bizB)
 		if err != nil {
 			return err
@@ -62,6 +67,9 @@ func TestDB_GuestWifi_crossBusinessIsolation(t *testing.T) {
 			return err
 		}
 		bToken = b.BotToken
+		if b.ApproverUserID != 222 {
+			t.Fatalf("approver did not round-trip: %d", b.ApproverUserID)
+		}
 		return nil
 	})
 	if aToken != "AAA:token" || bToken != "BBB:token" {
@@ -136,7 +144,7 @@ func TestDB_GuestWifi_singleWindAndEnabledList(t *testing.T) {
 
 	// Only A is enabled.
 	inTenant(t, db, bizA, func(tx *sql.Tx) error {
-		return botRepo.Upsert(&model.BusinessTelegramBot{BusinessID: bizA, BotToken: "T", Enabled: true})
+		return botRepo.UpsertTXN(tx, &model.BusinessTelegramBot{BusinessID: bizA, BotToken: "T", Enabled: true})
 	})
 	enabled, err := botRepo.ListEnabled()
 	if err != nil {
