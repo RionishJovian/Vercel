@@ -61,6 +61,17 @@ func (t *SSHTransport) Run(ctx context.Context, cmd string) (string, error) {
 		return "", fmt.Errorf("routeros: dial %s: %w", t.cfg.Addr, err)
 	}
 	defer conn.Close()
+	// Bound handshake and command I/O as well as dial. Cancellation must also
+	// interrupt an established connection so callers can enter containment.
+	deadline := time.Now().Add(timeout)
+	if contextDeadline, ok := ctx.Deadline(); ok && contextDeadline.Before(deadline) {
+		deadline = contextDeadline
+	}
+	if err := conn.SetDeadline(deadline); err != nil {
+		return "", fmt.Errorf("routeros: cannot bound ssh connection")
+	}
+	stopCancellation := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer stopCancellation()
 
 	sconn, chans, reqs, err := ssh.NewClientConn(conn, t.cfg.Addr, ccfg)
 	if err != nil {
@@ -78,10 +89,12 @@ func (t *SSHTransport) Run(ctx context.Context, cmd string) (string, error) {
 	raw, runErr := session.CombinedOutput(cmd)
 	text := string(raw)
 	if runErr != nil {
-		return text, fmt.Errorf("routeros: command %q failed: %w (%s)", cmd, runErr, firstNonEmptyLine(text))
+		return "", fmt.Errorf("routeros: command execution failed: %w", runErr)
 	}
 	if perr := detectRouterOSError(text); perr != nil {
-		return text, fmt.Errorf("routeros: command %q: %w", cmd, perr)
+		// RouterOS output may echo secret-bearing arguments. Do not return
+		// command text or raw provider output through API/audit errors.
+		return "", fmt.Errorf("routeros: router rejected the command")
 	}
 	return text, nil
 }

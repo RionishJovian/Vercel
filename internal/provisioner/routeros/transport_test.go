@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"fmt"
 	"net"
 	"strings"
 	"testing"
@@ -41,6 +42,43 @@ func TestSSHTransport_emptyAddr(t *testing.T) {
 	tr := NewSSHTransport(SSHConfig{})
 	if _, err := tr.Run(context.Background(), "/system identity print"); err == nil {
 		t.Fatal("empty addr must error")
+	}
+}
+
+func TestSSHTransportStalledHandshakeIsBounded(t *testing.T) {
+	for _, cancelEarly := range []bool{false, true} {
+		t.Run(fmt.Sprint(cancelEarly), func(t *testing.T) {
+			listener, err := net.Listen("tcp", "127.0.0.1:0")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer listener.Close()
+			done := make(chan struct{})
+			defer close(done)
+			go func() {
+				conn, err := listener.Accept()
+				if err == nil {
+					defer conn.Close()
+					<-done // No SSH banner: deliberately stalled handshake.
+				}
+			}()
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			timeout := 150 * time.Millisecond
+			if cancelEarly {
+				timeout = 10 * time.Second
+				timer := time.AfterFunc(100*time.Millisecond, cancel)
+				defer timer.Stop()
+			}
+			tr := NewSSHTransport(SSHConfig{Addr: listener.Addr().String(), User: "test", InsecureIgnoreHostKey: true, Timeout: timeout})
+			start := time.Now()
+			if _, err := tr.Run(ctx, ":put 1"); err == nil {
+				t.Fatal("stalled handshake succeeded")
+			}
+			if time.Since(start) > 2*time.Second {
+				t.Fatal("handshake escaped timeout or cancellation")
+			}
+		})
 	}
 }
 
