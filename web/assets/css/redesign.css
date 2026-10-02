@@ -105,6 +105,29 @@ body.page-pricing {
   outline-offset: 2px;
 }
 
+/* Public support CTA recovered from the first project. Keep it quiet and
+   functional: one clear Telegram action beside sign-in and pricing. */
+.page-marketing .telegram-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-color: rgba(98, 212, 154, .42);
+  color: var(--accent);
+}
+.page-marketing .telegram-cta:hover {
+  border-color: var(--accent);
+  color: var(--ink);
+}
+.page-marketing .telegram-plane {
+  display: inline-grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  font-size: 15px;
+  line-height: 1;
+  transform: rotate(-18deg);
+}
+
 /* Brand mark */
 .page-app .rail-brand,
 .page-marketing .rail-brand,
