@@ -1392,12 +1392,24 @@ function routerBoardPanel(routers, fleet, capabilityByID = new Map()) {
       </div>
       ${canEdit && router.deployment_layer === "MAIN_GATEWAY" ? `<div class="router-hub-check"><button class="btn btn-sm" type="button" data-hub-check="${esc(router.device_id)}">Check Magic Hub</button><div data-hub-status role="status" hidden></div>
         <details data-hub-enrollment="${esc(router.device_id)}"><summary>Connect Magic Hub</summary>
-          <p>RouterOS 7: open WinBox → WireGuard. Create an interface for Magic Hub, or use your existing dedicated interface. Copy its <strong>public key</strong>. Never share its private key.</p>
+          <h3>1. Prepare this gateway</h3><p>RouterOS 7: generate the first script, copy it into WinBox → New Terminal and run the entire block. Copy the printed <strong>public key</strong> back here. The private key stays on the router.</p>
+          <button class="btn" type="button" data-hub-bootstrap>Get preparation script</button><div data-hub-bootstrap-output aria-live="polite"></div>
+          <h3>2. Connect to Magic Hub</h3>
           <form class="quick-config-form"><label>Router WireGuard public key<input name="router_public_key" required autocomplete="off" maxlength="44" spellcheck="false" placeholder="Paste the 44-character public key"></label>
             <label>Router HTTPS management port<input name="management_rest_port" type="number" min="1" max="65535" value="443" required></label>
             <label class="check-label"><input name="confirm_enrollment" type="checkbox" required> I authorize enrolling this gateway with this public key.</label>
             <p class="muted small">This creates a Hub peer only. It does not open public management ports or change your router's firewall. Existing key changes require a separate repair workflow.</p>
-            <button type="submit" class="btn">Enroll gateway</button><div role="status" aria-live="polite"></div>
+            <button type="submit" class="btn">Generate connection script</button><div role="status" aria-live="polite"></div>
+          </form>
+          <h3>4. Authenticate router management</h3><p>After the tunnel is verified, use a dedicated RouterOS account with SSH access. Keep SSH private: allow the app's tunnel address (10.77.0.9) only on the Magic Hub interface, ahead of your input drop rule. Do not expose SSH to the internet or replace existing firewall rules.</p>
+          <p>On your own computer, obtain the SSH host fingerprint over the trusted local network: <code>ssh-keyscan -p 22 ROUTER_LAN_IP | ssh-keygen -lf -</code>. Verify that you are using the correct router, then paste its <code>SHA256:…</code> fingerprint. No automatic trust-on-first-use is used.</p>
+          <form data-hub-management class="quick-config-form">
+            <label>Router SSH username<input name="username" required maxlength="128" autocomplete="off"></label>
+            <label>Router SSH password<input name="password" type="password" required maxlength="512" autocomplete="new-password"></label>
+            <label>SSH port<input name="port" type="number" min="1" max="65535" value="22" required></label>
+            <label>Verified SSH fingerprint<input name="fingerprint" required autocomplete="off" placeholder="SHA256:…"></label>
+            <label class="check-label"><input name="confirm" type="checkbox" required> I verified this router's fingerprint and authorize secure credential storage.</label>
+            <button type="submit" class="btn">Verify and save management access</button><div role="status" aria-live="polite"></div>
           </form>
         </details></div>` : ""}
       <footer>${canEdit ? `<button class="btn btn-sm" type="button" data-edit="${esc(router.device_id)}">Edit record</button>` : ""}<button class="btn btn-sm" type="button" data-router-topology="${esc(router.device_id)}">Topology</button>${canEdit ? `<button class="btn btn-sm" type="button" data-reboot="${esc(router.device_id)}"${state !== "up" ? " disabled title=\"No verified reachability\"" : ""}>Reboot</button>` : ""}</footer>
@@ -1448,7 +1460,7 @@ async function renderSites(main, workspace = location.hash === "#gateways" ? "ga
     ${routerBoardPanel(routers, fleet, capabilityByID)}
     <dialog class="router-capability-dialog" id="router-capability-dialog"><div class="router-capability-shell"><button type="button" class="dialog-close" data-capability-close aria-label="Close">×</button><div id="router-capability-content"></div><div class="dialog-actions"><button type="button" class="btn" data-capability-close>Close</button></div></div></dialog>
     ${gatewayOnly ? connPanel(conns) : ""}
-    ${canEdit ? `<div class="workspace-actions"><button class="btn btn-primary" type="button" id="site-add">${gatewayOnly ? "Add gateway record" : "Add downstream device record"}</button></div>` : ""}
+    ${canEdit ? `<div class="workspace-actions"><button class="btn btn-primary" type="button" id="site-add">${gatewayOnly ? "Connect new gateway" : "Add downstream device record"}</button></div>` : ""}
     ${gatewayOnly ? "" : allowancePanel(allowance)}
     ${gatewayOnly ? "" : requestPanel(requests)}
     <div class="panel" id="site-form" hidden><div class="panel-head"><h2 class="panel-title">Add device record</h2></div>
@@ -1532,8 +1544,19 @@ async function renderSites(main, workspace = location.hash === "#gateways" ? "ga
       transport: gatewayOnly ? "tunnel" : "direct",
     };
     if (!body.hardware_name) { document.getElementById("sr-msg").textContent = "Hardware name is required."; return; }
-    try { await MM.post("/routers", body); await renderSites(main); }
+    const save = document.getElementById("sr-save");
+    if (save.disabled) return;
+    save.disabled = true;
+    try {
+      const result = await MM.post("/routers", body);
+      await renderSites(main, workspace);
+      if (gatewayOnly && result.router?.device_id && content.isConnected) {
+        const wizard = Array.from(content.querySelectorAll('[data-hub-enrollment]')).find(el => el.dataset.hubEnrollment === result.router.device_id);
+        if (wizard) { wizard.open = true; wizard.scrollIntoView({block:'center',behavior:'smooth'}); wizard.querySelector('[data-hub-bootstrap]')?.click(); }
+      }
+    }
     catch (e) { showErr(e); }
+    finally { if (save.isConnected) save.disabled = false; }
   });
 
   content.querySelectorAll("button[data-edit]").forEach(btn => btn.addEventListener("click", () => {
@@ -1646,7 +1669,7 @@ async function renderSites(main, workspace = location.hash === "#gateways" ? "ga
 
   if (gatewayOnly) {
     wireHubLookup(content); wireConns(main, conns, sites);
-    const {mountHubEnrollment}=await import("/assets/js/hub-enrollment.js?v=1");
+    const {mountHubEnrollment}=await import("/assets/js/hub-enrollment.js?v=20261002-management-1");
     if(content.isConnected)mountHubEnrollment(content,{api:MM,escape:esc});
   }
   else wireAllowance(main, allowance, requests, allowanceKinds);

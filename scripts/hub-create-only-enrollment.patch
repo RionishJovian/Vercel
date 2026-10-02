@@ -2,8 +2,14 @@
 +++ b/service.mjs
 @@ -36,1 +36,2 @@
  import { pathToFileURL } from "node:url";
-+import { enrollCreateOnly } from "./hub-enrollment.mjs";
-@@ -683,1 +684,35 @@
++import { enrollCreateOnly, reserveTunnelAddresses } from "./hub-enrollment.mjs";
+@@ -449,1 +449,1 @@
+-    allowedIps: [HUB_ROUTE],
++    allowedIps: [HUB_ROUTE, ...(cleanEnvValue(env.MM_HUB_APP_ROUTE || "") ? [cleanEnvValue(env.MM_HUB_APP_ROUTE)] : [])],
+@@ -451,1 +451,1 @@
+-    lastHandshakeAt: live?.lastHandshakeAt ?? p.lastHandshakeAt ?? null,
++    lastHandshakeAt: live?.lastHandshakeAt ?? null,
+@@ -683,1 +684,47 @@
 -  if (req.method === "PUT" && byRouter) {
 +  if (req.method === "POST" && byRouter) {
 +    const result = enrollCreateOnly({auth,routerId:decodeURIComponent(byRouter[1]),body,
@@ -28,7 +34,19 @@
 +          if (fs.existsSync(temporary)) fs.unlinkSync(temporary);
 +        }
 +      },
-+      allocate:allocateAddress,sync:wgSyncPeer,
++      allocate(peers) {
++        const live = execFileSync("wg",["show",WG_IFACE,"allowed-ips"],{encoding:"utf8"});
++        return allocateAddress(reserveTunnelAddresses(peers,live,SUBNET,cleanEnvValue(env.MM_HUB_APP_ROUTE || "")));
++      },sync(peer) {
++        const live = execFileSync("wg",["show",WG_IFACE,"allowed-ips"],{encoding:"utf8"});
++        const rows = live.trim() ? live.trim().split("\n") : [];
++        const same = rows.filter(row=>row.trim().split(/\s+/)[0]===peer.routerPublicKey);
++        if (same.length>1 || (same.length===1 && same[0].trim().split(/\s+/).slice(1).join("")!==peer.tunnelAddress)) throw new Error("live key conflict");
++        const other = rows.filter(row=>row.trim().split(/\s+/)[0]!==peer.routerPublicKey).join("\n");
++        const reserved = reserveTunnelAddresses([],other,SUBNET,cleanEnvValue(env.MM_HUB_APP_ROUTE || ""));
++        if (reserved.some(p=>p.tunnelAddress===peer.tunnelAddress)) throw new Error("live address conflict");
++        wgSyncPeer(peer);
++      },
 +      verify(peer) {
 +        const dump = execFileSync("wg",["show",WG_IFACE,"dump"],{encoding:"utf8"});
 +        const rows = dump.trim().split("\n").slice(1).map(row=>row.split("\t"));

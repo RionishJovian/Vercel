@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"database/sql"
 	"net/http"
 	"time"
@@ -31,6 +32,7 @@ type VPSHandler struct {
 	enrollmentHub    hubEnroller
 	liveDevice       func(*gin.Context, string, string) (*model.Device, error)
 	livePlan         func(string) bool
+	managementAuth   func(context.Context, string, string, string, string, string, int, string) error
 }
 
 func NewVPSHandler(db *database.DB, deviceRepo *database.DeviceRepository, quotaRepo *database.BusinessMeteredQuotaRepository, mon *monitoring.MonitoringService, wg config.WireGuardConfig, endpointHost string) *VPSHandler {

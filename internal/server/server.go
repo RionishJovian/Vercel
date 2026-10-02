@@ -314,6 +314,9 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		vpsHandler.ConfigureHubLookup(client)
 		if cfg.VPS.HubEnrollmentEnabled {
 			vpsHandler.ConfigureHubEnrollment(client)
+			if err := configureHubManagement(vpsHandler, db, cfg); err != nil {
+				return nil, err
+			}
 		}
 	}
 	r := gin.New()
@@ -618,6 +621,8 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 				vpsg.GET("/peers/:deviceId/health", vpsHandler.Health)
 				vpsg.GET("/peers/:deviceId/live", auth.RequireMinRole(model.RoleAdmin), vpsHandler.LivePeer)
 				vpsg.POST("/peers/:deviceId/enroll", auth.RequireMinRole(model.RoleAdmin), vpsHandler.EnrollGateway)
+				vpsg.GET("/peers/:deviceId/bootstrap", auth.RequireMinRole(model.RoleAdmin), vpsHandler.GatewayBootstrap)
+				vpsg.POST("/peers/:deviceId/authenticate", auth.RequireMinRole(model.RoleAdmin), vpsHandler.AuthenticateGateway)
 			}
 
 			policies := protected.Group("/alert-policies")

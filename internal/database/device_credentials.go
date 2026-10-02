@@ -122,7 +122,16 @@ func (s *DeviceCredentialSource) SetDeviceCredentials(ctx context.Context, busin
 		return fmt.Errorf("device ssh target: seal: %w", err)
 	}
 
-	res, err := s.db.ExecContext(ctx, `
+	if s.db == nil {
+		return errors.New("device ssh target: database unavailable")
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	err = WithTenant(tx, businessID, func() error {
+		res, err := tx.ExecContext(ctx, `
 		UPDATE devices
 		   SET management_ip = $1::inet,
 		       ssh_port = $2,
@@ -133,14 +142,23 @@ func (s *DeviceCredentialSource) SetDeviceCredentials(ctx context.Context, busin
 		       updated_at = now()
 		 WHERE device_id = $7
 		   AND business_id = $8`,
-		address, port, username, sealed, kind, fingerprint, deviceID, businessID)
+			address, port, username, sealed, kind, fingerprint, deviceID, businessID)
+		if err != nil {
+			return fmt.Errorf("device ssh target: update: %w", err)
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			// Report a no-op loudly: a silently-scoped-away update would look like
+			// success while the device stayed unreachable.
+			return sql.ErrNoRows
+		}
+		return nil
+	})
 	if err != nil {
-		return fmt.Errorf("device ssh target: update: %w", err)
+		return err
 	}
-	if n, err := res.RowsAffected(); err == nil && n == 0 {
-		// Report a no-op loudly: a silently-scoped-away update would look like
-		// success while the device stayed unreachable.
-		return sql.ErrNoRows
-	}
-	return nil
+	return tx.Commit()
 }

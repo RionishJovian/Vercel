@@ -1,5 +1,30 @@
 // Synchronous create-only control-plane operation. The managed Hub must have a
 // single peer-store writer. All dependencies are injected for isolated tests.
+// Reserve addresses already installed outside the JSON store (notably the app).
+// A malformed live prefix fails closed rather than risking a key/address collision.
+export function reserveTunnelAddresses(peers, live, subnet, appRoute='') {
+  const prefix=/^(\d+)\.(\d+)\.(\d+)\.0\/24$/.exec(subnet);
+  if(!prefix||prefix.slice(1).some(v=>Number(v)>255))throw Error('invalid subnet');
+  const base=prefix.slice(1).join('.');
+  const ipv4=s=>{
+    const parts=s.split('.');if(parts.length!==4||parts.some(p=>!/^\d+$/.test(p)||Number(p)>255))throw Error('invalid address');
+    return parts.reduce((n,p)=>n*256+Number(p),0)>>>0;
+  };
+  const routes=live.trim()?live.trim().split('\n').flatMap(row=>{
+    const fields=row.trim().split(/\s+/);if(fields.length<2)throw Error('invalid live allocation');
+    return fields.slice(1).join('').split(',').filter(p=>p!=='(none)');
+  }):[];
+  if(appRoute)routes.push(appRoute);
+  const ranges=routes.map(p=>{const [ip,bits,...extra]=p.split('/');
+    if(extra.length||!/^\d+$/.test(bits)||Number(bits)>32)throw Error('invalid prefix');
+    const mask=Number(bits)===0?0:(0xffffffff<<(32-Number(bits)))>>>0;
+    return {mask,network:(ipv4(ip)&mask)>>>0};
+  });
+  const reservations=[];
+  for(let i=2;i<254;i++)if(ranges.some(r=>((ipv4(`${base}.${i}`)&r.mask)>>>0)===r.network))reservations.push({state:'active',tunnelAddress:`${base}.${i}/32`});
+  return [...peers,...reservations];
+}
+
 export function enrollCreateOnly({auth, routerId, body, load, save, allocate, sync, verify, uuid, now}) {
   const fail = (status, error) => ({status, body:{error}});
   const identifier = /^[A-Za-z0-9_-]{1,128}$/;
@@ -28,8 +53,10 @@ export function enrollCreateOnly({auth, routerId, body, load, save, allocate, sy
       if (peer.routerPublicKey !== key || peer.managementRestPort !== port ||
           !['active','enrolling'].includes(peer.state)) return fail(409,'peer_conflict');
       if (peer.state === 'active') {
-        if (!verify(peer)) return fail(503,'peer_verification_failed');
-        return {status:200,peer}; // No writes, key rotation, reactivation or allocation.
+        // A WireGuard restart may lose live state. Restore only this durable
+        // same-key allocation through the guarded sync; never rotate or reallocate.
+        if (!verify(peer)) { sync(peer); if (!verify(peer)) return fail(503,'peer_verification_failed'); }
+        return {status:200,peer}; // No store writes, key rotation or allocation.
       }
     } else {
       peer = {peerId:uuid(),tenantId:auth.tenantId,routerId,routerPublicKey:key,

@@ -34,4 +34,7 @@ for(const bad of ['',Buffer.alloc(32).toString('base64'),key+'\n']) {
 }
 const unverified=fixture();unverified.verified=false;
 assert.equal(enrollCreateOnly(unverified.deps).status,503);assert.equal(unverified.peers[0].state,'enrolling');
+const restarted=fixture();assert.equal(enrollCreateOnly(restarted.deps).status,200);
+restarted.verified=false;restarted.deps.sync=()=>{restarted.verified=true};
+assert.equal(enrollCreateOnly(restarted.deps).status,200);assert.equal(restarted.writes,2);assert.equal(restarted.peers.length,1);
 console.log('Create-only Hub enrollment passed: retries, crash recovery, key/port conflicts, cross-tenant key reuse, disabled peers, corrupt store, signature scope and read-back failure. No live network or peers used.');

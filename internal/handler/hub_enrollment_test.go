@@ -20,7 +20,7 @@ func (s *enrollmentStub) EnrollPeer(_ context.Context, id hub.Identity, key stri
 	if id != (hub.Identity{TenantID: "tenant", RouterID: "gateway", RequestedBy: "owner"}) || port != 443 {
 		panic("untrusted enrollment identity")
 	}
-	return hub.Peer{PeerID: "peer", TenantID: id.TenantID, RouterID: id.RouterID, RouterPublicKey: key, EnrollmentVersion: 1, State: "active", TunnelAddress: "10.77.0.2/32"}, nil
+	return hub.Peer{PeerID: "peer", TenantID: id.TenantID, RouterID: id.RouterID, RouterPublicKey: key, HubPublicKey: key, Endpoint: "hub.example.com:51820", AllowedIPs: []string{"10.77.0.1/32"}, EnrollmentVersion: 1, State: "active", TunnelAddress: "10.77.0.2/32"}, nil
 }
 func TestHubEnrollmentOwnerScope(t *testing.T) {
 	key := base64.StdEncoding.EncodeToString([]byte(strings.Repeat("a", 32)))
@@ -68,6 +68,30 @@ func TestHubEnrollmentOwnerScope(t *testing.T) {
 			}
 			if tc.want == 200 && !strings.Contains(w.Body.String(), `"router_configuration_required":true`) {
 				t.Fatal("claimed router configured")
+			}
+			if tc.want == 200 && (!strings.Contains(w.Body.String(), `"router_script":`) || !strings.Contains(w.Body.String(), `"disconnect_script":`)) {
+				t.Fatal("missing onboarding artifacts")
+			}
+			// Bootstrap uses the same ownership/role/rollout boundaries, but never
+			// calls the mutating Hub API and needs no enrollment consent yet.
+			before := stub.calls
+			w = httptest.NewRecorder()
+			c, _ = gin.CreateTestContext(w)
+			c.Request = httptest.NewRequest("GET", "/", nil)
+			c.Params = gin.Params{{Key: "deviceId", Value: "gateway"}}
+			c.Set(auth.ContextKeyBusinessID, "tenant")
+			c.Set(auth.ContextKeyUserID, "owner")
+			c.Set(auth.ContextKeyUserRole, tc.role)
+			h.GatewayBootstrap(c)
+			want := tc.want
+			if tc.name == "unconfirmed" {
+				want = 200
+			}
+			if w.Code != want || stub.calls != before {
+				t.Fatal("bootstrap escaped authorization or mutated Hub", w.Code, w.Body.String())
+			}
+			if want == 200 && (!strings.Contains(w.Body.String(), `"bootstrap_script":`) || strings.Contains(w.Body.String(), "private-key=")) {
+				t.Fatal("invalid bootstrap artifact")
 			}
 		})
 	}

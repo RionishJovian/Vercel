@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import {createHmac,randomUUID} from 'node:crypto';
-import {enrollCreateOnly} from './hub-enrollment.mjs';
+import {enrollCreateOnly,reserveTunnelAddresses} from './hub-enrollment.mjs';
 let source=fs.readFileSync(0,'utf8');
 const patch=fs.readFileSync(new URL('./hub-create-only-enrollment.patch',import.meta.url),'utf8');
 for(const hunk of patch.split(/^@@.*$/m).slice(1)) {
@@ -20,12 +20,12 @@ const context=vm.createContext({Buffer,URL,console:{warn(){},log(){},error(){}},
 const module=new vm.SourceTextModule(source,{context,identifier:'file:///fixture/service.mjs'});
 await module.link(async specifier=>{
   let values;
-  if(specifier==='./hub-enrollment.mjs')values={enrollCreateOnly};
+  if(specifier==='./hub-enrollment.mjs')values={enrollCreateOnly,reserveTunnelAddresses};
   else if(specifier==='node:fs')values={default:{
     readFileSync(p){assert.equal(p,'/fixture/peers.json');return store},openSync(){return 1},closeSync(){},fsyncSync(){},
     writeFileSync(fd,value){assert.equal(fd,1);pending=value},renameSync(){store=pending;renames++},existsSync(){return false},unlinkSync(){throw Error('unexpected unlink')},mkdirSync(){throw Error('legacy write')}
   }};
-  else if(specifier==='node:child_process')values={execFileSync(command,args){assert.equal(command,'wg');if(args[0]==='set'){sets++;return ''}assert.deepEqual(Array.from(args),['show','wg0','dump']);return `interface\n${key}\t(none)\t(none)\t10.77.0.2/32\t0\t0\t0\t0\n`}};
+  else if(specifier==='node:child_process')values={execFileSync(command,args){assert.equal(command,'wg');if(args[0]==='set'){sets++;return ''}if(args[2]==='allowed-ips')return `${Buffer.alloc(32,9).toString('base64')}\t10.77.0.9/32\n`;assert.deepEqual(Array.from(args),['show','wg0','dump']);return `interface\n${key}\t(none)\t(none)\t10.77.0.2/32\t0\t0\t0\t0\n`}};
   else if(specifier==='node:http'||specifier==='node:https')values={default:{createServer(){throw Error('live listener forbidden')},request(){throw Error('live network forbidden')}}};
   else values=await import(specifier);
   return new vm.SyntheticModule(Object.keys(values),function(){for(const[k,v]of Object.entries(values))this.setExport(k,v)},{context});
