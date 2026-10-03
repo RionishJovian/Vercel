@@ -1409,6 +1409,7 @@ function routerBoardPanel(routers, fleet, capabilityByID = new Map()) {
 
 async function renderSites(main, workspace = location.hash === "#gateways" ? "gateways" : "routers") {
   const gatewayOnly = workspace === "gateways";
+  const capacityLimitsEnabled = ME?.subscription?.mode !== "subscription_only";
   const canEdit = SITE_EDITOR_ROLES.includes(ME?.user?.user_role);
   const content = main.querySelector("#content");
   const data = await MM.get("/routers");
@@ -1435,12 +1436,12 @@ async function renderSites(main, workspace = location.hash === "#gateways" ? "ga
   try { const cr = await MM.get("/router-connections"); conns = cr.connections || []; } catch (_) {}
   // Granted capacity + its request workflow.
   let allowance = null, requests = [], allowanceKinds = [];
-  try {
+  if (capacityLimitsEnabled) try {
     const ar = await MM.get("/device-allowances");
     allowance = ar.allowance || null;
     allowanceKinds = ar.kinds || [];
   } catch (_) {}
-  try { const qr = await MM.get("/device-requests"); requests = qr.requests || []; } catch (_) {}
+  if (capacityLimitsEnabled) try { const qr = await MM.get("/device-requests"); requests = qr.requests || []; } catch (_) {}
   if (!content?.isConnected) return;
   const layers = gatewayOnly ? ["MAIN_GATEWAY"] : ["DOWNSTREAM_SWITCH", "ACCESS_POINT", "CONTROLLER"];
 
@@ -1450,8 +1451,8 @@ async function renderSites(main, workspace = location.hash === "#gateways" ? "ga
     <dialog class="router-capability-dialog" id="router-capability-dialog"><div class="router-capability-shell"><button type="button" class="dialog-close" data-capability-close aria-label="Close">×</button><div id="router-capability-content"></div><div class="dialog-actions"><button type="button" class="btn" data-capability-close>Close</button></div></div></dialog>
     ${gatewayOnly ? connPanel(conns) : ""}
     ${canEdit ? `<div class="workspace-actions"><button class="btn btn-primary" type="button" id="site-add">${gatewayOnly ? "Connect new gateway" : "Add downstream device record"}</button></div>` : ""}
-    ${gatewayOnly ? "" : allowancePanel(allowance)}
-    ${gatewayOnly ? "" : requestPanel(requests)}
+    ${gatewayOnly || !capacityLimitsEnabled ? "" : allowancePanel(allowance)}
+    ${gatewayOnly || !capacityLimitsEnabled ? "" : requestPanel(requests)}
     <div class="panel" id="site-form" hidden><div class="panel-head"><h2 class="panel-title">${gatewayOnly ? "Add gateway" : "Add device record"}</h2></div>
       <div class="panel-body record-form-grid">
         <div class="field"><label>Hardware name *</label><input class="input" id="sr-name"></div>
@@ -1512,7 +1513,7 @@ async function renderSites(main, workspace = location.hash === "#gateways" ? "ga
     const kind = layer === "CONTROLLER" ? "controllers"
       : ((layer === "MAIN_GATEWAY" || layer === "DOWNSTREAM_SWITCH") ? "routers" : null);
     const usedKey = kind === "routers" ? "used_routers" : "used_controllers";
-    const exhausted = !!(allowance && kind && Number(allowance[usedKey] || 0) >= Number(allowance[kind] || 0));
+    const exhausted = capacityLimitsEnabled && !!(allowance && kind && Number(allowance[usedKey] || 0) >= Number(allowance[kind] || 0));
     save.disabled = exhausted;
     msg.textContent = exhausted
       ? `No ${kind} capacity remains. Submit a capacity request first.`
@@ -1660,7 +1661,7 @@ async function renderSites(main, workspace = location.hash === "#gateways" ? "ga
     const {mountHubEnrollment}=await import("/assets/js/hub-enrollment.js?v=20261003-simple-management-3");
     if(content.isConnected)mountHubEnrollment(content,{api:MM,escape:esc});
   }
-  else wireAllowance(main, allowance, requests, allowanceKinds);
+  else if (capacityLimitsEnabled) wireAllowance(main, allowance, requests, allowanceKinds);
 }
 
 function gatewaySetupForm(interfaces) {
