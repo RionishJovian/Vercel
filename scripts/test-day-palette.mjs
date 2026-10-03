@@ -8,5 +8,5 @@ const contrast=(a,b)=>{const x=luminance(a),y=luminance(b);return (Math.max(x,y)
 for(const [fg,bg] of [['foreground','background'],['foreground','surface'],['foreground-muted','surface'],['sidebar-foreground','sidebar'],['sidebar-foreground','sidebar-selected'],['on-primary','primary'],['on-primary','primary-hover']]){
  const ratio=contrast(color(fg),color(bg));assert.ok(ratio>=4.5,`${fg}/${bg}: ${ratio.toFixed(2)} must meet normal-text contrast`);
 }
-for(const shade of ['#e7f5dc','#cfe1b9','#b6c99b','#98a77c','#88976c','#728156'])assert.ok(day.includes(shade));
-console.log('Day palette passed: all six reference shades and normal-text contrast.');
+for(const shade of ['#0a3b25','#2a6151','#b2b7aa','#fcf7f0','#d8c2a4'])assert.ok(day.includes(shade));
+console.log('Day palette passed: all five reference shades and normal-text contrast.');

@@ -1684,33 +1684,33 @@ html[lang="my-MM"] .page-app h4 {
 :root[data-theme="day"] {
   color-scheme: light;
 
-  /* Sage/olive Day palette. Dark ink extends the supplied palette for
-     readable text; the six reference shades remain the surface hierarchy. */
-  --background: #cfe1b9;
-  --sidebar: #728156;
-  --surface: #e7f5dc;
-  --surface-elevated: #cfe1b9;
-  --surface-hover: #b6c99b;
-  --foreground: #202b18;
-  --foreground-muted: #465335;
-  --border: #b6c99b;
-  --border-strong: #88976c;
-  --primary: #465335;
-  --primary-hover: #354126;
-  --primary-soft: #cfe1b9;
-  --focus-ring: #465335;
+  /* Deep green / laurel / cream / Tuscan gold Day palette.
+     Cream remains the dominant canvas; gold is a restrained accent. */
+  --background: #eeeae2;
+  --sidebar: #0a3b25;
+  --surface: #fcf7f0;
+  --surface-elevated: #f2ece3;
+  --surface-hover: #e8e4d9;
+  --foreground: #16372b;
+  --foreground-muted: #526151;
+  --border: #d5d6ca;
+  --border-strong: #b2b7aa;
+  --primary: #2a6151;
+  --primary-hover: #0a3b25;
+  --primary-soft: #e1e7db;
+  --focus-ring: #2a6151;
   --success: #16803c;
   --warning: #b45f06;
   --destructive: #c72c41;
   --info: #2563c9;
   --neutral-status: #667085;
-  --warm-accent: #fff8e7;
+  --warm-accent: #d8c2a4;
 
-  --sidebar-foreground: #080d04;
-  --sidebar-muted: #080d04;
-  --sidebar-border: #88976c;
-  --sidebar-hover: #88976c;
-  --sidebar-selected: #98a77c;
+  --sidebar-foreground: #fcf7f0;
+  --sidebar-muted: #b2b7aa;
+  --sidebar-border: #2a6151;
+  --sidebar-hover: #204f3d;
+  --sidebar-selected: #2a6151;
   --on-primary: #ffffff;
   --status-success-soft: #e7f6eb;
   --status-warning-soft: #fff3df;
@@ -1720,19 +1720,19 @@ html[lang="my-MM"] .page-app h4 {
 
   /* Compatibility aliases used by the existing production markup. */
   --bg: var(--background);
-  --bg-subtle: #e7f5dc;
+  --bg-subtle: #fcf7f0;
   --surface-raised: var(--surface-elevated);
-  --surface-soft: #cfe1b9;
+  --surface-soft: #f2ece3;
   --ink: var(--foreground);
-  --ink-soft: #465335;
+  --ink-soft: #526151;
   --ink-muted: var(--foreground-muted);
   --line: var(--border);
-  --line-soft: #b6c99b;
+  --line-soft: #e4e1d7;
   --accent: var(--primary);
   --accent-hover: var(--primary-hover);
   --accent-wash: var(--primary-soft);
   --focus: var(--focus-ring);
-  --focus-wash: rgba(114, 129, 86, .2);
+  --focus-wash: rgba(42, 97, 81, .2);
   --ok: var(--success);
   --warn: var(--warning);
   --bad: var(--destructive);
@@ -1751,6 +1751,9 @@ html[lang="my-MM"] .page-app h4 {
   --font-ui: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
 }
+
+:root[data-theme="day"] .page-app .nav-item.active { box-shadow:inset 3px 0 var(--warm-accent); }
+:root[data-theme="day"] .page-app .rail .brand-title { color:var(--warm-accent); }
 
 :root[data-theme="night"] {
   color-scheme: dark;
