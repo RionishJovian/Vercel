@@ -1684,19 +1684,21 @@ html[lang="my-MM"] .page-app h4 {
 :root[data-theme="day"] {
   color-scheme: light;
 
-  --background: #f7f7f7;
-  --sidebar: #10231f;
-  --surface: #ffffff;
-  --surface-elevated: #ffffff;
-  --surface-hover: #f1f5f3;
-  --foreground: #1c1c1c;
-  --foreground-muted: #68736e;
-  --border: #dfe5e2;
-  --border-strong: #c8d2cd;
-  --primary: #065f46;
-  --primary-hover: #064e3b;
-  --primary-soft: #dff8ec;
-  --focus-ring: #0f766e;
+  /* Sage/olive Day palette. Dark ink extends the supplied palette for
+     readable text; the six reference shades remain the surface hierarchy. */
+  --background: #cfe1b9;
+  --sidebar: #728156;
+  --surface: #e7f5dc;
+  --surface-elevated: #cfe1b9;
+  --surface-hover: #b6c99b;
+  --foreground: #202b18;
+  --foreground-muted: #465335;
+  --border: #b6c99b;
+  --border-strong: #88976c;
+  --primary: #465335;
+  --primary-hover: #354126;
+  --primary-soft: #cfe1b9;
+  --focus-ring: #465335;
   --success: #16803c;
   --warning: #b45f06;
   --destructive: #c72c41;
@@ -1704,11 +1706,11 @@ html[lang="my-MM"] .page-app h4 {
   --neutral-status: #667085;
   --warm-accent: #fff8e7;
 
-  --sidebar-foreground: #f3f7f5;
-  --sidebar-muted: #9aada5;
-  --sidebar-border: #244139;
-  --sidebar-hover: #17372f;
-  --sidebar-selected: #235347;
+  --sidebar-foreground: #080d04;
+  --sidebar-muted: #080d04;
+  --sidebar-border: #88976c;
+  --sidebar-hover: #88976c;
+  --sidebar-selected: #98a77c;
   --on-primary: #ffffff;
   --status-success-soft: #e7f6eb;
   --status-warning-soft: #fff3df;
@@ -1718,19 +1720,19 @@ html[lang="my-MM"] .page-app h4 {
 
   /* Compatibility aliases used by the existing production markup. */
   --bg: var(--background);
-  --bg-subtle: #fafbfa;
+  --bg-subtle: #e7f5dc;
   --surface-raised: var(--surface-elevated);
-  --surface-soft: #f4f7f5;
+  --surface-soft: #cfe1b9;
   --ink: var(--foreground);
-  --ink-soft: #46524d;
+  --ink-soft: #465335;
   --ink-muted: var(--foreground-muted);
   --line: var(--border);
-  --line-soft: #e9eeeb;
+  --line-soft: #b6c99b;
   --accent: var(--primary);
   --accent-hover: var(--primary-hover);
   --accent-wash: var(--primary-soft);
   --focus: var(--focus-ring);
-  --focus-wash: rgba(15, 118, 110, .16);
+  --focus-wash: rgba(114, 129, 86, .2);
   --ok: var(--success);
   --warn: var(--warning);
   --bad: var(--destructive);
