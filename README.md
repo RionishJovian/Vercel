@@ -8,6 +8,9 @@ devices, settings, purchases and Telegram bot binding.
 
 **Current agent handoff:** [docs/CURRENT-HANDOFF.md](docs/CURRENT-HANDOFF.md)
 
+**2026-10-03 audit repairs:** [scope and validation](docs/AUDIT-FIXES-20261003.md).
+These repairs do not enable held Wi-Fi writes or unfinished paid media access.
+
 **Status date:** 2026-10-03 (Asia/Yangon). Deployment claims describe recorded
 results on that date, not continuous health monitoring.
 

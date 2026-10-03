@@ -1,5 +1,15 @@
 # Current agent handoff
 
+## 2026-10-03 confirmed audit defects — tested, rollout pending
+
+Payment/voucher status rendering, misleading management/tunnel labels, branch-aware
+security fixes, guide coverage and explicit unavailable voucher states are being
+repaired. Full Go, focused security/handler/monitoring race and audit/network UI
+regressions passed. No new capability flag or production migration is required. See
+[audit repairs](AUDIT-FIXES-20261003.md); deployment status must be recorded after
+verification. The unrelated paid-media foundations remain uncommitted and
+must not be inadvertently included in this repair rollout.
+
 ## 2026-10-03 broader network controls — DEPLOYED, Wi-Fi held
 
 Supersedes the older "missing" implementation status below, not its deployment

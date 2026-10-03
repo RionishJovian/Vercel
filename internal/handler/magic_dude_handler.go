@@ -167,7 +167,11 @@ func (h *MagicDudeHandler) Chat(c *gin.Context) {
 			if p.Version != nil {
 				version = *p.Version
 			}
-			summary := security.Summarize(version, security.AdvisoryTable)
+			channel := ""
+			if p.Channel != nil {
+				channel = *p.Channel
+			}
+			summary := security.SummarizeForChannel(version, channel, security.AdvisoryTable)
 			fmt.Fprintf(&b, "- %s: RouterOS %s, %s", magicDudePromptValue(p.HardwareName), magicDudePromptValue(version), summary.Posture)
 			if summary.Exploited {
 				b.WriteString(", exploited advisory")

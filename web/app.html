@@ -560,8 +560,8 @@ function fleetBoard(fleet, routerByID, pulse) {
   const peers = asArray(fleet && fleet.peers);
   if (!peers.length) return `<div class="empty"><div class="empty-title">No peers yet</div>Provision a router to see it here.</div>`;
   const stateMeta = {
-    up: { label: "ONLINE", note: "TUNNEL ACTIVE", level: 10 },
-    stale: { label: "STALE", note: "CHECK HANDSHAKE", level: 5 },
+    up: { label: "ONLINE", note: "MANAGEMENT REACHABLE", level: 10 },
+    stale: { label: "STALE", note: "CHECK MANAGEMENT SIGNAL", level: 5 },
     offline: { label: "OFFLINE", note: "NO REACHABILITY", level: 1 },
     unknown: { label: "UNKNOWN", note: "AWAITING SIGNAL", level: 0 },
   };
@@ -1107,6 +1107,7 @@ async function renderTemplates(main) {
   const canEdit = SITE_EDITOR_ROLES.indexOf((ME && ME.user && ME.user.user_role) || "") >= 0;
   const content = main.querySelector("#content");
   content.innerHTML = `
+    <p class="muted small">This is a RouterOS request reference library, not an execution console. Use <a href="#network">Network setup</a>, <a href="#wan">WAN and failover</a>, <a href="#pppoe">PPPoE</a> or <a href="#existing">Existing networks</a> for reviewed router changes.</p>
     <div class="panel"><div class="panel-head"><h2 class="panel-title">Filters</h2></div>
       <div class="panel-body">
         <div class="field"><label>Category</label><select class="input" id="tp-cat">
@@ -1854,7 +1855,7 @@ function topologyTree(topo, fleet) {
   const links = Number(s.in_tree || 0); // one hub/root path + one path per child
 
   const stateMeta = {
-    up: { label: "ONLINE", note: "TUNNEL ACTIVE", level: 5 },
+    up: { label: "ONLINE", note: "MANAGEMENT REACHABLE", level: 5 },
     stale: { label: "STALE", note: "CHECK SIGNAL", level: 3 },
     offline: { label: "OFFLINE", note: "NO REACHABILITY", level: 1 },
     unknown: { label: "UNKNOWN", note: "AWAITING SIGNAL", level: 0 },
@@ -1896,20 +1897,20 @@ function topologyTree(topo, fleet) {
   const treeHTML = roots.map(root => render(root, 0)).join("");
 
   return `<section class="topo-console" aria-label="Live network topology board">
-    <header class="topo-console-head"><div><span class="fleet-kicker">NETWORK MAP</span><h2>${total} managed node${total === 1 ? "" : "s"}</h2><p>Follow the active management path from the cloud hub to gateways and connected devices.</p></div><div class="topo-console-actions"><button class="btn" id="topo-refresh" type="button">Refresh paths</button><button class="btn" id="topo-manage-routers" type="button">Manage routers</button></div></header>
+    <header class="topo-console-head"><div><span class="fleet-kicker">NETWORK MAP</span><h2>${total} managed node${total === 1 ? "" : "s"}</h2><p>View saved device relationships and current management reachability. This is not a verified WireGuard or customer-traffic map.</p></div><div class="topo-console-actions"><button class="btn" id="topo-refresh" type="button">Refresh paths</button><button class="btn" id="topo-manage-routers" type="button">Manage routers</button></div></header>
     <div class="topo-stats">
       <div><span>Managed devices</span><strong>${total}</strong></div>
-      <div><span>Live paths</span><strong>${links}</strong></div>
+      <div><span>Mapped relationships</span><strong>${links}</strong></div>
       <div><span>Needs attention</span><strong>${attention}</strong></div>
       <div><span>Awaiting signal</span><strong>${unknown}</strong></div>
     </div>
     <div class="topo-modebar" role="toolbar" aria-label="Topology data modes"><button class="btn btn-sm is-active" type="button" aria-pressed="true">Tree</button><button class="btn btn-sm" type="button" disabled title="Requires a RouterOS port inventory snapshot">Ports · awaiting RouterOS inventory</button><button class="btn btn-sm" type="button" disabled title="Requires device coordinate inventory">Map · awaiting device coordinates</button><span>Inventory and properties are available in the node inspector.</span></div>
     <div class="topo-workspace"><section class="topo-panel" aria-label="Network topology diagram">
-      <div class="panel-head topo-panel-head"><div><h2 class="panel-title">Network path</h2><span class="muted small">WireGuard hub → gateways → downstream devices</span></div>
+      <div class="panel-head topo-panel-head"><div><h2 class="panel-title">Device relationships</h2><span class="muted small">Management service → gateways → downstream devices; transport shown per device</span></div>
         <div class="topo-legend"><span><i class="topo-dot up"></i>Up</span><span><i class="topo-dot stale"></i>Stale</span><span><i class="topo-dot offline"></i>Offline</span><span><i class="topo-dot unknown"></i>Unknown</span></div>
       </div>
       <div class="topo-canvas">
-        <div class="topo-hub"><span class="topo-hub-mark">WG</span><div><strong>Magic Hub</strong><span>WireGuard control plane</span></div><span class="topo-role">Hub</span></div>
+        <div class="topo-hub"><span class="topo-hub-mark">MM</span><div><strong>Mega Magic</strong><span>Management service</span></div><span class="topo-role">Cloud</span></div>
         ${roots.length ? `<div class="topo-hub-link"></div><ul class="topo-tree">${treeHTML}</ul>` : `<div class="empty">No valid gateway path is available.</div>`}
       </div>
     </section><aside class="topo-inspector" aria-label="Topology path inspector"><div class="topo-inspector-head"><span>PATH INDEX</span><small>Select a node</small></div><div class="topo-path-list">${pathRows.join("") || `<p class="muted small">No mapped devices.</p>`}</div><div class="topo-detail-stack">${detailRows.join("")}</div></aside></div>
@@ -3023,7 +3024,7 @@ async function renderVouchers(main) {
     MM.get("/vouchers").catch(() => null),
     MM.get("/voucher-resellers").catch(() => null),
     MM.get("/voucher-print-layout").catch(() => null),
-    canEdit ? MM.get("/guest-vouchers/config").catch(() => null) : null,
+    canEdit ? MM.get("/guest-vouchers/config").catch(e => ({failed:true, status:e.status})) : null,
     canEdit ? MM.get("/routers").catch(() => null) : null,
   ]);
 
@@ -3036,7 +3037,7 @@ async function renderVouchers(main) {
       <td class="mono">${esc(v.code)}</td>
       <td>${v.plan_key ? esc(v.plan_key) : "—"}</td>
       <td class="num">${esc(v.price_mmk ?? v.amount ?? 0)}</td>
-      <td>${badge((v.status||"unknown").toLowerCase())}</td>
+      <td>${businessStatusBadge(v.status, "voucher")}</td>
       <td>${ts(v.created_at)}</td>
     </tr>`).join("");
 
@@ -3067,10 +3068,10 @@ async function renderVouchers(main) {
         <div class="field"><label for="gv-price">Price (MMK)</label><input class="input" id="gv-price" type="number" min="0" max="1000000000" value="1000" required></div>
         <div class="field"><label for="gv-count">Number of codes</label><input class="input" id="gv-count" type="number" min="1" max="1000" value="10" required></div>
         <div class="workspace-actions"><button class="btn btn-primary" id="gv-create" type="submit">Create codes</button><span class="muted small" id="gv-message" role="status"></span></div>
-      </form></div></div>` : ""}
+      </form></div></div>` : `<div class="panel"><div class="panel-head"><h2 class="panel-title">Guest voucher creation unavailable</h2></div><div class="panel-body"><p class="muted small" role="status">${esc(guestVoucherCapabilityMessage(guestVoucherConfig, canEdit))}</p></div></div>`}
     <div class="panel"><div class="panel-head"><h2 class="panel-title">Vouchers</h2></div>
       <div class="panel-body">
-        ${list.length ? `<table>
+        ${!vRes ? `<p class="muted small" role="alert">Could not load vouchers. Reload this page to retry; this is not an empty voucher list.</p>` : list.length ? `<table>
           <thead><tr><th>Code</th><th>Plan</th><th>Amount</th><th>Status</th><th>Created</th></tr></thead>
           <tbody>${vRows}</tbody></table>` : `<p class="muted small">No vouchers yet.</p>`}
       </div></div>
@@ -3575,7 +3576,7 @@ async function renderRevenue(main) {
     </div>` : `<span class="muted small">${state === "pending" ? "Read only" : "Decided"}</span>`;
     return `<tr><td>${ts(r.created_at)}</td><td class="num">${esc(r.plan_key || "—")}</td>
       <td class="num">${esc(mmk(r.amount))}</td><td class="mono">${esc(reference)}</td>
-      <td>${badge(state)}</td><td>${actions}</td></tr>`;
+      <td>${businessStatusBadge(state, "payment")}</td><td>${actions}</td></tr>`;
   }).join("") : `<tr><td colspan="6" class="muted small">No payment requests yet.</td></tr>`;
 
   main.querySelector("#content").innerHTML = `
@@ -4487,15 +4488,19 @@ const PRODUCT_GUIDE = [
   ["sites", "Operations", "Sites", "Place business locations on the map, assign routers, and check what each site still needs before going live."],
   ["gateways", "Operations", "Gateways", "Connect a router to Magic Hub and inspect its device health and supported services."],
   ["network", "Operations", "Network setup", "Choose a gateway and its uplink/customer ports. Use suggested non-overlapping LAN and DHCP addresses, preview the changes, then explicitly apply customer LAN and Hotspot settings."],
+  ["wan", "Operations", "WAN and failover", "Select actual ISP ports and gateways. Review primary/backup failover or equal-cost sharing before applying with backup and readback. Sharing does not combine one download's bandwidth."],
+  ["pppoe", "Operations", "PPPoE subscribers", "Load a connected router, use suggested subscriber addresses, and manage PPPoE services, accounts and speed plans through review and explicit apply."],
+  ["wifi", "Operations", "Wi-Fi networks", "Choose the actual access-point device to inspect radio capabilities. SSID writes are held until physical-radio acceptance; a radio-free CHR is not an access point."],
+  ["existing", "Operations", "Existing networks", "Read live DHCP, pools, client DNS/gateway, Hotspot profiles, reservations and bandwidth settings. Review edits to existing records before applying."],
   ["routers", "Operations", "Routers", "Add MikroTik devices, check their connection, configure supported settings, create backups, and reboot them remotely."],
   ["security", "Automation", "Security", "Find risky RouterOS services or versions, create a backup, and apply an available mitigation from the browser."],
   ["backups", "Automation", "Backups", "Create a router recovery point before maintenance and restore it when recovery is necessary."],
   ["scans", "Automation", "Fleet scans", "Inspect routers for health, configuration, and security issues, then review the findings in one list."],
-  ["templates", "Automation", "Templates", "Save common RouterOS tasks for your team instead of rebuilding the same request each time."],
+  ["templates", "Automation", "Templates", "Browse built-in RouterOS REST references and save custom request definitions. This library does not execute requests; use the dedicated reviewed network controls to change a router."],
   ["termlog", "Automation", "Terminal log", "Review which commands were sent to a router, who started them, and whether they succeeded."],
   ["portal", "Business", "Captive portal", "Choose voucher login, mobile payment, or both; customize the guest page; and publish it to the selected router."],
   ["media", "Business", "Magic Media", "Pair a media computer and manage its Jellyfin libraries. Publish a branded guest page and planned pass settings to a shareable link. One-click installation, paid media access and guest playback are not available yet."],
-  ["vouchers", "Business", "Vouchers", "Create guest codes, organize resellers, choose a RouterOS access profile, and print vouchers for sale."],
+  ["vouchers", "Business", "Vouchers", "Manage resellers and printed layouts. Guest code issuance requires an enabled, accepted guest-voucher deployment; the page explains when it is unavailable. Sample prints do not grant internet access."],
   ["store", "Business", "Store", "Buy a Mega Magic plan or capability, submit the bank reference, and follow approval and activation progress."],
   ["revenue", "Business", "Revenue", "See approved hotspot sales, review pending guest payments, and compare which access plans earn the most."],
   ["coins", "Business", "Magic Coins", "Check the business balance and review every credit, adjustment, and purchase."],

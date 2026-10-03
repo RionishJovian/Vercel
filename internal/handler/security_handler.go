@@ -103,10 +103,11 @@ func postureView(p *database.DevicePosture) gin.H {
 	if p.Version != nil {
 		version = *p.Version
 	}
-	// NOTE: p.Channel is deliberately NOT passed to Summarize. The classifier
-	// has no channel-specific rules yet, and inventing one here would be a guess.
-	// It is still returned to the client as routeros_channel.
-	sum := security.Summarize(version, security.AdvisoryTable)
+	channel := ""
+	if p.Channel != nil {
+		channel = *p.Channel
+	}
+	sum := security.SummarizeForChannel(version, channel, security.AdvisoryTable)
 
 	advs := make([]gin.H, 0, len(sum.Advisories))
 	for _, a := range sum.Advisories {

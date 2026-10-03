@@ -78,17 +78,17 @@ func TestAdvisoryTable_boundaries(t *testing.T) {
 		{
 			cve:        "CVE-2026-67276", // prior to 6.49.21 / 7.23.4
 			inside:     []string{"6.0", "6.49.20", "7.0", "7.23.3"},
-			firstFixed: []string{"6.49.21", "7.23.4", "7.25"},
+			firstFixed: []string{"6.49.21", "7.24.2", "7.25"},
 		},
 		{
 			cve:        "CVE-2026-86060", // prior to 6.49.21 / 7.23.4
 			inside:     []string{"6.0", "6.49.20", "7.0", "7.23.3"},
-			firstFixed: []string{"6.49.21", "7.23.4"},
+			firstFixed: []string{"6.49.21", "7.24.2"},
 		},
 		{
 			cve:        "CVE-2026-67277", // prior to 6.49.21 / 7.23.4
 			inside:     []string{"6.0", "6.49.20", "7.0", "7.23.3"},
-			firstFixed: []string{"6.49.21", "7.23.4"},
+			firstFixed: []string{"6.49.21", "7.24.2"},
 		},
 		{
 			cve:        "CVE-2025-10948", // prior to 7.20.1
@@ -320,9 +320,9 @@ func TestSummarize_unpatchableIsItsOwnSignal(t *testing.T) {
 	if !mixed.Exploited {
 		t.Error("7.15.3 must be flagged exploited (MikroTrick + CVE-2025-10948)")
 	}
-	// Highest fixable bound among 7.15.3's matches is MikroTrick's 7.23.4.
-	if mixed.FixFirst != "7.23.4" {
-		t.Errorf("7.15.3 FixFirst = %q, want 7.23.4", mixed.FixFirst)
+	// With an unknown update channel, recommend the fixed stable release.
+	if mixed.FixFirst != "7.24.2" {
+		t.Errorf("7.15.3 FixFirst = %q, want 7.24.2", mixed.FixFirst)
 	}
 	if len(mixed.Advisories) == 0 {
 		t.Error("7.15.3 must expose its matched advisories so the UI can explain")
@@ -336,8 +336,8 @@ func TestSummarize_fixFirstIsTheHighestBound(t *testing.T) {
 		// 6.49.7 matches MikroTrick (6.49.21), CVE-2024-54772 (6.49.18) and
 		// CVE-2023-30799 (inclusive max 6.49.7 -> fix 6.49.8). Highest wins.
 		"6.49.7": "6.49.21",
-		"7.9.3":  "7.23.4",
-		"7.20":   "7.23.4",
+		"7.9.3":  "7.24.2",
+		"7.20":   "7.24.2",
 	}
 	for v, want := range cases {
 		if got := Summarize(v, AdvisoryTable).FixFirst; got != want {
