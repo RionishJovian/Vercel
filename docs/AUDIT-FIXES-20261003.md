@@ -17,3 +17,23 @@ focused security/handler/monitoring race tests and both audit/network workspace
 JavaScript regression scripts passed. The restricted first full-suite attempt
 could not bind mock loopback servers; it was rerun, not counted as a product bug.
 No production database integration test or customer-router write was performed.
+
+## Production rollout
+
+User approved push, backup and live rollout. Code commit `91f6ae3` was pushed to
+GitHub main and fast-forwarded on the clean VPS checkout. Canonical
+`./deploy.sh all` completed its production config/schema checks, rebuilt and
+restarted the API, published versioned frontend assets and reloaded nginx.
+Landing/app/health returned 200; API/nginx are active. Shared app.js source and
+installed asset SHA-256 matched. Backup: `/home/ubuntu/mm-audit-fixes.PUV3xT`
+(previous API binary, compressed web tree and previous source commit).
+
+Signed-in verification: Revenue displayed two Approved and four Rejected rows;
+Security recommended 7.24.2 for the stable 7.15.3 CHR; Topology displayed
+Management reachable and Mapped relationships instead of an invented active
+tunnel; Vouchers explained the unavailable deployment; Product guide included
+the four network workspaces. The unavailable voucher route remains held.
+
+No database migration or router/payment write was performed. Production flags
+remain network controls true and Wi-Fi controls false. Uncommitted paid-media
+foundations were excluded. This verifies these defects, not whole-app readiness.

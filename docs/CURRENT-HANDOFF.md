@@ -1,14 +1,14 @@
 # Current agent handoff
 
-## 2026-10-03 confirmed audit defects — tested, rollout pending
+## 2026-10-03 confirmed audit defects — DEPLOYED and verified
 
-Payment/voucher status rendering, misleading management/tunnel labels, branch-aware
-security fixes, guide coverage and explicit unavailable voucher states are being
-repaired. Full Go, focused security/handler/monitoring race and audit/network UI
-regressions passed. No new capability flag or production migration is required. See
-[audit repairs](AUDIT-FIXES-20261003.md); deployment status must be recorded after
-verification. The unrelated paid-media foundations remain uncommitted and
-must not be inadvertently included in this repair rollout.
+Audit-fix code `91f6ae3` was pushed and deployed with `./deploy.sh all`.
+Full Go, focused race/vet and audit/network UI regressions passed.
+Signed-in checks confirmed payment labels, stable fix target 7.24.2,
+management-reachability topology labels, voucher notices and guide coverage.
+Backup: `/home/ubuntu/mm-audit-fixes.PUV3xT`; API/nginx active and HTTP checks 200.
+No migration, router change, payment activation or Wi-Fi enablement occurred.
+Unrelated paid-media foundations remain uncommitted. See [audit repairs](AUDIT-FIXES-20261003.md).
 
 ## 2026-10-03 broader network controls — DEPLOYED, Wi-Fi held
 
