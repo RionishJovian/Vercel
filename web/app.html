@@ -1697,12 +1697,14 @@ async function renderNetworkSetup(main) {
 }
 
 function gatewaySetupForm(interfaces, defaults = {}) {
-  const options = `<option value="">Choose an interface</option>` + interfaces.map(i => `<option value="${esc(i.name)}">${esc(i.name)} · ${esc(i.type || "interface")}${i.running ? " · running" : ""}</option>`).join("");
+  const optionsFor = list => `<option value="">Choose an interface</option>` + list.map(i => `<option value="${esc(i.name)}">${esc(i.name)} · ${esc(i.type || "interface")}${i.running ? " · running" : ""}</option>`).join("");
+  const options = optionsFor(interfaces.filter(i=>i.type !== "loopback"));
+  const lanOptions = optionsFor(interfaces.filter(i=>["ether","bridge","bond","vlan","wlan","wifi","wireless"].includes(i.type)));
   return `<hr><h3>Create a customer network</h3><p>Set up a separate LAN for your access points and guests. Your existing uplink, default route and management settings stay unchanged. Existing firewall rules may still require a separate review before guests can reach the internet.</p>
     <form id="gateway-setup-form" class="quick-config-form">
       <label>Network name<input class="input" name="name" required maxlength="24" pattern="[A-Za-z0-9][A-Za-z0-9_-]*" value="${esc(defaults.name || "guest-lan")}"></label>
       <label>Internet uplink<select class="input" name="wan_interface" required>${options}</select></label>
-      <label>Customer LAN / AP-facing bridge<select class="input" name="lan_interface" required>${options}</select><small>Choose an unused interface or bridge, not a bridge member port.</small></label>
+      <label>Customer LAN / AP-facing bridge<select class="input" name="lan_interface" required>${lanOptions}</select><small>Choose an unused customer-facing port or bridge, not the uplink or a bridge member. Loopback and management tunnels are not customer LAN choices. If no separate port is available, prepare a customer bridge/VLAN or add a router interface first.</small></label>
       <label>Tagged VLAN (optional)<input class="input" name="vlan_id" type="number" min="0" max="4094" value="0"><small>0 = untagged. Tagged clients/APs must use the same VLAN.</small></label>
       <p>Suggested addresses are checked against existing addresses and routes, then checked again before applying. Port roles are never guessed.</p>
       <details${defaults.gateway_cidr ? "" : " open"}><summary>Address settings${defaults.gateway_cidr ? " · " + esc(defaults.gateway_cidr) + " (suggested)" : ""}</summary>

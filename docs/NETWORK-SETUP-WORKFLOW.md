@@ -64,3 +64,9 @@ one prefix per record. These commands passed against the pinned lab router,
 including both management/LAN prefixes and its default route. The read-only
 `guest-router-check -device UUID -network-inventory` mode reproduces this check
 and refuses devices not named as the CHR lab. No router write is involved.
+Interface discovery uses scalar name/type/running reads too, verified against
+ether1, loopback and the management WireGuard interface. Loopback is excluded
+from uplink choices; loopback and tunnel types are excluded from customer LAN
+choices. The live lab has only one Ethernet interface, so it must gain a separate
+customer-facing interface/bridge/VLAN before this initial-LAN workflow can be
+certified with real guests. Do not invent additional physical ports in the UI.

@@ -61,7 +61,7 @@ func run(path, device string, networkOnly bool) error {
 	}
 	runner := routeros.NewSSHTransport(sshCfg)
 	if networkOnly {
-		for _, command := range []string{`:foreach id in=[/ip address find] do={ :put ("address: " . [/ip address get $id address]) }`, `:foreach id in=[/ip route find] do={ :put ("dst-address: " . [/ip route get $id dst-address]) }`} {
+		for _, command := range []string{`:foreach id in=[/ip address find] do={ :put ("address: " . [/ip address get $id address]) }`, `:foreach id in=[/ip route find] do={ :put ("dst-address: " . [/ip route get $id dst-address]) }`, `:foreach id in=[/interface find where disabled=no] do={ :put ("name: " . [/interface get $id name]); :put ("type: " . [/interface get $id type]); :put ("running: " . [/interface get $id running]) }`} {
 			out, err := runner.Run(ctx, command)
 			if err != nil {
 				return fmt.Errorf("network inventory command failed: %s", command)

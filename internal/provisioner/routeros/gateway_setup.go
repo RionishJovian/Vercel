@@ -57,12 +57,14 @@ type GatewayInterface struct {
 	Running bool   `json:"running"`
 }
 
+const gatewayInterfacesCommand = `:foreach id in=[/interface find where disabled=no] do={ :put ("name: " . [/interface get $id name]); :put ("type: " . [/interface get $id type]); :put ("running: " . [/interface get $id running]) }`
+
 func (a *DeviceApplier) GatewayInterfaces(ctx context.Context, businessID, deviceID string) ([]GatewayInterface, error) {
 	r, e := runnerForDevice(ctx, a.src, a.factory, a.timeout, businessID, deviceID)
 	if e != nil {
 		return nil, e
 	}
-	out, e := r.Run(ctx, "/interface print value-list detail")
+	out, e := r.Run(ctx, gatewayInterfacesCommand)
 	if e != nil {
 		return nil, e
 	}
@@ -87,6 +89,9 @@ func (a *DeviceApplier) GatewayInterfaces(ctx context.Context, businessID, devic
 	}
 	if len(fields) > 0 {
 		flush()
+	}
+	if len(interfaces) == 0 {
+		return nil, fmt.Errorf("no usable interfaces were reported by the router")
 	}
 	return interfaces, nil
 }

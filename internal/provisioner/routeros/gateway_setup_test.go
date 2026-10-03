@@ -10,17 +10,21 @@ import (
 )
 
 type gatewayRunner struct {
-	commands  []string
-	objects   map[string]map[string]string
-	failMenu  string
-	addresses string
-	routes    string
+	commands   []string
+	objects    map[string]map[string]string
+	failMenu   string
+	addresses  string
+	routes     string
+	interfaces string
 }
 
 var gatewayTestFields = regexp.MustCompile(`([a-z-]+)="([^"\\]*)"`)
 
 func (r *gatewayRunner) Run(_ context.Context, cmd string) (string, error) {
 	r.commands = append(r.commands, cmd)
+	if cmd == gatewayInterfacesCommand {
+		return r.interfaces, nil
+	}
 	if strings.HasPrefix(cmd, "/export ") || strings.HasPrefix(cmd, "/system backup ") {
 		return "", nil
 	}

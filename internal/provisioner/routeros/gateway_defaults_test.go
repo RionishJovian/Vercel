@@ -19,6 +19,21 @@ func TestGatewayDefaultsReadOnlyAndAvoidAssignedAndRoutedNetworks(t *testing.T) 
 	}
 }
 
+func TestGatewayInterfacesScalarRecords(t *testing.T) {
+	r := &gatewayRunner{interfaces: "name: ether1\r\ntype: ether\r\nrunning: true\r\nname: ether2\r\ntype: ether\r\nrunning: false\r\n"}
+	interfaces, err := quickConfigApplier(r).GatewayInterfaces(context.Background(), "biz-1", "dev-1")
+	if err != nil || len(interfaces) != 2 || interfaces[0].Name != "ether1" || !interfaces[0].Running || interfaces[1].Running {
+		t.Fatalf("interfaces=%+v error=%v", interfaces, err)
+	}
+	if len(r.commands) != 1 || r.commands[0] != gatewayInterfacesCommand {
+		t.Fatal("interface discovery must use a fixed read-only scalar command")
+	}
+	r.interfaces = "name: ether1 ether2"
+	if _, err := quickConfigApplier(r).GatewayInterfaces(context.Background(), "biz-1", "dev-1"); err == nil {
+		t.Fatal("silently accepted unusable columnar output")
+	}
+}
+
 func TestGatewayDefaultsFailClosed(t *testing.T) {
 	for _, routes := range []string{"unexpected output", "dst-address: invalid", "dst-address: 192.168.0.0/16\ndst-address: 10.0.0.0/8", "dst-address: 192.168.51.0/24\nunparsed record"} {
 		r := &gatewayRunner{routes: routes}
