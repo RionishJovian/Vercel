@@ -292,8 +292,6 @@
       <button class="nav-item" data-view="security">Security</button>
       <button class="nav-item" data-view="backups">Backups</button>
       <button class="nav-item" data-view="scans">Fleet scans</button>
-      <button class="nav-item" data-view="templates">Templates</button>
-      <button class="nav-item" data-view="termlog">Terminal log</button>
       <div class="rail-section">Business</div>
       <button class="nav-item" data-view="portal">Captive portal</button>
       <button class="nav-item" data-view="media">Magic Media</button>
@@ -305,11 +303,15 @@
       <button class="nav-item" data-view="team">Team</button>
       <div class="rail-section">Audit</div>
       <button class="nav-item" data-view="events">Event log</button>
-      <button class="nav-item" data-view="aiusage">AI usage</button>
-      <button class="nav-item" data-view="i18n">Translations</button>
       <button class="nav-item" data-view="guide">Product guide</button>
-      <div class="rail-section">Operator</div>
-      <button class="nav-item" data-view="platform" hidden>Platform</button>
+      <details class="rail-advanced" id="rail-advanced">
+        <summary>Advanced tools</summary>
+        <button class="nav-item" data-view="templates">RouterOS reference</button>
+        <button class="nav-item" data-view="termlog">Terminal log</button>
+        <button class="nav-item" data-view="aiusage">AI usage</button>
+        <button class="nav-item" data-view="i18n">Translations</button>
+        <button class="nav-item" data-view="platform" hidden>Platform administration</button>
+      </details>
       </div>
       <div class="rail-footer">
       <button class="rail-profile" data-view="profile" type="button" aria-label="Open your profile">
@@ -371,7 +373,7 @@ const VIEWS = {
   security: { title: "Security", lead: "Find exposed services and RouterOS versions that need attention." },
   backups:  { title: "Backups", lead: "Create recovery points and restore a router when necessary." },
   events:   { title: "Event log", lead: "Review router and network events, newest first." },
-  templates:{ title: "Templates", lead: "Save common RouterOS tasks so your team can reuse them safely." },
+  templates:{ title: "RouterOS reference", lead: "Browse saved RouterOS request definitions. This library does not apply settings to routers." },
   termlog:  { title: "Terminal log", lead: "See which router commands ran, when they ran, and whether they succeeded." },
   scans:    { title: "Fleet scans", lead: "Inspect your routers for configuration, health, and security findings." },
   aiusage:  { title: "AI usage", lead: "See how Magic Dude is being used and what it costs." },
@@ -1146,7 +1148,7 @@ async function renderTemplates(main) {
   const canEdit = SITE_EDITOR_ROLES.indexOf((ME && ME.user && ME.user.user_role) || "") >= 0;
   const content = main.querySelector("#content");
   content.innerHTML = `
-    <p class="muted small">This is a RouterOS request reference library, not an execution console. Use <a href="#network">Network setup</a>, <a href="#wan">WAN and failover</a>, <a href="#pppoe">PPPoE</a> or <a href="#existing">Existing networks</a> for reviewed router changes.</p>
+    <p class="muted small">This is a RouterOS request reference library, not an execution console. Use <a href="#network">New network setup</a>, <a href="#wan">Internet connections</a>, <a href="#pppoe">Customer internet</a> or <a href="#existing">LAN and Hotspot</a> for reviewed router changes.</p>
     <div class="panel"><div class="panel-head"><h2 class="panel-title">Filters</h2></div>
       <div class="panel-body">
         <div class="field"><label>Category</label><select class="input" id="tp-cat">
@@ -4533,7 +4535,7 @@ const PRODUCT_GUIDE = [
   ["security", "Automation", "Security", "Find risky RouterOS services or versions, create a backup, and apply an available mitigation from the browser."],
   ["backups", "Automation", "Backups", "Create a router recovery point before maintenance and restore it when recovery is necessary."],
   ["scans", "Automation", "Fleet scans", "Inspect routers for health, configuration, and security issues, then review the findings in one list."],
-  ["templates", "Automation", "Templates", "Browse built-in RouterOS REST references and save custom request definitions. This library does not execute requests; use the dedicated reviewed network controls to change a router."],
+  ["templates", "Advanced", "RouterOS reference", "Browse built-in RouterOS REST references and save custom request definitions. This library does not execute requests; use the dedicated reviewed network controls to change a router."],
   ["termlog", "Automation", "Terminal log", "Review which commands were sent to a router, who started them, and whether they succeeded."],
   ["portal", "Business", "Captive portal", "Choose voucher login, mobile payment, or both; customize the guest page; and publish it to the selected router."],
   ["media", "Business", "Magic Media", "Pair a media computer and manage its Jellyfin libraries. Publish a branded guest page and planned pass settings to a shareable link. One-click installation, paid media access and guest playback are not available yet."],
@@ -4593,6 +4595,8 @@ window.addEventListener("load", async () => {
   document.querySelectorAll(".nav-item[data-view]").forEach(button => {
     button.hidden = !canOpenView(button.dataset.view, me);
   });
+  const advancedTools = document.getElementById("rail-advanced");
+  if (advancedTools) advancedTools.hidden = ![...advancedTools.querySelectorAll(".nav-item")].some(button => !button.hidden);
   document.querySelectorAll(".rail-section").forEach(section => {
     let sibling = section.nextElementSibling, visible = false;
     while (sibling && !sibling.classList.contains("rail-section")) {
@@ -4640,7 +4644,11 @@ window.addEventListener("load", async () => {
   const markCurrentRoute = (name) => {
     document.querySelectorAll(".nav-item[data-view]").forEach(b => b.removeAttribute("aria-current"));
     const btn = document.querySelector(`.nav-item[data-view="${name}"]`);
-    if (btn) btn.setAttribute("aria-current", "page");
+    if (btn) {
+      btn.setAttribute("aria-current", "page");
+      const advanced = btn.closest(".rail-advanced");
+      if (advanced) advanced.open = true;
+    }
   };
 
   // View renderers load live data. Serializing them prevents an earlier, slower

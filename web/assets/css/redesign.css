@@ -1940,6 +1940,10 @@ body.page-pricing {
 .page-app .rail-sub,
 .page-app .rail-profile-role { color: var(--sidebar-muted); }
 .page-app .rail-section { color: var(--sidebar-muted); }
+.page-app .rail-advanced { margin-top:20px; border-top:1px solid var(--sidebar-border); padding-top:12px; }
+.page-app .rail-advanced > summary { cursor:pointer; color:var(--sidebar-muted); padding:10px; font-size:13px; border-radius:var(--radius-sm); }
+.page-app .rail-advanced > summary:hover { color:var(--sidebar-foreground); background:var(--sidebar-hover); }
+.page-app .rail-advanced > summary:focus-visible { outline:2px solid var(--sidebar-foreground); outline-offset:2px; }
 .page-app .rail-profile { border-top-color: var(--sidebar-border); }
 .page-app .rail-profile-name { color: var(--sidebar-foreground); }
 .page-app .nav-item {
