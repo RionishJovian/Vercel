@@ -36,6 +36,7 @@ const writes = [];
 const chatWrites = [];
 const profileWrites = [];
 const passwordWrites = [];
+const portalDeployments = [];
 let profileSettings = { full_name: "Portal QA", email: "qa@example.test", user_role: "DEVELOPER", language: "en", has_avatar: false, has_cover: false, created_at: "2026-09-01T00:00:00Z" };
 let purchaseRequests = [
   { id: "pay-approved", plan_key: "hour", amount: 1000, bank_reference: "bank-001", status: "approved", created_at: "2026-09-30T01:00:00Z", decided_at: "2026-09-30T01:05:00Z" },
@@ -70,11 +71,27 @@ const server = createServer(async (req, res) => {
   if (url.pathname === "/api/v1/portal/config" && req.method === "GET") return json(200, { config });
   if (url.pathname === "/api/v1/billing/requests") return json(200, { requests: purchaseRequests });
   if (url.pathname === "/api/v1/guest-wifi/requests") return json(200, { requests: guestPurchaseRequests });
+  if (url.pathname === "/api/v1/guest-wifi/revenue") {
+    const amount = guestPurchaseRequests.some(r=>r.status==="approved") ? 3500 : 0;
+    return json(200,{all_time:amount,today:amount,last7:amount,last30:amount,pending_count:amount?0:1,days:[],plans:[]});
+  }
   if (url.pathname === "/api/v1/guest-wifi/approve/guest-pending" && req.method === "POST") {
     guestPurchaseRequests = guestPurchaseRequests.map(r => r.id === "guest-pending" ? { ...r, status: "approved", decided_at: "2026-09-30T02:05:00Z" } : r);
     return json(200, { request: guestPurchaseRequests.find(r => r.id === "guest-pending"), applied: true });
   }
   if (url.pathname === "/api/v1/routers") return json(200, { routers: [{ device_id: "dev-1", hardware_name: "CHR lab router", deployment_layer: "MAIN_GATEWAY", vendor: "mikrotik", is_online: false }] });
+  if (url.pathname === "/api/v1/routers/dev-1/portal/profiles") return json(200, {profiles:["guest"]});
+  if (url.pathname === "/api/v1/routers/dev-1/portal/preview" && req.method === "POST") {
+    let raw=""; for await (const chunk of req) raw+=chunk;
+    const body=JSON.parse(raw); assert.equal(body.profile,"guest");
+    return json(200,{plan:{profile:"guest",version:"1234567890abcdef",confirmation:"portal-preview",file:"flash/mm-portal-test/login.html",steps:["Retain original HotSpot files","Install portal entrypoint","Verify readback"]}});
+  }
+  if (url.pathname === "/api/v1/routers/dev-1/portal/apply" && req.method === "POST") {
+    let raw=""; for await (const chunk of req) raw+=chunk;
+    const body=JSON.parse(raw); portalDeployments.push(body);
+    if(body.confirmation!=="portal-preview"||body.version!=="1234567890abcdef") return json(400,{error:"preview required"});
+    return json(200,{result:{verified:true,backup:"flash/hotspot-original"}});
+  }
   if (url.pathname === "/api/v1/routers/dev-1/quick-config") return json(200, {config:{identity:"lab",dns_servers:["1.1.1.1"],allow_remote_dns:false}});
   if (url.pathname === "/api/v1/routers/dev-1/gateway/interfaces") return json(200, {interfaces:[{name:"ether1",type:"ether",running:true},{name:"ether2",type:"ether",running:true}]});
   if (url.pathname === "/api/v1/routers/dev-1/gateway/preview" && req.method === "POST") {
@@ -205,6 +222,21 @@ class CDP {
   }
 }
 
+async function portalDeploymentAcceptance(cdp) {
+  await waitFor(() => cdp.eval("document.querySelector('#pd-router option[value=\"dev-1\"]') !== null"), "portal gateway selector");
+  await cdp.eval("document.querySelector('#pd-router').value='dev-1'; document.querySelector('#pd-router').dispatchEvent(new Event('change'))");
+  await waitFor(() => cdp.eval("document.querySelector('#pd-profile option[value=\"guest\"]') !== null"), "live profile discovery");
+  await cdp.eval("document.querySelector('#pd-profile').value='guest'; document.querySelector('#pd-profile').dispatchEvent(new Event('change'))");
+  assert.equal(await cdp.eval("document.querySelector('#pd-apply').hidden"),true,"apply requires review");
+  await cdp.pointerClick("#pd-preview");
+  await waitFor(() => cdp.eval("document.querySelector('#pd-apply').hidden === false"), "portal deployment review");
+  assert.equal(portalDeployments.length,0,"review does not apply changes");
+  await cdp.pointerClick("#pd-apply");
+  await waitFor(() => cdp.eval("document.querySelector('#pd-status').textContent.includes('Router files and access rule verified')"), "portal router readback result");
+  assert.equal(portalDeployments.length,1,"explicit deployment writes once");
+  assert.equal(await cdp.eval("document.querySelector('#pd-apply').hidden"),true,"completed preview cannot be replayed");
+}
+
 let browser;
 let profile;
 let ws;
@@ -231,6 +263,12 @@ try {
   await cdp.send("Page.addScriptToEvaluateOnNewDocument", { source: `localStorage.setItem('mm_token','acceptance-token')` });
   await cdp.send("Page.navigate", { url: `http://127.0.0.1:${port}/app.html#portal` });
   await waitFor(() => cdp.eval("!!document.querySelector('#plan-add')"), "portal editor");
+  if (process.env.E2E_PORTAL_DEPLOY_ONLY) {
+    await portalDeploymentAcceptance(cdp);
+    await cdp.send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+    assert.equal(await cdp.eval("document.documentElement.scrollWidth <= window.innerWidth"), true, "portal deployment fits phone viewport");
+    console.log("✓ Portal deployment browser acceptance passed: gateway/profile discovery, review without writes, explicit deployment, verified result, replay prevention and phone layout.");
+  } else {
   assert.equal(await cdp.eval("document.querySelectorAll('#plans-table tbody tr').length"), 1);
   assert.equal(await cdp.eval("document.querySelector('#grace-data').value"), "50", "default grace data is 50 MB");
   await cdp.eval(`(() => { document.querySelector('#grace-min').value='7'; document.querySelector('#grace-data').value='75'; })()`);
@@ -268,11 +306,11 @@ try {
   // current decision endpoint, not placeholder chart data.
   await cdp.eval("loadView('revenue', document.querySelector('#main'), ME)");
   await waitFor(() => cdp.eval("!!document.querySelector('#revenue-export')"), "revenue workspace");
-  assert.equal(await cdp.eval("document.querySelector('.revenue-summary').textContent.includes('1,000 MMK')"), true, "approved request contributes to revenue");
+  assert.equal(await cdp.eval("document.querySelector('.revenue-summary').textContent.includes('0 MMK')"), true, "legacy business-pass revenue is excluded from guest sales");
   assert.equal(await cdp.eval("document.querySelectorAll('[data-purchase-action=approve]').length"), 1, "pending request exposes a real approval control");
   await cdp.pointerClick("[data-purchase-action=approve]");
   await waitFor(() => guestPurchaseRequests.find(r => r.id === "guest-pending")?.status === "approved", "guest revenue approval API write");
-  await waitFor(() => cdp.eval("document.querySelector('.revenue-summary').textContent.includes('4,500 MMK')"), "revenue readback after approval");
+  await waitFor(() => cdp.eval("document.querySelector('.revenue-summary').textContent.includes('3,500 MMK')"), "guest-only revenue readback after approval");
 
   await cdp.eval("loadView('portal', document.querySelector('#main'), ME)");
   await waitFor(() => cdp.eval("!!document.querySelector('#plan-add')"), "portal editor after revenue");
@@ -437,6 +475,8 @@ try {
   await waitFor(() => cdp.eval("document.querySelector('#plan-msg')?.textContent.includes('acceptance save failure')"), "visible save failure");
   assert.equal(await cdp.eval("document.querySelector('#plan-save').disabled"), false, "failed save re-enables its button");
 
+  await portalDeploymentAcceptance(cdp);
+
   await cdp.send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
   await cdp.eval("loadView('topology', document.querySelector('#main'), ME)");
   await waitFor(() => cdp.eval("!!document.querySelector('.topo-console')"), "mobile topology board");
@@ -459,6 +499,7 @@ try {
   await cdp.pointerClick("#md-close");
 
   console.log(`✓ UI acceptance passed: Fleet and Topology systems boards, Revenue approval/readback, popup Magic Dude chat, portal writes/readback/failure/preview, and 390px capacity/device layout.`);
+  }
   if (process.env.E2E_HOLD_MS) await delay(Number(process.env.E2E_HOLD_MS) || 60000);
 } finally {
   try { ws?.close(); } catch (_) {}

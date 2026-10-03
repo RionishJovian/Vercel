@@ -3635,6 +3635,16 @@ async function renderPortal(main) {
     `<button class="btn-sm" type="button" id="plan-save">Save access &amp; plans</button><span id="plan-msg" class="muted small" role="status" aria-live="polite"></span></div>`;
   html += `</div></div>`;
 
+  if (SITE_EDITOR_ROLES.includes(ME?.user?.user_role)) {
+    html += `<div class="panel" style="margin-top:14px"><div class="panel-head"><h2 class="panel-title">Deploy portal to router</h2></div><div class="panel-body">
+      <p class="muted small">Save your plans and branding above, then install the portal entrypoint on a connected gateway. Once installed, saved branding and plans update the hosted guest portal without another router upload. Deployment replaces the selected HotSpot login page, with a verified backup.</p>
+      <div class="form-row"><label for="pd-router">Gateway</label><select id="pd-router"><option value="">Loading gateways…</option></select></div>
+      <div class="form-row"><label for="pd-profile">HotSpot profile</label><select id="pd-profile" disabled><option value="">Select a gateway first</option></select></div>
+      <button class="btn btn-sm" type="button" id="pd-preview" disabled>Review deployment</button>
+      <div id="pd-review" hidden></div><button class="btn btn-sm" type="button" id="pd-apply" hidden disabled>Deploy to router</button>
+      <p class="muted small" id="pd-status" role="status" aria-live="polite"></p></div></div>`;
+  }
+
   // Branding + live guest-portal preview. These fields were stored and accepted
   // by the API but never surfaced anywhere in the console, so an owner could not
   // set their own brand at all — and the portal never applied them anyway (it
@@ -3756,6 +3766,59 @@ async function renderPortal(main) {
 
   // Branding editor + the REAL portal rendered live beside it.
   wirePortalBranding(main, cfg, collect, plansTbl);
+  wirePortalDeployment(main);
+}
+
+async function wirePortalDeployment(main) {
+  const router = main.querySelector("#pd-router"), profile = main.querySelector("#pd-profile");
+  if (!router) return;
+  const preview = main.querySelector("#pd-preview"), apply = main.querySelector("#pd-apply");
+  const status = main.querySelector("#pd-status"), review = main.querySelector("#pd-review");
+  let plan = null, revision = 0;
+  const reset = () => { plan = null; apply.hidden = true; apply.disabled = true; review.hidden = true; };
+  try {
+    const response = await MM.get("/routers");
+    const gateways = (response.routers || []).filter(r => r.deployment_layer === "MAIN_GATEWAY");
+    router.innerHTML = `<option value="">${gateways.length ? "Select gateway" : "No gateways — connect Magic Hub first"}</option>` + gateways.map(r => `<option value="${esc(r.device_id)}">${esc(r.hardware_name || r.device_id)}</option>`).join("");
+  } catch (e) { status.textContent = errorText(e, "Gateways could not be loaded."); }
+  router.addEventListener("change", async () => {
+    reset(); const current = ++revision, id = router.value;
+    preview.disabled = true; profile.disabled = true;
+    profile.innerHTML = '<option value="">Loading HotSpot profiles…</option>';
+    status.textContent = "";
+    if (!id) { profile.innerHTML = '<option value="">Select a gateway first</option>'; return; }
+    try {
+      const response = await MM.get(`/routers/${encodeURIComponent(id)}/portal/profiles`);
+      if (current !== revision) return;
+      profile.innerHTML = '<option value="">Select profile</option>' + (response.profiles || []).map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join("");
+      profile.disabled = false;
+      if (!response.profiles?.length) status.textContent = "No HotSpot profiles found. Configure the gateway customer network first.";
+    } catch (e) { if (current === revision) { profile.innerHTML = '<option value="">Profiles unavailable</option>'; status.textContent = errorText(e, "Finish Magic Hub management connection first."); } }
+  });
+  profile.addEventListener("change", () => { ++revision; reset(); preview.disabled = !profile.value; status.textContent = ""; });
+  preview.addEventListener("click", async () => {
+    reset(); const current = revision; preview.disabled = true; status.textContent = "Checking router and preparing review…";
+    try {
+      const response = await MM.post(`/routers/${encodeURIComponent(router.value)}/portal/preview`, {profile:profile.value});
+      if (current !== revision) return;
+      plan = response.plan;
+      review.innerHTML = `<h3 class="small">Review changes for ${esc(plan.profile)}</h3><ol>${plan.steps.map(s => `<li>${esc(s)}</li>`).join("")}</ol><p class="muted small">File: ${esc(plan.file)}. This changes the guest login page, not WAN or management settings. Verify a real guest connection after deployment.</p>`;
+      review.hidden = false; apply.hidden = false; apply.disabled = false; status.textContent = "Review ready. No router changes have been made.";
+    } catch (e) { status.textContent = errorText(e, "Deployment review failed."); }
+    finally { if (current === revision) preview.disabled = !profile.value; }
+  });
+  apply.addEventListener("click", async () => {
+    if (!plan) return;
+    const approved = plan, id = router.value;
+    apply.disabled = true; preview.disabled = true; router.disabled = true; profile.disabled = true;
+    status.textContent = "Backing up, deploying and verifying…";
+    try {
+      const response = await MM.post(`/routers/${encodeURIComponent(id)}/portal/apply`, {profile:approved.profile, version:approved.version, confirmation:approved.confirmation});
+      if (!response.result?.verified) throw new Error("Router readback was not verified.");
+      status.textContent = `Router files and access rule verified. Backup: ${response.result.backup}. Next: test from a guest device on this HotSpot.`;
+    } catch (e) { status.textContent = errorText(e, "Deployment could not be confirmed.") + (e.data?.result?.rolled_back ? " Previous login page restored and verified." : " Check router and backup before retrying."); }
+    finally { reset(); router.disabled = false; profile.disabled = false; preview.disabled = !profile.value; }
+  });
 }
 
 /* ---------- Security (C1 posture) ---------- */

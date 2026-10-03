@@ -21,6 +21,9 @@ deployed at <https://mikromagic.com>.
 - `web/`: deployed frontend. `app.html` is the authenticated console;
   `portal.html` is the guest captive portal; `index.html`, `signin.html` and
   `pricing.html` are public pages. Shared assets live in `web/assets/`.
+  Portal branding/plans are saved to the hosted portal; the separate reviewed
+  **Deploy to router** workflow installs its HotSpot entrypoint. See
+  [portal deployment and verification boundaries](docs/PORTAL-ROUTER-DEPLOYMENT.md).
 - `database/`, `migrations/`: database baseline and schema changes. Migration
   files require explicit application and checks in each environment.
 - `scripts/`, `lab/`, `deploy.sh`: validation, migration helpers, CHR lab tooling

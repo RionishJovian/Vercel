@@ -20,6 +20,7 @@ func TestCommerceMutationRoutesHaveRoleGuards(t *testing.T) {
 	want := map[string]model.UserRole{
 		"CreateVoucher": model.RoleOperator, "UpdateVoucherStatus": model.RoleOperator,
 		"DeleteVoucher": model.RoleAdmin, "StaffUpdateConfig": model.RoleAdmin,
+		"PortalDeployment": model.RoleAdmin,
 		"ApproveGuest": model.RoleOperator, "RejectGuest": model.RoleOperator,
 	}
 	f, err := parser.ParseFile(token.NewFileSet(), "server.go", nil, 0)
