@@ -1794,6 +1794,16 @@ passwords/tokens; use configured protected credentials and redact secret output.
 
 ## Historical records
 
+### 2026-10-03 Magic Media publishing follow-up
+
+Server-saved guest designs and planned pass settings, public links, revision
+conflict checks and unpublishing implemented. This does not enable paid playback;
+the combined purchase/approval/identity/timed-access/expiry runtime remains open.
+Go race/static/browser checks passed, as did three isolated PostgreSQL publication
+tests. Production backup and schema-only rehearsal completed with owner approval.
+Rollout requires `20261003120000_magic_media_publications.sql` and API/web deploy.
+See [media publishing](MEDIA-PUBLISHING.md) for contracts, verification and backup.
+
 `specs/PROGRESS.md`, `specs/ROADMAP.md` and first-project recovery audits are dated
 history/design context; some claims conflict with later work. Preserve their owner
 requirements and decisions, but use this handoff and current environment evidence

@@ -417,7 +417,7 @@ function loading() {
 
 async function renderMediaAppearance(main) {
   const content = main.querySelector("#content");
-  const {mountDashboard} = await import("/assets/js/media-dashboard.js?v=6");
+  const {mountDashboard} = await import("/assets/js/media-dashboard.js?v=7");
   if (content?.isConnected) mountDashboard(content, ME?.business, ME?.user, MM);
 }
 
@@ -4442,7 +4442,7 @@ const PRODUCT_GUIDE = [
   ["templates", "Automation", "Templates", "Save common RouterOS tasks for your team instead of rebuilding the same request each time."],
   ["termlog", "Automation", "Terminal log", "Review which commands were sent to a router, who started them, and whether they succeeded."],
   ["portal", "Business", "Captive portal", "Choose voucher login, mobile payment, or both; customize the guest page; and publish it to the selected router."],
-  ["media", "Business", "Magic Media", "Pair a media computer and manage its Jellyfin libraries when connections are enabled. Guest design drafts stay in this browser. One-click installation, paid media access and guest playback are not available yet."],
+  ["media", "Business", "Magic Media", "Pair a media computer and manage its Jellyfin libraries. Publish a branded guest page and planned pass settings to a shareable link. One-click installation, paid media access and guest playback are not available yet."],
   ["vouchers", "Business", "Vouchers", "Create guest codes, organize resellers, choose a RouterOS access profile, and print vouchers for sale."],
   ["store", "Business", "Store", "Buy a Mega Magic plan or capability, submit the bank reference, and follow approval and activation progress."],
   ["revenue", "Business", "Revenue", "See approved hotspot sales, review pending guest payments, and compare which access plans earn the most."],

@@ -1,4 +1,4 @@
-import {mountAppearance} from './media-appearance.js?v=5';
+import {mountAppearance} from './media-appearance.js?v=6';
 import {mountOverview} from './media-overview.js?v=1';
 const esc = value => String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export function online(connection, now=Date.now()) {
@@ -50,6 +50,6 @@ export function mountDashboard(content,business,user,api) {
  workspace.querySelector('#media-scan').onclick=()=>{if(confirm('Ask this media computer to scan all its Jellyfin libraries?'))run('scan',{confirm:true})};
  workspace.querySelector('form').onsubmit=event=>{event.preventDefault();const f=event.currentTarget;run('add_library',{confirm:f.elements.confirm.checked,library:{Name:f.elements.name.value.trim(),Kind:f.elements.kind.value,Paths:f.elements.paths.value.split('\n').map(s=>s.trim()).filter(Boolean)}})};
  }
- content.querySelectorAll('[data-media-tab]').forEach(b=>b.onclick=()=>{content.querySelectorAll('[data-media-tab]').forEach(button=>button.setAttribute('aria-pressed',String(button===b)));if(b.dataset.mediaTab==='overview'){const g=++generation;mountOverview(workspace,api,()=>active(g))}else if(b.dataset.mediaTab==='appearance'){generation++;mountAppearance(workspace,business,user)}else if(b.dataset.mediaTab==='libraries')librariesView();else connectionView()});
+ content.querySelectorAll('[data-media-tab]').forEach(b=>b.onclick=()=>{content.querySelectorAll('[data-media-tab]').forEach(button=>button.setAttribute('aria-pressed',String(button===b)));if(b.dataset.mediaTab==='overview'){const g=++generation;mountOverview(workspace,api,()=>active(g))}else if(b.dataset.mediaTab==='appearance'){const g=++generation;mountAppearance(workspace,business,user,api,()=>active(g))}else if(b.dataset.mediaTab==='libraries')librariesView();else connectionView()});
  content.querySelector('[data-media-tab="overview"]').click();
 }

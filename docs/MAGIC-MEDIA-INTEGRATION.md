@@ -1,5 +1,12 @@
 # Magic Media: local Jellyfin integration
 
+2026-10-03 follow-up: the server-backed publishing slice replaces browser-only
+design saving with hosted guest-page links and unpublishing. Planned price and
+duration persist, but purchases and playback stay disabled. Sample movies are
+excluded from public pages. See [media publishing](MEDIA-PUBLISHING.md) for the
+new migration, tests, rollout status and outstanding timed-access work. The
+browser-preview statements below describe the earlier 2026-10-01 slice.
+
 Updated 2026-10-01. This document describes implemented code, not a completed
 customer-facing connection or installer.
 

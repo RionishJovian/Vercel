@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import {readFile} from "node:fs/promises";
-import {normalize,guestDocument,applyTemplate,templates} from "../web/assets/js/media-appearance.js";
+import {normalize,guestDocument,publishedDocument,applyTemplate,templates} from "../web/assets/js/media-appearance.js";
 const invalid = normalize({theme:"url(evil)",accent:'"><script>',price:-1,duration:NaN});
 assert.equal(invalid.theme,"charcoal"); assert.equal(invalid.accent,"#eeeeee");
 assert.equal(invalid.price,1500); assert.equal(invalid.duration,24);
@@ -52,3 +52,11 @@ const css=await readFile(new URL('../web/assets/css/media-appearance.css',import
 assert.ok(!css.includes('gradient('),'media workspace CSS has no gradients');
 assert.ok(guestDocument(applyTemplate({},'cinema')).includes('aspect-ratio:16/9'));
 console.log("Media preview checks passed: escaped content, validated theme/colour, sections, sample pricing and no live purchases.");
+const published=publishedDocument({name:'<script>evil</script>',price:2500,duration:12,featured:true});
+assert.ok(!published.includes('Sample title')&&!published.includes('The quiet coast'));
+assert.ok(!published.includes('Example categories')&&!published.includes('DESIGN PREVIEW'));
+assert.ok(published.includes('purchases and playback are not available yet'));
+assert.ok(published.includes('No payment is collected'));
+assert.ok(published.includes('2,500 MMK / 12 hours'));
+assert.ok(!published.includes('<script>'));
+console.log('Published page checks passed: no sample catalog, no payment/playback promises, escaped design.');

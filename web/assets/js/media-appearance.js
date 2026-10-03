@@ -1,4 +1,4 @@
-// Guest appearance prototype only. No Jellyfin credentials, payments or server calls.
+// Hosted design publishing. Playback/paid access remains disabled until enforced.
 export const defaults = {
   name: "Magic Media", headline: "A little movie magic.", subtitle: "Your next favourite story is waiting.",
   accent: "#eeeeee", theme: "charcoal", price: 1500, duration: 24,
@@ -65,6 +65,18 @@ export function guestDocument(input) {
     </style></head>`);
 }
 
+// Public pages never pass off sample posters as a real Jellyfin catalog.
+export function publishedDocument(input) {
+  return guestDocument({...input,featured:false})
+    .replace('DESIGN PREVIEW · sample content · purchases and playback unavailable','GUEST PAGE · purchases and playback are not available yet')
+    .replace('Buy media pass · Preview only','Media access not available yet')
+    .replace('WELCOME TO YOUR MEDIA LIBRARY','WELCOME')
+    .replace('Your libraries','Categories')
+    .replace('Example categories','Planned media categories')
+    .replace('Media access is purchased separately from internet access.','Planned pass pricing only. No payment is collected and no playback access is granted.')
+    .replace('This preview is not connected to a Jellyfin server.','Your provider has published this design. Media access is not available yet.');
+}
+
 // Decode and re-encode uploads: never retain SVG, remote URLs or file metadata.
 async function prepareImage(file) {
   if (!file || !["image/jpeg","image/png","image/webp"].includes(file.type) || file.size > 5 * 1024 * 1024) throw new Error("Choose a JPG, PNG or WebP picture up to 5 MB.");
@@ -83,13 +95,13 @@ async function prepareImage(file) {
   } finally {URL.revokeObjectURL(url);}
 }
 
-export function mountAppearance(content, business, user) {
+export function mountAppearance(content, business, user, api, isActive = () => true) {
   const initial = normalize({name:business?.company_name || defaults.name});
   const businessID = business?.business_id || user?.business_id;
   const key = businessID && user?.email ? `mm_media_design:${businessID}:${user.email}` : null;
-  let draft = initial;
+  let draft = initial, revision = 0, loaded = false, busy = false, edited = false;
   if (key) { try { const raw = localStorage.getItem(key); if (raw) draft = normalize(JSON.parse(raw)); } catch (_) {} }
-  content.innerHTML = `<div class="panel"><div class="panel-body"><span class="fleet-kicker">MAGIC MEDIA · GUEST APPEARANCE</span><h2>Make your media lounge feel like yours.</h2><p>Try a branded guest homepage. This design preview is not published or connected to the media catalog; guest payments and playback are not available yet.</p></div></div>
+  content.innerHTML = `<div class="panel"><div class="panel-body"><span class="fleet-kicker">MAGIC MEDIA · GUEST APPEARANCE</span><h2>Make your media lounge feel like yours.</h2><p>Publish your branded guest page to a shareable link. Publishing saves this design on the server; it does not enable Jellyfin playback or paid access yet.</p><p id="media-publication" role="status">Loading published design…</p><button type="button" class="btn btn-sm" data-media-reload>Reload published design</button><button type="button" class="btn btn-sm" data-media-unpublish disabled>Unpublish guest page</button></div></div>
     <div class="media-design-workspace"><form class="panel media-design-form" id="media-design-form"><div class="panel-body">
       <h2>Ready-made templates</h2><p class="muted small">Choose a starting design, then make it yours. Your uploaded pictures and wording are kept.</p>
       <div class="media-template-list">${Object.entries(templates).map(([key,t])=>`<button type="button" class="media-template-card" data-media-template="${key}"><span class="media-template-swatch ${key}" aria-hidden="true"><i></i><span><b></b><b></b><b></b></span></span><strong>${t.label}</strong><small>${t.description}</small></button>`).join("")}</div>
@@ -108,13 +120,22 @@ export function mountAppearance(content, business, user) {
       ${Object.entries(tileDefaults).map(([key,t])=>`<details class="media-tile-editor" open><summary>${t.title}</summary><label>Tile title<input class="input" name="tile-${key}-title" maxlength="80"></label><label>Caption<input class="input" name="tile-${key}-caption" maxlength="160"></label><label>Tile picture<input type="file" accept="image/jpeg,image/png,image/webp" data-media-image="tile-${key}"></label><button type="button" class="btn btn-sm" data-media-clear="tile-${key}">Remove picture</button></details>`).join("")}
       <h2>Featured preview artwork</h2><p class="muted small">These four samples show your design, not playable movies. This does not change movie metadata or artwork in Jellyfin.</p>
       ${posterNames.map((_,i)=>`<details class="media-tile-editor"><summary>Preview card ${i+1}</summary><label>Sample title<input class="input" name="poster-${i}-title" maxlength="80"></label><label>Preview picture<input type="file" accept="image/jpeg,image/png,image/webp" data-media-image="poster-${i}"></label><button type="button" class="btn btn-sm" data-media-clear="poster-${i}">Remove picture</button></details>`).join("")}
-      <h2>Sample media pass</h2><p class="muted small">Preview prices only. These fields do not create a saleable plan.</p>
+      <h2>Planned media pass</h2><p class="muted small">Save your proposed price and duration with the guest page. Purchases stay disabled until timed playback access is ready.</p>
       <label>Price (MMK)<input class="input" name="price" type="number" min="1" max="1000000" step="1" required></label>
       <label>Duration (hours)<input class="input" name="duration" type="number" min="1" max="1000000" step="1" required></label>
-      <div class="media-design-actions"><button type="submit" class="btn btn-primary">Save browser draft</button><button type="button" class="btn" data-media-reset>Reset design</button></div>
-      <p class="muted small">Drafts stay in this browser, scoped to your business and account. Nothing is published to guests.</p><p role="status" id="media-design-status"></p>
+      <div class="media-design-actions"><button type="submit" class="btn btn-primary" disabled>Publish guest page</button><button type="button" class="btn" data-media-reset>Reset design</button></div>
+      <p class="muted small">Publishing replaces the hosted design for your business. The preview uses sample artwork; the public page does not show sample movies.</p><p role="status" id="media-design-status"></p>
     </div></form><section class="panel media-preview-panel"><div class="panel-head"><h2 class="panel-title">Guest preview</h2><div class="media-design-actions"><button class="btn btn-sm" type="button" aria-pressed="true" data-media-width="desktop">Desktop</button><button class="btn btn-sm" type="button" aria-pressed="false" data-media-width="mobile">Mobile</button></div></div><div class="media-preview-wrap"><iframe title="Magic Media guest appearance preview" sandbox="" id="media-guest-preview"></iframe></div></section></div>`;
-  const form = content.querySelector("#media-design-form"), frame = content.querySelector("iframe"), status = content.querySelector("#media-design-status");
+  const form = content.querySelector("#media-design-form"), frame = content.querySelector("iframe"), status = content.querySelector("#media-design-status"), publication = content.querySelector('#media-publication');
+  const active = () => isActive() && content.contains(form);
+  const controls = () => {form.querySelector('[type=submit]').disabled = busy || !loaded; content.querySelector('[data-media-unpublish]').disabled = busy || !loaded || !revision; content.querySelector('[data-media-reload]').disabled = busy;};
+  const showPublication = p => {
+    publication.replaceChildren();
+    if (!p) {publication.textContent='No guest page has been published.';return;}
+    publication.append(document.createTextNode('Published guest page: '));
+    const link=document.createElement('a');link.href='/media.html?id='+encodeURIComponent(p.public_id);link.textContent='Open guest page';link.target='_blank';link.rel='noopener';publication.append(link);
+    publication.append(document.createTextNode(' · revision '+p.revision+'. Purchases and playback remain disabled.'));
+  };
   let images = {}, uploadGeneration = 0;
   const pendingUploads = new Map();
   const fill = data => {
@@ -135,7 +156,7 @@ export function mountAppearance(content, business, user) {
   };
   const preview = () => {frame.srcdoc = guestDocument(read());};
   fill(draft); preview();
-  form.querySelectorAll('[data-media-template]').forEach(button=>button.addEventListener('click',()=>{fill(applyTemplate(read(),button.dataset.mediaTemplate)); preview(); status.textContent="Template applied to preview. Save to keep this browser draft.";}));
+  form.querySelectorAll('[data-media-template]').forEach(button=>button.addEventListener('click',()=>{edited=true;fill(applyTemplate(read(),button.dataset.mediaTemplate)); preview(); status.textContent="Template applied to preview. Publish to update the guest page.";}));
   form.querySelectorAll('[data-media-image]').forEach(field=>field.addEventListener('change',async()=>{
     const target=field.dataset.mediaImage, generation=uploadGeneration, token=Symbol(); pendingUploads.set(target,token);
     if (!field.files[0]) {pendingUploads.delete(target); return;}
@@ -143,22 +164,36 @@ export function mountAppearance(content, business, user) {
     try {
       const result=await prepareImage(field.files[0]);
       if (generation!==uploadGeneration || pendingUploads.get(target)!==token || !content.contains(form)) return;
-      images[target]=result; preview(); status.textContent="Picture updated. Save to keep this browser draft.";
+      edited=true;images[target]=result; preview(); status.textContent="Picture updated. Publish to update the guest page.";
     } catch(error) {if (generation===uploadGeneration && pendingUploads.get(target)===token) status.textContent=error.message || "Picture could not be read.";}
     finally {if (pendingUploads.get(target)===token) pendingUploads.delete(target);}
   }));
-  form.querySelectorAll('[data-media-clear]').forEach(button=>button.addEventListener('click',()=>{const target=button.dataset.mediaClear; pendingUploads.delete(target); images[target]=""; form.querySelector(`[data-media-image="${target}"]`).value=""; preview(); status.textContent="Picture removed from preview. Save to keep this change.";}));
-  form.addEventListener("input", () => {preview(); status.textContent = "Preview updated. Save to keep this browser draft.";});
-  form.addEventListener("submit", event => {
+  form.querySelectorAll('[data-media-clear]').forEach(button=>button.addEventListener('click',()=>{edited=true;const target=button.dataset.mediaClear; pendingUploads.delete(target); images[target]=""; form.querySelector(`[data-media-image="${target}"]`).value=""; preview(); status.textContent="Picture removed from preview. Publish to update the guest page.";}));
+  form.addEventListener("input", () => {edited=true;preview(); status.textContent = "Preview updated. Publish to update the guest page.";});
+  const load = async (explicit=false) => {
+    if(busy || !api)return;
+    if(explicit && edited && !confirm('Discard your unsaved edits and reload the published design?'))return;
+    busy=true;controls();
+    try {const response=await api.get('/media/publication');if(!active())return;const p=response.publication;revision=p?.revision||0;loaded=true;showPublication(p);if(explicit||!edited){fill(p?normalize(p.design):draft);preview();edited=false;}}
+    catch(e){if(active()){loaded=false;publication.textContent=e.message||'Published design could not be loaded.';}}
+    finally{busy=false;if(active())controls();}
+  };
+  form.addEventListener("submit", async event => {
     event.preventDefault();
     if (pendingUploads.size) {status.textContent="Wait for picture preparation to finish before saving."; return;}
-    if (!key) {status.textContent = "Business identity is unavailable; draft cannot be saved safely."; return;}
-    try {localStorage.setItem(key, JSON.stringify(read())); status.textContent = "Browser draft saved. Not published to guests.";}
-    catch (_) {status.textContent = "Browser storage unavailable. Preview still works; draft was not saved.";}
+    if (!loaded || busy || !api) return;
+    busy=true;controls();status.textContent='Publishing guest page…';
+    const design=read();
+    try {const response=await api.put('/media/publication?revision='+revision,design);if(!active())return;const p=response.publication;revision=p.revision;showPublication(p);edited=JSON.stringify(read())!==JSON.stringify(design);status.textContent='Guest page published. Purchases and playback are still disabled.'+(edited?' You have newer unpublished edits.':'');if(key){try{localStorage.removeItem(key);}catch(_){}}}
+    catch(e){if(active()){status.textContent=e.message||'Publication not confirmed.';loaded=false;}}
+    finally{busy=false;if(active())controls();}
   });
-  content.querySelector("[data-media-reset]").addEventListener("click", () => {fill(initial); preview(); status.textContent = "Design reset in preview. Save to replace your draft.";});
+  content.querySelector('[data-media-reload]').onclick=()=>load(true);
+  content.querySelector('[data-media-unpublish]').onclick=async()=>{if(busy||!revision||!confirm('Remove the hosted guest page? Existing media access is not changed.'))return;busy=true;controls();try{await api.del('/media/publication?revision='+revision);if(!active())return;revision=0;showPublication(null);status.textContent='Guest page unpublished.';}catch(e){if(active()){status.textContent=e.message||'Unpublishing not confirmed.';loaded=false;}}finally{busy=false;if(active())controls();}};
+  content.querySelector("[data-media-reset]").addEventListener("click", () => {edited=true;fill(initial); preview(); status.textContent = "Design reset in preview. Publish to replace the hosted design.";});
   content.querySelectorAll("[data-media-width]").forEach(button => button.addEventListener("click", () => {
     frame.classList.toggle("is-mobile", button.dataset.mediaWidth === "mobile");
     content.querySelectorAll("[data-media-width]").forEach(b => b.setAttribute("aria-pressed", String(b === button)));
   }));
+  load();
 }

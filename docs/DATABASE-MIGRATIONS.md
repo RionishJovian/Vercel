@@ -6,6 +6,15 @@ device SSH objects are absent; it never mutates the database automatically.
 
 ## Magic Media connector pilot
 
+### Guest design publication — 2026-10-03
+
+`migrations/20261003120000_magic_media_publications.sql` adds an independent
+per-business publication table, random public sharing IDs, revisions and forced
+tenant RLS. Apply once after backup/rehearsal using ON_ERROR_STOP; verify the
+authenticated grants and tenant policy. Existing connector jobs are unchanged.
+This does not create paid passes or grant playback. See
+[media publishing](MEDIA-PUBLISHING.md) for rollout evidence and limitations.
+
 ### Dashboard extension — deployed 2026-10-01
 
 `migrations/20261001140000_magic_media_dashboard.sql` extends the existing job

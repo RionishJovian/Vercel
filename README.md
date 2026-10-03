@@ -67,10 +67,17 @@ not implemented. See [Magic Media integration](docs/MAGIC-MEDIA-INTEGRATION.md).
 The follow-up media overview was tested, migrated and deployed on 2026-10-01.
 It collects Jellyfin counts/sessions and computer CPU,
 memory and local-drive readings. Guest themes are preserved, with a new poster
-layout selector; guest design remains a browser-only preview. The dashboard
+layout selector. The dashboard
 uses `20261001140000_magic_media_dashboard.sql` and requires an updated local
 connector. Production health/access-control and CDN asset checks passed; real
 paired-computer readings remain unverified.
+
+The 2026-10-03 media publishing slice adds server-saved guest designs, planned
+pass pricing, public sharing links and unpublishing. It requires the additive
+`20261003120000_magic_media_publications.sql` migration. This is hosted-page
+publication, **not paid playback**: public pages omit sample movies and keep
+purchases disabled. See [media publishing](docs/MEDIA-PUBLISHING.md) for rollout
+evidence and the remaining timed-access work.
 
 ## Delivery stages
 
