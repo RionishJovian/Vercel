@@ -12,28 +12,34 @@
   <script src="/assets/js/theme.js"></script>
   <link rel="stylesheet" href="/assets/css/styles.css">
   <style>
-    .network-workspace { max-width:1100px; margin-inline:auto; }
-    .network-workspace header h2,.network-workspace header h3 { margin-top:0; }
+    .panel.network-workspace { --network-space-1:8px; --network-space-2:16px; --network-space-3:24px; --network-space-4:32px; max-width:1100px; margin-inline:auto; padding:var(--network-space-4); box-sizing:border-box; }
+    .network-workspace header h2,.network-workspace header h3 { margin:0 0 var(--network-space-2); }
+    .network-workspace header p:last-child { margin:0; line-height:1.6; }
+    .network-workspace > label { display:flex; flex-direction:column; gap:var(--network-space-1); margin:0; }
+    .network-workspace [data-editor] > h3 { margin:var(--network-space-4) 0 var(--network-space-2); }
+    .network-workspace [data-editor] { margin-top:var(--network-space-3); }
     .network-eyebrow { font-size:.72rem; font-weight:700; letter-spacing:.14em; color:var(--accent); margin-bottom:8px; }
     .network-steps { display:flex; flex-wrap:wrap; gap:12px; padding:0; margin:24px 0; list-style:none; }
     .network-steps li { padding:9px 14px; border:1px solid var(--line); border-radius:999px; font-size:.85rem; }
-    .network-context { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:18px; margin:24px 0; border:1px solid var(--line); border-radius:12px; }
+    .network-context { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:24px; margin:0; border:1px solid var(--line); border-radius:12px; }
     .network-context p { margin:5px 0 0; font-size:.85rem; }
-    .network-tasks { display:grid; grid-template-columns:repeat(auto-fit,minmax(225px,1fr)); gap:12px; }
-    .network-task { display:flex; flex-direction:column; gap:9px; padding:18px; text-align:left; font:inherit; color:var(--ink); background:var(--surface); border:1px solid var(--line); border-radius:12px; cursor:pointer; }
+    .network-tasks { display:grid; grid-template-columns:repeat(auto-fit,minmax(225px,1fr)); gap:16px; }
+    .network-task { display:flex; flex-direction:column; gap:12px; padding:24px; text-align:left; font:inherit; color:var(--ink); background:var(--surface); border:1px solid var(--line); border-radius:12px; cursor:pointer; }
     .network-task span { font-size:.88rem; line-height:1.5; color:var(--ink-soft); }
     .network-task small { color:var(--ink-muted); margin-top:auto; }
     .network-task[aria-pressed="true"] { border-color:var(--accent); box-shadow:inset 0 0 0 1px var(--accent); }
     .network-task:focus-visible { outline:3px solid var(--accent); outline-offset:3px; }
-    .network-settings { margin-top:28px; padding-top:24px; border-top:1px solid var(--line); }
+    .network-settings { margin-top:32px; padding-top:32px; border-top:1px solid var(--line); }
+    .network-settings > label { display:flex; flex-direction:column; gap:8px; margin-top:24px; }
     .network-settings fieldset { border:1px solid var(--line); border-radius:12px; margin:20px 0; padding:20px; min-width:0; }
     .network-settings legend { padding:0 8px; font-weight:650; }
-    .network-field-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; }
+    .network-field-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:24px; }
     .network-field-grid label { display:flex; flex-direction:column; gap:8px; margin:0; font-size:.9rem; }
     .network-field-grid .input { width:100%; min-width:0; box-sizing:border-box; }
-    .network-note { font-size:.85rem; color:var(--ink-soft); line-height:1.6; }
+    .network-note { font-size:.85rem; color:var(--ink-soft); line-height:1.6; margin:16px 0; }
+    .network-review label { display:block; margin:24px 0; line-height:1.6; }
     .network-review:not(:empty) { padding:20px; margin-top:24px; border:1px solid var(--accent); border-radius:12px; }
-    @media(max-width:640px) { .network-field-grid { grid-template-columns:1fr; } .network-context { align-items:flex-start; flex-direction:column; } .network-tasks { grid-template-columns:1fr; } .network-settings fieldset { padding:14px; } }
+    @media(max-width:640px) { .panel.network-workspace { padding:20px; } .network-field-grid { grid-template-columns:1fr; gap:20px; } .network-context { align-items:flex-start; flex-direction:column; padding:20px; } .network-task { padding:20px; } .network-tasks { grid-template-columns:1fr; } .network-settings fieldset { padding:16px; } }
   </style>
   <!-- Live-preview surfaces (guest-portal frame + voucher sheet). Scoped to their
        own classes and kept inline deliberately: Cloudflare serves /assets/* as
