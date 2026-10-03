@@ -38,6 +38,15 @@
     .network-field-grid .input { width:100%; min-width:0; box-sizing:border-box; }
     .network-note { font-size:.85rem; color:var(--ink-soft); line-height:1.6; margin:16px 0; }
     .network-review label { display:block; margin:24px 0; line-height:1.6; }
+    .network-workspace #network-editor { margin-top:24px; }
+    .network-workspace #gateway-setup-form { display:grid; gap:24px; margin-top:24px; }
+    .network-workspace #gateway-setup-form > label:not(.quick-config-check),.network-workspace #gateway-setup-form details label { display:flex; flex-direction:column; gap:8px; margin:0; }
+    .network-workspace #gateway-setup-form details { padding:20px; border:1px solid var(--line); border-radius:12px; }
+    .network-workspace #gateway-setup-form details label { margin-top:20px; }
+    .network-workspace #gateway-setup-form p { margin:0; line-height:1.6; }
+    .network-workspace #gateway-setup-form small { line-height:1.6; }
+    .network-workspace #gateway-setup-form .input { width:100%; box-sizing:border-box; }
+    .network-workspace #gateway-status:empty { display:none; }
     .network-review:not(:empty) { padding:20px; margin-top:24px; border:1px solid var(--accent); border-radius:12px; }
     @media(max-width:640px) { .panel.network-workspace { padding:20px; } .network-field-grid { grid-template-columns:1fr; gap:20px; } .network-context { align-items:flex-start; flex-direction:column; padding:20px; } .network-task { padding:20px; } .network-tasks { grid-template-columns:1fr; } .network-settings fieldset { padding:16px; } }
   </style>
@@ -1717,11 +1726,9 @@ async function renderNetworkSetup(main) {
   if (!content.isConnected) return;
   const routers = (Array.isArray(data.routers) ? data.routers : asArray(data)).filter(r => r.deployment_layer === "MAIN_GATEWAY");
   const canEdit = SITE_EDITOR_ROLES.includes(ME?.user?.user_role);
-  content.innerHTML = `<section class="panel"><h2>Customer network and Hotspot</h2><p>Choose a connected gateway, select the internet uplink and an unused customer-facing port or bridge. We suggest LAN and DHCP addresses from its live inventory. Review changes before applying; opening this page changes nothing on the router.</p>
+  content.innerHTML = `<section class="panel network-workspace"><header><p class="network-eyebrow">CUSTOMER LAN AND HOTSPOT</p><p>Choose a gateway to start. We suggest addresses from its live inventory; you choose the internet and customer-facing ports. Existing networks are managed separately under LAN and Hotspot.</p></header><ol class="network-steps" aria-label="Setup workflow"><li>1 · Choose gateway</li><li>2 · Configure network</li><li>3 · Review and apply</li></ol>
     <label>Gateway<select class="input" id="network-router"><option value="">Choose a gateway</option>${routers.map(r=>`<option value="${esc(r.device_id)}">${esc(r.hardware_name)}</option>`).join("")}</select></label>
-    <div id="network-editor" aria-live="polite">${routers.length ? "Choose a gateway to read its interfaces and suggest settings." : 'Connect a gateway from <a href="#gateways">Gateways</a> first.'}</div></section>
-    <section class="panel"><h2>Related business tasks</h2><p><a class="btn" href="#portal">Design and deploy captive portal</a> <a class="btn" href="#vouchers">Manage guest vouchers</a> <a class="btn" href="#topology">Access points and topology</a> <a class="btn" href="#security">Router security</a></p>
-    <p><a class="btn" href="#wan">WAN balancing and failover</a> <a class="btn" href="#pppoe">PPPoE subscribers</a> <a class="btn" href="#wifi">Wi-Fi SSIDs</a> <a class="btn" href="#existing">Manage existing networks</a>. WebFig security setup is not a cloud WebFig session.</p></section>`;
+    <div id="network-editor" aria-live="polite">${routers.length ? "Opening this page changes nothing on the router." : 'Connect a gateway from <a href="#gateways">Gateways</a> first.'}</div></section>`;
   const editor = content.querySelector("#network-editor"), select = content.querySelector("#network-router");
   let revision = 0;
   select.addEventListener("change", async () => {
