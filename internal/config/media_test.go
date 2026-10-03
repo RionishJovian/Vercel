@@ -13,12 +13,16 @@ func TestMediaConnectorDefaultOffAndOptIn(t *testing.T) {
 	}
 	t.Setenv("ENVIRONMENT", "development")
 	t.Setenv("MEDIA_CONNECTOR_ENABLED", "false")
+	t.Setenv("MEDIA_PAID_ACCESS_ENABLED", "false")
 	cfg, e := Load(path)
 	if e != nil {
 		t.Fatal(e)
 	}
 	if cfg.Media.ConnectorEnabled {
 		t.Fatal("media default must be off")
+	}
+	if cfg.Media.PaidAccessEnabled {
+		t.Fatal("media sales must default off")
 	}
 	t.Setenv("MEDIA_CONNECTOR_ENABLED", "true")
 	cfg, e = Load(path)

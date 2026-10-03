@@ -29,6 +29,7 @@ type MediaPoster struct {
 	Image string `json:"image"`
 }
 type MediaDesign struct {
+	Payment       *MediaPayment          `json:"payment,omitempty"`
 	Name          string                 `json:"name"`
 	Headline      string                 `json:"headline"`
 	Subtitle      string                 `json:"subtitle"`
@@ -45,6 +46,29 @@ type MediaDesign struct {
 	Background    string                 `json:"background"`
 	Tiles         map[string]MediaTile   `json:"tiles"`
 	Posters       map[string]MediaPoster `json:"posters"`
+}
+
+// MediaPayment contains only public receiving details supplied by the owner.
+// Bank/MMQR payment is manually reviewed; there are no gateway credentials.
+type MediaPayment struct {
+	BankName    string `json:"bank_name"`
+	BankAccount string `json:"bank_account"`
+	BankHolder  string `json:"bank_holder"`
+	MMQR        string `json:"mmqr"`
+}
+
+func (p MediaPayment) Validate() error {
+	if !designText(p.BankName, 100) || !designText(p.BankAccount, 100) || !designText(p.BankHolder, 160) || !designImage(p.MMQR) {
+		return errors.New("invalid payment details")
+	}
+	bank := strings.TrimSpace(p.BankName) != "" || strings.TrimSpace(p.BankAccount) != "" || strings.TrimSpace(p.BankHolder) != ""
+	if bank && (strings.TrimSpace(p.BankName) == "" || strings.TrimSpace(p.BankAccount) == "" || strings.TrimSpace(p.BankHolder) == "") {
+		return errors.New("enter bank name, account number and account holder together")
+	}
+	if !bank && p.MMQR == "" {
+		return errors.New("add your MMQR image or bank details")
+	}
+	return nil
 }
 
 var designColour = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
@@ -76,6 +100,11 @@ func designImage(s string) bool {
 }
 func (d MediaDesign) Validate() error {
 	invalid := errors.New("invalid media design; use bounded text, whole-number pricing and resized PNG/JPEG pictures")
+	if d.Payment != nil {
+		if e := d.Payment.Validate(); e != nil {
+			return e
+		}
+	}
 	if strings.TrimSpace(d.Name) == "" || !designText(d.Name, 160) || !designText(d.Headline, 160) || !designText(d.Subtitle, 160) || !designColour.MatchString(d.Accent) {
 		return invalid
 	}

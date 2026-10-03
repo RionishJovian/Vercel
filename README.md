@@ -95,6 +95,12 @@ publication, **not paid playback**: public pages omit sample movies and keep
 purchases disabled. See [media publishing](docs/MEDIA-PUBLISHING.md) for rollout
 evidence and the remaining timed-access work.
 
+Paid-access continuation adds guest bank/MMQR checkout, private receipts,
+tenant-owned Telegram approval and a timed-pass ledger, plus local Jellyfin
+streaming primitives. Guest catalog/playback transport still needs integration.
+Production remains the publishing slice above; see
+[paid-access continuation](docs/MEDIA-PAID-ACCESS.md) for acceptance boundaries.
+
 ## Delivery stages
 
 Track every feature or release slice as:

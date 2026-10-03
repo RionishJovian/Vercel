@@ -36,7 +36,8 @@ type Config struct {
 
 // Pilot integration is disabled until its migration and acceptance checks pass.
 type MediaConfig struct {
-	ConnectorEnabled bool `mapstructure:"connector_enabled"`
+	ConnectorEnabled  bool `mapstructure:"connector_enabled"`
+	PaidAccessEnabled bool `mapstructure:"paid_access_enabled"`
 }
 
 // AIConfig configures the AI/scanning service. Disabled by default.
@@ -467,6 +468,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("vps.hub_key_id", "")
 	v.SetDefault("vps.hub_signing_key", "")
 	v.SetDefault("media.connector_enabled", false)
+	v.SetDefault("media.paid_access_enabled", false)
 	v.SetDefault("server.host", "0.0.0.0")
 	v.SetDefault("server.port", 8080)
 	v.SetDefault("server.grpc_port", 9090)

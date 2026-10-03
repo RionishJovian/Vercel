@@ -31,6 +31,8 @@ export function normalize(value = {}) {
   data.posterDensity = ["comfortable","compact"].includes(data.posterDensity) ? data.posterDensity : "comfortable";
   data.layout = ["shelves","lounge"].includes(data.layout) ? data.layout : defaults.layout;
   data.background = imageValue(data.background);
+  const payment=value?.payment;
+  data.payment=payment && typeof payment==='object' ? {bank_name:String(payment.bank_name||'').slice(0,100),bank_account:String(payment.bank_account||'').slice(0,100),bank_holder:String(payment.bank_holder||'').slice(0,160),mmqr:imageValue(payment.mmqr)} : null;
   data.tiles = Object.fromEntries(Object.entries(tileDefaults).map(([key, fallback]) => {
     const tile = value?.tiles?.[key] || {};
     return [key, {title:String(tile.title ?? fallback.title).slice(0,80), caption:String(tile.caption ?? fallback.caption).slice(0,160), image:imageValue(tile.image)}];
@@ -66,8 +68,8 @@ export function guestDocument(input) {
 }
 
 // Public pages never pass off sample posters as a real Jellyfin catalog.
-export function publishedDocument(input) {
-  return guestDocument({...input,featured:false})
+export function publishedDocument(input,purchasesEnabled=false) {
+  const document=guestDocument({...input,featured:false})
     .replace('DESIGN PREVIEW · sample content · purchases and playback unavailable','GUEST PAGE · purchases and playback are not available yet')
     .replace('Buy media pass · Preview only','Media access not available yet')
     .replace('WELCOME TO YOUR MEDIA LIBRARY','WELCOME')
@@ -75,6 +77,7 @@ export function publishedDocument(input) {
     .replace('Example categories','Planned media categories')
     .replace('Media access is purchased separately from internet access.','Planned pass pricing only. No payment is collected and no playback access is granted.')
     .replace('This preview is not connected to a Jellyfin server.','Your provider has published this design. Media access is not available yet.');
+  return purchasesEnabled ? document.replace('GUEST PAGE · purchases and playback are not available yet','GUEST PAGE · bank/MMQR payments require owner approval').replace('Media access not available yet','Use the payment form above').replace('Planned pass pricing only. No payment is collected and no playback access is granted.','Pay only to the receiving details on your order. Receipt upload is not approval.') : document;
 }
 
 // Decode and re-encode uploads: never retain SVG, remote URLs or file metadata.
@@ -123,6 +126,11 @@ export function mountAppearance(content, business, user, api, isActive = () => t
       <h2>Planned media pass</h2><p class="muted small">Save your proposed price and duration with the guest page. Purchases stay disabled until timed playback access is ready.</p>
       <label>Price (MMK)<input class="input" name="price" type="number" min="1" max="1000000" step="1" required></label>
       <label>Duration (hours)<input class="input" name="duration" type="number" min="1" max="1000000" step="1" required></label>
+      <h2>Bank / MMQR payment details</h2><p class="muted small">Guests transfer to your account and attach a receipt. Your own Telegram bot delivers it for your approval or rejection. No payment gateway is required.</p>
+      <label>Bank name<input class="input" name="bank_name" maxlength="100"></label>
+      <label>Bank account number<input class="input" name="bank_account" maxlength="100"></label>
+      <label>Account holder name<input class="input" name="bank_holder" maxlength="160"></label>
+      <label>Your MMQR image<input type="file" accept="image/jpeg,image/png" data-media-image="mmqr"></label><button type="button" class="btn btn-sm" data-media-clear="mmqr">Remove MMQR image</button>
       <div class="media-design-actions"><button type="submit" class="btn btn-primary" disabled>Publish guest page</button><button type="button" class="btn" data-media-reset>Reset design</button></div>
       <p class="muted small">Publishing replaces the hosted design for your business. The preview uses sample artwork; the public page does not show sample movies.</p><p role="status" id="media-design-status"></p>
     </div></form><section class="panel media-preview-panel"><div class="panel-head"><h2 class="panel-title">Guest preview</h2><div class="media-design-actions"><button class="btn btn-sm" type="button" aria-pressed="true" data-media-width="desktop">Desktop</button><button class="btn btn-sm" type="button" aria-pressed="false" data-media-width="mobile">Mobile</button></div></div><div class="media-preview-wrap"><iframe title="Magic Media guest appearance preview" sandbox="" id="media-guest-preview"></iframe></div></section></div>`;
@@ -139,7 +147,8 @@ export function mountAppearance(content, business, user, api, isActive = () => t
   let images = {}, uploadGeneration = 0;
   const pendingUploads = new Map();
   const fill = data => {
-    images = {background:data.background}; uploadGeneration++; pendingUploads.clear();
+    images = {background:data.background,mmqr:data.payment?.mmqr||''}; uploadGeneration++; pendingUploads.clear();
+    for(const name of ['bank_name','bank_account','bank_holder'])form.elements.namedItem(name).value=data.payment?.[name]||'';
     for (const [name,value] of Object.entries(data)) { const field = form.elements.namedItem(name); if (field) {if (field.type === "checkbox") field.checked = value; else field.value = value;} }
     for (const [key,tile] of Object.entries(data.tiles)) {for (const prop of ["title","caption"]) form.elements.namedItem(`tile-${key}-${prop}`).value=tile[prop]; images[`tile-${key}`]=tile.image;}
     for (const [key,poster] of Object.entries(data.posters)) {form.elements.namedItem(`poster-${key}-title`).value=poster.title; images[`poster-${key}`]=poster.image;}
@@ -150,6 +159,8 @@ export function mountAppearance(content, business, user, api, isActive = () => t
       const field = form.elements.namedItem(name); return [name, field.type === "checkbox" ? field.checked : field.value];
     }));
     data.background=images.background;
+    const payment=Object.fromEntries(['bank_name','bank_account','bank_holder'].map(name=>[name,form.elements.namedItem(name).value.trim()]));payment.mmqr=images.mmqr||'';
+    data.payment=Object.values(payment).some(Boolean)?payment:null;
     data.tiles=Object.fromEntries(Object.keys(tileDefaults).map(key=>[key,{title:form.elements.namedItem(`tile-${key}-title`).value,caption:form.elements.namedItem(`tile-${key}-caption`).value,image:images[`tile-${key}`]}]));
     data.posters=Object.fromEntries(posterNames.map((_,i)=>[i,{title:form.elements.namedItem(`poster-${i}-title`).value,image:images[`poster-${i}`]}]));
     return normalize(data);

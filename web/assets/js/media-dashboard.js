@@ -1,4 +1,4 @@
-import {mountAppearance} from './media-appearance.js?v=6';
+import {mountAppearance} from './media-appearance.js?v=7';
 import {mountOverview} from './media-overview.js?v=1';
 const esc = value => String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export function online(connection, now=Date.now()) {

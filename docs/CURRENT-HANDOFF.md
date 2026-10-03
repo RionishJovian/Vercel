@@ -1,5 +1,24 @@
 # Current agent handoff
 
+## 2026-10-04 uncommitted paid-media review — source validated, NOT deployed
+
+The bank/MMQR checkout/receipt/owner-bot changes and local streaming foundations
+were reviewed against HANDOVER.md. Fixed checkout-key reuse after unpublish/
+republish: a key cannot return or rebind a purchase from another publication.
+Scoped Go race tests passed for media, handler, server, configuration and
+Telegram; scoped vet passed. All bridge PostgreSQL tests passed three consecutive
+race runs against a new loopback-only PostgreSQL 16 fixture, including migrations,
+approval/rejection, replay, tenant isolation, activation and expiry.
+The guest receipt DOM regression passed bank terms, cookie isolation, Telegram
+retry, approval refresh and refund. Existing Chromium test assertions were not
+rerun in this review. The temporary database contained synthetic data only.
+
+No production migration, deployment, payment, bot message, router/network
+mutation or stash operation occurred. Paid sales remain off. The missing
+guest catalog/player relay is a real implementation gap, not a request for an
+automated payment provider. Do not deploy/enable checkout before that path has
+passed acceptance on an owner-local media PC. See MEDIA-PAID-ACCESS.md.
+
 ## 2026-10-03 confirmed audit defects — DEPLOYED and verified
 
 Audit-fix code `91f6ae3` was pushed and deployed with `./deploy.sh all`.
@@ -9,6 +28,35 @@ management-reachability topology labels, voucher notices and guide coverage.
 Backup: `/home/ubuntu/mm-audit-fixes.PUV3xT`; API/nginx active and HTTP checks 200.
 No migration, router change, payment activation or Wi-Fi enablement occurred.
 Unrelated paid-media foundations remain uncommitted. See [audit repairs](AUDIT-FIXES-20261003.md).
+
+## 2026-10-03 paid Magic Media — bank/MMQR owner review, integration in progress
+
+The user clarified there is NO automated payment gateway. Reuse portal-style
+bank/MMQR receipt upload and approval/rejection through each business's own
+Telegram bot. The new pass ledger snapshots pricing/duration, serializes settlement
+and one-time activation, rejects duplicate payment references, and enforces
+refund/expiry/suspension under forced tenant RLS. The owner-PC streaming primitive
+closes reads at expiry and on revoked/unavailable authorization. Three isolated
+PostgreSQL race runs and full Go/race/vet checks passed. Checkout/status/upload now
+call the ledger in source, but playback is NOT connected to the deployed connector;
+no production migration or
+deployment was performed for it. Local Jellyfin 12.1.0 was started, the owner
+signed in, and a synthetic clip/test-only library was created. Native decoded
+frames were observed, but a playback-error notification also appeared; sustained
+native playback and Magic Media integration remain unverified. The typed local
+catalog/ancestor-scoped byte-range adapter passed mocked race tests. No local
+Jellyfin API key was read or reset. Media receipt submission/owner decisions and
+the shared guarded owner-bot decider now exist in source. Telegram document
+receipt delivery passed mock tests, and three isolated PostgreSQL race runs
+passed manual review/duplicate proof/rejection/refund/tenant tests. Local media,
+Telegram, handler and server race/vet checks passed. Bank/QR editor, guest-bound
+checkout/status/upload and Telegram-delivery retry are now wired in source.
+Receiving details are immutable per order. Synthetic browser checks passed
+publishing/reload/conflict, checkout/receipt/approval/reload, delivery failure,
+cookie isolation and unpublishing; three isolated PostgreSQL race runs passed
+the new snapshot and guest-binding assertions. Sales default off. The guest
+playback relay still needs integration and acceptance before migration/deployment. No real
+bot message, payment or production migration occurred. See [paid access](MEDIA-PAID-ACCESS.md).
 
 ## 2026-10-03 broader network controls — DEPLOYED, Wi-Fi held
 

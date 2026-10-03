@@ -15,7 +15,7 @@ import (
 )
 
 func validDesign() MediaDesign {
-	return MediaDesign{Name: "Test cinema", Headline: "Welcome", Accent: "#eeeeee", Theme: "charcoal", Price: 1500, Duration: 24, Layout: "shelves", PosterDensity: "comfortable", Movies: true}
+	return MediaDesign{Name: "Test cinema", Headline: "Welcome", Accent: "#eeeeee", Theme: "charcoal", Price: 1500, Duration: 24, Layout: "shelves", PosterDensity: "comfortable", Movies: true, Payment: &MediaPayment{BankName: "Test Bank", BankAccount: "1234", BankHolder: "Test Owner"}}
 }
 func TestMediaDesignValidation(t *testing.T) {
 	d := validDesign()

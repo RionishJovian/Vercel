@@ -1,5 +1,9 @@
 # Magic Media guest-page publishing
 
+2026-10-03 continuation: [paid-access work](MEDIA-PAID-ACCESS.md) records the
+tested purchase/expiry foundations and the owner-PC architecture. It does not
+replace the publishing-only production boundary below.
+
 This slice replaces browser-only saving with actual hosted publication.
 An administrator edits Guest appearance, chooses **Publish guest page**, and
 receives a `/media.html?id=...` link only after the database write commits.

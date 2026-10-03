@@ -12,8 +12,9 @@ import (
 )
 
 type MediaPublicationHandler struct {
-	Store bridge.PublicationStore
-	Ready bool
+	Store            bridge.PublicationStore
+	Ready            bool
+	PurchasesEnabled bool
 }
 
 func (h *MediaPublicationHandler) available(c *gin.Context) bool {
@@ -97,5 +98,5 @@ func (h *MediaPublicationHandler) Public(c *gin.Context) {
 		return
 	}
 	// Never claim that publishing a theme enables paid access.
-	c.JSON(200, gin.H{"design": p.Design, "revision": p.Revision, "published_at": p.PublishedAt, "purchases_enabled": false, "playback_enabled": false})
+	c.JSON(200, gin.H{"design": p.Design, "revision": p.Revision, "published_at": p.PublishedAt, "purchases_enabled": h.PurchasesEnabled, "playback_enabled": false})
 }

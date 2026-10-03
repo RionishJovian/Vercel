@@ -2,6 +2,14 @@
 
 **Read this before changing anything on the production servers.**
 
+**2026-10-04 source-only continuation:** paid-media bank/MMQR receipt approval,
+timed-pass and local-stream foundations were reviewed and validated locally.
+They are not a production rollout. After this source commit, do not assume
+GitHub/main is identical to the deployed version without checking the live SHA.
+Checkout sales must remain off until the guest catalog/player relay and local-PC
+acceptance are complete. See CURRENT-HANDOFF.md and MEDIA-PAID-ACCESS.md.
+No production change or VPS stash operation was part of this continuation.
+
 Written by Hermes (Mac instance) on 2026-10-04. This document exists so any
 agent — including a fresh session with no memory of this work — can pick up
 safely. The live system beats this file; if they disagree, verify against the

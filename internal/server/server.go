@@ -22,6 +22,7 @@ import (
 	"mega-magic/internal/fleet"
 	"mega-magic/internal/handler"
 	"mega-magic/internal/hub"
+	mediaBridge "mega-magic/internal/media/bridge"
 	"mega-magic/internal/messaging"
 	"mega-magic/internal/model"
 	"mega-magic/internal/monitoring"
@@ -362,7 +363,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 
 	// Start the policy evaluator: watches NATS telemetry and auto-opens incidents.
 	if cfg.Media.ConnectorEnabled {
-		if err := registerMediaRoutes(r, authService, db, handler.SubscriptionAccess(db, cfg.Billing.SubscriptionOnly, cfg.Billing.ExistingAccountPolicy)); err != nil {
+		if err := registerMediaRoutes(r, authService, db, cfg, handler.SubscriptionAccess(db, cfg.Billing.SubscriptionOnly, cfg.Billing.ExistingAccountPolicy)); err != nil {
 			return nil, fmt.Errorf("media connector schema/routes: %w", err)
 		}
 	}
@@ -431,10 +432,14 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	// ENABLED owner bot, re-scanned on the configured interval. THE ONLY guest-wifi
 	// piece gated on the flag — the web surface above is always on. Off by default.
 	if cfg.GuestWifi.Enabled {
+		ownerDecider := telegram.CompositePurchaseDecider{Deciders: []telegram.PurchaseDecider{guestWifiHandler}}
+		if cfg.Media.ConnectorEnabled {
+			ownerDecider.Deciders = append(ownerDecider.Deciders, handler.MediaReceiptDecider{Store: mediaBridge.NewPostgres(db)})
+		}
 		supervisor := NewGuestWifiBridgeSupervisor(
 			db,
 			database.NewBusinessTelegramBotRepository(db),
-			guestWifiHandler,
+			ownerDecider,
 			func(token string) (telegram.Messenger, bool) {
 				return telegram.ConfigMessenger(token, "", 30*time.Second)
 			},
@@ -572,7 +577,7 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 				routers.POST("/:id/network/:action", auth.RequireMinRole(model.RoleAdmin), securityHandler.NetworkControl)
 				routers.PUT("/:id/quick-config", auth.RequireMinRole(model.RoleAdmin), securityHandler.ApplyQuickConfig)
 				routers.POST("/:id/gateway/:action", auth.RequireMinRole(model.RoleAdmin), securityHandler.GatewaySetup)
-			routers.GET("/:id/gateway/:action", securityHandler.GatewaySetup)
+				routers.GET("/:id/gateway/:action", securityHandler.GatewaySetup)
 				routers.GET("/:id/portal/profiles", auth.RequireMinRole(model.RoleAdmin), securityHandler.PortalDeployment)
 				routers.POST("/:id/portal/:action", auth.RequireMinRole(model.RoleAdmin), securityHandler.PortalDeployment)
 				routers.POST("/:id/webfig/secure", auth.RequireMinRole(model.RoleAdmin), securityHandler.ConfigureWebFig)
