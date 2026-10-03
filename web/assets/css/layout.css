@@ -1,7 +1,44 @@
 /* Shared frame contract. Guest artwork and media-specific design stay separate. */
+.panel.network-workspace { --network-space-1:8px; --network-space-2:16px; --network-space-3:24px; --network-space-4:32px; width:100%; margin-inline:0; padding:var(--panel-inset); box-sizing:border-box; }
+.network-workspace header h2,.network-workspace header h3 { margin:0 0 var(--network-space-2); }
+.network-workspace header p:last-child { margin:0; line-height:1.6; }
+.network-workspace > label { display:flex; flex-direction:column; gap:var(--network-space-1); margin:0; }
+.network-workspace [data-editor] > h3 { margin:var(--network-space-4) 0 var(--network-space-2); }
+.network-workspace [data-editor] { margin-top:var(--network-space-3); }
+.network-eyebrow { font-size:.72rem; font-weight:700; letter-spacing:.14em; color:var(--accent); margin-bottom:8px; }
+.network-steps { display:flex; flex-wrap:wrap; gap:12px; padding:0; margin:24px 0; list-style:none; }
+.network-steps li { padding:9px 14px; border:1px solid var(--line); border-radius:999px; font-size:.85rem; }
+.network-context { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:24px; margin:0; border:1px solid var(--line); border-radius:12px; }
+.network-context p { margin:5px 0 0; font-size:.85rem; }
+.network-tasks { display:grid; grid-template-columns:repeat(auto-fit,minmax(225px,1fr)); gap:16px; }
+.network-task { display:flex; flex-direction:column; gap:12px; padding:24px; text-align:left; font:inherit; color:var(--ink); background:var(--surface); border:1px solid var(--line); border-radius:12px; cursor:pointer; }
+.network-task span { font-size:.88rem; line-height:1.5; color:var(--ink-soft); }
+.network-task small { color:var(--ink-muted); margin-top:auto; }
+.network-task[aria-pressed="true"] { border-color:var(--accent); box-shadow:inset 0 0 0 1px var(--accent); }
+.network-task:focus-visible { outline:3px solid var(--accent); outline-offset:3px; }
+.network-settings { margin-top:32px; padding-top:32px; border-top:1px solid var(--line); }
+.network-settings > label { display:flex; flex-direction:column; gap:8px; margin-top:24px; }
+.network-settings fieldset { border:1px solid var(--line); border-radius:12px; margin:20px 0; padding:20px; min-width:0; }
+.network-settings legend { padding:0 8px; font-weight:650; }
+.network-field-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:24px; }
+.network-field-grid label { display:flex; flex-direction:column; gap:8px; margin:0; font-size:.9rem; }
+.network-field-grid .input { width:100%; min-width:0; box-sizing:border-box; }
+.network-note { font-size:.85rem; color:var(--ink-soft); line-height:1.6; margin:16px 0; }
+.network-review label { display:block; margin:24px 0; line-height:1.6; }
+.network-workspace #network-editor { margin-top:24px; }
+.network-workspace #gateway-setup-form { display:grid; gap:24px; margin-top:24px; }
+.network-workspace #gateway-setup-form > label:not(.quick-config-check),.network-workspace #gateway-setup-form details label { display:flex; flex-direction:column; gap:8px; margin:0; }
+.network-workspace #gateway-setup-form details { padding:20px; border:1px solid var(--line); border-radius:12px; }
+.network-workspace #gateway-setup-form details label { margin-top:20px; }
+.network-workspace #gateway-setup-form p { margin:0; line-height:1.6; }
+.network-workspace #gateway-setup-form small { line-height:1.6; }
+.network-workspace #gateway-setup-form .input { width:100%; box-sizing:border-box; }
+.network-workspace #gateway-status:empty { display:none; }
+.network-review:not(:empty) { padding:20px; margin-top:24px; border:1px solid var(--accent); border-radius:12px; }
+@media(max-width:640px) { .panel.network-workspace { padding:var(--panel-inset); } .network-field-grid { grid-template-columns:1fr; gap:20px; } .network-context { align-items:flex-start; flex-direction:column; padding:20px; } .network-task { padding:20px; } .network-tasks { grid-template-columns:1fr; } .network-settings fieldset { padding:16px; } }
 .page-app {
   --workspace-gap: 20px;
-  --panel-inset: 20px;
+  --panel-inset: 24px;
 }
 .page-app [hidden] { display: none !important; }
 .page-app main, .page-app #content,
@@ -48,7 +85,45 @@
   flex: 0 0 16px;
   margin: 0;
 }
-.page-app select.input { min-height: 40px; padding: 8px 12px; }
+.page-app input:where(:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="hidden"])),
+.page-app select, .page-app textarea {
+  box-sizing: border-box;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  line-height: 1.5;
+}
+/* Native Safari selects ignore padding. Own the shell, retain native options. */
+.page-app select, .page-app select.input {
+  appearance: none;
+  -webkit-appearance: none;
+  min-height: 44px;
+  padding: 10px 36px 10px 12px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath d='m4 6 4 4 4-4' fill='none' stroke='%2377857b' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 16px;
+}
+.page-app input[type="checkbox"], .page-app input[type="radio"] {
+  min-height: 0; width: 18px; height: 18px; padding: 0;
+  vertical-align: middle; accent-color: var(--primary);
+}
+.page-app .page-head { align-items: center; gap: 16px; margin: 0; }
+.page-app .page-head > div { min-width: 0; }
+.page-app .page-title { margin: 0; line-height: 1.2; }
+.page-app .page-lead { margin: 8px 0 0; line-height: 1.6; }
+.page-app .field { margin-bottom: 20px; }
+.page-app .field label { margin-bottom: 8px; font-size: 13px; line-height: 1.5; }
+.page-app .site-ops-console > header,
+.page-app .routerboard-console > header,
+.page-app .routerboard-grid { padding: var(--panel-inset); }
+.page-app .routerboard-grid { gap: 20px; }
+.page-app .site-ops-console h2, .page-app .routerboard-console h2 { font-size: 24px; line-height: 1.3; }
+.page-app .network-workspace header h2 { font-size: 24px; line-height: 1.3; margin-bottom: 8px; }
+.page-app .network-workspace header .network-eyebrow { margin-top: 0; }
+.page-app .panel-head { box-sizing: border-box; min-height: 64px; }
 .page-app .record-form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -70,4 +145,6 @@
   .page-app .panel-head { align-items: flex-start; }
   .page-app .panel-head > .btn { margin-left: 0; }
   .page-app .workspace-actions > .btn { max-width: 100%; white-space: normal; }
+  .page-app input:not([type="checkbox"]):not([type="radio"]),
+  .page-app select, .page-app textarea { font-size: 16px; }
 }

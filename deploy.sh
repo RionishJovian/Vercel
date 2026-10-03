@@ -31,9 +31,10 @@ deploy_web() {
   # that the edge has to fetch from origin. HTML is always revalidated. Stamp
   # every page that imports shared assets so marketing, auth, pricing, and the
   # console cannot drift across an immutable-cache deployment.
-  local vcss vredesign vapi vapp vtheme vi18n vnetwork stamp_dir page
+  local vcss vredesign vlayout vapi vapp vtheme vi18n vnetwork stamp_dir page
   vcss=$(md5sum "$ROOT/web/assets/css/styles.css" | cut -c1-8)
   vredesign=$(md5sum "$ROOT/web/assets/css/redesign.css" | cut -c1-8)
+  vlayout=$(md5sum "$ROOT/web/assets/css/layout.css" | cut -c1-8)
   vapi=$(md5sum "$ROOT/web/assets/js/api.js"       | cut -c1-8)
   vapp=$(md5sum "$ROOT/web/assets/js/app.js"       | cut -c1-8)
   vtheme=$(md5sum "$ROOT/web/assets/js/theme.js"   | cut -c1-8)
@@ -43,6 +44,7 @@ deploy_web() {
   for page in app index signin pricing; do
     sed -e "s#\(/assets/css/styles\.css\)[^\"']*#\1?v=$vcss#" \
         -e "s#\(/assets/css/redesign\.css\)[^\"']*#\1?v=$vredesign#" \
+        -e "s#\(/assets/css/layout\.css\)[^\"']*#\1?v=$vlayout#" \
         -e "s#\(/assets/js/api\.js\)[^\"']*#\1?v=$vapi#" \
         -e "s#\(/assets/js/app\.js\)[^\"']*#\1?v=$vapp#" \
         -e "s#\(/assets/js/theme\.js\)[^\"']*#\1?v=$vtheme#" \
