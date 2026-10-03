@@ -1,6 +1,6 @@
 # Current agent handoff
 
-## 2026-10-03 broader network controls — TESTED, rollout pending
+## 2026-10-03 broader network controls — DEPLOYED, Wi-Fi held
 
 Supersedes the older "missing" implementation status below, not its deployment
 record. Four task-first workspaces and typed inventory/review/apply routes now
@@ -10,9 +10,15 @@ loopback-only CHRs verified primary-probe failover/recovery, both balanced paths
 PPPoE authentication/internet, DHCP reservation delivery, and actual-record
 DHCP/Hotspot/pool/profile edits. No registered customer router was changed.
 
-No migration is needed. Production network controls default off; separately
-gated Wi-Fi writes must remain off pending an approved physical AP. New source
-has not yet been deployed at this checkpoint. Detailed guard/token/rollback
+No migration is needed. Code `7f432ad` was pushed and deployed with the canonical
+`./deploy.sh all`; landing/app/health returned 200 and anonymous inventory 401.
+Backup: `/home/ubuntu/mm-network-rollout.n96C5f`. The production service drop-in
+sets `MM_NETWORK_CONTROLS_ENABLED=true` and
+`MM_NETWORK_WIFI_CONTROLS_ENABLED=false`. Signed-in live checks loaded real CHR
+interfaces, PPPoE address suggestions and existing-service task choices without
+performing router preview/apply. The two new disposable CHRs are stopped with
+their containers/disks retained. Wi-Fi needs an approved physical AP before
+reconnect/rollback acceptance and enabling writes. Detailed guard/token/rollback
 behavior, lab evidence and remaining boundaries:
 [Network controls](NETWORK-CONTROLS.md). The staged changes also repair initial
 LAN setup's scalar field/duration verification and reserve unrouted pools when

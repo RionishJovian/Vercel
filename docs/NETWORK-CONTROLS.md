@@ -6,14 +6,21 @@ Dedicated navigation exposes WAN and failover, PPPoE subscribers, Wi-Fi networks
 and existing-network management. Gateways remains registration, Hub connection
 and diagnostics. These are typed operations, not a free-form RouterOS terminal.
 
-This source checkpoint is implemented and locally/lab tested, with rollout
-pending. No migration is needed. Production controls require
+Code `7f432ad` is implemented, locally/lab tested and deployed to mikromagic.com
+with `./deploy.sh all`. Landing, app and health returned 200; anonymous inventory
+returned 401. The signed-in live workspaces loaded actual CHR interfaces, checked
+PPPoE address suggestions and existing-service task choices. The live Wi-Fi page
+displayed its physical-radio acceptance hold with no SSID form. No live router
+preview/apply was performed. Protected API/web backup:
+`/home/ubuntu/mm-network-rollout.n96C5f`. No migration is needed. Production controls require
 `MM_NETWORK_CONTROLS_ENABLED=true`; absent/false holds preview and apply before
 any target lookup. Wi-Fi additionally requires
 `MM_NETWORK_WIFI_CONTROLS_ENABLED=true`, which must stay false until approved
 physical-radio acceptance. Inventory reports both capabilities and the browser
 does not offer a held write form. Owner/admin routing and tenant-scoped target
 lookup remain mandatory; a feature flag does not grant a role or device access.
+The production drop-in enables network controls and explicitly holds Wi-Fi
+writes false. This is a partial tested rollout, not whole-app certification.
 
 ## Implemented operations
 
@@ -94,6 +101,8 @@ its ether3/ether4 connect to the client's ether2/ether3 over private QEMU socket
 Ethernet. The test-account password is deliberately disposable, not a customer
 credential. No production configuration, account, router or public test port
 was changed by these acceptance runs.
+After acceptance, the two disposable guests were stopped, not deleted; their
+containers and disks remain recoverable. Start both before rerunning peer tests.
 
 ## Remaining boundaries
 

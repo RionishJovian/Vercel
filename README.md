@@ -47,7 +47,8 @@ backed-up router changes. Two disposable CHRs verified WAN failover/recovery,
 equal-cost routing, PPPoE authentication/internet and DHCP reservation delivery.
 SSID editors are implemented but separately held for physical-radio acceptance;
 CAPsMAN configuration and a cloud WebFig proxy remain outside this slice. The
-new control rollout is pending at this source checkpoint. See
+tested controls were deployed at `7f432ad`; production Wi-Fi writes remain off
+until approved physical AP acceptance. No customer router was changed by deployment. See
 [network workflow scope and acceptance](docs/NETWORK-SETUP-WORKFLOW.md).
 
 The project is in **functional workflow completion and production acceptance**.
