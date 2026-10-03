@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 )
 
 type gatewayRunner struct {
@@ -34,8 +35,30 @@ func (r *gatewayRunner) Run(_ context.Context, cmd string) (string, error) {
 	if cmd == gatewayRoutesCommand {
 		return r.routes, nil
 	}
+	if cmd == gatewayPoolsCommand {
+		if pool := r.objects["/ip pool"]; pool != nil {
+			return "ranges: " + pool["ranges"] + "\n", nil
+		}
+		return "", nil
+	}
 	if strings.HasPrefix(cmd, "/interface print count-only") {
 		return "1", nil
+	}
+	if cmd == "/system script job print count-only" {
+		return "1", nil
+	}
+	if strings.HasPrefix(cmd, ":foreach id in=[") {
+		menu := strings.Split(strings.TrimPrefix(cmd, ":foreach id in=["), " find")[0]
+		if len(r.objects[menu]) == 0 {
+			return "", nil
+		}
+		out := "id: *1\n"
+		for _, field := range regexp.MustCompile(`:put \("([a-z-]+): "`).FindAllStringSubmatch(cmd, -1) {
+			if field[1] != "id" {
+				out += field[1] + ": " + r.objects[menu][field[1]] + "\n"
+			}
+		}
+		return out, nil
 	}
 	menu := strings.Split(cmd, " print")[0]
 	if strings.Contains(cmd, " print count-only") {
@@ -75,6 +98,26 @@ func (r *gatewayRunner) Run(_ context.Context, cmd string) (string, error) {
 
 func validGatewaySetup() GatewaySetup {
 	return GatewaySetup{Name: "guest", WAN: "ether1", LAN: "ether2", Address: "192.168.50.1/24", PoolStart: "192.168.50.10", PoolEnd: "192.168.50.200", DNS: []string{"1.1.1.1"}, Hotspot: true}
+}
+
+func TestGatewaySetupRefusesPendingNetworkRestoration(t *testing.T) {
+	r := &gatewayRunner{objects: map[string]map[string]string{}}
+	a := quickConfigApplier(r)
+	g := validGatewaySetup()
+	plan, err := a.PreviewGateway(context.Background(), "biz-1", "dev-1", g)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g.Confirmation = plan.Confirmation
+	r.commands = nil
+	networkGuardUntil.Store("biz-1:dev-1", time.Now().Add(time.Minute))
+	defer networkGuardUntil.Delete("biz-1:dev-1")
+	if _, err := a.ApplyGateway(context.Background(), "biz-1", "dev-1", g); err == nil {
+		t.Fatal("pending restoration allowed competing LAN creation")
+	}
+	if len(r.commands) != 0 {
+		t.Fatal("pending restoration must stop before transport or writes")
+	}
 }
 
 func TestGatewaySetupPreviewApplyVerifyAndRejectDuplicate(t *testing.T) {

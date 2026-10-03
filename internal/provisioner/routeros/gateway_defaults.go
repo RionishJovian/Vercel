@@ -3,6 +3,7 @@ package routeros
 import (
 	"context"
 	"fmt"
+	"math/bits"
 	"net"
 	"regexp"
 	"strings"
@@ -14,6 +15,7 @@ var gatewayRoutePattern = regexp.MustCompile(`(?m)^\s*dst-address:\s*(\S+)`)
 // key=value format. Scalar get output avoids both ambiguous presentations.
 const gatewayAddressesCommand = `:foreach id in=[/ip address find] do={ :put ("address: " . [/ip address get $id address]) }`
 const gatewayRoutesCommand = `:foreach id in=[/ip route find] do={ :put ("dst-address: " . [/ip route get $id dst-address]) }`
+const gatewayPoolsCommand = `:foreach id in=[/ip pool find] do={ :put ("ranges: " . [/ip pool get $id ranges]) }`
 
 // Read both assigned and routed networks. Default routes do not reserve every
 // private subnet. All other routes are conservatively reserved, even inactive ones.
@@ -42,6 +44,38 @@ func gatewayReservedNetworks(ctx context.Context, r CommandRunner) ([]*net.IPNet
 			if ones != 0 || !source.ignoreDefault {
 				networks = append(networks, network)
 			}
+		}
+	}
+	// PPP subscriber pools need not yet have a connected route or interface IP.
+	// Reserve them as well, so automatic suggestions cannot reuse their subnet.
+	out, err := r.Run(ctx, gatewayPoolsCommand)
+	if err != nil || len(out) > 512*1024 {
+		return nil, fmt.Errorf("could not read existing subscriber/client pools")
+	}
+	for _, line := range strings.Split(strings.ReplaceAll(out, "\r", ""), "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		value, ok := strings.CutPrefix(line, "ranges: ")
+		if !ok {
+			return nil, fmt.Errorf("could not parse existing pool ranges")
+		}
+		for _, part := range strings.FieldsFunc(value, func(c rune) bool { return c == ',' || c == ';' }) {
+			ends := strings.Split(strings.TrimSpace(part), "-")
+			if len(ends) == 1 {
+				ends = append(ends, ends[0])
+			}
+			if len(ends) != 2 || !networkIPv4(ends[0]) || !networkIPv4(ends[1]) {
+				return nil, fmt.Errorf("could not parse an IPv4 pool range")
+			}
+			a, b := gatewayIPv4Number(net.ParseIP(ends[0])), gatewayIPv4Number(net.ParseIP(ends[1]))
+			if a > b {
+				return nil, fmt.Errorf("invalid pool range")
+			}
+			prefix := bits.LeadingZeros32(a ^ b)
+			mask := net.CIDRMask(prefix, 32)
+			ip := net.IPv4(byte(a>>24), byte(a>>16), byte(a>>8), byte(a))
+			networks = append(networks, &net.IPNet{IP: ip.Mask(mask), Mask: mask})
 		}
 	}
 	return networks, nil

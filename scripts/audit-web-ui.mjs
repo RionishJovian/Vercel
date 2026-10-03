@@ -40,7 +40,7 @@ for (const file of htmlFiles) {
     if (!fs.existsSync(diskPath)) fail(file, `missing local asset ${urlPath}`);
   }
 
-  if (/href="(?:#|javascript:)/i.test(source)) fail(file, "contains a placeholder or javascript: link");
+  if (/href="(?:#"|javascript:)/i.test(source)) fail(file, "contains a placeholder or javascript: link");
 
   for (const match of source.matchAll(/<button([^>]*)\bid="([^"]+)"([^>]*)>/gi)) {
     const attrs = `${match[1]} ${match[3]}`;

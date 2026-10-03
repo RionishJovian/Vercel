@@ -568,6 +568,8 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 				routers.GET("", routerHandler.ListRouters)
 				routers.GET("/:id/capabilities", securityHandler.RouterCapabilities)
 				routers.GET("/:id/quick-config", securityHandler.ReadQuickConfig)
+				routers.GET("/:id/network/:action", auth.RequireMinRole(model.RoleAdmin), securityHandler.NetworkControl)
+				routers.POST("/:id/network/:action", auth.RequireMinRole(model.RoleAdmin), securityHandler.NetworkControl)
 				routers.PUT("/:id/quick-config", auth.RequireMinRole(model.RoleAdmin), securityHandler.ApplyQuickConfig)
 				routers.POST("/:id/gateway/:action", auth.RequireMinRole(model.RoleAdmin), securityHandler.GatewaySetup)
 			routers.GET("/:id/gateway/:action", securityHandler.GatewaySetup)

@@ -8,7 +8,7 @@ devices, settings, purchases and Telegram bot binding.
 
 **Current agent handoff:** [docs/CURRENT-HANDOFF.md](docs/CURRENT-HANDOFF.md)
 
-**Status date:** 2026-10-01 (Asia/Yangon). Deployment claims describe recorded
+**Status date:** 2026-10-03 (Asia/Yangon). Deployment claims describe recorded
 results on that date, not continuous health monitoring.
 
 ## Actively maintained application
@@ -40,10 +40,14 @@ TanStack references are not the deployed console.
 
 The guided **Network setup** workspace separates customer LAN/DHCP/Hotspot
 configuration from the Gateway device diagnostics. It suggests private LAN
-addresses after reading existing addresses and routes; preview and apply repeat
+addresses after reading existing addresses, routes and subscriber/client pools; preview and apply repeat
 those checks. Users must choose actual uplink and customer port roles explicitly.
-This does not implement multi-WAN balancing, WAN failover, PPPoE provisioning,
-Wi-Fi SSID configuration or a cloud WebFig proxy. See
+The new task-focused WAN, PPPoE and existing-network controls implement reviewed,
+backed-up router changes. Two disposable CHRs verified WAN failover/recovery,
+equal-cost routing, PPPoE authentication/internet and DHCP reservation delivery.
+SSID editors are implemented but separately held for physical-radio acceptance;
+CAPsMAN configuration and a cloud WebFig proxy remain outside this slice. The
+new control rollout is pending at this source checkpoint. See
 [network workflow scope and acceptance](docs/NETWORK-SETUP-WORKFLOW.md).
 
 The project is in **functional workflow completion and production acceptance**.

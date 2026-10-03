@@ -21,7 +21,7 @@ assert.ok(!html.includes('Hotspot readiness'));
 context.ME.user.user_role = 'VIEWER';
 html = context.routerBoardPanel([{...device,deployment_layer:'MAIN_GATEWAY'}], {});
 assert.ok(!html.includes('data-edit=')); assert.ok(!html.includes('data-reboot='));
-assert.ok(html.includes('Gateway settings'));
+assert.ok(html.includes('Router name and DNS'));
 
 const element = () => ({hidden:true, disabled:false, isConnected:true, listeners:{},
   addEventListener(event, fn) {this.listeners[event]=fn;}});

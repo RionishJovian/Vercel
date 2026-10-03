@@ -1,5 +1,10 @@
 # Guided network setup — 2026-10-03
 
+Follow-up: [Network controls](NETWORK-CONTROLS.md) records the newly implemented
+WAN/PPPoE/existing-network editors, two-CHR acceptance and separately held Wi-Fi
+rollout. It supersedes the missing-implementation list below, not the recorded
+deployment or broader outstanding hardware/guest tests.
+
 The Network setup navigation item opens a task-focused customer-network form.
 Gateways remains device registration, Magic Hub connection, health and service
 discovery. Its name/DNS dialog links to this form instead of embedding it.

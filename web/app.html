@@ -36,6 +36,7 @@
   <script src="/assets/js/api.js" defer></script>
   <script src="/assets/js/app.js" defer></script>
   <script src="/assets/js/i18n.js" defer></script>
+  <script src="/assets/js/network-control.js" defer></script>
   <link rel="stylesheet" href="/assets/vendor/maplibre/maplibre-gl.css">
   <style>
     /* ════════════════════════════════════════════════════════════════════
@@ -243,6 +244,10 @@
       <button class="nav-item" data-view="sites">Sites</button>
       <button class="nav-item" data-view="gateways">Gateways</button>
       <button class="nav-item" data-view="network">Network setup</button>
+      <button class="nav-item" data-view="wan">WAN and failover</button>
+      <button class="nav-item" data-view="pppoe">PPPoE subscribers</button>
+      <button class="nav-item" data-view="wifi">Wi-Fi networks</button>
+      <button class="nav-item" data-view="existing">Existing networks</button>
       <button class="nav-item" data-view="routers">Downstream devices</button>
       <div class="rail-section">Automation</div>
       <button class="nav-item" data-view="security">Security</button>
@@ -318,6 +323,10 @@ const VIEWS = {
   routers:  { title: "Downstream devices", lead: "Manage switches, access points and controllers behind your gateway." },
   gateways: { title: "Gateways", lead: "Connect routers to Magic Hub and check device health and capabilities." },
   network:  { title: "Network setup", lead: "Create a customer LAN, assign addresses and enable Hotspot from one guided setup." },
+  wan: { title: "WAN and failover", lead: "Review internet uplinks, balance connections or prepare a backup ISP." },
+  pppoe: { title: "PPPoE subscribers", lead: "Configure subscriber services, accounts and bandwidth plans." },
+  wifi: { title: "Wi-Fi networks", lead: "Edit SSIDs and security on the device that actually provides Wi-Fi." },
+  existing: { title: "Existing networks", lead: "Manage live DHCP, Hotspot, address pools, reservations and bandwidth limits." },
   topology: { title: "Topology", lead: "See how the cloud hub, gateways, access points, and client devices connect." },
   incidents:{ title: "Incidents", lead: "Review network problems, take action, and track their resolution." },
   security: { title: "Security", lead: "Find exposed services and RouterOS versions that need attention." },
@@ -381,6 +390,10 @@ async function loadView(name, main, me) {
     else if (name === "routers") await renderSites(main);
     else if (name === "gateways") await renderSites(main, "gateways");
     else if (name === "network") await renderNetworkSetup(main);
+    else if (name === "wan" || name === "pppoe" || name === "wifi" || name === "existing") {
+      const data=await MM.get("/routers");
+      if(main.querySelector("#content")?.isConnected) await MMNetwork.mount(main.querySelector("#content"),name,Array.isArray(data.routers)?data.routers:asArray(data),SITE_EDITOR_ROLES.includes(ME?.user?.user_role));
+    }
     else if (name === "topology") await renderTopology(main);
     else if (name === "incidents") await renderIncidents(main);
     else if (name === "security") await renderSecurity(main);
@@ -1677,7 +1690,7 @@ async function renderNetworkSetup(main) {
     <label>Gateway<select class="input" id="network-router"><option value="">Choose a gateway</option>${routers.map(r=>`<option value="${esc(r.device_id)}">${esc(r.hardware_name)}</option>`).join("")}</select></label>
     <div id="network-editor" aria-live="polite">${routers.length ? "Choose a gateway to read its interfaces and suggest settings." : 'Connect a gateway from <a href="#gateways">Gateways</a> first.'}</div></section>
     <section class="panel"><h2>Related business tasks</h2><p><a class="btn" href="#portal">Design and deploy captive portal</a> <a class="btn" href="#vouchers">Manage guest vouchers</a> <a class="btn" href="#topology">Access points and topology</a> <a class="btn" href="#security">Router security</a></p>
-    <p>Wi-Fi SSID configuration, multi-WAN load balancing, WAN failover and PPPoE provisioning are not available in this release. Wi-Fi readiness is not an SSID editor, and WebFig security setup is not a cloud WebFig session.</p></section>`;
+    <p><a class="btn" href="#wan">WAN balancing and failover</a> <a class="btn" href="#pppoe">PPPoE subscribers</a> <a class="btn" href="#wifi">Wi-Fi SSIDs</a> <a class="btn" href="#existing">Manage existing networks</a>. WebFig security setup is not a cloud WebFig session.</p></section>`;
   const editor = content.querySelector("#network-editor"), select = content.querySelector("#network-router");
   let revision = 0;
   select.addEventListener("change", async () => {

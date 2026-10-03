@@ -1,5 +1,23 @@
 # Current agent handoff
 
+## 2026-10-03 broader network controls — TESTED, rollout pending
+
+Supersedes the older "missing" implementation status below, not its deployment
+record. Four task-first workspaces and typed inventory/review/apply routes now
+exist for WAN/failover, PPPoE, Wi-Fi and existing-network settings. Full Go tests,
+focused race/vet/static and synthetic browser checks passed. Two disposable,
+loopback-only CHRs verified primary-probe failover/recovery, both balanced paths,
+PPPoE authentication/internet, DHCP reservation delivery, and actual-record
+DHCP/Hotspot/pool/profile edits. No registered customer router was changed.
+
+No migration is needed. Production network controls default off; separately
+gated Wi-Fi writes must remain off pending an approved physical AP. New source
+has not yet been deployed at this checkpoint. Detailed guard/token/rollback
+behavior, lab evidence and remaining boundaries:
+[Network controls](NETWORK-CONTROLS.md). The staged changes also repair initial
+LAN setup's scalar field/duration verification and reserve unrouted pools when
+suggesting subnets. Complete-app production acceptance is not claimed.
+
 ## 2026-10-03 guided network setup — DEPLOYED, discovery verified
 
 Dedicated Network setup replaces the LAN/DHCP/Hotspot form embedded in the router

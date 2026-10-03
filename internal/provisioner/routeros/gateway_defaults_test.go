@@ -13,7 +13,7 @@ func TestGatewayDefaultsReadOnlyAndAvoidAssignedAndRoutedNetworks(t *testing.T) 
 		t.Fatalf("defaults=%+v error=%v", g, err)
 	}
 	for _, cmd := range r.commands {
-		if cmd != gatewayAddressesCommand && cmd != gatewayRoutesCommand {
+		if cmd != gatewayAddressesCommand && cmd != gatewayRoutesCommand && cmd != gatewayPoolsCommand {
 			t.Fatalf("suggestions mutated router: %s", cmd)
 		}
 	}
@@ -39,6 +39,23 @@ func TestGatewayDefaultsFailClosed(t *testing.T) {
 		r := &gatewayRunner{routes: routes}
 		if _, err := quickConfigApplier(r).GatewayDefaults(context.Background(), "biz-1", "dev-1"); err == nil {
 			t.Fatalf("accepted unparseable or fully reserved inventory: %q", routes)
+		}
+	}
+}
+
+func TestGatewayDefaultsReserveUnroutedSubscriberPool(t *testing.T) {
+	r := &gatewayRunner{objects: map[string]map[string]string{"/ip pool": {"ranges": "192.168.50.10-192.168.50.200"}}}
+	g, err := quickConfigApplier(r).GatewayDefaults(context.Background(), "biz-1", "dev-1")
+	if err != nil || g.Address != "192.168.51.1/24" {
+		t.Fatalf("unrouted subscriber pool reused: %+v %v", g, err)
+	}
+	if _, err = quickConfigApplier(r).PreviewGateway(context.Background(), "biz-1", "dev-1", validGatewaySetup()); err == nil {
+		t.Fatal("gateway preview reused an existing subscriber pool")
+	}
+	for _, ranges := range []string{"192.168.50.200-192.168.50.10", "bad-range", "192.168.50.10-192.168.50.200-extra"} {
+		r.objects["/ip pool"]["ranges"] = ranges
+		if _, err = quickConfigApplier(r).GatewayDefaults(context.Background(), "biz-1", "dev-1"); err == nil {
+			t.Fatalf("malformed pool accepted: %q", ranges)
 		}
 	}
 }

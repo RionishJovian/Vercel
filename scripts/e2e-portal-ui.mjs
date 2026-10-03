@@ -93,6 +93,16 @@ const server = createServer(async (req, res) => {
     return json(200,{result:{verified:true,backup:"flash/hotspot-original"}});
   }
   if (url.pathname === "/api/v1/routers/dev-1/quick-config") return json(200, {config:{identity:"lab",dns_servers:["1.1.1.1"],allow_remote_dns:false}});
+  if (url.pathname === "/api/v1/routers/dev-1/network/inventory") return json(200,{inventory:{write_enabled:true,wifi_write_enabled:true,interfaces:[{name:'ether1',type:'ether',running:true},{name:'ether2',type:'ether',running:true}],available:{wifi:true,wireless:false,subscribers:true,ppp_profiles:true,dhcp:true,pools:true,pppoe_clients:true},objects:{wifi:[{id:'*1',values:{name:'wifi1','configuration.ssid':'Business','configuration.country':'myanmar',disabled:'no'}}],dhcp_clients:[{id:'*2',values:{interface:'ether1',gateway:'192.0.2.1'}},{id:'*3',values:{interface:'ether2',gateway:'198.51.100.1'}}],ppp_profiles:[{id:'*4',values:{name:'business'}}],pools:[{id:'*5',values:{name:'clients',ranges:'192.168.70.10-192.168.70.200'}}],dhcp:[{id:'*6',values:{name:'customers','address-pool':'clients','lease-time':'1h',disabled:'no'}}]}}});
+  if (url.pathname === "/api/v1/routers/dev-1/network/preview") {
+    let raw='';for await(const chunk of req)raw+=chunk;const body=JSON.parse(raw);writes.push({network_preview:body});
+    await delay(200);return json(200,{review:{confirmation:'network-confirmation',steps:['Update selected router settings'],warnings:['Test a real client after configuration readback'],expires_at:new Date(Date.now()+300000).toISOString()}});
+  }
+  if (url.pathname === "/api/v1/routers/dev-1/network/apply") {
+    let raw='';for await(const chunk of req)raw+=chunk;const body=JSON.parse(raw);writes.push({network_apply:body});
+    if(body.confirmation!=='network-confirmation')return json(400,{error:'review required'});
+    return json(200,{result:{verified:true,backup:'network-test-backup'},audit_recorded:true});
+  }
   if (url.pathname === "/api/v1/routers/dev-1/gateway/interfaces") return json(200, {interfaces:[{name:"ether1",type:"ether",running:true},{name:"ether2",type:"ether",running:true}]});
   if (url.pathname === "/api/v1/routers/dev-1/gateway/defaults") return json(200, {defaults:{name:"guest-lan",gateway_cidr:"192.168.52.1/24",pool_start:"192.168.52.10",pool_end:"192.168.52.250"}});
   if (url.pathname === "/api/v1/routers/dev-1/gateway/preview" && req.method === "POST") {
@@ -264,6 +274,42 @@ try {
   await cdp.send("Page.addScriptToEvaluateOnNewDocument", { source: `localStorage.setItem('mm_token','acceptance-token')` });
   await cdp.send("Page.navigate", { url: `http://127.0.0.1:${port}/app.html#portal` });
   await waitFor(() => cdp.eval("!!document.querySelector('#plan-add')"), "portal editor");
+  if (process.env.E2E_NETWORK_CONTROL_ONLY) {
+    const choose=async view=>{
+      await cdp.eval(`loadView(${JSON.stringify(view)},document.querySelector('#main'),ME)`);
+      await waitFor(()=>cdp.eval("!!document.querySelector('[data-router]')"),'network device selector');
+      await cdp.eval("document.querySelector('[data-router]').value='dev-1';document.querySelector('[data-router]').dispatchEvent(new Event('change'))");
+      await waitFor(()=>cdp.eval("!!document.querySelector('[data-form]')"),'network form');
+    };
+    await choose('wan');
+    assert.equal(await cdp.eval("document.querySelector('[name=wan1]').value"),'','uplink choice is explicit');
+    await cdp.eval("for(const n of ['1','2']){document.querySelector('[name=wan'+n+']').value='ether'+n;document.querySelector('[name=wan'+n+']').dispatchEvent(new Event('change',{bubbles:true}))}");
+    assert.equal(await cdp.eval("document.querySelector('[name=gateway1]').value"),'192.0.2.1','detected DHCP gateway');
+    assert.equal(await cdp.eval("!!document.querySelector('[data-apply]')"),false,'no apply without review');
+    await cdp.eval("document.querySelector('[data-form]').requestSubmit();document.querySelector('[name=gateway1]').dispatchEvent(new Event('input',{bubbles:true}))");
+    await delay(350);
+    assert.equal(await cdp.eval("!!document.querySelector('[data-apply]')"),false,'stale review response discarded');
+    await cdp.eval("document.querySelector('[data-form]').requestSubmit()");
+    await waitFor(()=>cdp.eval("!!document.querySelector('[data-apply]')"),'review');
+    assert.equal(await cdp.eval("document.querySelector('[data-apply]').disabled"),true,'explicit consent needed');
+    await cdp.eval("document.querySelector('[data-consent]').checked=true;document.querySelector('[data-consent]').dispatchEvent(new Event('change'));document.querySelector('[data-apply]').click()");
+    await waitFor(()=>cdp.eval("document.querySelector('[data-review]').textContent.includes('Router settings verified')"),'verified result');
+    assert.equal(writes.filter(w=>w.network_apply).length,1,'one apply');
+    await choose('pppoe');
+    assert.equal(await cdp.eval("document.querySelector('[name=gateway_cidr]').value"),'192.168.52.1/24','live-checked suggested subscriber prefix');
+    await choose('wifi');
+    assert.equal(await cdp.eval("document.querySelector('[name=ssid]').value"),'Business','live SSID loaded');
+    assert.equal(await cdp.eval("document.querySelector('[name=password]').value"),'','existing password never returned');
+    await cdp.eval("document.querySelector('[name=password]').value='new-fixture-secret';document.querySelector('[data-form]').requestSubmit()");
+    await waitFor(()=>cdp.eval("!!document.querySelector('[data-apply]')"),'Wi-Fi review');
+    assert.equal(await cdp.eval("document.querySelector('[data-review]').textContent.includes('new-fixture-secret')"),false,'review hides secrets');
+    assert.equal(await cdp.eval("JSON.stringify(localStorage).includes('new-fixture-secret')"),false,'no password browser draft');
+    await choose('existing');
+    assert.equal(await cdp.eval("document.querySelector('[name=lease-time]').value"),'1h','existing DHCP fields loaded');
+    await cdp.send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:2,mobile:true});
+    assert.equal(await cdp.eval("document.documentElement.scrollWidth<=innerWidth+1"),true,'mobile has no horizontal overflow');
+    console.log('Network controls browser acceptance passed: dedicated tasks, detected values, stale review protection, consent, verified apply, secret handling, existing records and mobile layout.');
+  } else
   if (process.env.E2E_NETWORK_SETUP_ONLY) {
     await cdp.eval("loadView('network', document.querySelector('#main'), ME)");
     await waitFor(() => cdp.eval("!!document.querySelector('#network-router')"), "network workspace");

@@ -64,6 +64,10 @@ func (a *DeviceApplier) GatewayInterfaces(ctx context.Context, businessID, devic
 	if e != nil {
 		return nil, e
 	}
+	return gatewayInterfaces(ctx, r)
+}
+
+func gatewayInterfaces(ctx context.Context, r CommandRunner) ([]GatewayInterface, error) {
 	out, e := r.Run(ctx, gatewayInterfacesCommand)
 	if e != nil {
 		return nil, e
@@ -272,12 +276,21 @@ func (a *DeviceApplier) ApplyGateway(ctx context.Context, businessID, deviceID s
 	mu := lock.(*sync.Mutex)
 	mu.Lock()
 	defer mu.Unlock()
+	if until, ok := networkGuardUntil.Load(businessID + ":" + deviceID); ok && time.Now().Before(until.(time.Time)) {
+		return result, fmt.Errorf("a prior network restoration timer may still be active; wait three minutes and reload")
+	}
 	r, e := runnerForDevice(ctx, a.src, a.factory, a.timeout, businessID, deviceID)
 	if e != nil {
 		return result, e
 	}
 	if e = gatewayPreflight(ctx, r, g, network, steps); e != nil {
 		return result, e
+	}
+	// Survives an API restart: an earlier router-side network undo job may
+	// still be running even when the in-memory cooldown was lost.
+	jobs, jobErr := networkCount(ctx, r, "/system script job print count-only")
+	if jobErr != nil || jobs != 1 {
+		return result, fmt.Errorf("router has an active script job; wait before creating another network")
 	}
 	result.Backup = snapshotName(deviceID+"-gateway", time.Now().UTC())
 	for _, cmd := range []string{"/export file=" + result.Backup, "/system backup save name=" + result.Backup} {
@@ -323,12 +336,30 @@ func (a *DeviceApplier) ApplyGateway(ctx context.Context, businessID, deviceID s
 				return result, fmt.Errorf("could not install temporary setup traffic guard")
 			}
 		}
-		out, e := r.Run(ctx, s.menu+" print value-list detail where "+gatewaySelector(s))
+		// Comments can be printed as ;;; headings and addresses as columns.
+		// Verify explicit scalar fields, not human-oriented print formatting.
+		fields := []string{}
+		for _, key := range keys {
+			if key != "secret" {
+				fields = append(fields, key)
+			}
+		}
+		if s.menu == "/ip dhcp-server" || s.menu == "/ip hotspot" {
+			fields = append(fields, "invalid")
+		}
+		menu := networkMenu{path: s.menu, fields: fields}
+		command := strings.Replace(networkReadCommand(menu), s.menu+" find]", s.menu+" find where "+gatewaySelector(s)+"]", 1)
+		out, e := r.Run(ctx, command)
 		if e != nil {
 			rollback()
 			return result, fmt.Errorf("gateway readback failed at %s", s.menu)
 		}
-		actual := parseValueList(out)
+		objects, parseErr := parseNetworkObjects(menu, out, "gateway")
+		if parseErr != nil || len(objects) != 1 {
+			rollback()
+			return result, fmt.Errorf("gateway scalar readback missing or ambiguous at %s", s.menu)
+		}
+		actual := objects[0].Values
 		if actual["invalid"] == "yes" || actual["invalid"] == "true" {
 			rollback()
 			return result, fmt.Errorf("RouterOS marked %s invalid", s.menu)
@@ -337,23 +368,7 @@ func (a *DeviceApplier) ApplyGateway(ctx context.Context, businessID, deviceID s
 			if key == "secret" {
 				continue
 			}
-			got := actual[key]
-			if key == "disabled" || key == "use-radius" {
-				got = strings.ReplaceAll(strings.ReplaceAll(got, "false", "no"), "true", "yes")
-			}
-			if key == "lease-time" {
-				if parseUptimeSeconds(got) == 3600 {
-					got = "1h"
-				}
-			}
-			if key == "login-by" || key == "dns-server" {
-				a, b := strings.Split(got, ","), strings.Split(want, ",")
-				sort.Strings(a)
-				sort.Strings(b)
-				got = strings.Join(a, ",")
-				want = strings.Join(b, ",")
-			}
-			if got != want {
+			if !networkEqual(key, actual[key], want) {
 				rollback()
 				return result, fmt.Errorf("gateway verification failed at %s field %s", s.menu, key)
 			}
