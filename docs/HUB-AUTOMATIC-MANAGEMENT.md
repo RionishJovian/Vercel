@@ -3,7 +3,7 @@
 Generate the script, paste the entire script into WinBox New Terminal within
 30 minutes, then select **Finish connection**. The generated account accepts
 traffic from the app's private address, 10.77.0.9, and uses a dedicated RSA SSH
-key. Existing management accounts are available through the Advanced section.
+key. The user-facing setup has no manual SSH credential form.
 
 The backend requires tenant administrator permissions and a recent authenticated
 Hub handshake. It derives the destination from the signed Hub allocation, checks
@@ -27,7 +27,7 @@ and places a tunnel-interface/input rule for TCP 22 from 10.77.0.9 ahead of inpu
 drop rules. It enables a disabled SSH service with its service address restricted
 to 10.77.0.9/32. For an already enabled SSH service, it preserves existing service
 addresses and adds the app address when the list is restricted. A custom SSH port
-requires Advanced setup. User ownership and existing managed firewall rules are
+requires operator-assisted configuration. User ownership and existing managed firewall rules are
 checked before replacing managed resources. WAN/LAN interfaces are not reset.
 
 Software checks cover authorization, stale handshakes, destination restrictions,

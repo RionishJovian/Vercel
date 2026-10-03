@@ -4,7 +4,6 @@ export function mountHubEnrollment(root, {api, escape:esc}) {
     const submit=form.querySelector('button[type="submit"]');
     const gateway=container.dataset.hubEnrollment;
     let busy=false;
-    const management=container.querySelector('[data-hub-management]');
     const finish=container.querySelector('[data-hub-finish]');
     finish?.addEventListener('click',async()=>{
       if(finish.disabled)return;
@@ -17,21 +16,6 @@ export function mountHubEnrollment(root, {api, escape:esc}) {
         message.textContent='Connected. Router management is ready. LAN devices require their own verification.';
       } catch(error) {if(container.isConnected)message.textContent=error.status===503?'Automatic setup is unavailable on this deployment.':'Connection not verified yet. Run the entire script and retry. Setup expires after 30 minutes or an app restart; generate a new script if needed.';}
       finally {if(finish.isConnected)finish.disabled=false;}
-    });
-    management?.addEventListener?.('submit',async event=>{
-      event.preventDefault();
-      const button=management.querySelector('button[type="submit"]'),message=management.querySelector('[role="status"]');
-      if(button.disabled||!management.reportValidity())return;
-      const fields=new FormData(management);
-      if(fields.get('confirm')!=='on')return;
-      button.disabled=true;message.textContent='Verifying private, pinned SSH access…';
-      try {
-        const result=await api.post(`/vps/peers/${encodeURIComponent(gateway)}/authenticate`,{username:fields.get('username'),password:fields.get('password'),port:Number(fields.get('port')),fingerprint:String(fields.get('fingerprint')||'').trim(),confirm:true});
-        if(!container.isConnected)return;
-        if(result.state!=='management_authenticated')throw Error('unverified');
-        message.textContent='Management authenticated and securely saved. LAN devices still need separate verification.';
-      } catch {if(container.isConnected)message.textContent='Management was not confirmed. Check the recent Hub handshake, trusted SSH fingerprint, credentials and private firewall rule.';}
-      finally {management.querySelector('[name="password"]').value='';if(button.isConnected)button.disabled=false;}
     });
     const scriptPanel=(name,title,script)=>{
       if(typeof script!=='string'||!script.trim()||script.length>32768)throw Error('missing script');

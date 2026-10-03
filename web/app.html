@@ -1400,18 +1400,6 @@ function routerBoardPanel(routers, fleet, capabilityByID = new Map()) {
           </form>
           <h3>2. Finish connection</h3><p>After running the entire script in WinBox, verify the connection here. No router username, password or fingerprint entry is needed for automatic setup.</p>
           <button type="button" class="btn" data-hub-finish>Finish connection</button><div data-hub-finish-status role="status" aria-live="polite"></div>
-          <details><summary>Advanced: use an existing management account</summary>
-          <h3>Existing management account</h3><p>After the tunnel is verified, use a dedicated RouterOS account with SSH access. Keep SSH private: allow the app's tunnel address (10.77.0.9) only on the Magic Hub interface, ahead of your input drop rule. Do not expose SSH to the internet or replace existing firewall rules.</p>
-          <p>On your own computer, obtain the SSH host fingerprint over the trusted local network: <code>ssh-keyscan -p 22 ROUTER_LAN_IP | ssh-keygen -lf -</code>. Verify that you are using the correct router, then paste its <code>SHA256:…</code> fingerprint. No automatic trust-on-first-use is used.</p>
-          <form data-hub-management class="quick-config-form">
-            <label>Router SSH username<input name="username" required maxlength="128" autocomplete="off"></label>
-            <label>Router SSH password<input name="password" type="password" required maxlength="512" autocomplete="new-password"></label>
-            <label>SSH port<input name="port" type="number" min="1" max="65535" value="22" required></label>
-            <label>Verified SSH fingerprint<input name="fingerprint" required autocomplete="off" placeholder="SHA256:…"></label>
-            <label class="check-label"><input name="confirm" type="checkbox" required> I verified this router's fingerprint and authorize secure credential storage.</label>
-            <button type="submit" class="btn">Verify and save management access</button><div role="status" aria-live="polite"></div>
-          </form>
-          </details>
         </details></div>` : ""}
       <footer>${canEdit ? `<button class="btn btn-sm" type="button" data-edit="${esc(router.device_id)}">Edit record</button>` : ""}<button class="btn btn-sm" type="button" data-router-topology="${esc(router.device_id)}">Topology</button>${canEdit ? `<button class="btn btn-sm" type="button" data-reboot="${esc(router.device_id)}"${state !== "up" ? " disabled title=\"No verified reachability\"" : ""}>Reboot</button>` : ""}</footer>
     </article>`;
@@ -1670,7 +1658,7 @@ async function renderSites(main, workspace = location.hash === "#gateways" ? "ga
 
   if (gatewayOnly) {
     wireHubLookup(content); wireConns(main, conns, sites);
-    const {mountHubEnrollment}=await import("/assets/js/hub-enrollment.js?v=20261003-auto-management-2");
+    const {mountHubEnrollment}=await import("/assets/js/hub-enrollment.js?v=20261003-simple-management-3");
     if(content.isConnected)mountHubEnrollment(content,{api:MM,escape:esc});
   }
   else wireAllowance(main, allowance, requests, allowanceKinds);
