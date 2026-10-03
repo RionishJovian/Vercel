@@ -20,12 +20,14 @@ window.MMNetwork = (() => {
   queue:{title:'Customer bandwidth limits',menu:'queues',create:true,fields:[['name','Limit name'],['target','Client address / prefix'],['max-limit','Upload / download speed (e.g. 10M/20M)'],['disabled','Limit state','state']]}
  };
  const choices={wan:['wan','pppoe_client'],pppoe:['pppoe_server','pppoe_service','subscriber','ppp_profile'],wifi:['wifi','wireless'],existing:['dhcp','pool','dhcp_network','hotspot','hotspot_profile','lease','queue']};
+ const descriptions={wan:'Keep a backup ISP ready or distribute connections across two ISPs.',pppoe_client:'Connect an ISP that gave you a PPPoE username and password.',pppoe_server:'Set up internet service for your wired subscribers.',pppoe_service:'Change the plan or state of an existing subscriber service.',subscriber:'Create or manage a customer login.',ppp_profile:'Set address allocation and speeds for a subscriber plan.',wifi:'Change the name and password of an onboard Wi-Fi network.',wireless:'Manage radios using the older RouterOS wireless driver.',dhcp:'Manage automatic client address assignment.',pool:'Adjust the addresses available to clients.',dhcp_network:'Set the gateway and DNS supplied to LAN clients.',hotspot:'Manage an existing guest internet service.',hotspot_profile:'Configure how guests sign in to a Hotspot.',lease:'Reserve an address for a specific client.',queue:'Set a client upload and download limit.'};
+ const workspaces={wan:['Internet connections','Choose how your business connects to the internet.'],pppoe:['Customer internet','Manage subscriber services, customer logins and speed plans.'],wifi:['Wi-Fi networks','Manage the radios on the selected device. Remote access points need their own connected device.'],existing:['LAN and Hotspot','Manage the services already running on your customer network.']};
  const objects=(inventory,key)=>(inventory.objects?.[key]||[]);
  const label=o=>o.values.name||o.values['service-name']||o.values.address||o.id;
  async function mount(host,workspace,routers,canEdit,api=MM){
   let revision=0,inventory=null,defaults={},review=null,pending=null;
   const kinds=choices[workspace];
-  host.innerHTML=`<section class="panel"><h2>${esc({wan:'WAN balancing and failover',pppoe:'PPPoE business services',wifi:'Wi-Fi and access points',existing:'Manage existing networks'}[workspace])}</h2><p>Load the selected router, edit actual settings, review the change, then apply with backup and verified readback. Opening this page changes nothing.</p>
+  host.innerHTML=`<section class="panel network-workspace"><header><p class="network-eyebrow">NETWORK MANAGEMENT</p><h2>${esc(workspaces[workspace][0])}</h2><p>${esc(workspaces[workspace][1])}</p></header><ol class="network-steps" aria-label="Change workflow"><li>1 · Choose device</li><li>2 · Configure</li><li>3 · Review and apply</li></ol>
    <label>Managed device<select class="input" data-router><option value="">Choose a connected device</option>${routers.map(r=>`<option value="${esc(r.device_id)}">${esc(r.hardware_name)}</option>`).join('')}</select></label>
    <div data-editor aria-live="polite">${routers.length?'Choose a device to read its current settings.':'Connect a device from Gateways first.'}</div></section>`;
   const select=host.querySelector('[data-router]'),editor=host.querySelector('[data-editor]');
@@ -47,20 +49,22 @@ window.MMNetwork = (() => {
    }catch(e){if(current()&&revision===stamp)editor.textContent=`Could not read this device safely. Nothing applied. ${error(e)}`}
   }
   function draw(){
-   editor.innerHTML=`<p><button class="btn" type="button" data-reload>Reload router</button></p><label>Task<select class="input" data-kind>${kinds.map(k=>`<option value="${k}">${esc(schema[k].title)}</option>`).join('')}</select></label><div data-settings></div>`;
+   editor.innerHTML=`<div class="network-context"><div><strong>Live device settings loaded</strong><p>${(inventory.interfaces||[]).length} interfaces reported · Opening settings does not change the router.</p></div><button class="btn" type="button" data-reload>Refresh status</button></div><h3>What would you like to manage?</h3><div class="network-tasks">${kinds.map(k=>`<button type="button" class="network-task" data-task="${k}" aria-pressed="false"><strong>${esc(schema[k].title)}</strong><span>${esc(descriptions[k])}</span><small>${schema[k].menu?`${objects(inventory,schema[k].menu).length} records reported`:'Setup wizard'}</small></button>`).join('')}</div><select data-kind hidden aria-hidden="true">${kinds.map(k=>`<option value="${k}">${esc(schema[k].title)}</option>`).join('')}</select><div class="network-settings" data-settings></div>`;
    editor.querySelector('[data-reload]').onclick=reload;
+   editor.querySelectorAll('[data-task]').forEach(button=>button.onclick=()=>{editor.querySelector('[data-kind]').value=button.dataset.task;drawSettings()});
    editor.querySelector('[data-kind]').onchange=drawSettings;drawSettings();
   }
   function drawSettings(){
    ++revision;review=null;pending=null;
    const kind=editor.querySelector('[data-kind]').value,s=schema[kind],pane=editor.querySelector('[data-settings]');
+   editor.querySelectorAll('[data-task]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.task===kind)));
    if(!canEdit){pane.textContent='An owner or administrator must change network settings.';return}
    if(inventory.write_enabled!==true){pane.textContent='Router changes are not enabled in this release. Hardware and connectivity acceptance must finish before rollout; nothing was applied.';return}
    if((kind==='wifi'||kind==='wireless')&&inventory.wifi_write_enabled!==true){pane.textContent='Wi-Fi changes are awaiting physical-radio acceptance. No SSID was changed. WAN, PPPoE and existing-network controls have a separate rollout.';return}
    if(s.menu&&!inventory.available?.[s.menu]){pane.textContent='This RouterOS menu could not be read safely or is not supported on this device. No changes are offered.';return}
    let list=s.menu?objects(inventory,s.menu):[];
    if(kind==='lease')list=list.filter(o=>!['yes','true'].includes(o.values.dynamic));
-   pane.innerHTML=(s.menu?`<label>${esc(s.title)}<select class="input" data-record>${s.create?'<option value="">Create new</option>':''}${list.map(o=>`<option value="${esc(o.id)}">${esc(label(o))}</option>`).join('')}</select></label>`:'')+'<div data-fields></div>';
+   pane.innerHTML=`<header><p class="network-eyebrow">CONFIGURE</p><h3>${esc(s.title)}</h3><p>${esc(descriptions[kind])}</p></header>`+(s.menu?`<label>Choose a record<select class="input" data-record>${s.create?'<option value="">Create new</option>':''}${list.map(o=>`<option value="${esc(o.id)}">${esc(label(o))}</option>`).join('')}</select></label>`:'')+'<div data-fields></div>';
    if(s.menu&&!s.create&&!list.length){pane.innerHTML+='<p>No existing records. Use Network setup for a customer LAN / Hotspot, or create a PPPoE subscriber service.</p>';return}
    const record=pane.querySelector('[data-record]');if(record)record.onchange=fields;fields();
    function fields(){
@@ -80,7 +84,8 @@ window.MMNetwork = (() => {
      const control=options?`<select class="input" name="${key}" required>${options.map(([id,t])=>`<option value="${esc(id)}"${String(value)===id?' selected':''}>${esc(t)}</option>`).join('')}</select>`:`<input class="input" name="${key}" type="${type==='password'?'password':type==='number'?'number':'text'}" value="${type==='password'?'':esc(value)}" required ${type==='password'?'autocomplete="new-password"': ''} maxlength="128">`;
      return `<label>${esc(text)}${control}</label>`;
     };
-    pane.querySelector('[data-fields]').innerHTML=`<form data-form>${s.fields.map(input).join('')}<p>${kind==='wan'?'ISP gateways must be in their ports’ current subnets. Detected DHCP gateways fill when you select a port. Balancing shares connections, not the bandwidth of one download.':''}${kind==='wifi'||kind==='wireless'?'Changing Wi-Fi disconnects clients. Set the real installation country. Manage each remote AP as its own device.':''}</p><button class="btn" type="submit">Review router changes</button></form><div data-review aria-live="polite"></div>`;
+    const groups=kind==='wan'?[['Connection strategy',s.fields.slice(0,1)],['Primary internet connection',s.fields.slice(1,3)],['Backup / second internet connection',s.fields.slice(3)]]:kind==='pppoe_server'?[['Service and port',s.fields.slice(0,2)],['Subscriber addresses',s.fields.slice(2,5)],['DNS and speed',s.fields.slice(5)]]:[[selected?'Edit current settings':'New service settings',s.fields]];
+    pane.querySelector('[data-fields]').innerHTML=`<form data-form>${groups.map(([title,items])=>`<fieldset><legend>${esc(title)}</legend><div class="network-field-grid">${items.map(input).join('')}</div></fieldset>`).join('')}<p class="network-note">${kind==='wan'?'Detected DHCP gateways fill when you select a port. Both ISP gateways must match their ports’ subnets. Balancing shares connections, not the speed of one download.':kind==='wifi'||kind==='wireless'?'Changing Wi-Fi disconnects clients. Set the actual installation country.':'Suggested values are not applied until you review and confirm the change.'}</p><button class="btn" type="submit">Review changes →</button><p class="network-note">Next: review the exact changes. A backup is made when you apply.</p></form><div class="network-review" data-review aria-live="polite"></div>`;
     const form=pane.querySelector('[data-form]'),output=pane.querySelector('[data-review]');
     if(kind==='wan')for(const n of ['1','2'])form.elements['wan'+n].onchange=()=>{const c=objects(inventory,'dhcp_clients').find(o=>o.values.interface===form.elements['wan'+n].value);form.elements['gateway'+n].value=c?.values.gateway||''};
     const invalidate=()=>{++revision;review=null;pending=null;output.textContent='Settings changed. Review again before applying.'};

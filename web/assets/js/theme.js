@@ -37,6 +37,7 @@
     logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>'
   };
   var viewIcons = {
+    gateways: "router", network: "network", wan: "activity", pppoe: "users", wifi: "wifi", existing: "template", media: "template",
     overview: "dashboard", fleet: "activity", topology: "network", incidents: "alert", sites: "building", routers: "router",
     security: "shield", backups: "backup", scans: "scan", templates: "template",
     termlog: "terminal", portal: "wifi", vouchers: "ticket", store: "coins", coins: "coins", unlockkeys: "key",

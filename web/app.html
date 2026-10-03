@@ -11,6 +11,30 @@
   <meta name="robots" content="noindex">
   <script src="/assets/js/theme.js"></script>
   <link rel="stylesheet" href="/assets/css/styles.css">
+  <style>
+    .network-workspace { max-width:1100px; margin-inline:auto; }
+    .network-workspace header h2,.network-workspace header h3 { margin-top:0; }
+    .network-eyebrow { font-size:.72rem; font-weight:700; letter-spacing:.14em; color:var(--accent); margin-bottom:8px; }
+    .network-steps { display:flex; flex-wrap:wrap; gap:12px; padding:0; margin:24px 0; list-style:none; }
+    .network-steps li { padding:9px 14px; border:1px solid var(--line); border-radius:999px; font-size:.85rem; }
+    .network-context { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:18px; margin:24px 0; border:1px solid var(--line); border-radius:12px; }
+    .network-context p { margin:5px 0 0; font-size:.85rem; }
+    .network-tasks { display:grid; grid-template-columns:repeat(auto-fit,minmax(225px,1fr)); gap:12px; }
+    .network-task { display:flex; flex-direction:column; gap:9px; padding:18px; text-align:left; font:inherit; color:var(--ink); background:var(--surface); border:1px solid var(--line); border-radius:12px; cursor:pointer; }
+    .network-task span { font-size:.88rem; line-height:1.5; color:var(--ink-soft); }
+    .network-task small { color:var(--ink-muted); margin-top:auto; }
+    .network-task[aria-pressed="true"] { border-color:var(--accent); box-shadow:inset 0 0 0 1px var(--accent); }
+    .network-task:focus-visible { outline:3px solid var(--accent); outline-offset:3px; }
+    .network-settings { margin-top:28px; padding-top:24px; border-top:1px solid var(--line); }
+    .network-settings fieldset { border:1px solid var(--line); border-radius:12px; margin:20px 0; padding:20px; min-width:0; }
+    .network-settings legend { padding:0 8px; font-weight:650; }
+    .network-field-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; }
+    .network-field-grid label { display:flex; flex-direction:column; gap:8px; margin:0; font-size:.9rem; }
+    .network-field-grid .input { width:100%; min-width:0; box-sizing:border-box; }
+    .network-note { font-size:.85rem; color:var(--ink-soft); line-height:1.6; }
+    .network-review:not(:empty) { padding:20px; margin-top:24px; border:1px solid var(--accent); border-radius:12px; }
+    @media(max-width:640px) { .network-field-grid { grid-template-columns:1fr; } .network-context { align-items:flex-start; flex-direction:column; } .network-tasks { grid-template-columns:1fr; } .network-settings fieldset { padding:14px; } }
+  </style>
   <!-- Live-preview surfaces (guest-portal frame + voucher sheet). Scoped to their
        own classes and kept inline deliberately: Cloudflare serves /assets/* as
        immutable for a week, and deploy.sh only hash-stamps the asset URLs written
@@ -243,11 +267,11 @@
       <button class="nav-item" data-view="incidents">Incidents</button>
       <button class="nav-item" data-view="sites">Sites</button>
       <button class="nav-item" data-view="gateways">Gateways</button>
-      <button class="nav-item" data-view="network">Network setup</button>
-      <button class="nav-item" data-view="wan">WAN and failover</button>
-      <button class="nav-item" data-view="pppoe">PPPoE subscribers</button>
+      <button class="nav-item" data-view="network">New network setup</button>
+      <button class="nav-item" data-view="wan">Internet connections</button>
+      <button class="nav-item" data-view="pppoe">Customer internet</button>
       <button class="nav-item" data-view="wifi">Wi-Fi networks</button>
-      <button class="nav-item" data-view="existing">Existing networks</button>
+      <button class="nav-item" data-view="existing">LAN and Hotspot</button>
       <button class="nav-item" data-view="routers">Downstream devices</button>
       <div class="rail-section">Automation</div>
       <button class="nav-item" data-view="security">Security</button>
@@ -322,11 +346,11 @@ const VIEWS = {
   sites:    { title: "Sites", lead: "Organize routers by location and prepare each site to go live." },
   routers:  { title: "Downstream devices", lead: "Manage switches, access points and controllers behind your gateway." },
   gateways: { title: "Gateways", lead: "Connect routers to Magic Hub and check device health and capabilities." },
-  network:  { title: "Network setup", lead: "Create a customer LAN, assign addresses and enable Hotspot from one guided setup." },
-  wan: { title: "WAN and failover", lead: "Review internet uplinks, balance connections or prepare a backup ISP." },
-  pppoe: { title: "PPPoE subscribers", lead: "Configure subscriber services, accounts and bandwidth plans." },
+  network:  { title: "New network setup", lead: "Create a customer LAN, assign addresses and enable Hotspot from one guided setup." },
+  wan: { title: "Internet connections", lead: "Review internet uplinks, balance connections or prepare a backup ISP." },
+  pppoe: { title: "Customer internet", lead: "Configure subscriber services, accounts and bandwidth plans." },
   wifi: { title: "Wi-Fi networks", lead: "Edit SSIDs and security on the device that actually provides Wi-Fi." },
-  existing: { title: "Existing networks", lead: "Manage live DHCP, Hotspot, address pools, reservations and bandwidth limits." },
+  existing: { title: "LAN and Hotspot", lead: "Manage live DHCP, Hotspot, address pools, reservations and bandwidth limits." },
   topology: { title: "Topology", lead: "See how the cloud hub, gateways, access points, and client devices connect." },
   incidents:{ title: "Incidents", lead: "Review network problems, take action, and track their resolution." },
   security: { title: "Security", lead: "Find exposed services and RouterOS versions that need attention." },
@@ -4487,11 +4511,11 @@ const PRODUCT_GUIDE = [
   ["incidents", "Operations", "Incidents", "Review network problems, acknowledge ownership, apply an available fix, and close resolved incidents."],
   ["sites", "Operations", "Sites", "Place business locations on the map, assign routers, and check what each site still needs before going live."],
   ["gateways", "Operations", "Gateways", "Connect a router to Magic Hub and inspect its device health and supported services."],
-  ["network", "Operations", "Network setup", "Choose a gateway and its uplink/customer ports. Use suggested non-overlapping LAN and DHCP addresses, preview the changes, then explicitly apply customer LAN and Hotspot settings."],
-  ["wan", "Operations", "WAN and failover", "Select actual ISP ports and gateways. Review primary/backup failover or equal-cost sharing before applying with backup and readback. Sharing does not combine one download's bandwidth."],
-  ["pppoe", "Operations", "PPPoE subscribers", "Load a connected router, use suggested subscriber addresses, and manage PPPoE services, accounts and speed plans through review and explicit apply."],
+  ["network", "Operations", "New network setup", "Choose a gateway and its uplink/customer ports. Use suggested non-overlapping LAN and DHCP addresses, preview the changes, then explicitly apply customer LAN and Hotspot settings."],
+  ["wan", "Operations", "Internet connections", "Select actual ISP ports and gateways. Review primary/backup failover or equal-cost sharing before applying with backup and readback. Sharing does not combine one download's bandwidth."],
+  ["pppoe", "Operations", "Customer internet", "Load a connected router, use suggested subscriber addresses, and manage PPPoE services, accounts and speed plans through review and explicit apply."],
   ["wifi", "Operations", "Wi-Fi networks", "Choose the actual access-point device to inspect radio capabilities. SSID writes are held until physical-radio acceptance; a radio-free CHR is not an access point."],
-  ["existing", "Operations", "Existing networks", "Read live DHCP, pools, client DNS/gateway, Hotspot profiles, reservations and bandwidth settings. Review edits to existing records before applying."],
+  ["existing", "Operations", "LAN and Hotspot", "Read live DHCP, pools, client DNS/gateway, Hotspot profiles, reservations and bandwidth settings. Review edits to existing records before applying."],
   ["routers", "Operations", "Routers", "Add MikroTik devices, check their connection, configure supported settings, create backups, and reboot them remotely."],
   ["security", "Automation", "Security", "Find risky RouterOS services or versions, create a backup, and apply an available mitigation from the browser."],
   ["backups", "Automation", "Backups", "Create a router recovery point before maintenance and restore it when recovery is necessary."],
