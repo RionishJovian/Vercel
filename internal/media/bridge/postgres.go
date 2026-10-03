@@ -12,6 +12,12 @@ import (
 type Postgres struct{ db *database.DB }
 
 func NewPostgres(db *database.DB) *Postgres { return &Postgres{db: db} }
+
+// ResolveConnector authenticates relay traffic with the existing expiring PC
+// token. A supplied tenant ID is never accepted as authentication.
+func (p *Postgres) ResolveConnector(ctx context.Context, hash string) (string, error) {
+	return p.resolve(ctx, "token", hash)
+}
 func (p *Postgres) tenant(ctx context.Context, bid string, fn func(*sql.Tx) error) error {
 	tx, e := p.db.BeginTx(ctx, nil)
 	if e != nil {

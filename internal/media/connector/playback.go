@@ -5,17 +5,13 @@ import (
 	"io"
 	"mega-magic/internal/media/access"
 	"mega-magic/internal/media/jellyfin"
+	"mega-magic/internal/media/relay"
 	"time"
 )
 
 // PlaybackMetadata contains only the headers a guest relay may forward. It never
 // exposes an upstream URL, Jellyfin key or arbitrary upstream response headers.
-type PlaybackMetadata struct {
-	Status        int
-	ContentType   string
-	ContentLength int64
-	ContentRange  string
-}
+type PlaybackMetadata = relay.Metadata
 
 // StreamMedia is the owner-PC playback boundary. The relay must supply a check
 // bound to the authenticated business/pass/guest and owner-selected library;

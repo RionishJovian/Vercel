@@ -2,12 +2,21 @@
 
 **Read this before changing anything on the production servers.**
 
+**Latest 2026-10-04 update:** the user reports both VPS instances suspended for
+billing; read-only app SSH attempts time out. Do not treat historical statements
+of live/source parity below as current proof. The catalog/player outbound relay
+is implemented and locally tested in the next source continuation, not deployed.
+No laptop hosting, database restore, DNS or router change is authorized by a
+screenshot of another agent's recommendation. See MEDIA-RELAY.md for rollout
+and remaining real-PC acceptance requirements.
+
 **2026-10-04 source-only continuation:** paid-media bank/MMQR receipt approval,
 timed-pass and local-stream foundations were reviewed and validated locally.
 They are not a production rollout. After this source commit, do not assume
 GitHub/main is identical to the deployed version without checking the live SHA.
-Checkout sales must remain off until the guest catalog/player relay and local-PC
-acceptance are complete. See CURRENT-HANDOFF.md and MEDIA-PAID-ACCESS.md.
+Checkout sales must remain off until owner-local playback acceptance is complete.
+The next continuation implements the relay; see CURRENT-HANDOFF.md,
+MEDIA-RELAY.md and MEDIA-PAID-ACCESS.md.
 No production change or VPS stash operation was part of this continuation.
 
 Written by Hermes (Mac instance) on 2026-10-04. This document exists so any

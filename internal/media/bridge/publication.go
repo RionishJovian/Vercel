@@ -29,6 +29,7 @@ type MediaPoster struct {
 	Image string `json:"image"`
 }
 type MediaDesign struct {
+	Libraries     []string               `json:"libraries,omitempty"`
 	Payment       *MediaPayment          `json:"payment,omitempty"`
 	Name          string                 `json:"name"`
 	Headline      string                 `json:"headline"`
@@ -72,6 +73,7 @@ func (p MediaPayment) Validate() error {
 }
 
 var designColour = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
+var libraryID = regexp.MustCompile(`^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$`)
 
 func designText(s string, n int) bool {
 	return utf8.ValidString(s) && utf8.RuneCountInString(s) <= n && !strings.ContainsRune(s, 0)
@@ -99,6 +101,16 @@ func designImage(s string) bool {
 	return e == nil && f == format && c.Width > 0 && c.Height > 0 && c.Width <= 1200 && c.Height <= 1200
 }
 func (d MediaDesign) Validate() error {
+	if len(d.Libraries) > 16 {
+		return errors.New("select at most 16 libraries")
+	}
+	seen := map[string]bool{}
+	for _, id := range d.Libraries {
+		if !libraryID.MatchString(id) || seen[id] {
+			return errors.New("invalid selected library")
+		}
+		seen[id] = true
+	}
 	invalid := errors.New("invalid media design; use bounded text, whole-number pricing and resized PNG/JPEG pictures")
 	if d.Payment != nil {
 		if e := d.Payment.Validate(); e != nil {

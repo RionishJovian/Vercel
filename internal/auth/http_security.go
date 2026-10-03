@@ -49,7 +49,16 @@ func BoundedPortalRateLimit() gin.HandlerFunc {
 	return boundedRateLimit("too many portal requests", false)
 }
 
+// Four outbound workers poll and reauthorize ongoing streams; the login limit
+// of thirty/minute would disconnect a healthy PC after a few seconds.
+func BoundedMediaRelayRateLimit() gin.HandlerFunc {
+	return boundedRateLimitWithLimit("too many media relay requests", false, 600)
+}
+
 func boundedRateLimit(message string, skipLogout bool) gin.HandlerFunc {
+	return boundedRateLimitWithLimit(message, skipLogout, 30)
+}
+func boundedRateLimitWithLimit(message string, skipLogout bool, limit int) gin.HandlerFunc {
 	type bucket struct {
 		count int
 		until time.Time
@@ -76,7 +85,7 @@ func boundedRateLimit(message string, skipLogout bool) gin.HandlerFunc {
 			}
 		}
 		_, known := entries[key]
-		blocked := b.count >= 30 || (!known && len(entries) >= 4096)
+		blocked := b.count >= limit || (!known && len(entries) >= 4096)
 		if !blocked {
 			b.count++
 			entries[key] = b

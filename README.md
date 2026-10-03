@@ -8,6 +8,10 @@ devices, settings, purchases and Telegram bot binding.
 
 **Current agent handoff:** [docs/CURRENT-HANDOFF.md](docs/CURRENT-HANDOFF.md)
 
+**Latest hosting/media status (2026-10-04):** the user reports the VPS suspended.
+The outbound owner-PC catalog/player relay is implemented and locally tested,
+not deployed. See [relay verification and rollout](docs/MEDIA-RELAY.md).
+
 **2026-10-03 audit repairs:** [scope and validation](docs/AUDIT-FIXES-20261003.md).
 These repairs do not enable held Wi-Fi writes or unfinished paid media access.
 

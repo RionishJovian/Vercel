@@ -31,6 +31,7 @@ export function normalize(value = {}) {
   data.posterDensity = ["comfortable","compact"].includes(data.posterDensity) ? data.posterDensity : "comfortable";
   data.layout = ["shelves","lounge"].includes(data.layout) ? data.layout : defaults.layout;
   data.background = imageValue(data.background);
+  data.libraries=Array.isArray(value.libraries)?[...new Set(value.libraries.filter(id=>typeof id==='string' && /^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/.test(id)))].slice(0,16):[];
   const payment=value?.payment;
   data.payment=payment && typeof payment==='object' ? {bank_name:String(payment.bank_name||'').slice(0,100),bank_account:String(payment.bank_account||'').slice(0,100),bank_holder:String(payment.bank_holder||'').slice(0,160),mmqr:imageValue(payment.mmqr)} : null;
   data.tiles = Object.fromEntries(Object.entries(tileDefaults).map(([key, fallback]) => {
@@ -102,7 +103,7 @@ export function mountAppearance(content, business, user, api, isActive = () => t
   const initial = normalize({name:business?.company_name || defaults.name});
   const businessID = business?.business_id || user?.business_id;
   const key = businessID && user?.email ? `mm_media_design:${businessID}:${user.email}` : null;
-  let draft = initial, revision = 0, loaded = false, busy = false, edited = false;
+  let draft = initial, revision = 0, loaded = false, busy = false, edited = false, paidAccessReady=false;
   if (key) { try { const raw = localStorage.getItem(key); if (raw) draft = normalize(JSON.parse(raw)); } catch (_) {} }
   content.innerHTML = `<div class="panel"><div class="panel-body"><span class="fleet-kicker">MAGIC MEDIA · GUEST APPEARANCE</span><h2>Make your media lounge feel like yours.</h2><p>Publish your branded guest page to a shareable link. Publishing saves this design on the server; it does not enable Jellyfin playback or paid access yet.</p><p id="media-publication" role="status">Loading published design…</p><button type="button" class="btn btn-sm" data-media-reload>Reload published design</button><button type="button" class="btn btn-sm" data-media-unpublish disabled>Unpublish guest page</button></div></div>
     <div class="media-design-workspace"><form class="panel media-design-form" id="media-design-form"><div class="panel-body">
@@ -123,9 +124,10 @@ export function mountAppearance(content, business, user, api, isActive = () => t
       ${Object.entries(tileDefaults).map(([key,t])=>`<details class="media-tile-editor" open><summary>${t.title}</summary><label>Tile title<input class="input" name="tile-${key}-title" maxlength="80"></label><label>Caption<input class="input" name="tile-${key}-caption" maxlength="160"></label><label>Tile picture<input type="file" accept="image/jpeg,image/png,image/webp" data-media-image="tile-${key}"></label><button type="button" class="btn btn-sm" data-media-clear="tile-${key}">Remove picture</button></details>`).join("")}
       <h2>Featured preview artwork</h2><p class="muted small">These four samples show your design, not playable movies. This does not change movie metadata or artwork in Jellyfin.</p>
       ${posterNames.map((_,i)=>`<details class="media-tile-editor"><summary>Preview card ${i+1}</summary><label>Sample title<input class="input" name="poster-${i}-title" maxlength="80"></label><label>Preview picture<input type="file" accept="image/jpeg,image/png,image/webp" data-media-image="poster-${i}"></label><button type="button" class="btn btn-sm" data-media-clear="poster-${i}">Remove picture</button></details>`).join("")}
-      <h2>Planned media pass</h2><p class="muted small">Save your proposed price and duration with the guest page. Purchases stay disabled until timed playback access is ready.</p>
+      <h2>Guest libraries</h2><p class="muted small">Choose only libraries you are authorized to share. Files stay on your PC. Keep Jellyfin and the connector running for guest playback.</p><button type="button" class="btn" data-media-libraries>Load libraries from my PC</button><div data-media-library-options></div><p role="status" data-media-library-status></p>
+      <h2>Media pass</h2><p class="muted small">Guests pay by bank / MMQR. Your Telegram approval unlocks playback; the timer starts when the first stream is available. Publishing alone does not activate purchases.</p>
       <label>Price (MMK)<input class="input" name="price" type="number" min="1" max="1000000" step="1" required></label>
-      <label>Duration (hours)<input class="input" name="duration" type="number" min="1" max="1000000" step="1" required></label>
+      <label>Duration (hours)<input class="input" name="duration" type="number" min="1" max="720" step="1" required></label>
       <h2>Bank / MMQR payment details</h2><p class="muted small">Guests transfer to your account and attach a receipt. Your own Telegram bot delivers it for your approval or rejection. No payment gateway is required.</p>
       <label>Bank name<input class="input" name="bank_name" maxlength="100"></label>
       <label>Bank account number<input class="input" name="bank_account" maxlength="100"></label>
@@ -142,11 +144,27 @@ export function mountAppearance(content, business, user, api, isActive = () => t
     if (!p) {publication.textContent='No guest page has been published.';return;}
     publication.append(document.createTextNode('Published guest page: '));
     const link=document.createElement('a');link.href='/media.html?id='+encodeURIComponent(p.public_id);link.textContent='Open guest page';link.target='_blank';link.rel='noopener';publication.append(link);
-    publication.append(document.createTextNode(' · revision '+p.revision+'. Purchases and playback remain disabled.'));
+    publication.append(document.createTextNode(' · revision '+p.revision+(paidAccessReady?'. Paid playback requires selected libraries, an online PC and your Telegram review bot.':'. Paid playback has not been enabled on this server.')));
   };
-  let images = {}, uploadGeneration = 0;
+  let images = {}, uploadGeneration = 0, selectedLibraries=[];
+  const libraryOptions=form.querySelector('[data-media-library-options]'),libraryStatus=form.querySelector('[data-media-library-status]');
+  form.querySelector('[data-media-libraries]').onclick=async event=>{
+    const button=event.currentTarget;button.disabled=true;libraryStatus.textContent='Reading libraries from your media PC…';
+    try{const id=crypto.randomUUID();await api.post('/media/jobs',{id,operation:'libraries',payload:{}});
+      const deadline=Date.now()+125000;let libraries=null;
+      while(active() && Date.now()<deadline){const job=await api.get('/media/jobs/'+id);if(job.state==='succeeded'){libraries=job.result?.libraries;break;}if(['failed','cancelled','expired'].includes(job.state))throw new Error('Library request '+job.state+'. Check the connector.');await new Promise(resolve=>setTimeout(resolve,2000));}
+      if(!active())return;if(!Array.isArray(libraries))throw new Error('Libraries could not be confirmed. Keep the connector running and retry.');
+      libraryOptions.replaceChildren();
+      for(const library of libraries){if(!/^(?:[0-9a-f]{32}|[0-9a-f-]{36})$/.test(library.ItemId||'')||['photos','books'].includes(library.CollectionType))continue;
+        const label=document.createElement('label'),input=document.createElement('input');input.type='checkbox';input.value=library.ItemId;input.checked=selectedLibraries.includes(input.value);label.className='media-check';label.append(input,document.createTextNode(' '+library.Name));libraryOptions.append(label);
+        input.onchange=()=>{if(input.checked&&selectedLibraries.length>=16){input.checked=false;libraryStatus.textContent='Select at most 16 libraries.';return;}selectedLibraries=input.checked?[...new Set([...selectedLibraries,input.value])]:selectedLibraries.filter(id=>id!==input.value);edited=true;};
+      }
+      libraryStatus.textContent=libraryOptions.childElementCount?'Select the libraries guests may play, then publish.':'No playable libraries found. Add videos or music in Jellyfin first.';
+    }catch(e){if(active())libraryStatus.textContent=e.message||'Libraries unavailable.';}finally{button.disabled=false;}
+  };
   const pendingUploads = new Map();
   const fill = data => {
+    selectedLibraries=[...(data.libraries||[])];libraryOptions.querySelectorAll('input').forEach(input=>input.checked=selectedLibraries.includes(input.value));
     images = {background:data.background,mmqr:data.payment?.mmqr||''}; uploadGeneration++; pendingUploads.clear();
     for(const name of ['bank_name','bank_account','bank_holder'])form.elements.namedItem(name).value=data.payment?.[name]||'';
     for (const [name,value] of Object.entries(data)) { const field = form.elements.namedItem(name); if (field) {if (field.type === "checkbox") field.checked = value; else field.value = value;} }
@@ -159,6 +177,7 @@ export function mountAppearance(content, business, user, api, isActive = () => t
       const field = form.elements.namedItem(name); return [name, field.type === "checkbox" ? field.checked : field.value];
     }));
     data.background=images.background;
+    data.libraries=selectedLibraries;
     const payment=Object.fromEntries(['bank_name','bank_account','bank_holder'].map(name=>[name,form.elements.namedItem(name).value.trim()]));payment.mmqr=images.mmqr||'';
     data.payment=Object.values(payment).some(Boolean)?payment:null;
     data.tiles=Object.fromEntries(Object.keys(tileDefaults).map(key=>[key,{title:form.elements.namedItem(`tile-${key}-title`).value,caption:form.elements.namedItem(`tile-${key}-caption`).value,image:images[`tile-${key}`]}]));
@@ -185,7 +204,7 @@ export function mountAppearance(content, business, user, api, isActive = () => t
     if(busy || !api)return;
     if(explicit && edited && !confirm('Discard your unsaved edits and reload the published design?'))return;
     busy=true;controls();
-    try {const response=await api.get('/media/publication');if(!active())return;const p=response.publication;revision=p?.revision||0;loaded=true;showPublication(p);if(explicit||!edited){fill(p?normalize(p.design):draft);preview();edited=false;}}
+    try {const response=await api.get('/media/publication');if(!active())return;paidAccessReady=response.paid_access_ready===true;const p=response.publication;revision=p?.revision||0;loaded=true;showPublication(p);if(explicit||!edited){fill(p?normalize(p.design):draft);preview();edited=false;}}
     catch(e){if(active()){loaded=false;publication.textContent=e.message||'Published design could not be loaded.';}}
     finally{busy=false;if(active())controls();}
   };
@@ -195,7 +214,7 @@ export function mountAppearance(content, business, user, api, isActive = () => t
     if (!loaded || busy || !api) return;
     busy=true;controls();status.textContent='Publishing guest page…';
     const design=read();
-    try {const response=await api.put('/media/publication?revision='+revision,design);if(!active())return;const p=response.publication;revision=p.revision;showPublication(p);edited=JSON.stringify(read())!==JSON.stringify(design);status.textContent='Guest page published. Purchases and playback are still disabled.'+(edited?' You have newer unpublished edits.':'');if(key){try{localStorage.removeItem(key);}catch(_){}}}
+    try {const response=await api.put('/media/publication?revision='+revision,design);if(!active())return;paidAccessReady=response.paid_access_ready===true;const p=response.publication;revision=p.revision;showPublication(p);edited=JSON.stringify(read())!==JSON.stringify(design);status.textContent='Guest page published. '+(paidAccessReady?'Paid playback checks your library and computer before checkout.':'Paid playback has not been enabled on this server.')+(edited?' You have newer unpublished edits.':'');if(key){try{localStorage.removeItem(key);}catch(_){}}}
     catch(e){if(active()){status.textContent=e.message||'Publication not confirmed.';loaded=false;}}
     finally{busy=false;if(active())controls();}
   });

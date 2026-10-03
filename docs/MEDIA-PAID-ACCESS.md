@@ -1,5 +1,15 @@
 # Magic Media paid access — owner-PC architecture
 
+## Latest continuation: catalog/player relay implemented locally
+
+The missing outbound catalog/playback relay is now implemented and exercised
+through real localhost HTTP/WebSocket endpoints. The guest player uses a separate
+signed HttpOnly session, owner-selected libraries and ledger-authorized seeks;
+an open stream is interrupted at its deadline. Read MEDIA-RELAY.md for current
+verification and hosting requirements. The older sections below describe the
+preceding foundations, not the latest implementation state. Production and real
+owner-PC native decoding remain unverified; the user reports the VPS suspended.
+
 ## 2026-10-04 review evidence
 
 Reviewed the source changes against the production handover. Corrected the

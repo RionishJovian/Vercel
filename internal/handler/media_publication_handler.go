@@ -31,14 +31,14 @@ func (h *MediaPublicationHandler) Get(c *gin.Context) {
 	}
 	p, e := h.Store.Publication(c.Request.Context(), auth.GetBusinessID(c))
 	if errors.Is(e, sql.ErrNoRows) {
-		c.JSON(200, gin.H{"publication": nil})
+		c.JSON(200, gin.H{"publication": nil, "paid_access_ready": h.PurchasesEnabled})
 		return
 	}
 	if e != nil {
 		c.JSON(503, gin.H{"error": "Published design could not be loaded."})
 		return
 	}
-	c.JSON(200, gin.H{"publication": p})
+	c.JSON(200, gin.H{"publication": p, "paid_access_ready": h.PurchasesEnabled})
 }
 func (h *MediaPublicationHandler) Publish(c *gin.Context) {
 	if !h.available(c) {
@@ -64,7 +64,7 @@ func (h *MediaPublicationHandler) Publish(c *gin.Context) {
 		c.JSON(503, gin.H{"error": "Publication was not confirmed. Reload before retrying."})
 		return
 	}
-	c.JSON(200, gin.H{"publication": p})
+	c.JSON(200, gin.H{"publication": p, "paid_access_ready": h.PurchasesEnabled})
 }
 func (h *MediaPublicationHandler) Unpublish(c *gin.Context) {
 	if !h.available(c) {
@@ -98,5 +98,5 @@ func (h *MediaPublicationHandler) Public(c *gin.Context) {
 		return
 	}
 	// Never claim that publishing a theme enables paid access.
-	c.JSON(200, gin.H{"design": p.Design, "revision": p.Revision, "published_at": p.PublishedAt, "purchases_enabled": h.PurchasesEnabled, "playback_enabled": false})
+	c.JSON(200, gin.H{"design": p.Design, "revision": p.Revision, "published_at": p.PublishedAt, "purchases_enabled": h.PurchasesEnabled && len(p.Design.Libraries) > 0, "playback_enabled": h.PurchasesEnabled && len(p.Design.Libraries) > 0})
 }

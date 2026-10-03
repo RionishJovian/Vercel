@@ -32,6 +32,30 @@ func validCatalogItem(i CatalogItem) bool {
 	return mediaID.MatchString(i.ID) && i.Name != "" && len(i.Name) <= 512 && !strings.ContainsAny(i.Name, "\x00\r\n") && playableType(i.Type) && i.RunTimeTicks >= 0
 }
 
+func ValidateCatalog(items []CatalogItem) bool {
+	if len(items) > 100 {
+		return false
+	}
+	for _, item := range items {
+		if !validCatalogItem(item) {
+			return false
+		}
+	}
+	return true
+}
+
+// ValidateStreamMetadata is also used at the cloud boundary: a paired computer
+// cannot make the guest forward an arbitrary range or non-media response.
+func ValidateStreamMetadata(status int, length int64, requested, returned string) bool {
+	if length < 0 || !validRange(requested) {
+		return false
+	}
+	if status == 200 {
+		return requested == "" && returned == ""
+	}
+	return status == 206 && validContentRange(returned, length) && matchesRequestedRange(requested, returned)
+}
+
 // Catalog reads only an owner-selected library, at most 100 items per page.
 // Callers must bind that selection to the business before a guest can browse.
 func (c *Client) Catalog(ctx context.Context, library string, start int) ([]CatalogItem, error) {

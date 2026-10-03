@@ -9,13 +9,20 @@ const source=fs.readFileSync('web/assets/js/media-guest.js','utf8').replace(/^im
 const dom=new JSDOM(html,{url:'https://example.test/media.html?id='+id,runScripts:'outside-only'});
 const w=dom.window;
 w.publishedDocument=()=>'<p>Synthetic guest page</p>';
+w.HTMLMediaElement.prototype.pause=function(){};w.HTMLMediaElement.prototype.load=function(){};w.HTMLMediaElement.prototype.play=async function(){};
 let state='pending', submitted=false, checkouts=0, failDelivery=true;
 const pass=()=>({id:passID,amount:1500,currency:'MMK',duration_seconds:3600,state,payment_deadline:new Date(Date.now()+60000).toISOString(),payment:{bank_name:'Fixture bank',bank_account:'123',bank_holder:'Fixture owner'}});
 w.fetch=async(url,options)=>{
+ if(url.startsWith('/api/v1/media-playback/')){
+  assert.equal(options.credentials,'same-origin','Only the isolated player session uses its path-scoped cookie');
+  if(url.endsWith('/session')){assert.match(options.headers.Authorization,/^Bearer [0-9a-f]{64}$/);return {ok:true,json:async()=>({libraries:['1'.repeat(32)]})};}
+  assert.equal(options.headers,undefined,'Catalog does not transmit a Jellyfin key or staff token');
+  return {ok:true,json:async()=>({items:[{Id:'2'.repeat(32),Name:'<img src=x onerror=alert(1)> Fixture title'}],has_more:false})};
+ }
  assert.equal(options.credentials,'omit','Staff cookies must never authenticate a guest purchase');
  assert.equal(options.cache,'no-store');
  const reply=body=>({ok:true,json:async()=>body});
- if(url==='/api/v1/media-guest/'+id)return reply({design:{price:1500,duration:1},purchases_enabled:true});
+ if(url==='/api/v1/media-guest/'+id)return reply({design:{price:1500,duration:1},purchases_enabled:true,playback_enabled:true});
  assert.match(options.headers.Authorization,/^Bearer [0-9a-f]{64}$/);
  if(url.endsWith('/checkout')){
   checkouts++;
@@ -54,9 +61,16 @@ await settle();
 assert.match(w.document.querySelector('#media-order-status').textContent,/Approved/);
 assert.equal(w.document.querySelector('#media-receipt-form').hidden,true);
 assert.equal(checkouts,1,'Refreshing an approved order does not create a second checkout');
+assert.equal(w.document.querySelector('#media-playback').hidden,false);
+w.document.querySelector('#media-catalog-load').click();await settle();
+assert.equal(w.document.querySelector('#media-catalog img'),null,'Catalog titles are text, not executable HTML');
+w.document.querySelector('.media-title').click();await settle();
+assert.match(w.document.querySelector('#media-player').getAttribute('src'),/\/stream\/1{32}\/2{32}$/);
+assert.ok(!w.document.querySelector('#media-player').src.includes(JSON.parse(w.sessionStorage.getItem('mm_media_guest_order:'+id)).secret),'Guest secret is not in the player URL');
 state='refunded';
 w.document.querySelector('#media-order-refresh').click();
 await settle();
 assert.match(w.document.querySelector('#media-order-status').textContent,/Access has ended/);
+assert.equal(w.document.querySelector('#media-player').getAttribute('src'),null,'Refund stops the UI player');
 dom.window.close();
 console.log('Guest receipt DOM checks passed: bank terms, cookie isolation, upload, delivery retry, approval refresh and refund.');

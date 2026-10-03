@@ -1,6 +1,21 @@
 # Current agent handoff
 
-## 2026-10-04 uncommitted paid-media review — source validated, NOT deployed
+## 2026-10-04 outbound media relay — implemented/tested locally, host unavailable
+
+The previously missing catalog/player relay is now implemented with a maintained
+outbound WebSocket transport, explicit owner-library selection, isolated guest
+player sessions, range seeking and timed/revoked access enforcement. Checkout
+checks PC/library availability; browsing and unavailable files do not spend paid
+time. Local HTTP/WebSocket acceptance, affected race/vet suites and owner/guest
+DOM regressions passed. Real owner-PC native decoding and production rollout
+are not claimed. See [media relay](MEDIA-RELAY.md) for exact boundaries.
+
+The user reported both VPS suspended for billing; two read-only app SSH attempts
+timed out. Stop treating the old deployed-state claims below as current proof.
+No production write or laptop/DNS migration was made. Hosting restoration now
+requires a user-selected path and verified backup restore, not repeated SSH.
+
+## 2026-10-04 preceding paid-media review — committed 472e776, NOT deployed
 
 The bank/MMQR checkout/receipt/owner-bot changes and local streaming foundations
 were reviewed against HANDOVER.md. Fixed checkout-key reuse after unpublish/

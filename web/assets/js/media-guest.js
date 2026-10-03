@@ -6,6 +6,9 @@ const bank=document.querySelector('#media-bank-details'),bankText=document.query
 const valid=value=>typeof value==='string' && /^[0-9a-f]{64}$/.test(value);
 const random=()=>Array.from(crypto.getRandomValues(new Uint8Array(32)),b=>b.toString(16).padStart(2,'0')).join('');
 let order=null,busy=false;
+const playback=document.querySelector('#media-playback'),player=document.querySelector('#media-player'),catalog=document.querySelector('#media-catalog'),catalogLoad=document.querySelector('#media-catalog-load'),catalogMore=document.querySelector('#media-catalog-more'),playbackStatus=document.querySelector('#media-playback-status');
+let libraries=[],libraryIndex=0,start=0,catalogBusy=false,playbackEnabled=false;
+function stopPlayback(){if(!player)return;player.pause();player.removeAttribute('src');player.load();player.hidden=true;}
 const storageKey='mm_media_guest_order:'+id;
 try{const stored=JSON.parse(sessionStorage.getItem(storageKey)||'null');if(stored && valid(stored.secret) && valid(stored.key) && (!stored.passId||valid(stored.passId)))order=stored;}catch(_){}
 function save(){sessionStorage.setItem(storageKey,JSON.stringify(order));}
@@ -29,6 +32,7 @@ function showPass(pass,submitted=false){
   if(details?.mmqr && /^data:image\/(png|jpeg);base64,/.test(details.mmqr))qr.src=details.mmqr;
   const labels={paid:'Approved. Your pass is paid; its timer starts at first authorized playback.',rejected:'The owner rejected this receipt. No access was granted.',refunded:'This pass was refunded. Access has ended.'};
   const expired=pass.state==='paid' && pass.expires_at && Date.parse(pass.expires_at)<=Date.now();
+  if(playback){playback.hidden=!playbackEnabled||pass.state!=='paid'||!!expired;if(playback.hidden&&player?.getAttribute('src'))stopPlayback();}
   orderStatus.textContent=expired?'Your paid pass has expired. Access has ended.':labels[pass.state]||(submitted?'Receipt submitted. Waiting for the owner to review it.':timely?'Transfer to the owner and upload your successful receipt.':'The receipt upload deadline has passed. Contact the owner; do not transfer payment.');
 }
 async function check(){if(busy||!order?.passId)return;busy=true;controls();try{const result=await request('/passes/'+order.passId);showPass(result.pass,result.receipt_submitted);}catch(e){orderStatus.textContent=e.message;}finally{busy=false;controls();}}
@@ -38,6 +42,24 @@ checkout.addEventListener('click',async()=>{
   catch(e){orderStatus.textContent=e.message||'Keep this page open and retry before paying.';}finally{busy=false;controls();}
 });
 refresh.addEventListener('click',check);
+async function playerRequest(path,options={}){
+  const response=await fetch('/api/v1/media-playback/'+id+'/'+order.passId+'/'+path,{...options,credentials:'same-origin',cache:'no-store'});
+  const body=await response.json().catch(()=>({}));if(!response.ok)throw new Error(body.error||'Playback unavailable. Check your pass and the owner’s media computer.');return body;
+}
+async function loadCatalog(reset=false){
+  if(catalogBusy||!order?.passId)return;catalogBusy=true;catalogLoad.disabled=true;catalogMore.disabled=true;
+  try{
+    if(reset){const session=await playerRequest('session',{method:'POST',headers:{Authorization:'Bearer '+order.secret}});libraries=session.libraries||[];libraryIndex=0;start=0;catalog.replaceChildren();}
+    if(!libraries[libraryIndex])throw new Error('The owner has not selected a library.');
+    const library=libraries[libraryIndex],result=await playerRequest('catalog/'+encodeURIComponent(library)+'?start='+start);
+    for(const item of result.items||[]){const button=document.createElement('button');button.type='button';button.className='media-title';button.textContent='Play · '+item.Name;button.onclick=()=>{stopPlayback();player.hidden=false;player.src='/api/v1/media-playback/'+id+'/'+order.passId+'/stream/'+encodeURIComponent(library)+'/'+encodeURIComponent(item.Id);playbackStatus.textContent='Playing '+item.Name+'. Your timed pass begins when streaming is available.';player.play().catch(()=>{playbackStatus.textContent='Press Play to start. If playback fails, this title may use a codec your browser does not support.';});};catalog.append(button);}
+    if(result.has_more){start+=100;}else{libraryIndex++;start=0;}
+    catalogMore.hidden=libraryIndex>=libraries.length;playbackStatus.textContent=catalog.childElementCount?'Choose a title to play.':catalogMore.hidden?'No playable titles are available. Contact the owner.':'No titles in this library. Use More titles to read the next library.';
+  }catch(e){playbackStatus.textContent=e.message;}finally{catalogBusy=false;catalogLoad.disabled=false;catalogMore.disabled=false;}
+}
+catalogLoad?.addEventListener('click',()=>loadCatalog(true));catalogMore?.addEventListener('click',()=>loadCatalog());
+player?.addEventListener('error',()=>{playbackStatus.textContent='The stream could not be played. Refresh your pass; check the owner’s PC and this file’s browser codec support.';check();});
+setInterval(()=>{if(order?.passId&&!document.hidden)check();},15000);
 form.addEventListener('submit',async event=>{
   event.preventDefault();if(busy||!order?.passId)return;
   const file=form.elements.namedItem('receipt').files[0];
@@ -51,7 +73,7 @@ async function load(){
     if(!/^[0-9a-f]{64}$/.test(id||''))throw new Error('This guest page link is invalid.');
     const response=await fetch('/api/v1/media-guest/'+id,{credentials:'omit',cache:'no-store',headers:{Accept:'application/json'}});
     if(!response.ok)throw new Error(response.status===404?'This guest page is unavailable or has been unpublished.':'Guest page could not be loaded. Please try again.');
-    const page=await response.json();frame.srcdoc=publishedDocument(page.design,page.purchases_enabled===true);frame.hidden=false;status.hidden=true;
+    const page=await response.json();playbackEnabled=page.playback_enabled===true;frame.srcdoc=publishedDocument(page.design,page.purchases_enabled===true);frame.hidden=false;status.hidden=true;
     payment.hidden=!page.purchases_enabled;
     if(page.purchases_enabled){terms.textContent=page.design.price+' MMK / '+page.design.duration+' hours';if(order?.passId)await check();}
   }catch(e){status.textContent=e.message||'Guest page unavailable.';}

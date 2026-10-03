@@ -71,6 +71,20 @@ func run() error {
 		return e
 	}
 	fmt.Println("Magic Media connected for this session. Keep this terminal open. Ctrl-C disconnects; pair again after restarting.")
+	// Independent bounded workers keep long guest streams from blocking owner
+	// inventory jobs. Transient guest failures do not stop the paired session.
+	for worker := 0; worker < 4; worker++ {
+		go func() {
+			for ctx.Err() == nil {
+				_ = runner.RelayStep(ctx)
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(time.Second):
+				}
+			}
+		}()
+	}
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 	for {

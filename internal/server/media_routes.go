@@ -99,20 +99,31 @@ func registerMediaRoutes(r *gin.Engine, service *auth.Service, db *database.DB, 
 		},
 	}
 	publishing.PurchasesEnabled = salesReady
+	playback := handler.NewMediaPlaybackHandler(bridge.NewPostgres(db), salesReady)
+	purchases.PlaybackReady = playback.Available
+	player := r.Group("/api/v1/media-playback", auth.BoundedPortalRateLimit(), auth.CookieOrigin())
+	player.POST("/:id/:passId/session", playback.Session)
+	player.GET("/:id/:passId/catalog/:library", playback.Catalog)
+	player.GET("/:id/:passId/stream/:library/:item", playback.Stream)
 	guest := r.Group("/api/v1/media-guest", auth.BoundedPortalRateLimit(), auth.CookieOrigin())
 	guest.POST("/:id/checkout", purchases.Checkout)
 	guest.GET("/:id/passes/:passId", purchases.Status)
 	guest.POST("/:id/passes/:passId/receipt", purchases.Receipt)
-	connector := r.Group("/api/v1/media-connector", auth.BoundedAuthRateLimit(), func(c *gin.Context) {
+	connectorSecurity := func(c *gin.Context) {
 		if c.GetHeader("Origin") != "" {
 			c.AbortWithStatus(403)
 			return
 		}
 		c.Header("Cache-Control", "no-store")
 		c.Next()
-	})
+	}
+	connector := r.Group("/api/v1/media-connector", auth.BoundedAuthRateLimit(), connectorSecurity)
 	connector.POST("/redeem", h.Redeem)
 	connector.POST("/poll", h.Poll)
 	connector.POST("/jobs/:id/result", h.Complete)
+	relayRoutes := r.Group("/api/v1/media-connector/relay", auth.BoundedMediaRelayRateLimit(), connectorSecurity)
+	relayRoutes.POST("/poll", playback.Poll)
+	relayRoutes.POST("/:task/check", playback.Check)
+	relayRoutes.GET("/:task/socket", playback.Socket)
 	return nil
 }

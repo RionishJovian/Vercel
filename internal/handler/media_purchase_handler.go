@@ -27,11 +27,12 @@ type MediaPurchaseStore interface {
 }
 
 type MediaPurchaseHandler struct {
-	Store       MediaPurchaseStore
-	Ready       bool // schema AND real playback acceptance; never inferred from a theme
-	ReceiptRoot string
-	Notify      func(context.Context, string, bridge.MediaPass, bridge.MediaReceipt, []byte) error
-	ReviewReady func(context.Context, string) bool
+	Store         MediaPurchaseStore
+	Ready         bool // schema AND real playback acceptance; never inferred from a theme
+	ReceiptRoot   string
+	Notify        func(context.Context, string, bridge.MediaPass, bridge.MediaReceipt, []byte) error
+	ReviewReady   func(context.Context, string) bool
+	PlaybackReady func(context.Context, string, string) bool
 }
 
 func (h *MediaPurchaseHandler) guest(c *gin.Context) (string, bool) {
@@ -87,6 +88,10 @@ func (h *MediaPurchaseHandler) Checkout(c *gin.Context) {
 	}
 	if h.ReviewReady == nil || !h.ReviewReady(ctx, bid) {
 		c.JSON(409, gin.H{"error": "The owner must configure their Telegram receipt-review bot first."})
+		return
+	}
+	if h.PlaybackReady != nil && !h.PlaybackReady(ctx, bid, pubID) {
+		c.JSON(409, gin.H{"error": "The owner's media computer is not ready for playback. Do not transfer payment; retry when it is online."})
 		return
 	}
 	// The store validates receiving details within order creation, while returning
