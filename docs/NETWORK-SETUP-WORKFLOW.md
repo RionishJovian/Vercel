@@ -70,3 +70,8 @@ from uplink choices; loopback and tunnel types are excluded from customer LAN
 choices. The live lab has only one Ethernet interface, so it must gain a separate
 customer-facing interface/bridge/VLAN before this initial-LAN workflow can be
 certified with real guests. Do not invent additional physical ports in the UI.
+
+Deployment: `a0cd08e` on main, API/frontend published to mikromagic.com. Signed-in
+live read-only acceptance returned actual interface options and suggested
+192.168.50.1/24; protected anonymous defaults request returned 401. Health,
+landing and console returned 200. No production router preview or apply ran.

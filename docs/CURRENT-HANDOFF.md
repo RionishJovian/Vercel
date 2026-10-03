@@ -1,6 +1,6 @@
 # Current agent handoff
 
-## 2026-10-03 guided network setup — implementation and local acceptance
+## 2026-10-03 guided network setup — DEPLOYED, discovery verified
 
 Dedicated Network setup replaces the LAN/DHCP/Hotspot form embedded in the router
 name/DNS dialog. GET `/routers/:id/gateway/defaults` suggests a private /24 only
@@ -8,7 +8,11 @@ after tenant-scoped reads of assigned addresses and routes. Preview/apply repeat
 the conflict checks. Port roles remain explicitly selected, never guessed.
 RouterOS/handler/server Go race tests and focused synthetic Chromium acceptance
 passed. No migration is required and no live router was mutated. App deployment
-verification is recorded separately when complete. Initial live discovery found
+verification: code commit `a0cd08e` pushed to main and deployed with the canonical
+`./deploy.sh all`; landing/app/health 200 and anonymous defaults API 401. The
+signed-in live page successfully reads the registered CHR's interfaces, suggests
+192.168.50.1/24, leaves ports unassigned and hides apply until preview. No live
+preview/apply or router mutation was performed. Initial live discovery found
 RouterOS 7.15.3 output incompatible with value-list fixtures; fixed scalar prefix
 reads were verified against the pinned CHR lab without mutations and the local
 race/browser tests reran successfully. Diagnostic mode:
