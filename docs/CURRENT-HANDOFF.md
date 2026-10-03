@@ -8,7 +8,11 @@ after tenant-scoped reads of assigned addresses and routes. Preview/apply repeat
 the conflict checks. Port roles remain explicitly selected, never guessed.
 RouterOS/handler/server Go race tests and focused synthetic Chromium acceptance
 passed. No migration is required and no live router was mutated. App deployment
-verification is recorded separately when complete.
+verification is recorded separately when complete. Initial live discovery found
+RouterOS 7.15.3 output incompatible with value-list fixtures; fixed scalar prefix
+reads were verified against the pinned CHR lab without mutations and the local
+race/browser tests reran successfully. Diagnostic mode:
+`cmd/guest-router-check -device UUID -network-inventory`.
 
 Multi-WAN load balancing, WAN failover, PPPoE and Wi-Fi SSID editors remain missing;
 this slice does not certify the whole app production-complete. Scope and next

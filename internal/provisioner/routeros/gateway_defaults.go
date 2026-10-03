@@ -10,6 +10,11 @@ import (
 
 var gatewayRoutePattern = regexp.MustCompile(`(?m)^\s*dst-address:\s*(\S+)`)
 
+// RouterOS 7 can render value-list addresses in columns and routes in detail
+// key=value format. Scalar get output avoids both ambiguous presentations.
+const gatewayAddressesCommand = `:foreach id in=[/ip address find] do={ :put ("address: " . [/ip address get $id address]) }`
+const gatewayRoutesCommand = `:foreach id in=[/ip route find] do={ :put ("dst-address: " . [/ip route get $id dst-address]) }`
+
 // Read both assigned and routed networks. Default routes do not reserve every
 // private subnet. All other routes are conservatively reserved, even inactive ones.
 func gatewayReservedNetworks(ctx context.Context, r CommandRunner) ([]*net.IPNet, error) {
@@ -18,13 +23,14 @@ func gatewayReservedNetworks(ctx context.Context, r CommandRunner) ([]*net.IPNet
 		command       string
 		pattern       *regexp.Regexp
 		ignoreDefault bool
-	}{{"/ip address print value-list detail", gatewayAddressPattern, false}, {"/ip route print value-list detail", gatewayRoutePattern, true}} {
+	}{{gatewayAddressesCommand, gatewayAddressPattern, false}, {gatewayRoutesCommand, gatewayRoutePattern, true}} {
 		out, err := r.Run(ctx, source.command)
 		if err != nil {
 			return nil, fmt.Errorf("could not read existing addresses and routes")
 		}
 		matches := source.pattern.FindAllStringSubmatch(out, -1)
-		if strings.TrimSpace(out) != "" && len(matches) == 0 {
+		lines := strings.FieldsFunc(out, func(c rune) bool { return c == '\r' || c == '\n' })
+		if len(lines) != len(matches) {
 			return nil, fmt.Errorf("could not parse existing addresses and routes")
 		}
 		for _, match := range matches {

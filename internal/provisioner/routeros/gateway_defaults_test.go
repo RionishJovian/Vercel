@@ -13,14 +13,14 @@ func TestGatewayDefaultsReadOnlyAndAvoidAssignedAndRoutedNetworks(t *testing.T) 
 		t.Fatalf("defaults=%+v error=%v", g, err)
 	}
 	for _, cmd := range r.commands {
-		if !strings.Contains(cmd, " print ") {
+		if cmd != gatewayAddressesCommand && cmd != gatewayRoutesCommand {
 			t.Fatalf("suggestions mutated router: %s", cmd)
 		}
 	}
 }
 
 func TestGatewayDefaultsFailClosed(t *testing.T) {
-	for _, routes := range []string{"unexpected output", "dst-address: invalid", "dst-address: 192.168.0.0/16\ndst-address: 10.0.0.0/8"} {
+	for _, routes := range []string{"unexpected output", "dst-address: invalid", "dst-address: 192.168.0.0/16\ndst-address: 10.0.0.0/8", "dst-address: 192.168.51.0/24\nunparsed record"} {
 		r := &gatewayRunner{routes: routes}
 		if _, err := quickConfigApplier(r).GatewayDefaults(context.Background(), "biz-1", "dev-1"); err == nil {
 			t.Fatalf("accepted unparseable or fully reserved inventory: %q", routes)

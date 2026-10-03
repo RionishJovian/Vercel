@@ -56,3 +56,11 @@ selection, preview invalidation, verified mock apply and 390px layout. Backend
 tests cover address/route collisions, malformed/exhausted suggestions and a route
 added between preview and apply. These do not certify a physical guest network
 or execute writes on the production CHR.
+
+Read-only compatibility on the registered CHR (RouterOS 7.15.3) found that
+`print value-list detail` produces columns for addresses and key=value routes.
+Discovery therefore uses fixed `:foreach` plus scalar `get` commands, yielding
+one prefix per record. These commands passed against the pinned lab router,
+including both management/LAN prefixes and its default route. The read-only
+`guest-router-check -device UUID -network-inventory` mode reproduces this check
+and refuses devices not named as the CHR lab. No router write is involved.

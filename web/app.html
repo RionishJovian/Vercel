@@ -1691,7 +1691,7 @@ async function renderNetworkSetup(main) {
       editor.innerHTML = canEdit ? gatewaySetupForm(asArray(inventory.interfaces), suggested.defaults) : "An owner or administrator must apply network changes.";
       if (canEdit) wireGatewaySetup(editor, router);
     } catch (e) {
-      if (content.isConnected && revision === request) editor.textContent = (e.data && e.data.error) || e.message;
+      if (content.isConnected && revision === request) editor.textContent = `Could not read this gateway's network safely. Check its Magic Hub connection and retry by selecting the gateway again. No settings were applied. ${(e.data && e.data.error) || e.message}`;
     }
   });
 }

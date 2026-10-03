@@ -20,14 +20,15 @@ import (
 func main() {
 	path := flag.String("config", "config.yaml", "configuration path")
 	device := flag.String("device", "", "existing CHR lab device UUID")
+	networkOnly := flag.Bool("network-inventory", false, "read only IPv4 address and route inventory")
 	flag.Parse()
-	if err := run(*path, *device); err != nil {
+	if err := run(*path, *device, *networkOnly); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run(path, device string) error {
+func run(path, device string, networkOnly bool) error {
 	if device == "" {
 		return fmt.Errorf("explicit lab device required")
 	}
@@ -59,6 +60,16 @@ func run(path, device string) error {
 		return fmt.Errorf("pinned lab transport unavailable")
 	}
 	runner := routeros.NewSSHTransport(sshCfg)
+	if networkOnly {
+		for _, command := range []string{`:foreach id in=[/ip address find] do={ :put ("address: " . [/ip address get $id address]) }`, `:foreach id in=[/ip route find] do={ :put ("dst-address: " . [/ip route get $id dst-address]) }`} {
+			out, err := runner.Run(ctx, command)
+			if err != nil {
+				return fmt.Errorf("network inventory command failed: %s", command)
+			}
+			fmt.Printf("%s\n%s\n", command, out)
+		}
+		return nil
+	}
 	checks := []struct{ name, command string }{
 		{"epoch clock", ":put [:tonsec [:timestamp]]"},
 		{"user counter get syntax", `:local ids [/ip hotspot user find]; :if ([:len $ids] = 0) do={ :put "NO-USERS" } else={ :local id [:pick $ids 0]; :put ("bytes-in: " . [/ip hotspot user get $id bytes-in]); :put ("bytes-out: " . [/ip hotspot user get $id bytes-out]) }`},

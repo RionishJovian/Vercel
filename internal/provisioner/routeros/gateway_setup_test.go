@@ -24,10 +24,10 @@ func (r *gatewayRunner) Run(_ context.Context, cmd string) (string, error) {
 	if strings.HasPrefix(cmd, "/export ") || strings.HasPrefix(cmd, "/system backup ") {
 		return "", nil
 	}
-	if cmd == "/ip address print value-list detail" {
+	if cmd == gatewayAddressesCommand {
 		return r.addresses, nil
 	}
-	if cmd == "/ip route print value-list detail" {
+	if cmd == gatewayRoutesCommand {
 		return r.routes, nil
 	}
 	if strings.HasPrefix(cmd, "/interface print count-only") {
