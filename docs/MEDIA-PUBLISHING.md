@@ -58,7 +58,10 @@ server reload, revision conflicts, public CSP, cookie isolation and withdrawn
 links with synthetic data. Isolated PostgreSQL tests passed three consecutive
 race-tested runs: persisted updates, tenant isolation, stale writes, suspension
 and withdrawn/reissued links. Production status is recorded in the current handoff
-after rollout.
+after rollout. The migration and API/web deployment completed at `d51e212`.
+Landing/app/health returned 200, and the signed-in live Guest design loaded
+the new enabled Publish control and unpublished status. This was a read-only
+live check; no customer design, Jellyfin account or paid access was changed.
 
 Commands: `go test -race ./internal/media/bridge ./internal/handler ./internal/server`,
 `node scripts/test-media-appearance.mjs`, `node scripts/test-media-dashboard.mjs`,

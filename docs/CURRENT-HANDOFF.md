@@ -1801,7 +1801,12 @@ conflict checks and unpublishing implemented. This does not enable paid playback
 the combined purchase/approval/identity/timed-access/expiry runtime remains open.
 Go race/static/browser checks passed, as did three isolated PostgreSQL publication
 tests. Production backup and schema-only rehearsal completed with owner approval.
-Rollout requires `20261003120000_magic_media_publications.sql` and API/web deploy.
+Migration `20261003120000_magic_media_publications.sql` was applied, forced RLS,
+tenant policy, grants and non-bypass runtime role checked. API/web deployment
+completed at `d51e212`; landing/app/health returned 200. Signed-in Nish live
+Guest design shows **Publish guest page** enabled and **No guest page has been
+published**, proving the new owner read path loads. No business page was published
+automatically, and no live Jellyfin/paid playback acceptance was performed.
 See [media publishing](MEDIA-PUBLISHING.md) for contracts, verification and backup.
 
 `specs/PROGRESS.md`, `specs/ROADMAP.md` and first-project recovery audits are dated

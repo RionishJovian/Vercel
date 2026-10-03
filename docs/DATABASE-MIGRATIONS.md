@@ -14,6 +14,9 @@ tenant RLS. Apply once after backup/rehearsal using ON_ERROR_STOP; verify the
 authenticated grants and tenant policy. Existing connector jobs are unchanged.
 This does not create paid passes or grant playback. See
 [media publishing](MEDIA-PUBLISHING.md) for rollout evidence and limitations.
+Applied and deployed with explicit owner approval on 2026-10-03 after protected
+backup, three isolated race-tested DB runs and schema-only rehearsal. Forced RLS,
+tenant policy, runtime grants and non-bypass role were verified in production.
 
 ### Dashboard extension — deployed 2026-10-01
 
