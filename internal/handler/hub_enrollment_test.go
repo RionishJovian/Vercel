@@ -96,3 +96,32 @@ func TestHubEnrollmentOwnerScope(t *testing.T) {
 		})
 	}
 }
+
+func TestQuickEnrollmentPreservesExistingTunnel(t *testing.T) {
+	key := base64.StdEncoding.EncodeToString([]byte(strings.Repeat("a", 32)))
+	stub := &enrollmentStub{}
+	peer := hub.Peer{PeerID: "existing", TenantID: "tenant", RouterID: "gateway", RouterPublicKey: key, HubPublicKey: key, Endpoint: "hub.example.com:51820", AllowedIPs: []string{"10.77.0.9/32"}, EnrollmentVersion: 1, State: "active", TunnelAddress: "10.77.0.2/32"}
+	h := &VPSHandler{enrollmentHub: stub, liveHub: managementInspector{peer}, livePlan: func(string) bool { return true }, liveDevice: func(*gin.Context, string, string) (*model.Device, error) {
+		return &model.Device{DeviceID: "gateway", BusinessID: "tenant", DeploymentLayer: "MAIN_GATEWAY"}, nil
+	}}
+	calls := 0
+	h.ConfigureAutomaticManagement(func(_ context.Context, biz, id, pub, script string) (string, error) {
+		calls++
+		if biz != "tenant" || id != "gateway" || pub != key || strings.Contains(script, "private-key=") {
+			t.Fatal("replaced existing tunnel identity")
+		}
+		return script + "\nmanagement", nil
+	}, nil)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest("POST", "/", strings.NewReader(`{"management_rest_port":443,"confirm_enrollment":true}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Params = gin.Params{{Key: "deviceId", Value: "gateway"}}
+	c.Set(auth.ContextKeyBusinessID, "tenant")
+	c.Set(auth.ContextKeyUserID, "owner")
+	c.Set(auth.ContextKeyUserRole, "OWNER")
+	h.QuickEnrollGateway(c)
+	if w.Code != 200 || stub.calls != 0 || calls != 1 {
+		t.Fatal(w.Code, w.Body.String(), stub.calls, calls)
+	}
+}

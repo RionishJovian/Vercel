@@ -5,6 +5,19 @@ export function mountHubEnrollment(root, {api, escape:esc}) {
     const gateway=container.dataset.hubEnrollment;
     let busy=false;
     const management=container.querySelector('[data-hub-management]');
+    const finish=container.querySelector('[data-hub-finish]');
+    finish?.addEventListener('click',async()=>{
+      if(finish.disabled)return;
+      const message=container.querySelector('[data-hub-finish-status]');
+      finish.disabled=true;message.textContent='Checking the private connection and verifying router management…';
+      try {
+        const result=await api.post(`/vps/peers/${encodeURIComponent(gateway)}/finish`,{});
+        if(!container.isConnected)return;
+        if(result.state!=='management_authenticated')throw Error('unverified');
+        message.textContent='Connected. Router management is ready. LAN devices require their own verification.';
+      } catch(error) {if(container.isConnected)message.textContent=error.status===503?'Automatic setup is unavailable on this deployment.':'Connection not verified yet. Run the entire script and retry. Setup expires after 30 minutes or an app restart; generate a new script if needed.';}
+      finally {if(finish.isConnected)finish.disabled=false;}
+    });
     management?.addEventListener?.('submit',async event=>{
       event.preventDefault();
       const button=management.querySelector('button[type="submit"]'),message=management.querySelector('[role="status"]');
@@ -60,14 +73,14 @@ export function mountHubEnrollment(root, {api, escape:esc}) {
           confirm_enrollment:values.get('confirm_enrollment')==='on'
         });
         if(!container.isConnected)return;
-        if(result.state!=='hub_peer_enrolled'||result.router_configuration_required!==true||result.one_paste!==true)throw Error('unverified');
+        if(result.state!=='hub_peer_enrolled'||result.router_configuration_required!==true||result.one_paste!==true||result.automatic_management!==true)throw Error('unverified');
         status.innerHTML=`<strong>One-paste script ready</strong>
-          <p>Copy the entire block into WinBox → New Terminal and press Enter. The router private key stays on the router and is not stored by the app.</p>${scriptPanel('setup','Connection — paste in WinBox New Terminal',result.router_script)}
+          <p>Copy the entire block into WinBox → New Terminal and press Enter within 30 minutes. It installs the private tunnel and a dedicated management account. Then select Finish connection below.</p>${scriptPanel('setup','Connection — paste in WinBox New Terminal',result.router_script)}
           <dl><dt>Assigned address</dt><dd><code>${esc(result.tunnel_address)}</code></dd>
           <dt>Hub public key</dt><dd><code>${esc(result.hub_public_key||'Not reported')}</code></dd>
           <dt>Endpoint</dt><dd><code>${esc(result.endpoint||'Not reported')}</code></dd>
           <dt>Allowed addresses</dt><dd><code>${esc(Array.isArray(result.allowed_ips)?result.allowed_ips.join(', '):'Not reported')}</code></dd></dl>
-          <h4>3. Verify the tunnel</h4><p>Use “Check Magic Hub” to check the handshake. LAN access is not yet verified. Router management also requires configured credentials, a pinned SSH host key and a tunnel-scoped firewall rule; enrollment alone does not enable configuration tools.</p>`;
+          <p>Finish connection verifies the tunnel and router before enabling management. Keep this script private.</p>`;
       } catch(error) {
         if(!container.isConnected)return;
         status.textContent=error.status===503?'Enrollment is not enabled on this deployment yet. No connection was confirmed.':

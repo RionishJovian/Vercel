@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -141,6 +142,10 @@ func (h *VPSHandler) QuickEnrollGateway(c *gin.Context) {
 		c.JSON(503, gin.H{"error": "Magic Hub enrollment is not enabled"})
 		return
 	}
+	if h.automaticPrepare == nil {
+		c.JSON(503, gin.H{"error": "automatic management enrollment unavailable"})
+		return
+	}
 	if !h.livePlan(biz) {
 		h.planDenied(c)
 		return
@@ -163,23 +168,47 @@ func (h *VPSHandler) QuickEnrollGateway(c *gin.Context) {
 		c.JSON(404, gin.H{"error": "gateway not found in your tenant"})
 		return
 	}
-	privateKey, publicKey, err := hub.GenerateRouterKeypair()
-	if err != nil {
-		c.JSON(500, gin.H{"error": "could not generate router keypair"})
-		return
+	identity := hub.Identity{TenantID: biz, RouterID: device.DeviceID, RequestedBy: user}
+	var peer hub.Peer
+	var script string
+	if h.liveHub != nil {
+		peer, err = h.liveHub.InspectRouter(c.Request.Context(), identity)
+		if err != nil && !errors.Is(err, hub.ErrPeerNotFound) {
+			c.JSON(503, gin.H{"error": "Hub lookup unavailable; no enrollment changed"})
+			return
+		}
 	}
-	peer, err := h.enrollmentHub.EnrollPeer(c.Request.Context(), hub.Identity{TenantID: biz, RouterID: device.DeviceID, RequestedBy: user}, publicKey, body.Port)
-	if err != nil || peer.TenantID != biz || peer.RouterID != device.DeviceID || peer.RouterPublicKey != publicKey || peer.EnrollmentVersion != 1 || peer.State != "active" {
-		c.JSON(502, gin.H{"error": "enrollment not confirmed; retry the one-paste action"})
-		return
+	if peer.PeerID != "" {
+		scripts, buildErr := hub.BuildRouterScripts(device.DeviceID, peer)
+		if buildErr != nil {
+			c.JSON(409, gin.H{"error": "existing enrollment requires repair"})
+			return
+		}
+		script = scripts.Setup
+	} else {
+		privateKey, publicKey, err := hub.GenerateRouterKeypair()
+		if err != nil {
+			c.JSON(500, gin.H{"error": "could not generate router keypair"})
+			return
+		}
+		peer, err = h.enrollmentHub.EnrollPeer(c.Request.Context(), identity, publicKey, body.Port)
+		if err != nil || peer.TenantID != biz || peer.RouterID != device.DeviceID || peer.RouterPublicKey != publicKey || peer.EnrollmentVersion != 1 || peer.State != "active" {
+			c.JSON(502, gin.H{"error": "enrollment not confirmed; retry the one-paste action"})
+			return
+		}
+		script, err = hub.BuildQuickConnectScript(device.DeviceID, peer, privateKey)
+		if err != nil {
+			c.JSON(502, gin.H{"error": "Hub allocation lacks safe script configuration"})
+			return
+		}
 	}
-	script, err := hub.BuildQuickConnectScript(device.DeviceID, peer, privateKey)
+	script, err = h.automaticPrepare(c.Request.Context(), biz, device.DeviceID, peer.RouterPublicKey, script)
 	if err != nil {
-		c.JSON(502, gin.H{"error": "Hub allocation lacks safe script configuration"})
+		c.JSON(503, gin.H{"error": "automatic management preparation failed"})
 		return
 	}
 	c.JSON(200, gin.H{"peer_id": peer.PeerID, "device_id": device.DeviceID, "tunnel_address": peer.TunnelAddress,
 		"hub_public_key": peer.HubPublicKey, "endpoint": peer.Endpoint, "allowed_ips": peer.AllowedIPs,
 		"router_script": script, "state": "hub_peer_enrolled", "lan_reachability_verified": false,
-		"router_configuration_required": true, "one_paste": true})
+		"router_configuration_required": true, "one_paste": true, "automatic_management": true})
 }

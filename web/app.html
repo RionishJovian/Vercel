@@ -1394,12 +1394,14 @@ function routerBoardPanel(routers, fleet, capabilityByID = new Map()) {
         <details data-hub-enrollment="${esc(router.device_id)}"><summary>Connect Magic Hub</summary>
           <h3>1. Connect with one paste</h3><p>Magic Hub creates a one-time RouterOS script. Copy the entire block into WinBox → New Terminal and press Enter. The router keeps its private WireGuard key; no public-key copy step is required.</p>
           <form class="quick-config-form"><label>Router HTTPS management port<input name="management_rest_port" type="number" min="1" max="65535" value="443" required></label>
-            <label class="check-label"><input name="confirm_enrollment" type="checkbox" required> I authorize a one-time Magic Hub script for this gateway.</label>
-            <p class="muted small">The script is shown once, expires with this response, and does not expose SSH or public management ports.</p>
+            <label class="check-label"><input name="confirm_enrollment" type="checkbox" required> I authorize a private Magic Hub connection and a dedicated router management account.</label>
+            <p class="muted small">Run the script within 30 minutes. It grants the app management access through the private tunnel.</p>
             <button type="submit" class="btn">Generate one-paste script</button><div role="status" aria-live="polite"></div>
           </form>
-          <h3>2. Verify the tunnel</h3><p>After running the script in WinBox, select Check Magic Hub above. Continue only after a recent tunnel handshake is confirmed. A saved record alone is not a connection.</p>
-          <h3>4. Authenticate router management</h3><p>After the tunnel is verified, use a dedicated RouterOS account with SSH access. Keep SSH private: allow the app's tunnel address (10.77.0.9) only on the Magic Hub interface, ahead of your input drop rule. Do not expose SSH to the internet or replace existing firewall rules.</p>
+          <h3>2. Finish connection</h3><p>After running the entire script in WinBox, verify the connection here. No router username, password or fingerprint entry is needed for automatic setup.</p>
+          <button type="button" class="btn" data-hub-finish>Finish connection</button><div data-hub-finish-status role="status" aria-live="polite"></div>
+          <details><summary>Advanced: use an existing management account</summary>
+          <h3>Existing management account</h3><p>After the tunnel is verified, use a dedicated RouterOS account with SSH access. Keep SSH private: allow the app's tunnel address (10.77.0.9) only on the Magic Hub interface, ahead of your input drop rule. Do not expose SSH to the internet or replace existing firewall rules.</p>
           <p>On your own computer, obtain the SSH host fingerprint over the trusted local network: <code>ssh-keyscan -p 22 ROUTER_LAN_IP | ssh-keygen -lf -</code>. Verify that you are using the correct router, then paste its <code>SHA256:…</code> fingerprint. No automatic trust-on-first-use is used.</p>
           <form data-hub-management class="quick-config-form">
             <label>Router SSH username<input name="username" required maxlength="128" autocomplete="off"></label>
@@ -1409,6 +1411,7 @@ function routerBoardPanel(routers, fleet, capabilityByID = new Map()) {
             <label class="check-label"><input name="confirm" type="checkbox" required> I verified this router's fingerprint and authorize secure credential storage.</label>
             <button type="submit" class="btn">Verify and save management access</button><div role="status" aria-live="polite"></div>
           </form>
+          </details>
         </details></div>` : ""}
       <footer>${canEdit ? `<button class="btn btn-sm" type="button" data-edit="${esc(router.device_id)}">Edit record</button>` : ""}<button class="btn btn-sm" type="button" data-router-topology="${esc(router.device_id)}">Topology</button>${canEdit ? `<button class="btn btn-sm" type="button" data-reboot="${esc(router.device_id)}"${state !== "up" ? " disabled title=\"No verified reachability\"" : ""}>Reboot</button>` : ""}</footer>
     </article>`;
@@ -1667,7 +1670,7 @@ async function renderSites(main, workspace = location.hash === "#gateways" ? "ga
 
   if (gatewayOnly) {
     wireHubLookup(content); wireConns(main, conns, sites);
-    const {mountHubEnrollment}=await import("/assets/js/hub-enrollment.js?v=20261003-one-paste-1");
+    const {mountHubEnrollment}=await import("/assets/js/hub-enrollment.js?v=20261003-auto-management-2");
     if(content.isConnected)mountHubEnrollment(content,{api:MM,escape:esc});
   }
   else wireAllowance(main, allowance, requests, allowanceKinds);

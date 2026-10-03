@@ -25,6 +25,8 @@ import (
 
 var identifier = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`)
 
+var ErrPeerNotFound = errors.New("Hub peer not found")
+
 type Identity struct{ TenantID, RouterID, RequestedBy string }
 
 type Options struct {
@@ -171,6 +173,9 @@ func (c *Client) requestPeer(ctx context.Context, id Identity, method, path, sco
 	defer res.Body.Close()
 	// Never echo Hub error bodies, URLs, signatures or credentials into app errors.
 	if res.StatusCode != http.StatusOK {
+		if res.StatusCode == http.StatusNotFound && method == http.MethodGet {
+			return Peer{}, ErrPeerNotFound
+		}
 		return Peer{}, fmt.Errorf("Hub returned HTTP %d", res.StatusCode)
 	}
 	raw, err := io.ReadAll(io.LimitReader(res.Body, 64*1024+1))

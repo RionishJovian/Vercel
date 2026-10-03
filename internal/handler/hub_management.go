@@ -20,6 +20,59 @@ func (h *VPSHandler) ConfigureManagementAuthentication(fn func(context.Context, 
 	h.managementAuth = fn
 }
 
+func (h *VPSHandler) ConfigureAutomaticManagement(prepare func(context.Context, string, string, string, string) (string, error), verify func(context.Context, string, string, string, string) error) {
+	h.automaticPrepare, h.automaticVerify = prepare, verify
+}
+
+// FinishGatewayConnection accepts no client-supplied credentials or address.
+// The Hub supplies both the tunnel allocation and the expected router key.
+func (h *VPSHandler) FinishGatewayConnection(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
+	biz, user, id := auth.GetBusinessID(c), auth.GetUserID(c), c.Param("deviceId")
+	if biz == "" || user == "" {
+		c.JSON(401, gin.H{"error": "unauthorized"})
+		return
+	}
+	if !model.HasAtLeastRole(model.UserRole(auth.GetUserRole(c)), model.RoleAdmin) {
+		c.JSON(403, gin.H{"error": "gateway management permission required"})
+		return
+	}
+	if h.automaticVerify == nil || h.liveHub == nil || h.liveDevice == nil || h.livePlan == nil {
+		c.JSON(503, gin.H{"error": "automatic management unavailable"})
+		return
+	}
+	if !h.livePlan(biz) {
+		h.planDenied(c)
+		return
+	}
+	d, err := h.liveDevice(c, biz, id)
+	if err != nil {
+		c.JSON(503, gin.H{"error": "gateway lookup unavailable"})
+		return
+	}
+	if d == nil || d.BusinessID != biz || d.DeviceID != id || d.DeploymentLayer != "MAIN_GATEWAY" {
+		c.JSON(404, gin.H{"error": "gateway not found"})
+		return
+	}
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 25*time.Second)
+	defer cancel()
+	p, err := h.liveHub.InspectRouter(ctx, hub.Identity{TenantID: biz, RouterID: id, RequestedBy: user})
+	if err != nil || p.TenantID != biz || p.RouterID != id || p.State != "active" || p.LastHandshakeAt == nil || time.Since(*p.LastHandshakeAt) < 0 || time.Since(*p.LastHandshakeAt) > 5*time.Minute {
+		c.JSON(409, gin.H{"error": "run the script and wait for a recent Magic Hub handshake"})
+		return
+	}
+	addr, err := netip.ParsePrefix(p.TunnelAddress)
+	if err != nil || !addr.Addr().Is4() || !addr.Addr().IsPrivate() || addr.Bits() != 32 {
+		c.JSON(502, gin.H{"error": "invalid Hub address"})
+		return
+	}
+	if err := h.automaticVerify(ctx, biz, id, addr.Addr().String(), p.RouterPublicKey); err != nil {
+		c.JSON(409, gin.H{"error": "Management not verified. Run the complete setup script, then retry. If the app restarted or setup expired, generate a new script."})
+		return
+	}
+	c.JSON(200, gin.H{"state": "management_authenticated", "device_id": id, "lan_reachability_verified": false})
+}
+
 func (h *VPSHandler) AuthenticateGateway(c *gin.Context) {
 	c.Header("Cache-Control", "no-store")
 	biz, user, id := auth.GetBusinessID(c), auth.GetUserID(c), c.Param("deviceId")

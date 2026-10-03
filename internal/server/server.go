@@ -622,6 +622,7 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 				vpsg.GET("/peers/:deviceId/live", auth.RequireMinRole(model.RoleAdmin), vpsHandler.LivePeer)
 				vpsg.POST("/peers/:deviceId/enroll", auth.RequireMinRole(model.RoleAdmin), vpsHandler.EnrollGateway)
 				vpsg.POST("/peers/:deviceId/quick-enroll", auth.RequireMinRole(model.RoleAdmin), vpsHandler.QuickEnrollGateway)
+				vpsg.POST("/peers/:deviceId/finish", auth.RequireMinRole(model.RoleAdmin), vpsHandler.FinishGatewayConnection)
 				vpsg.GET("/peers/:deviceId/bootstrap", auth.RequireMinRole(model.RoleAdmin), vpsHandler.GatewayBootstrap)
 				vpsg.POST("/peers/:deviceId/authenticate", auth.RequireMinRole(model.RoleAdmin), vpsHandler.AuthenticateGateway)
 			}

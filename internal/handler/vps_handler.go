@@ -33,6 +33,8 @@ type VPSHandler struct {
 	liveDevice       func(*gin.Context, string, string) (*model.Device, error)
 	livePlan         func(string) bool
 	managementAuth   func(context.Context, string, string, string, string, string, int, string) error
+	automaticPrepare func(context.Context, string, string, string, string) (string, error)
+	automaticVerify  func(context.Context, string, string, string, string) error
 }
 
 func NewVPSHandler(db *database.DB, deviceRepo *database.DeviceRepository, quotaRepo *database.BusinessMeteredQuotaRepository, mon *monitoring.MonitoringService, wg config.WireGuardConfig, endpointHost string) *VPSHandler {
