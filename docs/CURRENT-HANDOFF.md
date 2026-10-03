@@ -1,5 +1,19 @@
 # Current agent handoff
 
+## 2026-10-03 guided network setup — implementation and local acceptance
+
+Dedicated Network setup replaces the LAN/DHCP/Hotspot form embedded in the router
+name/DNS dialog. GET `/routers/:id/gateway/defaults` suggests a private /24 only
+after tenant-scoped reads of assigned addresses and routes. Preview/apply repeat
+the conflict checks. Port roles remain explicitly selected, never guessed.
+RouterOS/handler/server Go race tests and focused synthetic Chromium acceptance
+passed. No migration is required and no live router was mutated. App deployment
+verification is recorded separately when complete.
+
+Multi-WAN load balancing, WAN failover, PPPoE and Wi-Fi SSID editors remain missing;
+this slice does not certify the whole app production-complete. Scope and next
+acceptance boundaries: [Network setup workflow](NETWORK-SETUP-WORKFLOW.md).
+
 ## 2026-10-02 subscription-only policy — DEPLOYED
 
 Supersedes the older legacy plan-gate status below. The user hit the still-live

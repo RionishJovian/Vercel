@@ -94,6 +94,7 @@ const server = createServer(async (req, res) => {
   }
   if (url.pathname === "/api/v1/routers/dev-1/quick-config") return json(200, {config:{identity:"lab",dns_servers:["1.1.1.1"],allow_remote_dns:false}});
   if (url.pathname === "/api/v1/routers/dev-1/gateway/interfaces") return json(200, {interfaces:[{name:"ether1",type:"ether",running:true},{name:"ether2",type:"ether",running:true}]});
+  if (url.pathname === "/api/v1/routers/dev-1/gateway/defaults") return json(200, {defaults:{name:"guest-lan",gateway_cidr:"192.168.52.1/24",pool_start:"192.168.52.10",pool_end:"192.168.52.250"}});
   if (url.pathname === "/api/v1/routers/dev-1/gateway/preview" && req.method === "POST") {
     let raw=""; for await (const chunk of req) raw+=chunk; const body=JSON.parse(raw);
     if (body.wan_interface===body.lan_interface) return json(400,{error:"choose distinct uplink and LAN interfaces"});
@@ -263,7 +264,28 @@ try {
   await cdp.send("Page.addScriptToEvaluateOnNewDocument", { source: `localStorage.setItem('mm_token','acceptance-token')` });
   await cdp.send("Page.navigate", { url: `http://127.0.0.1:${port}/app.html#portal` });
   await waitFor(() => cdp.eval("!!document.querySelector('#plan-add')"), "portal editor");
-  if (process.env.E2E_PORTAL_DEPLOY_ONLY) {
+  if (process.env.E2E_NETWORK_SETUP_ONLY) {
+    await cdp.eval("loadView('network', document.querySelector('#main'), ME)");
+    await waitFor(() => cdp.eval("!!document.querySelector('#network-router')"), "network workspace");
+    assert.equal(await cdp.eval("!!document.querySelector('[data-view=network]')"), true, "network has a dedicated navigation item");
+    await cdp.eval("document.querySelector('#network-router').value='dev-1';document.querySelector('#network-router').dispatchEvent(new Event('change'))");
+    await waitFor(() => cdp.eval("!!document.querySelector('#gateway-setup-form')"), "suggested form");
+    assert.equal(await cdp.eval("document.querySelector('[name=gateway_cidr]').value"), "192.168.52.1/24");
+    assert.equal(await cdp.eval("document.querySelector('[name=wan_interface]').value"), "", "uplink is not guessed");
+    assert.equal(await cdp.eval("document.querySelector('[name=lan_interface]').value"), "", "LAN port is not guessed");
+    assert.equal(await cdp.eval("document.querySelector('#gateway-apply').hidden"), true, "no apply before preview");
+    await cdp.eval("document.querySelector('[name=wan_interface]').value='ether1';document.querySelector('[name=lan_interface]').value='ether2';document.querySelector('#gateway-setup-form').requestSubmit()");
+    await waitFor(() => cdp.eval("!document.querySelector('#gateway-apply').hidden"), "preview");
+    await cdp.eval("document.querySelector('[name=name]').dispatchEvent(new Event('input',{bubbles:true}))");
+    assert.equal(await cdp.eval("document.querySelector('#gateway-apply').hidden"), true, "edits invalidate preview");
+    await cdp.eval("document.querySelector('#gateway-setup-form').requestSubmit()");
+    await waitFor(() => cdp.eval("!document.querySelector('#gateway-apply').hidden"), "fresh preview");
+    await cdp.eval("window.confirm=()=>true;document.querySelector('#gateway-apply').click()");
+    await waitFor(() => cdp.eval("document.querySelector('#gateway-status').textContent.includes('applied and verified')"), "verified synthetic apply");
+    await cdp.send("Emulation.setDeviceMetricsOverride", {width:390,height:844,deviceScaleFactor:2,mobile:true});
+    assert.equal(await cdp.eval("document.documentElement.scrollWidth <= innerWidth"),true,"network setup fits mobile");
+    console.log("Network setup browser acceptance passed: navigation, live suggestions, explicit ports, preview invalidation, synthetic verified apply, mobile layout.");
+  } else if (process.env.E2E_PORTAL_DEPLOY_ONLY) {
     await portalDeploymentAcceptance(cdp);
     await cdp.send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
     assert.equal(await cdp.eval("document.documentElement.scrollWidth <= window.innerWidth"), true, "portal deployment fits phone viewport");
@@ -353,7 +375,9 @@ try {
   await cdp.pointerClick("#webfig-secure");
   await waitFor(() => cdp.eval("document.querySelector('#webfig-status').textContent.includes('configured and verified')"), "WebFig secure apply result");
   await cdp.eval("document.querySelector('#router-capability-dialog').close()");
-  await cdp.pointerClick("[data-router-capability=gateway]");
+  await cdp.eval("loadView('network', document.querySelector('#main'), ME)");
+  await waitFor(() => cdp.eval("!!document.querySelector('#network-router')"), "network workspace");
+  await cdp.eval("document.querySelector('#network-router').value='dev-1';document.querySelector('#network-router').dispatchEvent(new Event('change'))");
   await waitFor(() => cdp.eval("!!document.querySelector('#gateway-setup-form')"), "functional gateway setup form");
   await cdp.eval(`(() => { const f=document.querySelector('#gateway-setup-form'); const values={name:'guest',wan_interface:'ether1',lan_interface:'ether2',gateway_cidr:'192.168.50.1/24',pool_start:'192.168.50.10',pool_end:'192.168.50.200'}; for(const [k,v] of Object.entries(values)) f.elements[k].value=v; })()`);
   await cdp.pointerClick("#gateway-preview");
@@ -366,8 +390,6 @@ try {
   await cdp.eval("window.confirm=()=>true");
   await cdp.pointerClick("#gateway-apply");
   await waitFor(() => cdp.eval("document.querySelector('#gateway-status').textContent.includes('applied and verified')"), "gateway apply result");
-  await cdp.eval("document.querySelector('#router-capability-dialog').close()");
-
   await cdp.eval("loadView('store', document.querySelector('#main'), ME)");
   await waitFor(() => cdp.eval("!!document.querySelector('.store-hero')"), "Store workspace");
   assert.equal(await cdp.eval("document.querySelector('.store-products').textContent.includes('350,000 MMK')"), true, "Store reads the published annual price");

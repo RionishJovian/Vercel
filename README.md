@@ -38,6 +38,14 @@ TanStack references are not the deployed console.
 
 ## Current development phase
 
+The guided **Network setup** workspace separates customer LAN/DHCP/Hotspot
+configuration from the Gateway device diagnostics. It suggests private LAN
+addresses after reading existing addresses and routes; preview and apply repeat
+those checks. Users must choose actual uplink and customer port roles explicitly.
+This does not implement multi-WAN balancing, WAN failover, PPPoE provisioning,
+Wi-Fi SSID configuration or a cloud WebFig proxy. See
+[network workflow scope and acceptance](docs/NETWORK-SETUP-WORKFLOW.md).
+
 The project is in **functional workflow completion and production acceptance**.
 The API, database and console exist. Work now completes network and business
 operations and proves that customer actions change the intended state, survive

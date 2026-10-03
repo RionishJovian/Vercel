@@ -27,6 +27,26 @@ func (h *SecurityHandler) GatewaySetup(c *gin.Context) {
 		return
 	}
 	if c.Request.Method == http.MethodGet {
+		if c.Param("action") != "interfaces" && c.Param("action") != "defaults" {
+			c.JSON(http.StatusNotFound, gin.H{"error": "unknown gateway action"})
+			return
+		}
+		if c.Param("action") == "defaults" {
+			defaults, ok := h.quickConfig.(interface {
+				GatewayDefaults(context.Context, string, string) (routeros.GatewaySetup, error)
+			})
+			if !ok {
+				c.JSON(http.StatusServiceUnavailable, gin.H{"error": "automatic network suggestions are unavailable"})
+				return
+			}
+			settings, err := defaults.GatewayDefaults(c.Request.Context(), businessID, deviceID)
+			if err != nil {
+				c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{"defaults": settings})
+			return
+		}
 		interfaces, err := configurator.GatewayInterfaces(c.Request.Context(), businessID, deviceID)
 		if err != nil {
 			c.JSON(http.StatusBadGateway, gin.H{"error": "could not read router interfaces"})

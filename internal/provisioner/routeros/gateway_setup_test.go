@@ -14,6 +14,7 @@ type gatewayRunner struct {
 	objects   map[string]map[string]string
 	failMenu  string
 	addresses string
+	routes    string
 }
 
 var gatewayTestFields = regexp.MustCompile(`([a-z-]+)="([^"\\]*)"`)
@@ -25,6 +26,9 @@ func (r *gatewayRunner) Run(_ context.Context, cmd string) (string, error) {
 	}
 	if cmd == "/ip address print value-list detail" {
 		return r.addresses, nil
+	}
+	if cmd == "/ip route print value-list detail" {
+		return r.routes, nil
 	}
 	if strings.HasPrefix(cmd, "/interface print count-only") {
 		return "1", nil

@@ -213,18 +213,12 @@ func gatewayPreflight(ctx context.Context, r CommandRunner, g GatewaySetup, netw
 			return fmt.Errorf("LAN interface is already configured; choose an unused interface or a new VLAN")
 		}
 	}
-	out, e := r.Run(ctx, "/ip address print value-list detail")
+	reserved, e := gatewayReservedNetworks(ctx, r)
 	if e != nil {
-		return fmt.Errorf("could not check existing networks")
+		return e
 	}
-	for _, m := range gatewayAddressPattern.FindAllStringSubmatch(out, -1) {
-		ip, existing, e := net.ParseCIDR(m[1])
-		if e != nil {
-			return fmt.Errorf("could not parse existing router address")
-		}
-		if network.Contains(ip) || existing.Contains(network.IP) {
-			return fmt.Errorf("customer subnet overlaps an existing router network")
-		}
+	if gatewayNetworkOverlaps(network, reserved) {
+		return fmt.Errorf("customer subnet overlaps an existing router address or route")
 	}
 	if g.RadiusAddress != "" {
 		n, e := count("/ip hotspot print count-only")

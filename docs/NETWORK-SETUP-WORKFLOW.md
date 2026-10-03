@@ -1,0 +1,58 @@
+# Guided network setup — 2026-10-03
+
+The Network setup navigation item opens a task-focused customer-network form.
+Gateways remains device registration, Magic Hub connection, health and service
+discovery. Its name/DNS dialog links to this form instead of embedding it.
+Captive portal remains the guest design/deploy workflow; vouchers and revenue
+remain separate business tools. Read-only capability dialogs are not editors.
+
+## Actual behavior
+
+- Select a registered main gateway. Read interfaces, assigned IPv4 prefixes and
+  routed destinations through the existing tenant/device-scoped transport.
+- Suggest an unused private /24, gateway .1 and DHCP .10–.250; prefer
+  192.168.50.0/24, then bounded private alternatives outside the Hub range.
+  Any overlapping address or non-default route reserves a candidate, including
+  inactive routes. Unreadable/malformed inventory or exhausted choices fails closed.
+- Leave physical uplink/customer roles unassigned. Running state or interface
+  names do not establish a safe role. The customer must select the correct ports.
+- Keep suggested address fields editable under Address settings. Select optional
+  VLAN and Hotspot; optionally connect an existing RADIUS server.
+- Preview concrete changes, invalidate preview on edits, explicitly confirm
+  apply. Apply rereads address/route inventory before any writes, then uses the
+  existing device backup, verified readback and owned-object rollback flow.
+- No existing uplink, default route, management address or bridge membership is
+  replaced. A guest connectivity test and firewall review are still required.
+
+RouterOS routes include connected and configured destinations; the default
+route is the catch-all and is excluded from subnet reservations. See
+[MikroTik IP Routing](https://help.mikrotik.com/docs/spaces/ROS/pages/328084/IP%20Routing).
+
+## Explicit remaining product work
+
+This first slice does **not** complete the user's requested network-management
+suite. Real controls still need implementation and disposable-router acceptance:
+
+- Multi-WAN load balancing and monitored WAN failover: discover ISP links and
+  routing tables, validate probes, preserve management traffic, preview routes/
+  policy changes, verify failover and recovery, and retain rollback.
+- PPPoE client uplinks and subscriber/server provisioning: distinguish these
+  tasks, protect secrets, validate pools/profiles/RADIUS, deploy and read back.
+- Wi-Fi SSID/security editor for supported modern/legacy radios and CAPsMAN;
+  CHR without radios must target actual external APs/controllers.
+- Existing LAN/Hotspot edits, VLAN/bridge management, DHCP reservations,
+  bandwidth/queues and access policies rather than only initial LAN creation.
+- Private authenticated cloud WebFig access (not just service enablement).
+
+These are not inert buttons labeled as supported functions. No guessed port
+roles, global routing rewrites, router resets, public management exposure or
+automatic live-router deployment is authorized by this UI work.
+
+## Validation boundary
+
+Go race tests cover the RouterOS provisioner, handlers and server. Synthetic
+Chromium acceptance covers dedicated navigation, address prefill, explicit port
+selection, preview invalidation, verified mock apply and 390px layout. Backend
+tests cover address/route collisions, malformed/exhausted suggestions and a route
+added between preview and apply. These do not certify a physical guest network
+or execute writes on the production CHR.

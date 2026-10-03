@@ -570,7 +570,7 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 				routers.GET("/:id/quick-config", securityHandler.ReadQuickConfig)
 				routers.PUT("/:id/quick-config", auth.RequireMinRole(model.RoleAdmin), securityHandler.ApplyQuickConfig)
 				routers.POST("/:id/gateway/:action", auth.RequireMinRole(model.RoleAdmin), securityHandler.GatewaySetup)
-				routers.GET("/:id/gateway/interfaces", securityHandler.GatewaySetup)
+			routers.GET("/:id/gateway/:action", securityHandler.GatewaySetup)
 				routers.GET("/:id/portal/profiles", auth.RequireMinRole(model.RoleAdmin), securityHandler.PortalDeployment)
 				routers.POST("/:id/portal/:action", auth.RequireMinRole(model.RoleAdmin), securityHandler.PortalDeployment)
 				routers.POST("/:id/webfig/secure", auth.RequireMinRole(model.RoleAdmin), securityHandler.ConfigureWebFig)

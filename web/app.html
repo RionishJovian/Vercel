@@ -242,6 +242,7 @@
       <button class="nav-item" data-view="incidents">Incidents</button>
       <button class="nav-item" data-view="sites">Sites</button>
       <button class="nav-item" data-view="gateways">Gateways</button>
+      <button class="nav-item" data-view="network">Network setup</button>
       <button class="nav-item" data-view="routers">Downstream devices</button>
       <div class="rail-section">Automation</div>
       <button class="nav-item" data-view="security">Security</button>
@@ -315,7 +316,8 @@ const VIEWS = {
   fleet:    { title: "Fleet health", lead: "Check the connection state of every managed router." },
   sites:    { title: "Sites", lead: "Organize routers by location and prepare each site to go live." },
   routers:  { title: "Downstream devices", lead: "Manage switches, access points and controllers behind your gateway." },
-  gateways: { title: "Gateways", lead: "Manage your site's gateway, remote connection and customer-network configuration." },
+  gateways: { title: "Gateways", lead: "Connect routers to Magic Hub and check device health and capabilities." },
+  network:  { title: "Network setup", lead: "Create a customer LAN, assign addresses and enable Hotspot from one guided setup." },
   topology: { title: "Topology", lead: "See how the cloud hub, gateways, access points, and client devices connect." },
   incidents:{ title: "Incidents", lead: "Review network problems, take action, and track their resolution." },
   security: { title: "Security", lead: "Find exposed services and RouterOS versions that need attention." },
@@ -378,6 +380,7 @@ async function loadView(name, main, me) {
     else if (name === "sites") await renderSiteWorkspace(main);
     else if (name === "routers") await renderSites(main);
     else if (name === "gateways") await renderSites(main, "gateways");
+    else if (name === "network") await renderNetworkSetup(main);
     else if (name === "topology") await renderTopology(main);
     else if (name === "incidents") await renderIncidents(main);
     else if (name === "security") await renderSecurity(main);
@@ -1385,7 +1388,7 @@ function routerBoardPanel(routers, fleet, capabilityByID = new Map()) {
       <header><span class="routerboard-glyph">${MMTheme.icon("router", 22)}</span><div><span class="fleet-kicker">${esc(topologyLayerLabel(router.deployment_layer))}</span><h3>${esc(router.hardware_name || "Unnamed RouterBOARD")}</h3><p>${esc([router.vendor, router.device_model].filter(Boolean).join(" · ") || "MikroTik device")}</p></div><span class="status ${state === "up" ? "ok" : (state === "offline" ? "bad" : "unknown")}">${esc(stateLabel)}</span></header>
       <dl><dt>Transport</dt><dd>${esc(router.transport || "direct")}</dd><dt>Management IP</dt><dd class="mono">${esc(router.management_ip || "Not registered")}</dd><dt>Last signal</dt><dd>${router.last_seen_at ? esc(ts(router.last_seen_at)) : "No verified signal"}</dd><dt>Device ID</dt><dd class="mono">${esc(router.device_id)}</dd></dl>
       <div class="routerboard-capabilities">
-        ${router.deployment_layer === "MAIN_GATEWAY" ? routerCapabilityButton(router.device_id, "gateway", canEdit ? "Configure gateway" : "Gateway settings", !!(caps && caps.gateway), capabilityTitle) : ""}
+        ${router.deployment_layer === "MAIN_GATEWAY" ? routerCapabilityButton(router.device_id, "gateway", "Router name and DNS", !!(caps && caps.gateway), capabilityTitle) : ""}
         ${router.deployment_layer === "MAIN_GATEWAY" ? routerCapabilityButton(router.device_id, "hotspot", "Hotspot readiness", hotspot, hotspot ? "View this router's hotspot readiness" : capabilityTitle) : ""}
         ${localRadios > 0 || controller || ["ACCESS_POINT","CONTROLLER"].includes(router.deployment_layer) ? routerCapabilityButton(router.device_id, "wireless", "Wi-Fi readiness", localRadios > 0 || controller, "Read-only capability information; SSID configuration is not available here yet") : ""}
         ${routerCapabilityButton(router.device_id, "webfig", "WebFig status", true, webfig ? "HTTPS WebFig is available" : "View what is needed for secure WebFig access")}
@@ -1585,7 +1588,7 @@ async function renderSites(main, workspace = location.hash === "#gateways" ? "ga
       capabilityContent.innerHTML = `${common}<h3>Quick Config</h3>${loading()}`;
       capabilityDialog.showModal();
       try {
-        const [response, inventory] = await Promise.all([MM.get(`/routers/${encodeURIComponent(router.device_id)}/quick-config`), MM.get(`/routers/${encodeURIComponent(router.device_id)}/gateway/interfaces`)]);
+        const response = await MM.get(`/routers/${encodeURIComponent(router.device_id)}/quick-config`);
         const current = response.config || {};
         body = `${common}<h3>Gateway basics</h3><p>${canEdit ? "Change the router name and DNS settings. Mega Magic saves a backup first, confirms the new values after applying them, and restores the previous values if the check fails." : "Read-only settings. An owner or administrator is required to change router configuration."}</p>
           <div class="router-capability-facts">${capabilityFact("Board", caps.board_name || "Reported by RouterOS")}${capabilityFact("RouterOS", caps.routeros_version || "Unknown")}${capabilityFact("DHCP server", menuState(caps.dhcp_server))}${capabilityFact("Hotspot", menuState(caps.hotspot))}</div>
@@ -1595,7 +1598,7 @@ async function renderSites(main, workspace = location.hash === "#gateways" ? "ga
             <label class="quick-config-check"><input id="quick-remote-dns" type="checkbox"${current.allow_remote_dns ? " checked" : ""}><span><strong>Answer DNS requests from clients</strong><small>Needed when hotspot and LAN clients use this router as their DNS resolver.</small></span></label>
             <div id="quick-config-status" role="status"></div>
             <button class="btn btn-primary" type="button" id="quick-config-apply">Backup and apply to RouterOS</button>
-          </div>${gatewaySetupForm(asArray(inventory.interfaces))}` : `<dl><dt>Identity</dt><dd>${esc(current.identity || "Not reported")}</dd><dt>DNS servers</dt><dd>${esc(asArray(current.dns_servers).join(", ") || "Not reported")}</dd></dl>`}`;
+          </div><p><button class="btn" data-capability-view="network">Open customer network setup</button></p>` : `<dl><dt>Identity</dt><dd>${esc(current.identity || "Not reported")}</dd><dt>DNS servers</dt><dd>${esc(asArray(current.dns_servers).join(", ") || "Not reported")}</dd></dl>`}`;
       } catch (error) {
         body = `${common}<div class="alert">${esc((error.data && error.data.error) || error.message)}</div>`;
       }
@@ -1664,18 +1667,50 @@ async function renderSites(main, workspace = location.hash === "#gateways" ? "ga
   else if (capacityLimitsEnabled) wireAllowance(main, allowance, requests, allowanceKinds);
 }
 
-function gatewaySetupForm(interfaces) {
+async function renderNetworkSetup(main) {
+  const content = main.querySelector("#content");
+  const data = await MM.get("/routers");
+  if (!content.isConnected) return;
+  const routers = (Array.isArray(data.routers) ? data.routers : asArray(data)).filter(r => r.deployment_layer === "MAIN_GATEWAY");
+  const canEdit = SITE_EDITOR_ROLES.includes(ME?.user?.user_role);
+  content.innerHTML = `<section class="panel"><h2>Customer network and Hotspot</h2><p>Choose a connected gateway, select the internet uplink and an unused customer-facing port or bridge. We suggest LAN and DHCP addresses from its live inventory. Review changes before applying; opening this page changes nothing on the router.</p>
+    <label>Gateway<select class="input" id="network-router"><option value="">Choose a gateway</option>${routers.map(r=>`<option value="${esc(r.device_id)}">${esc(r.hardware_name)}</option>`).join("")}</select></label>
+    <div id="network-editor" aria-live="polite">${routers.length ? "Choose a gateway to read its interfaces and suggest settings." : 'Connect a gateway from <a href="#gateways">Gateways</a> first.'}</div></section>
+    <section class="panel"><h2>Related business tasks</h2><p><a class="btn" href="#portal">Design and deploy captive portal</a> <a class="btn" href="#vouchers">Manage guest vouchers</a> <a class="btn" href="#topology">Access points and topology</a> <a class="btn" href="#security">Router security</a></p>
+    <p>Wi-Fi SSID configuration, multi-WAN load balancing, WAN failover and PPPoE provisioning are not available in this release. Wi-Fi readiness is not an SSID editor, and WebFig security setup is not a cloud WebFig session.</p></section>`;
+  const editor = content.querySelector("#network-editor"), select = content.querySelector("#network-router");
+  let revision = 0;
+  select.addEventListener("change", async () => {
+    const request = ++revision, router = routers.find(r=>r.device_id === select.value);
+    editor.textContent = router ? "Reading router interfaces and checking addresses and routes…" : "Choose a gateway to continue.";
+    if (!router) return;
+    try {
+      const endpoint = `/routers/${encodeURIComponent(router.device_id)}/gateway/`;
+      const [inventory, suggested] = await Promise.all([MM.get(endpoint+"interfaces"), MM.get(endpoint+"defaults")]);
+      if (!content.isConnected || revision !== request) return;
+      editor.innerHTML = canEdit ? gatewaySetupForm(asArray(inventory.interfaces), suggested.defaults) : "An owner or administrator must apply network changes.";
+      if (canEdit) wireGatewaySetup(editor, router);
+    } catch (e) {
+      if (content.isConnected && revision === request) editor.textContent = (e.data && e.data.error) || e.message;
+    }
+  });
+}
+
+function gatewaySetupForm(interfaces, defaults = {}) {
   const options = `<option value="">Choose an interface</option>` + interfaces.map(i => `<option value="${esc(i.name)}">${esc(i.name)} · ${esc(i.type || "interface")}${i.running ? " · running" : ""}</option>`).join("");
   return `<hr><h3>Create a customer network</h3><p>Set up a separate LAN for your access points and guests. Your existing uplink, default route and management settings stay unchanged. Existing firewall rules may still require a separate review before guests can reach the internet.</p>
     <form id="gateway-setup-form" class="quick-config-form">
-      <label>Network name<input class="input" name="name" required maxlength="24" pattern="[A-Za-z0-9][A-Za-z0-9_-]*" placeholder="guest-lan"></label>
+      <label>Network name<input class="input" name="name" required maxlength="24" pattern="[A-Za-z0-9][A-Za-z0-9_-]*" value="${esc(defaults.name || "guest-lan")}"></label>
       <label>Internet uplink<select class="input" name="wan_interface" required>${options}</select></label>
       <label>Customer LAN / AP-facing bridge<select class="input" name="lan_interface" required>${options}</select><small>Choose an unused interface or bridge, not a bridge member port.</small></label>
       <label>Tagged VLAN (optional)<input class="input" name="vlan_id" type="number" min="0" max="4094" value="0"><small>0 = untagged. Tagged clients/APs must use the same VLAN.</small></label>
-      <label>Gateway address / prefix<input class="input" name="gateway_cidr" required placeholder="192.168.50.1/24"></label>
-      <label>First DHCP address<input class="input" name="pool_start" required placeholder="192.168.50.10"></label>
-      <label>Last DHCP address<input class="input" name="pool_end" required placeholder="192.168.50.250"></label>
+      <p>Suggested addresses are checked against existing addresses and routes, then checked again before applying. Port roles are never guessed.</p>
+      <details${defaults.gateway_cidr ? "" : " open"}><summary>Address settings${defaults.gateway_cidr ? " · " + esc(defaults.gateway_cidr) + " (suggested)" : ""}</summary>
+      <label>Gateway address / prefix<input class="input" name="gateway_cidr" required value="${esc(defaults.gateway_cidr || "")}" placeholder="192.168.50.1/24"></label>
+      <label>First DHCP address<input class="input" name="pool_start" required value="${esc(defaults.pool_start || "")}" placeholder="192.168.50.10"></label>
+      <label>Last DHCP address<input class="input" name="pool_end" required value="${esc(defaults.pool_end || "")}" placeholder="192.168.50.250"></label>
       <label>Client DNS servers<input class="input" name="dns_servers" required value="1.1.1.1, 8.8.8.8"></label>
+      </details>
       <label class="quick-config-check"><input name="hotspot" type="checkbox" checked><span>Enable Hotspot captive login and bank-transfer grace access</span></label>
       <label>RADIUS server (optional)<input class="input" name="radius_address" placeholder="10.0.0.10" autocomplete="off"><small>Connect an existing RADIUS server; this does not install one.</small></label>
       <label>RADIUS shared secret<input class="input" name="radius_secret" type="password" minlength="8" maxlength="128" autocomplete="new-password"></label>
@@ -4435,6 +4470,8 @@ const PRODUCT_GUIDE = [
   ["topology", "Operations", "Topology", "Trace the path from the cloud hub to gateways, ports, access points, and downstream devices."],
   ["incidents", "Operations", "Incidents", "Review network problems, acknowledge ownership, apply an available fix, and close resolved incidents."],
   ["sites", "Operations", "Sites", "Place business locations on the map, assign routers, and check what each site still needs before going live."],
+  ["gateways", "Operations", "Gateways", "Connect a router to Magic Hub and inspect its device health and supported services."],
+  ["network", "Operations", "Network setup", "Choose a gateway and its uplink/customer ports. Use suggested non-overlapping LAN and DHCP addresses, preview the changes, then explicitly apply customer LAN and Hotspot settings."],
   ["routers", "Operations", "Routers", "Add MikroTik devices, check their connection, configure supported settings, create backups, and reboot them remotely."],
   ["security", "Automation", "Security", "Find risky RouterOS services or versions, create a backup, and apply an available mitigation from the browser."],
   ["backups", "Automation", "Backups", "Create a router recovery point before maintenance and restore it when recovery is necessary."],
