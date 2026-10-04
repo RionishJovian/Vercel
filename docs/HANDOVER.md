@@ -26,9 +26,24 @@ App and hub share one instance. Ports never conflicted (hub 51820/51821 UDP;
 app 5433, 6379, 4222, 8080, 80, 443). The trade-off is deliberate: one failure
 takes down site and router reachability together. They were independent before.
 
-**The previous VPS pair (118.27.148.195 app, 118.27.148.183 hub) is GONE** -
-suspended for expired billing on 2026-10-04. Its WireGuard private key was lost
-with it; the hub key was regenerated on this host.
+**The previous VPS pair was at Z.com** (app `118.27.148.195`, hub
+`118.27.148.183`). Both became unreachable on 2026-10-04 and are treated as
+lost. The owner has **no intention of returning to that provider**.
+
+**Why it is lost - stated as owner report, not verified fact.** The owner says
+billing had expired. No suspension notice was ever produced, and the evidence
+does not cleanly match a billing suspension: SSH attempts **timed out** rather
+than being refused. A suspended account usually still answers the port and
+rejects the login ("permission denied"); a timeout means packets were not
+arriving, which is more like a network-level block. So the true cause is
+unconfirmed - non-payment is plausible, but so is a provider-side block.
+
+**Do not build on "it was billing".** Whether the disks were deleted, retained
+for reactivation, or destroyed is unknown. The hub WireGuard private key is
+therefore treated as unrecoverable, which is why the key below was regenerated.
+If Z.com ever reappears in the owner's plans, first ask whether the old instances
+can be reactivated - that would restore the previous key and all nine router
+connections without re-enrolling anything.
 
 ---
 
