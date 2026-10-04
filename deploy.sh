@@ -19,6 +19,24 @@ set -euo pipefail
 cd "$(dirname "$0")"
 ROOT="$PWD"
 
+# Resolve the Go toolchain at runtime. It is installed at /usr/local/go/bin on
+# this host, not /usr/bin, so a hardcoded path breaks every schema check and the
+# build. Probe the usual locations and fail early with an actionable message
+# rather than aborting mid-script.
+GO="${GO:-}"
+if [ -z "$GO" ]; then
+  for candidate in /usr/local/go/bin/go /usr/lib/go/bin/go /usr/bin/go; do
+    if [ -x "$candidate" ]; then GO="$candidate"; break; fi
+  done
+fi
+if [ -z "$GO" ] && command -v go >/dev/null 2>&1; then GO="$(command -v go)"; fi
+if [ -z "$GO" ]; then
+  echo "FATAL: the Go toolchain was not found." >&2
+  echo "  Install it, or set GO=/path/to/go before running this script." >&2
+  exit 1
+fi
+export GOROOT="${GOROOT:-$(dirname "$(dirname "$GO")")}"
+
 deploy_web() {
   echo ">> Syncing frontend web/ -> /opt/mega-magic-web/"
   sudo rsync -a --delete "$ROOT/web/" /opt/mega-magic-web/
@@ -96,16 +114,16 @@ deploy_api() {
   # ENVIRONMENT is injected again into systemd below. Supplying it here makes
   # the preflight fail closed even if an old config.yaml omits or misspells the
   # environment field. No service is touched when validation fails.
-  ENVIRONMENT=production /usr/bin/go run ./cmd/config-check --config config.yaml
+  ENVIRONMENT=production $GO run ./cmd/config-check --config config.yaml
 
   echo ">> Verifying required database schema"
   # This is intentionally a check, not an automatic production migration.
   # Apply and complete the two-stage rollout using docs/DATABASE-MIGRATIONS.md.
   # A stale schema stops the deploy before the binary or service is touched.
-  ENVIRONMENT=production /usr/bin/go run ./cmd/device-ssh-schema --action check --config config.yaml
-  ENVIRONMENT=production /usr/bin/go run ./cmd/capacity-schema --action check --config config.yaml
-  ENVIRONMENT=production /usr/bin/go run ./cmd/store-schema --action check --config config.yaml
-  ENVIRONMENT=production /usr/bin/go run ./cmd/auth-session-schema --action check --config config.yaml
+  ENVIRONMENT=production $GO run ./cmd/device-ssh-schema --action check --config config.yaml
+  ENVIRONMENT=production $GO run ./cmd/capacity-schema --action check --config config.yaml
+  ENVIRONMENT=production $GO run ./cmd/store-schema --action check --config config.yaml
+  ENVIRONMENT=production $GO run ./cmd/auth-session-schema --action check --config config.yaml
 
   echo ">> Building Go binary"
   # Build to a TEMPORARY file first. Two reasons:
@@ -117,7 +135,7 @@ deploy_api() {
   # not exist. Verified on the live host: server and server.prev had identical
   # md5sums.
   local tmpserver="server.new.$$"
-  if ! /usr/bin/go build -o "$tmpserver" cmd/server/main.go; then
+  if ! $GO build -o "$tmpserver" cmd/server/main.go; then
     echo ">> BUILD FAILED — leaving the running binary untouched" >&2
     rm -f "$tmpserver"
     return 1
