@@ -91,9 +91,11 @@ nats:
   ping_interval: 20s
   max_outstanding_pings: 3
 
-# Magic Hub WireGuard
+# Magic Hub WireGuard - this is the hub interface itself. On the single-instance
+# deployment it is wg0 (see also provisioner.applier.interface above; the two
+# must agree or router enrollment silently fails with 503).
 wireguard:
-  interface: "wg-magichub"
+  interface: "wg0"
   listen_port: 13231
   peer_keepalive: 25s
   allowed_ips:
@@ -174,7 +176,11 @@ provisioner:
     insecure_ignore_host_key: true   # disposable lab only; never fleet control
     allow_empty_password: false      # true only for a disposable lab (admin/empty)
     timeout: 10s
-    interface: "wg-magichub"
+    # MUST name an interface that exists on THIS host. On the single-instance
+    # layout the Hub runs here too, so it is wg0 - not a separate wg-magichub.
+    # A wrong name makes every enrollment attempt return 503 "Magic Hub
+    # enrollment is not enabled", because no reachable target can be resolved.
+    interface: "wg0"
     listen_port_rotate_to: 0         # required for rotate_listen_port
     reset_hold: 30s                  # disable-peer hold (> UDP timeout)
     ping_target: "10.77.0.1"         # required IP: WireGuard hub probed after every live change

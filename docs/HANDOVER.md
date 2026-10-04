@@ -175,24 +175,72 @@ Use the venv binary when running certbot manually.
 
 ## 9. OPEN WORK
 
-1. **No GitHub deploy key authorised.** A key exists at
-   `/home/mmapp/.ssh/github_mega_deploy`. Authorising it would simplify deploys.
-2. **Router re-enrolment not done.** Routers must be re-enrolled against the new
-   hub key. Until then none can connect.
-3. **Cloudflare token** (DNS edit only) is at `/root/.cf-dns-token`. It has no
-   tunnel permission, so Cloudflare Tunnels are not usable with it.
-4. **The video media relay (`4fc5d7f`) is in source but NOT enabled.** It streams
+1. **Router re-enrolment not done.** Routers must be re-enrolled against the new
+   hub key. Until then none can connect. The server side is now ready - see
+   section 11 for what was blocking it.
+2. **Router must have internet AND a correct clock before enrolling.** The
+   enrolment request is signed with a timestamp; a router whose clock is stale
+   (RouterOS falls back to its last-known time when it has no route out) gets
+   rejected. Enrollment is not the first thing to fix on a fresh router - get
+   the WAN working and NTP syncing first.
+3. **Cloudflare token is expired.** Both tokens previously supplied now return
+   "Invalid API Token", so cache purges and DNS edits are impossible via API.
+   Until regenerated, **a Cloudflare fix means renaming the asset** (see
+   section 11) rather than purging. Token: DNS edit only, no tunnel permission.
+4. **The GitHub deploy key IS now authorised** (`mm-vps-deploy`, pull-only).
+   The repo remote was repointed from the one-shot `/tmp/repo.bundle` back to
+   GitHub, and `core.sshCommand` points at the right key, so `git pull` works
+   unaided as the `mmapp` user. Run git as `mmapp` - the repo is owned by it and
+   git refuses to run as root.
+5. **The video media relay (`4fc5d7f`) is in source but NOT enabled.** It streams
    video bytes through the app server; cheap/free plans must not carry that.
    Leave it off until there is dedicated bandwidth.
-5. **Two stashes of unpublished work** on the old app VPS were not carried over.
-6. **`mega.mikromagic.com`, `ns1/ns2` still point at the dead 118.27.148.x IPs**
+6. **Two stashes of unpublished work** on the old app VPS were not carried over.
+7. **`mega.mikromagic.com`, `ns1/ns2` still point at the dead 118.27.148.x IPs**
    and serve nothing. Remove or repoint.
-7. **Root password was weak and was exposed in a screenshot.** Still set; root
+8. **Root password was weak and was exposed in a screenshot.** Still set; root
    password login still possible. An `mmapp` user exists - disable root login.
 
 ---
 
-## 10. House rules
+## 10. Two bugs that cost real time - read before deploying
+
+**A. `sites-enabled/mega-magic` was a regular FILE, not a symlink.**
+It silently shadowed `sites-available/mega-magic`, so `ln -sf` "succeeded" while
+nginx kept loading a stale copy. Result: `www.mikromagic.com` returned 404
+because the loaded config had no `www` block. Worse, nginx picks the *first*
+`listen 443` block as the catch-all, and `magic-hub` sorted before `mega-magic` -
+so the Hub's `location / { return 404; }` swallowed every unmatched Host header.
+Fix: real symlink, apex marked `default_server`, hub renamed `zz-magic-hub` so
+the site sorts first. **Always `ls -la sites-enabled` after any vhost change,
+and never leave backups inside `sites-enabled` - `nginx -t` will fail on the
+duplicate and catch it.**
+
+**B. Enrollment returned 503 "Magic Hub enrollment is not enabled".**
+Not a flag problem - `VPS_HUB_ENROLLMENT_ENABLED=true` was set and correct.
+`config.yaml` still carried the OLD split topology: `interface: "wg-magichub"`
+and `ping_target: "10.99.0.1"`. On this single instance the hub interface is
+`wg0` at `10.77.0.1`, and the dead `10.99.0.0/24` entries were still in
+`allowed_target_cidrs` / `management_cidrs`. The app could not resolve a
+reachable target for the router, so it reported enrollment disabled.
+Fixed in `/home/mmapp/app/config.yaml` (backups: `*.bak-topology-*`,
+`*.bak-cidr-*`) and in the tracked `config.yaml.example`. **After any topology
+change, verify the interface named in config actually exists on the box
+(`ip link show <iface>`).**
+
+**C. The stale-cache trap, twice.** Cloudflare serves assets with
+`cache-control: immutable, max-age=604800`, so a browser or the edge can keep
+stale JS for 7 days and a server-side fix changes nothing. It caused the
+2.8MB-image problem and then a **total sign-in failure** - the edge held a
+16-hour-old `api.js` that lacked the `X-MM-CSRF: 1` header, so every login got
+403 `same-origin request required` while the correct file sat on the origin
+untouched. With no valid API token to purge, the fix is to **rename the asset
+to a name the edge has never seen** and repoint the HTML at it. Versions used:
+images `-20261004b`, `api.js` `-20261004c`.
+
+---
+
+## 11. House rules
 
 - Never `kill`/`nohup` the app - systemd owns it.
 - Long work in `systemd-run` units, not foreground SSH.
