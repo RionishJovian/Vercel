@@ -209,9 +209,15 @@ Use the venv binary when running certbot manually.
    GitHub, and `core.sshCommand` points at the right key, so `git pull` works
    unaided as the `mmapp` user. Run git as `mmapp` - the repo is owned by it and
    git refuses to run as root.
-5. **The video media relay (`4fc5d7f`) is in source but NOT enabled.** It streams
-   video bytes through the app server; cheap/free plans must not carry that.
-   Leave it off until there is dedicated bandwidth.
+5. **Media relay: ENABLED, currently unused - decide deliberately.**
+   `MEDIA_CONNECTOR_ENABLED=true` is live in
+   `/etc/systemd/system/mega-magic-api.service`. It streams video bytes through
+   the app server, which cheap/free plans should not carry. As of 2026-10-04
+   there was **zero real traffic** (every `media-connector` / `media-playback`
+   log line was my own curl probe), so nothing is at risk today. It is enabled
+   because a previous handover said to leave it off while the deployment was
+   rebuilt and the flag was set without that context - do not read it as a
+   considered decision. Turn it off unless you intend to sell the media tier.
 6. **Two stashes of unpublished work** on the old app VPS were not carried over.
 7. **`mega.mikromagic.com`, `ns1/ns2` still point at the dead 118.27.148.x IPs**
    and serve nothing. Remove or repoint.
