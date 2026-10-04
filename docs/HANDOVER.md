@@ -1,246 +1,187 @@
-# HANDOVER — MikroMagic / Mega Magic
+# HANDOVER - MikroMagic / Mega Magic
 
-**Read this before changing anything on the production servers.**
-
-**Latest 2026-10-04 update:** the user reports both VPS instances suspended for
-billing; read-only app SSH attempts time out. Do not treat historical statements
-of live/source parity below as current proof. The catalog/player outbound relay
-is implemented and locally tested in the next source continuation, not deployed.
-No laptop hosting, database restore, DNS or router change is authorized by a
-screenshot of another agent's recommendation. See MEDIA-RELAY.md for rollout
-and remaining real-PC acceptance requirements.
-
-**2026-10-04 source-only continuation:** paid-media bank/MMQR receipt approval,
-timed-pass and local-stream foundations were reviewed and validated locally.
-They are not a production rollout. After this source commit, do not assume
-GitHub/main is identical to the deployed version without checking the live SHA.
-Checkout sales must remain off until owner-local playback acceptance is complete.
-The next continuation implements the relay; see CURRENT-HANDOFF.md,
-MEDIA-RELAY.md and MEDIA-PAID-ACCESS.md.
-No production change or VPS stash operation was part of this continuation.
-
-Written by Hermes (Mac instance) on 2026-10-04. This document exists so any
-agent — including a fresh session with no memory of this work — can pick up
-safely. The live system beats this file; if they disagree, verify against the
-live system and fix this file in the same session.
+**Read this before changing anything on production.**
+Updated 2026-10-04 after the migration to Hostinger. The live system beats this
+file; if they disagree, verify against production and fix this file at the same time.
 
 ---
 
 ## 0. THE ONE RULE
 
-**No change to production without a verified rollback.**
-
-Every item below was either applied with a tested rollback, or deliberately
-left undone. Do not "finish" anything in section 6 without reading this rule.
+**No production change without a verified rollback.**
 
 ---
 
-## 1. The two servers
+## 1. The server - ONE box, app + hub
 
-| | App VPS | Hub VPS |
+| | |
+|---|---|
+| Provider | Hostinger KVM |
+| IP | **156.67.216.128** |
+| SSH alias | `mikromagic-hostinger` (key `~/.ssh/mikromagic-hostinger`) |
+| Specs | 4 core, **15 GB RAM**, 193 GB disk |
+| OS | Ubuntu 24.04.5 LTS, clean (no control panel, no Traefik) |
+
+App and hub share one instance. Ports never conflicted (hub 51820/51821 UDP;
+app 5433, 6379, 4222, 8080, 80, 443). The trade-off is deliberate: one failure
+takes down site and router reachability together. They were independent before.
+
+**The previous VPS pair (118.27.148.195 app, 118.27.148.183 hub) is GONE** -
+suspended for expired billing on 2026-10-04. Its WireGuard private key was lost
+with it; the hub key was regenerated on this host.
+
+---
+
+## 2. Services
+
+| Service | Port | Notes |
 |---|---|---|
-| SSH alias | `mikromagic-app` | `mikromagic-hub` |
-| IP | 118.27.148.195 | 118.27.148.183 |
-| Specs | 4 core / 15 GB / 96 GB | 4 core / 8 GB / 48 GB |
-| Serves | `mikromagic.com` (site + API) | `hub.mikromagic.com` (router tunnel) |
-| Actual load | ~1 GB RAM, load 0.01 | ~0.9 GB RAM, load 0.19 |
+| `mega-magic-api` | 8080 | Go binary as `mmapp`, `/home/mmapp/app/server` |
+| `mm_db` | 5433 | postgres:16-alpine, volume `mm_pgdata`, trust auth, **bound to 127.0.0.1 only** |
+| `mm_cache` | 6379 | redis:7-alpine |
+| `mm_nats` | 4222 | nats:2-alpine |
+| `nginx` | 80/443 | serves `/opt/mega-magic-web`, proxies `/api` to 8080 |
+| `wg-quick@wg0` | 51820/udp | WireGuard hub |
+| `mm-backup.timer` | - | daily 03:30 UTC |
+| `mm-edge-check.timer` | - | every 30 min |
+| `certbot.timer` | - | TLS renewal |
 
-Canonical domain is **mikromagic.com**. `www` 301-redirects to apex.
-Both are behind Cloudflare, so both DNS names resolve to Cloudflare IPs.
+Config: `/home/mmapp/app/config.yaml` (640) and `/etc/mega-magic/*.env` (600).
 
-**GitHub:** `https://github.com/RionishJovian/Mega` (branch `main`, ~774 files).
-The repo is the source of truth and is currently **in sync** with the live site
-(verified file-by-file, ignoring `deploy.sh`'s `?v=` cache-busting stamps).
-
----
-
-## 2. What is actually running (app VPS)
-
-- `nginx` → `root /opt/mega-magic-web` (frontend), proxies `/api/*`, `/health`,
-  `/ready` to `127.0.0.1:8080`
-- `mega-magic-api.service` → `/home/ubuntu/mega-magic-project/server` (Go binary)
-- Docker: `mega_magic_db` (postgres, host port 5433), `mega_magic_cache`
-  (redis), `mega_magic_nats`
-- Env files: `/etc/mega-magic/{openrouter,billing-telegram}.env`,
-  `/etc/mega-magic-hub-lookup.env`
-
-**Never hardcode a secret in a script.** Passwords come from
-`/etc/mega-backup.env` via `EnvironmentFile`.
+**Hub public key:** `dJEFC7BD/RRWBRZ9W1l7l+f5dnZtj8OSKssP8YLwcXQ=`
+Private key is in `/etc/wireguard/wg0.key` mode 600 - never print it.
 
 ---
 
-## 3. Deploy procedure (verified working)
+## 3. CRITICAL: hub.mikromagic.com must be DNS-ONLY
+
+It is an **A record, `proxied=false`**, pointing straight at 156.67.216.128.
+
+**Never put it behind Cloudflare's orange cloud.** Cloudflare does not proxy
+arbitrary UDP, so a WireGuard endpoint behind it cannot complete a handshake. It
+was proxied on the previous host, which is the likely reason router enrolment was
+unreliable.
+
+`mikromagic.com` and `www.mikromagic.com` stay proxied - correct for the website.
+
+---
+
+## 4. CRITICAL: WireGuard peers must be persisted
+
+On the previous hub, 3 of 9 peers existed **only in kernel state** and vanished
+on reboot. Always compare:
 
 ```bash
-ssh mikromagic-app
-cd /home/ubuntu/mega-magic-project
-git pull --ff-only origin main
-git log -1 --oneline          # confirm the commit you expect
-./deploy.sh all               # NOT `web` — changes may touch the Go backend
+grep -c '^\[Peer\]' /etc/wireguard/wg0.conf   # on disk
+wg show wg0 peers | wc -l                      # in memory
 ```
 
-`deploy.sh all` validates config → checks DB schema → builds the Go binary →
-restarts `mega-magic-api` → rsyncs `web/` to `/opt/mega-magic-web` → reloads
-nginx. If a schema check fails, apply it first:
+They must match. Persist any peer the app adds at runtime.
+
+---
+
+## 5. Deploying
+
+Source was shipped from the Mac as a **git bundle** - this VPS has no GitHub
+deploy key yet (see open work).
+
+```bash
+# on the Mac
+cd "/Users/aces/Magic Development/mega-magic-project"
+git bundle create /tmp/repo.bundle --all
+scp /tmp/repo.bundle mikromagic-hostinger:/tmp/
+
+# on the VPS
+sudo -u mmapp git -C /home/mmapp/app/src fetch /tmp/repo.bundle main
+sudo -u mmapp git -C /home/mmapp/app/src checkout FETCH_HEAD
+sudo -u mmapp -H bash -c 'cd /home/mmapp/app/src && \
+  CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /home/mmapp/app/server ./cmd/server'
+sudo -n systemctl restart mega-magic-api
+```
+
+**Apply any schema change before restarting**, or the API fails on a missing table:
 
 ```bash
 ENVIRONMENT=production /usr/bin/go run ./cmd/<name>-schema --action apply --config config.yaml
 ```
 
-**Verified:** repo and live site are identical. A deploy from this box is safe.
-(A previous claim that they had diverged was WRONG — it came from a bad
-`?v=`-stripping regex. The repo, GitHub, and live site are all the same code.)
+`deploy.sh` targets the old `/home/ubuntu/mega-magic-project` layout and **does
+not work here**. Use the sequence above.
 
 ---
 
-## 4. Completed work — do not undo
+## 6. Backups - the gap that was fixed
 
-### 4.1 nginx hardening (2026-10-04)
-`/etc/nginx/sites-enabled/mega-magic-apex.conf`, backup alongside it.
-- `www` → apex **301**
-- CSP, HSTS, `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`
-- unknown paths return **real 404s** (was: 200 + landing page for everything)
-- **`immutable` removed from `/assets/`** — see 4.2
+`/usr/local/bin/mm-backup.sh` via `mm-backup.timer` (03:30 UTC) writes to
+`/var/backups/megamagic/`, keeps 7 dumps plus globals.
 
-### 4.2 WHY `immutable` MUST NOT COME BACK
-`add_header Cache-Control "... immutable"` makes Cloudflare pin an asset URL and
-**never revalidate**. A correct deploy is then invisible for up to 7 days to
-anyone who already loaded the old URL. This is the "I deployed and nothing
-changed" bug.
+**The old backup verified TABLE COUNT ONLY.** That gap let a restore report
+"verification passed" on a database missing 42 of its 48 RLS policies - a
+cross-tenant exposure, found by accident during migration.
 
-`deploy.sh` content-hashes every asset URL, so a 7-day TTL is safe on its own.
-Keep `max-age=604800`. **Never re-add `immutable`.**
-
-### 4.3 `mega-edge-check` — mechanical guard
-`/usr/local/bin/mega-edge-check`, runs every 30 min
-(`mega-edge-check.timer`, `OnCalendar=*-*-* *:00,30:00`).
+The current script reads live table **and policy** counts, dumps, **restores into
+a throwaway container** (`mm_verify`), verifies both counts, and rotates old dumps
+**only after** a verified restore. Failure leaves existing backups untouched.
 
 ```bash
-sudo -n mega-edge-check
-sudo -n journalctl -u mega-edge-check.service -o cat -n 20
+sudo -n journalctl -u mm-backup.service -o cat -n 20
 ```
 
-Fails on: `immutable` anywhere in `sites-enabled/`, origin re-sending it,
-`www` not 301-ing, non-404 unknown paths, any of the 4 security headers
-missing, a non-200 real page, `/api/v1/me/profile` not 401, invalid nginx.
+---
 
-**This guard is proven** — a negative test injected `immutable` and the guard
-correctly failed, then passed again after restore. Do not "simplify" it; if you
-change it, re-run a negative test.
+## 7. Edge guard
 
-**Known gap:** a Cloudflare purge is NOT automated and no API token exists on
-either box. Stale edge copies age out on their own. Do not claim a purge ran.
+`/usr/local/bin/mm-edge-check`, every 30 min. `sudo -n mm-edge-check; echo $?`
 
-### 4.4 Backup — healthy, do not "fix"
-`mega-db-backup.timer` → `/usr/local/bin/mega-backup.sh` daily at 03:30.
-Dumps the REAL production DB (`mega_magic` on 127.0.0.1:5433) to
-`/home/ubuntu/backups/mega/`, keeps 7, and **verifies the dump's table count
-against the live DB**, failing loudly on mismatch.
+Checks `immutable` absence, nginx validity, real pages 200, unknown paths 404,
+unauthenticated API 401, four security headers, nginx/api/wg active, containers
+running, cert >14 days, and **RLS policies == 48**.
 
-**`/home/ubuntu/backups/mega-backup.sh` is DEAD and superseded** — it targets
-`mega_magic_dev`, a 20-table database, while production is `mega_magic`. That
-exact bug once meant production had no working backup. It is fixed. Leave the
-dead file alone or delete it; never re-wire it.
+**The `immutable` check matters most.** `add_header Cache-Control "... immutable"`
+makes Cloudflare pin an asset URL and never revalidate, so a correct deploy stays
+invisible for up to 7 days. The guard has been **negative-tested**: `immutable`
+was injected and the guard correctly failed.
 
-### 4.5 Housekeeping done (2026-10-04)
-Removed ~5.5 GB from the app VPS, ~0.4 GB from the hub: Go build cache, logs
->7 days, apt caches, abandoned rollout staging dirs, 465 MB of dated
-`deploy-backups`, 74 MB of test tarballs, 5 broken symlinks, stray
-`node_modules`. Everything removed is preserved at
-`/home/ubuntu/PRE-CLEANUP-BACKUP/` (live site snapshot, full git bundle
-verified complete, both stashes, binaries, env files).
+nginx `add_header` does **not** inherit into a location that declares its own
+`add_header`. The security headers are repeated inside every such location on
+purpose - do not "clean that up".
 
 ---
 
-## 5. SAFETY RULES ON THESE BOXES
+## 8. TLS
 
-**A sudo guard is active.** `sudo -n -l` shows `NOPASSWD: ALL` **minus** a deny
-list, which includes:
-- `rm -rf /home* /opt* /etc* /root* /var/lib/docker* /usr*` and `-fr` variants
-- `docker rm -f*`, `docker image prune*`, `docker volume rm/prune*`, `compose down*`
-- `systemctl stop|disable nginx|docker|mikromagic-app`, `mkfs*`, `dd*`, `reboot*`
+certbot runs in a **venv** at `/opt/certbot-venv` (Ubuntu 24.04 has no system
+pip), using **DNS-01** via Cloudflare so renewal works without the domain
+pointing here. Credentials in `/root/.cloudflared/dns.ini`.
 
-**These refusals are the owner's decision. Do not work around them.** If a
-`rm -rf` under `/home` is refused, either delete the path **as the owning user
-without sudo** (legitimate when you own the files) or leave it and say so. Never
-restructure the command to evade the pattern.
-
-Other standing rules:
-- Never `kill`/`nohup` an app process — it is managed by systemd.
-- Long builds/tests go in `sudo systemd-run` units, not a foreground SSH call.
-- Push multi-line scripts with `scp`, never `ssh "…"` (nested quotes break).
-- Verify with `systemctl is-active` and real artifact greps, not exit codes.
+Use the venv binary when running certbot manually.
 
 ---
 
-## 6. OPEN WORK — nothing here is started
+## 9. OPEN WORK
 
-### 6.1 URGENT: 3 of 9 WireGuard peers are memory-only (hub)
-```
-peers in /etc/wireguard/wg0.conf : 6
-peers live in wg show wg0        : 9
-```
-A hub **reboot loses 3 router connections**. Do this FIRST, before any
-migration, because a migration involves restarts.
-
-Persist them: take live blocks from `wg showconf wg0`, append the missing
-`[Peer]` blocks to `/etc/wireguard/wg0.conf`, validate with
-`wg-quick strip wg0` (never apply a conf that fails strip), then `wg syncconf`.
-**Back up the conf first.** Never overwrite the conf with `showconf` output
-alone — it carries no `Address`/`MTU` lines.
-
-### 6.2 Possible saving: merge app VPS into hub VPS
-App VPS costs ~$100/mo and uses ~7% of its RAM; the hub has 7 GB free and would
-fit the app's ~1.5 GB. No customers yet, so downtime risk is low. Suggested
-sequence (keep the app VPS until the hub has run cleanly for days):
-
-1. Fix 6.1
-2. Copy app files, DB dump, and `/etc/mega-magic/*` to the hub
-3. Add a SECOND nginx vhost on the hub for `mikromagic.com` (the hub's existing
-   vhost is `hub.mikromagic.com`; they coexist by `server_name`)
-4. Issue a Let's Encrypt cert on the hub (current one lives on the app box)
-5. Verify everything on the hub **while the app box still serves traffic**
-6. Only then repoint DNS — rollback = point it back
-
-Port notes: hub has postgres on 5432 and RouterOS VM on 8291/8728/8729/2222;
-keep the app's DB on 5433. The app's own `wg-lab` tunnel to the hub becomes a
-loopback once co-hosted — repoint to `127.0.0.1` (optional cleanup).
-
-**Blocking risk if ignored:** co-hosting means one failure takes down both the
-site and router reachability. Today they are independent — a hub outage does
-NOT take the website down. Losing that separation is a real cost.
-
-### 6.3 Undecided: two stashes on the app VPS
-- `stash@{0}` "before one-paste Hub deploy" — 55 files, 5,411 insertions.
-  Touches every HTML page + CSS/JS + ~47 backend files. **Verified NOT live.**
-  Genuine unpublished work (subscription billing, media publishing, one-paste
-  Hub enrollment). *Owner has not decided whether to ship or discard it.*
-- `stash@{1}` "owner-authorized playground cleanup" — 3 files, backend only.
-
-Both are inside the verified bundle at `PRE-CLEANUP-BACKUP/`.
-**Do not pop or drop them without the owner's explicit decision.**
-
-### 6.4 `mega.mikromagic.com` — temporary dev bridge, still live
-Returns 200 and proxies to the app API. Its own config comments call it
-temporary and not for production. It is a second unlocked front door. Owner has
-not decided whether to restrict or remove it. Do not disable unilaterally.
-
-### 6.5 Stale `sites-available/mega-magic-apex.conf`
-Dead copy still containing the OLD `immutable` line. Not loaded (nginx includes
-only `sites-enabled/`), but a trap for the next editor. Awaiting owner decision.
+1. **No GitHub deploy key authorised.** A key exists at
+   `/home/mmapp/.ssh/github_mega_deploy`. Authorising it would simplify deploys.
+2. **Router re-enrolment not done.** Routers must be re-enrolled against the new
+   hub key. Until then none can connect.
+3. **Cloudflare token** (DNS edit only) is at `/root/.cf-dns-token`. It has no
+   tunnel permission, so Cloudflare Tunnels are not usable with it.
+4. **The video media relay (`4fc5d7f`) is in source but NOT enabled.** It streams
+   video bytes through the app server; cheap/free plans must not carry that.
+   Leave it off until there is dedicated bandwidth.
+5. **Two stashes of unpublished work** on the old app VPS were not carried over.
+6. **`mega.mikromagic.com`, `ns1/ns2` still point at the dead 118.27.148.x IPs**
+   and serve nothing. Remove or repoint.
+7. **Root password was weak and was exposed in a screenshot.** Still set; root
+   password login still possible. An `mmapp` user exists - disable root login.
 
 ---
 
-## 7. Housekeeping / audit scripts (on the app VPS, `/tmp`)
+## 10. House rules
 
-`/tmp/mega-edge-check.sh` (installed to `/usr/local/bin`), `/tmp/app-audit.sh`,
-`/tmp/repo-vs-live.sh`, `/tmp/exact-diff.sh`, `/tmp/negtest2.sh`. These are
-throwaway; the only durable ones are `mega-edge-check` and the systemd units.
-
----
-
-## 8. If you are an agent without memory of this
-
-Trust the live system over any claim here, including claims in this file.
-Verify with a real command, paste the output, and do not report work as done
-because a document says it was.
+- Never `kill`/`nohup` the app - systemd owns it.
+- Long work in `systemd-run` units, not foreground SSH.
+- Push multi-line scripts with `scp`, never nested `ssh "..."` quoting.
+- **Never** restore without checking **both** table and policy counts.
+- Verify with real commands and paste output. Do not report work as done because
+  a document says it was.
