@@ -340,6 +340,14 @@ func networkStepID(ctx context.Context, r CommandRunner, s networkStep) (string,
 	}
 	return id, nil
 }
+// clearNATTracking drops the connection-tracking table after a NAT change.
+// RouterOS matches NAT on the first packet only and remembers the result, so a
+// modified masquerade rule does not affect already-tracked connections: the
+// change silently appears not to work until those entries expire.
+func clearNATTracking(ctx context.Context, r CommandRunner) {
+	_, _ = r.Run(ctx, "/ip/firewall/connection tracking remove")
+}
+
 func networkWrite(ctx context.Context, r CommandRunner, s networkStep, restore bool) error {
 	_, err := r.Run(ctx, networkWriteCommand(s, restore))
 	return err
@@ -361,6 +369,17 @@ func networkWriteCommand(s networkStep, restore bool) string {
 		cmd += " " + field + "=" + routerOSQuoted(values[field])
 	}
 	return cmd
+}
+
+// natTouched reports whether any step changes NAT. Tracking must be flushed once
+// after the last such step, not per-step, so the table is not wiped repeatedly.
+func natTouched(steps []networkStep) bool {
+	for _, s := range steps {
+		if s.Key == "nat" {
+			return true
+		}
+	}
+	return false
 }
 func networkVerify(ctx context.Context, r CommandRunner, s networkStep, restore bool) error {
 	if restore && s.ID == "" {
@@ -470,6 +489,9 @@ func (a *DeviceApplier) ApplyNetwork(ctx context.Context, businessID, deviceID s
 			}
 		}
 		result.RolledBack = verified
+		if natTouched(applied) {
+			clearNATTracking(cleanup, r)
+		}
 		if verified {
 			_ = cancelGuard(cleanup)
 		}
@@ -500,6 +522,9 @@ func (a *DeviceApplier) ApplyNetwork(ctx context.Context, businessID, deviceID s
 			rollback()
 			return result, fmt.Errorf("network verification failed: %s; inspect rollback status", err.Error())
 		}
+	}
+	if natTouched(steps) {
+		clearNATTracking(ctx, r)
 	}
 	if request.Kind == "wan" {
 		for _, probe := range []string{"1.1.1.1", "8.8.8.8"} {

@@ -124,6 +124,37 @@ func applyQuickConfigCommands(ctx context.Context, runner CommandRunner, cfg Qui
 	if _, err := runner.Run(ctx, "/ip dns set servers="+routerOSQuoted(servers)+" allow-remote-requests="+remote); err != nil {
 		return fmt.Errorf("set DNS configuration: %w", err)
 	}
+	if err := guardRemoteDNS(ctx, runner, remote == "yes"); err != nil {
+		return err
+	}
+	return nil
+}
+
+// guardRemoteDNS drops inbound DNS from untrusted interfaces whenever the router
+// answers remote queries. RouterOS ships with a default firewall that does this,
+// but this applier writes its own filter rules and a custom input rule could
+// leave port 53 open to the internet - an open resolver. The rules are
+// identified by their comment so they can be re-applied without duplicating.
+func guardRemoteDNS(ctx context.Context, runner CommandRunner, remote bool) error {
+	if !remote {
+		return nil
+	}
+	const guardComment = "mm-guard-drop-remote-dns"
+	for _, protocol := range []string{"udp", "tcp"} {
+		selector := "where comment=" + routerOSQuoted(guardComment) + " and protocol=" + protocol
+		if _, err := runner.Run(ctx, "/ip/firewall/filter remove [find "+selector+"]"); err != nil {
+			return fmt.Errorf("clear remote DNS guard: %w", err)
+		}
+		command := "/ip/firewall/filter add chain=input in-interface-list=WAN protocol=" + protocol +
+			" dst-port=53 action=drop comment=" + routerOSQuoted(guardComment)
+		if _, err := runner.Run(ctx, command); err != nil {
+			return fmt.Errorf("remote DNS guard failed for %s; router may be an open resolver", protocol)
+		}
+		count, err := networkCount(ctx, runner, "/ip/firewall/filter print count-only "+selector)
+		if err != nil || count != 1 {
+			return fmt.Errorf("remote DNS guard not verified for %s", protocol)
+		}
+	}
 	return nil
 }
 
