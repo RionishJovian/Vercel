@@ -100,7 +100,7 @@ a:hover { text-decoration: underline; }
   padding: 20px 18px;
 }
 .rail-brand { font-weight: 720; font-size: 16px; letter-spacing: .2px; display:flex; align-items:center; gap:9px; }
-.rail-brand .dot { width: 12px; height: 12px; border-radius: 3px; background: var(--accent); }
+.rail-brand .dot { width: 12px; height: 12px; border-radius: var(--radius-xs); background: var(--accent); }
 .rail-sub { font-size: 12px; color: var(--ink-muted); margin-top: 3px; }
 
 .rail-section { font-size: 11px; text-transform: uppercase; letter-spacing: .14em; color: var(--ink-muted); padding-top: 18px; }
@@ -117,7 +117,7 @@ a:hover { text-decoration: underline; }
 
 .nav-item {
   display: block; width: 100%; text-align: left;
-  padding: 8px 12px; border-radius: 6px; background: transparent;
+  padding: 8px 12px; border-radius: var(--radius-xs); background: transparent;
   color: var(--ink-soft); font-size: 14px; font-weight: 550; cursor: pointer;
   border: none;
 }
@@ -229,7 +229,7 @@ tbody tr:hover { background: var(--surface-hover); }
 .signin-left h1 { font-size: 32px; font-weight: 720; letter-spacing: -0.015em; }
 .signin-left p { color: var(--ink-soft); font-size: 15px; line-height: 1.6; }
 .signin-card {
-  background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm);
   padding: 34px; align-self: start; width: 360px; box-shadow: var(--shadow-md);
 }
 .signin-card h2 { font-size: 18px; font-weight: 680; margin-bottom: 18px; }
@@ -259,7 +259,7 @@ hr.rule { border: 0; border-top: 1px solid var(--line); margin: 20px 0; }
     display: inline-flex; align-items: center; justify-content: center;
     width: 42px; height: 42px; flex: 0 0 auto;
     cursor: pointer; user-select: none;
-    border: 1px solid var(--line); border-radius: 10px;
+    border: 1px solid var(--line); border-radius: var(--radius-sm);
     color: var(--ink); font-size: 17px; line-height: 1;
   }
   .rail-toggle:active { background: var(--accent-wash); }

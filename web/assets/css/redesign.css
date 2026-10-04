@@ -168,7 +168,8 @@ body.page-pricing {
 .page-app .rail {
   position: sticky;
   top: 0;
-  height: 100vh;
+  height: 100dvh;
+  height: 100vh; /* fallback for browsers without dvh */
   padding: 22px 18px 14px;
   gap: 0;
   overflow: hidden;
@@ -226,7 +227,7 @@ body.page-pricing {
   min-height: 36px;
   padding: 8px 10px 8px 13px;
   border: 1px solid transparent;
-  border-radius: 7px;
+  border-radius: var(--radius-xs);
   color: #9ba8b4;
   font-size: 13px;
   font-weight: 540;
@@ -453,7 +454,7 @@ body.page-pricing {
   min-height: 34px;
   padding: 7px 12px;
   border: 1px solid #34414d;
-  border-radius: 7px;
+  border-radius: var(--radius-xs);
   color: #dce3e8;
   background: #18212a;
   box-shadow: none;
@@ -503,7 +504,7 @@ body.page-pricing {
   color: var(--ink);
   background: #0d131a;
   border: 1px solid #303d49;
-  border-radius: 7px;
+  border-radius: var(--radius-xs);
   box-shadow: none;
 }
 
@@ -527,7 +528,7 @@ body.page-pricing {
 .page-app .alert {
   padding: 11px 13px;
   border: 1px solid rgba(239, 123, 131, .35);
-  border-radius: 7px;
+  border-radius: var(--radius-xs);
   color: #ffc4c7;
   background: var(--bad-wash);
   backdrop-filter: none;
@@ -574,7 +575,7 @@ body.page-pricing {
   padding: 12px 14px;
   background: var(--ok-wash);
   border: 1px solid rgba(98, 212, 154, .18);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
 }
 
 .page-app .health-banner > div {
@@ -596,7 +597,7 @@ body.page-pricing {
   padding: 12px 14px;
   background: var(--bad-wash);
   border: 1px solid rgba(239, 123, 131, .22);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
 }
 
 .page-app .security-banner > div {
@@ -640,7 +641,7 @@ body.page-pricing {
   color: var(--ink);
   background: transparent;
   border: 1px solid #34414d;
-  border-radius: 7px;
+  border-radius: var(--radius-xs);
   box-shadow: none;
   backdrop-filter: none;
   font-size: 12.5px;
@@ -748,7 +749,7 @@ body.page-pricing {
   color: var(--ink);
   background: #17212a;
   border: 1px solid #34414d;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   box-shadow: none;
   backdrop-filter: none;
   font-size: 13px;
@@ -807,7 +808,7 @@ body.page-pricing {
   gap: 0;
   margin-top: 28px;
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   background: var(--line);
   overflow: hidden;
 }
@@ -835,7 +836,7 @@ body.page-pricing {
   color: var(--accent);
   background: var(--accent-wash);
   border: 1px solid rgba(98, 212, 154, .17);
-  border-radius: 7px;
+  border-radius: var(--radius-xs);
   box-shadow: none;
   backdrop-filter: none;
 }
@@ -913,7 +914,7 @@ body.page-pricing {
   overflow: visible;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   box-shadow: var(--shadow-md);
   backdrop-filter: none;
 }
@@ -939,7 +940,7 @@ body.page-pricing {
   color: var(--ink);
   background: #0d131a;
   border: 1px solid #303d49;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   box-shadow: none;
 }
 
@@ -994,7 +995,7 @@ body.page-pricing {
   padding: 28px;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 11px;
+  border-radius: var(--radius-sm);
   box-shadow: none;
   backdrop-filter: none;
 }
@@ -1034,7 +1035,7 @@ body.page-pricing {
 .page-pricing table {
   background: var(--surface);
   border-color: var(--line);
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
 }
 
 .page-pricing th,
@@ -1048,7 +1049,7 @@ body.page-pricing {
   color: var(--ink-soft);
   background: var(--surface);
   border-color: var(--line);
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
 }
 
 .page-pricing .promo .k { color: var(--accent); }
@@ -1122,7 +1123,7 @@ body.page-pricing {
   object-position: center;
   background: #08241f;
   border: 1px solid color-mix(in srgb, var(--primary) 62%, var(--border-strong));
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   box-shadow: 0 4px 16px rgba(0, 0, 0, .18);
 }
 .page-app .md-avatar-launcher {
@@ -1131,7 +1132,7 @@ body.page-pricing {
   height: 38px;
   margin-left: -1px;
   border-color: color-mix(in srgb, var(--on-primary) 45%, transparent);
-  border-radius: 11px;
+  border-radius: var(--radius-sm);
 }
 .page-app .md-avatar-welcome { flex-basis: 48px; width: 48px; height: 48px; }
 .page-app .md-popup-actions .status { white-space: nowrap; }
@@ -1169,12 +1170,12 @@ body.page-pricing {
   line-height: 1.55;
   background: #131c25;
   border: 1px solid var(--line-soft);
-  border-radius: 4px 12px 12px 12px;
+  border-radius: var(--radius-xs) 12px 12px 12px;
 }
 .page-app .md-message.user .md-message-body {
   background: #173126;
   border-color: rgba(98, 212, 154, .2);
-  border-radius: 12px 4px 12px 12px;
+  border-radius: var(--radius-md) 4px 12px 12px;
 }
 
 .page-app .md-composer { padding: 12px; background: var(--surface); border-top: 1px solid var(--line-soft); }
@@ -1188,7 +1189,7 @@ body.page-pricing {
   line-height: 1.4;
   background: #111922;
   border: 1px solid var(--line-soft);
-  border-radius: 7px;
+  border-radius: var(--radius-xs);
   cursor: pointer;
 }
 .page-app .md-prompt:hover { color: var(--foreground); border-color: var(--border-strong); background: var(--surface-hover); }
@@ -1203,7 +1204,7 @@ body.page-pricing {
   overflow: hidden;
   background: var(--line-soft);
   border: 1px solid var(--line-soft);
-  border-radius: 9px;
+  border-radius: var(--radius-sm);
 }
 .page-app .topo-stats > div { display: flex; flex-direction: column; gap: 5px; padding: 14px 16px; background: #111820; }
 .page-app .topo-stats span { color: var(--ink-muted); font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
@@ -1218,8 +1219,8 @@ body.page-pricing {
 .page-app .topo-dot.stale { background: var(--warn); }
 .page-app .topo-dot.offline { background: var(--bad); }
 .page-app .topo-canvas { min-height: 390px; padding: 28px 24px 42px; overflow: auto; background-color: #0b1117; background-image: linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px); background-size: 32px 32px; }
-.page-app .topo-hub { display: flex; align-items: center; gap: 12px; width: max-content; min-width: 290px; margin: 0 auto; padding: 12px 14px; background: #16231d; border: 1px solid rgba(98,212,154,.3); border-radius: 9px; box-shadow: 0 9px 26px rgba(0,0,0,.24); }
-.page-app .topo-hub-mark { display: grid; width: 38px; height: 38px; place-items: center; color: #07130d; background: var(--accent); border-radius: 8px; font: 800 12px var(--font-mono); }
+.page-app .topo-hub { display: flex; align-items: center; gap: 12px; width: max-content; min-width: 290px; margin: 0 auto; padding: 12px 14px; background: #16231d; border: 1px solid rgba(98,212,154,.3); border-radius: var(--radius-sm); box-shadow: 0 9px 26px rgba(0,0,0,.24); }
+.page-app .topo-hub-mark { display: grid; width: 38px; height: 38px; place-items: center; color: #07130d; background: var(--accent); border-radius: var(--radius-sm); font: 800 12px var(--font-mono); }
 .page-app .topo-hub div { display: flex; flex: 1; flex-direction: column; gap: 2px; }
 .page-app .topo-hub strong { color: var(--ink); font-size: 14px; }
 .page-app .topo-hub div span { color: var(--ink-muted); font-size: 11px; }
@@ -1241,15 +1242,15 @@ body.page-pricing {
 .page-app .topo-tree li:only-child::after { width: 1px; border-top: 0; }
 .page-app .topo-tree li:first-child:not(:only-child)::before,
 .page-app .topo-tree li:last-child:not(:only-child)::after { border-top: 0; }
-.page-app .topo-tree li:first-child:not(:only-child)::after { border-radius: 7px 0 0; }
+.page-app .topo-tree li:first-child:not(:only-child)::after { border-radius: var(--radius-xs) 0 0; }
 .page-app .topo-tree li:last-child:not(:only-child)::before { border-right: 1px solid #3c4b57; border-radius: 0 7px 0 0; }
-.page-app .topo-device { width: 210px; margin: 0 auto; padding: 12px; background: #121a22; border: 1px solid #2d3a45; border-left: 3px solid var(--unknown); border-radius: 8px; box-shadow: 0 8px 22px rgba(0,0,0,.18); }
+.page-app .topo-device { width: 210px; margin: 0 auto; padding: 12px; background: #121a22; border: 1px solid #2d3a45; border-left: 3px solid var(--unknown); border-radius: var(--radius-sm); box-shadow: 0 8px 22px rgba(0,0,0,.18); }
 .page-app .topo-device:focus { outline: 2px solid var(--focus); outline-offset: 3px; }
 .page-app .topo-device.topo-state-up { border-left-color: var(--ok); }
 .page-app .topo-device.topo-state-stale { border-left-color: var(--warn); }
 .page-app .topo-device.topo-state-offline { border-left-color: var(--bad); }
 .page-app .topo-device-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
-.page-app .topo-glyph { display: grid; width: 30px; height: 30px; place-items: center; color: var(--ink-soft); background: #1b2630; border: 1px solid #34424f; border-radius: 7px; font: 800 10px var(--font-mono); }
+.page-app .topo-glyph { display: grid; width: 30px; height: 30px; place-items: center; color: var(--ink-soft); background: #1b2630; border: 1px solid #34424f; border-radius: var(--radius-xs); font: 800 10px var(--font-mono); }
 .page-app .topo-device > strong { display: block; color: var(--ink); font-size: 13px; line-height: 1.35; overflow-wrap: anywhere; }
 .page-app .topo-device > span:not(.topo-glyph) { display: block; margin-top: 3px; overflow: hidden; color: var(--ink-muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .page-app .topo-device-meta { display: flex; justify-content: space-between; gap: 8px; margin-top: 10px; padding-top: 8px; color: var(--ink-muted); border-top: 1px solid var(--line-soft); font-size: 10px; text-transform: capitalize; }
@@ -1280,7 +1281,7 @@ body.page-pricing {
     color: var(--ink);
     background: #151e27;
     border-color: #34414d;
-    border-radius: 7px;
+    border-radius: var(--radius-xs);
     cursor: pointer;
   }
 
@@ -2078,13 +2079,13 @@ body.page-pricing {
 .page-app .site-global-pin.online > span { background:var(--success); }
 .page-app .site-global-pin.offline > span { background:var(--destructive); }
 .page-app .site-global-pin.is-selected > span { outline:3px solid var(--primary); }
-.page-app .site-global-pin strong { max-width:140px; overflow:hidden; text-overflow:ellipsis; padding:3px 6px; border-radius:5px; background:var(--surface); font-size:11px; }
+.page-app .site-global-pin strong { max-width:140px; overflow:hidden; text-overflow:ellipsis; padding:3px 6px; border-radius: var(--radius-xs); background:var(--surface); font-size:11px; }
 @media(max-width:600px) { .page-app .site-global-map { height:340px; } }
 .page-app .site-map-grid { position: relative; min-height: 360px; overflow: hidden; background-color: var(--background); background-image: radial-gradient(circle at 72% 28%, color-mix(in srgb, var(--primary) 18%, transparent), transparent 32%), linear-gradient(color-mix(in srgb, var(--border) 48%, transparent) 1px, transparent 1px), linear-gradient(90deg, color-mix(in srgb, var(--border) 48%, transparent) 1px, transparent 1px); background-size: auto, 36px 36px, 36px 36px; border: 1px solid var(--border); border-radius: var(--radius-md); }
 .page-app .site-map-empty { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; color: var(--foreground-muted); text-align: center; }
 .page-app .site-map-pin { position: absolute; z-index: 1; display: grid; gap: 5px; max-width: 150px; padding: 0; color: var(--foreground); text-align: left; cursor: pointer; background: transparent; border: 0; transform: translate(-50%, -50%); }
 .page-app .site-map-pin > span { width: 18px; height: 18px; background: var(--neutral-status); border: 4px solid var(--surface); border-radius: 50%; box-shadow: 0 0 0 2px color-mix(in srgb, var(--neutral-status) 55%, transparent), 0 5px 14px rgba(0,0,0,.28); }
-.page-app .site-map-pin strong { padding: 4px 7px; overflow: hidden; background: color-mix(in srgb, var(--surface) 92%, transparent); border: 1px solid var(--border); border-radius: 6px; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.page-app .site-map-pin strong { padding: 4px 7px; overflow: hidden; background: color-mix(in srgb, var(--surface) 92%, transparent); border: 1px solid var(--border); border-radius: var(--radius-xs); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .page-app .site-map-pin.online > span { background: var(--success); }
 .page-app .site-map-pin.offline > span { background: var(--destructive); }
 .page-app .site-map-pin.is-selected { z-index: 2; }
@@ -2484,3 +2485,61 @@ body.page-pricing {
 .page-app [hidden] { display: none !important; }
 .page-app .nav-item[hidden],
 .page-app .rail-section[hidden] { display: none !important; }
+
+
+/* ============================================================
+   iOS / Safari compatibility layer
+   1. -webkit-tap-highlight-color: iOS paints a grey box on every tap; kill it
+      and restore the tap feedback the app already has via :active states.
+   2. safe-area-inset: notched devices (iPhone 14+, Dynamic Island) and the
+      home-indicator bar overlap fixed headers/footers unless padded out.
+   3. Inputs below 16px make Safari zoom the whole page on focus. Bump only
+      the editable controls, never labels (labels at 12-13px are correct).
+   ============================================================ */
+.page-app,
+.page-signin,
+.page-marketing,
+.page-pricing,
+body {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* Fixed surfaces clear the notch and the home bar. */
+.page-app .rail,
+.page-app .rail-footer,
+.page-app .rail-head {
+  padding-left: max(18px, env(safe-area-inset-left));
+  padding-right: max(18px, env(safe-area-inset-right));
+}
+
+.page-app .layout > main,
+.page-app main {
+  padding-left: max(24px, env(safe-area-inset-left));
+  padding-right: max(24px, env(safe-area-inset-right));
+  padding-bottom: max(24px, env(safe-area-inset-bottom));
+}
+
+/* Modals and dialogs sit above the home indicator. */
+.page-app dialog,
+.page-app [role="dialog"] {
+  padding-bottom: max(24px, env(safe-area-inset-bottom));
+}
+
+/* Safari zooms on focus below 16px. Labels stay small; only inputs grow. */
+.page-app input:not([type="checkbox"]):not([type="radio"]),
+.page-app select,
+.page-app textarea,
+.page-signin input,
+.page-signin select,
+.page-signin textarea {
+  font-size: max(16px, 1em);
+}
+
+/* Touch targets: Apple HIG minimum is 44pt. */
+.page-app .btn,
+.page-app .rail-menu a,
+.page-app .rail-item {
+  min-height: 44px;
+}
