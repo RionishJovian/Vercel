@@ -7,8 +7,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -18,12 +20,47 @@ import (
 const portalOrigin = "https://mikromagic.com"
 const portalHost = "mikromagic.com"
 
+// Jellyfin's default port on the owner's LAN. Guests reach it over the business
+// RouterBOARD network only; the portal never proxies video bytes.
+const defaultMediaPort = "8096"
+
+// mediaTarget validates the owner's media server. It must be a private IPv4 host
+// on the business network - a public address here would expose a LAN service to
+// the internet through the walled garden.
+func mediaTarget(request PortalDeployment) (host, port string, err error) {
+	host = strings.TrimSpace(request.MediaHost)
+	if host == "" {
+		return "", "", nil
+	}
+	if request.MediaPort == "" {
+		request.MediaPort = defaultMediaPort
+	}
+	ip := net.ParseIP(host)
+	if ip == nil || ip.To4() == nil || ip.IsUnspecified() || ip.IsMulticast() || ip.IsLoopback() {
+		return "", "", fmt.Errorf("media host must be a private IPv4 address on your network")
+	}
+	if !ip.IsPrivate() {
+		return "", "", fmt.Errorf("media host must be a private address on the business network, not a public one")
+	}
+	number, e := strconv.Atoi(request.MediaPort)
+	if e != nil || number < 1 || number > 65535 {
+		return "", "", fmt.Errorf("media port must be between 1 and 65535")
+	}
+	return ip.To4().String(), strconv.Itoa(number), nil
+}
+
 var portalVersionPattern = regexp.MustCompile(`^[a-f0-9]{16}$`)
 
 type PortalDeployment struct {
 	Profile      string `json:"profile"`
 	Version      string `json:"version"`
 	Confirmation string `json:"confirmation"`
+	// MediaHost is the owner's LAN media server (Jellyfin) that guests on this
+	// HotSpot network must be able to reach. Empty means no media service is
+	// offered and the walled garden stays portal-only. Video bytes travel only on
+	// the local network; nothing here enables cloud media transport.
+	MediaHost string `json:"media_host"`
+	MediaPort string `json:"media_port"`
 }
 type PortalDeploymentPlan struct {
 	Profile      string   `json:"profile"`
@@ -67,6 +104,9 @@ func (a *DeviceApplier) PortalProfiles(ctx context.Context, businessID, deviceID
 type portalState struct {
 	plan                                    PortalDeploymentPlan
 	original, replacement, selector, garden string
+	mediaGarden                                                       string
+	mediaHost, mediaPort                                              string
+	hasMediaGarden                                                    bool
 	directory, destination                  string
 	hasGarden                               bool
 }
@@ -136,6 +176,14 @@ func portalPreflight(ctx context.Context, r CommandRunner, businessID, deviceID 
 	s.original = strings.TrimSuffix(strings.TrimSuffix(out, "\n"), "\r")
 	s.replacement = portalLoginHTML(deviceID)
 	s.garden = "comment=" + routerOSQuoted("mm-portal-"+request.Profile) + " dynamic=no"
+	mediaHost, mediaPort, mediaErr := mediaTarget(request)
+	if mediaErr != nil {
+		return s, mediaErr
+	}
+	s.mediaHost, s.mediaPort = mediaHost, mediaPort
+	if mediaHost != "" {
+		s.mediaGarden = "comment=" + routerOSQuoted("mm-media-"+request.Profile) + " dynamic=no"
+	}
 	out, err = r.Run(ctx, "/ip hotspot walled-garden ip print count-only where "+s.garden)
 	if err != nil {
 		return s, fmt.Errorf("could not inspect portal access rule")
@@ -217,11 +265,32 @@ func (a *DeviceApplier) ApplyPortal(ctx context.Context, businessID, deviceID st
 		out, readErr := r.Run(cleanup, "/ip hotspot profile print value-list detail where "+s.selector)
 		ok := e == nil && readErr == nil && parseValueList(out)["html-directory"] == s.directory
 		if addedGarden {
+			if s.hasMediaGarden {
+				_, _ = r.Run(cleanup, "/ip hotspot walled-garden ip remove [find "+s.mediaGarden+"]")
+			}
 			_, e = r.Run(cleanup, "/ip hotspot walled-garden ip remove [find "+s.garden+"]")
 			out, readErr = r.Run(cleanup, "/ip hotspot walled-garden ip print count-only where "+s.garden)
 			ok = ok && e == nil && readErr == nil && strings.TrimSpace(out) == "0"
 		}
 		result.RolledBack = ok
+	}
+	if s.mediaHost != "" {
+		if out, e := r.Run(ctx, "/ip hotspot walled-garden ip print count-only where "+s.mediaGarden); e != nil || strings.TrimSpace(out) != "0" {
+			rollback()
+			return result, fmt.Errorf("managed media access rule already exists; operator review required")
+		}
+		_, err = r.Run(ctx, "/ip hotspot walled-garden ip add action=accept disabled=no protocol=tcp dst-port="+s.mediaPort+" dst-address="+routerOSQuoted(s.mediaHost)+" server="+routerOSQuoted(s.plan.Server)+" comment="+routerOSQuoted("mm-media-"+s.plan.Profile))
+		if err != nil {
+			rollback()
+			return result, fmt.Errorf("media access rule failed; check rollback status")
+		}
+		s.hasMediaGarden = true
+		out, e := r.Run(ctx, "/ip hotspot walled-garden ip print value-list detail where "+s.mediaGarden)
+		g := parseValueList(out)
+		if e != nil || g["dst-address"] != s.mediaHost || g["dst-port"] != s.mediaPort || g["protocol"] != "tcp" || g["action"] != "accept" {
+			rollback()
+			return result, fmt.Errorf("media access rule verification failed; check rollback status")
+		}
 	}
 	if !s.hasGarden {
 		addedGarden = true

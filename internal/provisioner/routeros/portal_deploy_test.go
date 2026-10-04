@@ -117,6 +117,39 @@ func portalHasWrites(commands []string) bool {
 	}
 	return false
 }
+func TestMediaTargetValidation(t *testing.T) {
+	cases := []struct {
+		name string
+		in   PortalDeployment
+		ok   bool
+	}{
+		{"absent means no media", PortalDeployment{}, true},
+		{"private host", PortalDeployment{MediaHost: "192.168.88.10"}, true},
+		{"port override", PortalDeployment{MediaHost: "192.168.88.10", MediaPort: "8097"}, true},
+		{"public address refused", PortalDeployment{MediaHost: "8.8.8.8"}, false},
+		{"loopback refused", PortalDeployment{MediaHost: "127.0.0.1"}, false},
+		{"unspecified refused", PortalDeployment{MediaHost: "0.0.0.0"}, false},
+		{"hostname refused", PortalDeployment{MediaHost: "jellyfin.local"}, false},
+		{"bad port", PortalDeployment{MediaHost: "192.168.88.10", MediaPort: "99999"}, false},
+		{"port not a number", PortalDeployment{MediaHost: "192.168.88.10", MediaPort: "abc"}, false},
+	}
+	for _, tc := range cases {
+		host, port, err := mediaTarget(tc.in)
+		if tc.ok && err != nil {
+			t.Fatalf("%s: expected accept, got %v", tc.name, err)
+		}
+		if !tc.ok && err == nil {
+			t.Fatalf("%s: expected refusal, accepted host=%q port=%q", tc.name, host, port)
+		}
+		if tc.ok && tc.in.MediaHost != "" && (host == "" || port == "") {
+			t.Fatalf("%s: accepted but produced empty target", tc.name)
+		}
+		if tc.ok && tc.in.MediaHost != "" && tc.in.MediaPort == "" && port != defaultMediaPort {
+			t.Fatalf("%s: default port should be %s, got %s", tc.name, defaultMediaPort, port)
+		}
+	}
+}
+
 func TestPortalDeploymentPreviewAndApply(t *testing.T) {
 	r := newPortalRunner()
 	a := portalTestApplier(r)
