@@ -97,6 +97,21 @@ They must match. Persist any peer the app adds at runtime.
 
 ## 5. Deploying
 
+**Run deploys as the `mmapp` user:** `./deploy.sh web`. It has a scoped
+sudoers drop-in at `/etc/sudoers.d/90-mmapp-deploy` granting only the exact
+commands deploy.sh performs (rsync/install pinned to the web root, systemctl
+reload nginx / daemon-reload / restart mega-magic-api). Verified that
+`sudo -n /bin/bash`, `systemctl restart ssh`, `tee /etc/passwd` and `su - root`
+are all still denied - it is not a path to root.
+
+Do NOT run deploy.sh as root out of convenience: git will refuse the repo
+(owned by `mmapp`) and you lose the "am I deploying as the right user?" check.
+If root must pull first, pass the deploy key explicitly:
+`GIT_SSH_COMMAND="ssh -i /home/mmapp/.ssh/github_mega_deploy -o IdentitiesOnly=yes" git pull`.
+
+**Never hand-copy files into `/opt/mega-magic-web`.** That bypasses the
+cache-busting step and is what broke sign-in on 2026-10-04 - see section 10C.
+
 Source was shipped from the Mac as a **git bundle** - this VPS has no GitHub
 deploy key yet (see open work).
 
@@ -185,8 +200,10 @@ Use the venv binary when running certbot manually.
    the WAN working and NTP syncing first.
 3. **Cloudflare token is expired.** Both tokens previously supplied now return
    "Invalid API Token", so cache purges and DNS edits are impossible via API.
-   Until regenerated, **a Cloudflare fix means renaming the asset** (see
-   section 11) rather than purging. Token: DNS edit only, no tunnel permission.
+   This no longer blocks deploys - `deploy.sh` busts the cache via `?v=` (see
+   section 10C) - but DNS changes still need a working token. Regenerate with
+   **Zone > DNS > Edit** plus **Cache Purge > Purge**. Token: DNS edit only, no
+   tunnel permission.
 4. **The GitHub deploy key IS now authorised** (`mm-vps-deploy`, pull-only).
    The repo remote was repointed from the one-shot `/tmp/repo.bundle` back to
    GitHub, and `core.sshCommand` points at the right key, so `git pull` works
@@ -203,7 +220,7 @@ Use the venv binary when running certbot manually.
 
 ---
 
-## 10. Two bugs that cost real time - read before deploying
+## 10. Three bugs that cost real time - read before deploying
 
 **A. `sites-enabled/mega-magic` was a regular FILE, not a symlink.**
 It silently shadowed `sites-available/mega-magic`, so `ln -sf` "succeeded" while
@@ -228,15 +245,31 @@ Fixed in `/home/mmapp/app/config.yaml` (backups: `*.bak-topology-*`,
 change, verify the interface named in config actually exists on the box
 (`ip link show <iface>`).**
 
-**C. The stale-cache trap, twice.** Cloudflare serves assets with
-`cache-control: immutable, max-age=604800`, so a browser or the edge can keep
-stale JS for 7 days and a server-side fix changes nothing. It caused the
-2.8MB-image problem and then a **total sign-in failure** - the edge held a
-16-hour-old `api.js` that lacked the `X-MM-CSRF: 1` header, so every login got
-403 `same-origin request required` while the correct file sat on the origin
-untouched. With no valid API token to purge, the fix is to **rename the asset
-to a name the edge has never seen** and repoint the HTML at it. Versions used:
-images `-20261004b`, `api.js` `-20261004c`.
+**C. The stale-cache trap, twice - and the deploy bypass that caused it.**
+Cloudflare serves `/assets/*` as `cache-control: public, max-age=604800,
+immutable`, so a browser or the edge can hold stale JS for 7 days while a
+server-side fix changes nothing. HTML is `no-cache` and always revalidates, so
+**only `/assets/` is hazardous**.
+
+`deploy.sh` already solves this - it appends `?v=<md5 of content>` to every
+asset URL, and `?v=` is part of the Cloudflare cache key (verified: `HIT` with
+no query, `MISS` with `?v=`). **The sign-in outage was my own fault: I hand-copied
+`signin.html` into `/opt/mega-magic-web` instead of running `deploy.sh`, which
+skipped the restamp, so the browser fell back to a 16-hour-old `api.js` lacking
+the `X-MM-CSRF: 1` header and every login returned 403.** The fix at the time was
+renaming the asset (`api-20261004c.js`); the real fix is to never bypass
+`deploy.sh`.
+
+Its asset list was also hardcoded to 8 entries, so `hub-enrollment.js` and the
+`media-*` files were silently never stamped - a week-old copy could reach a
+browser. It now discovers assets from the HTML, stamps every page, and **fails
+the deploy** if any `/assets/` reference lacks a stamp. The replacement is
+idempotent (verified byte-identical across three runs); match the path and an
+existing `?v=<hex>` together, never with a greedy `[^"']*`.
+
+Note: some `?v=` values in the source are the repo's own release markers
+(`20260930-3`, `20261003-simple-management-3`) and are not content hashes. That
+is expected - do not "fix" them.
 
 ---
 
