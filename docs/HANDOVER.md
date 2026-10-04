@@ -222,6 +222,27 @@ Use the venv binary when running certbot manually.
 
 ## 10. Three bugs that cost real time - read before deploying
 
+**D. "Everything is done" is not a thing you may say until features are
+audited.** On 2026-10-04 this handover's author reported "all done" after
+checking services, pages and DB rows - and the user immediately asked about
+**Magic Dude**, a headline feature that had never been looked at. It turned out
+fine, but nothing had actually proven it. Auditing it revealed the console's
+entire view layer is **inline in `app.html` (~300 KB)**, not in
+`assets/js/app.js`, which is only 2.5 KB of shared helpers - so any check that
+greps `app.js` for view names will falsely report 30 broken views.
+
+When asked "is everything done", audit **features**, in this order:
+1. Every registered route, probed **with its own HTTP verb** (`170` routes;
+   expect `401`/`403` unauthenticated, and **zero `500`s**). Reading the route
+   table out of `journalctl -u mega-magic-api | grep GIN-debug` is the reliable
+   way to get verbs - grepping the source gives you every prefix and produces
+   false `404`s when probed with the wrong verb.
+2. Every nav view has a handler (30/30 here).
+3. Every JS file parses (`node --check`).
+4. The AI feature is actually wired end to end: `Magic Dude` calls
+   `MM.post("/magic-dude/chat")`, and `api.js` attaches `X-MM-CSRF: 1`
+   globally, so it cannot hit the 403 that broke sign-in.
+
 **A. `sites-enabled/mega-magic` was a regular FILE, not a symlink.**
 It silently shadowed `sites-available/mega-magic`, so `ln -sf` "succeeded" while
 nginx kept loading a stale copy. Result: `www.mikromagic.com` returned 404
