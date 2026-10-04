@@ -26,38 +26,69 @@ deploy_web() {
   # Cache-busting. Cloudflare serves /assets/* as `public, max-age=604800,
   # immutable` while app.html is DYNAMIC (never cached). So a changed stylesheet
   # would keep its old edge copy for a WEEK while the new HTML went live
-  # immediately — the CDN would serve fresh markup against stale CSS/JS.
+  # immediately - the CDN would serve fresh markup against stale CSS/JS.
   # Versioning each asset URL by its content hash makes every change a new URL
-  # that the edge has to fetch from origin. HTML is always revalidated. Stamp
-  # every page that imports shared assets so marketing, auth, pricing, and the
-  # console cannot drift across an immutable-cache deployment.
-  local vcss vredesign vlayout vapi vapp vtheme vi18n vnetwork stamp_dir page
-  vcss=$(md5sum "$ROOT/web/assets/css/styles.css" | cut -c1-8)
-  vredesign=$(md5sum "$ROOT/web/assets/css/redesign.css" | cut -c1-8)
-  vlayout=$(md5sum "$ROOT/web/assets/css/layout.css" | cut -c1-8)
-  vapi=$(md5sum "$ROOT/web/assets/js/api.js"       | cut -c1-8)
-  vapp=$(md5sum "$ROOT/web/assets/js/app.js"       | cut -c1-8)
-  vtheme=$(md5sum "$ROOT/web/assets/js/theme.js"   | cut -c1-8)
-  vi18n=$(md5sum "$ROOT/web/assets/js/i18n.js"    | cut -c1-8)
-  vnetwork=$(md5sum "$ROOT/web/assets/js/network-control.js" | cut -c1-8)
+  # that the edge has to fetch from origin. HTML is always revalidated. A
+  # `?v=` query string is part of the Cloudflare cache key (verified: HIT with
+  # no query, MISS with ?v=), so this busts the edge cache without an API purge.
+  #
+  # The asset list is DISCOVERED, not hardcoded. A hardcoded list silently skips
+  # any asset added later - which is how hub-enrollment.js and the media-*
+  # files ended up unstamped and able to serve a week-old copy.
+  #
+  # Every shared page is restamped so marketing, auth, pricing and the console
+  # cannot drift across an immutable-cache deployment.
+  local stamp_dir page asset f hash pat missing=0 ref
   stamp_dir=$(mktemp -d /tmp/mm-web-stamp.XXXXXX)
-  for page in app index signin pricing; do
-    sed -e "s#\(/assets/css/styles\.css\)[^\"']*#\1?v=$vcss#" \
-        -e "s#\(/assets/css/redesign\.css\)[^\"']*#\1?v=$vredesign#" \
-        -e "s#\(/assets/css/layout\.css\)[^\"']*#\1?v=$vlayout#" \
-        -e "s#\(/assets/js/api\.js\)[^\"']*#\1?v=$vapi#" \
-        -e "s#\(/assets/js/app\.js\)[^\"']*#\1?v=$vapp#" \
-        -e "s#\(/assets/js/theme\.js\)[^\"']*#\1?v=$vtheme#" \
-        -e "s#\(/assets/js/i18n\.js\)[^\"']*#\1?v=$vi18n#" \
-        -e "s#\(/assets/js/network-control\.js\)[^\"']*#\1?v=$vnetwork#" \
-        "$ROOT/web/$page.html" > "$stamp_dir/$page.html"
-    sudo install -m 644 "$stamp_dir/$page.html" "/opt/mega-magic-web/$page.html"
-    rm -f "$stamp_dir/$page.html"
+  sed_args=()
+
+  # Build one -e expression per asset actually referenced by the pages.
+  while IFS= read -r asset; do
+    f="$ROOT/web/$asset"
+    [ -f "$f" ] || continue
+    hash=$(md5sum "$f" | cut -c1-8)
+    # Escape dots so they match literally, and swallow any existing ?v=.
+    pat=$(printf '%s' "$asset" | sed 's/[.]/[.]/g')
+    # Replace the path AND any existing ?v=<hash> that follows it, in one shot.
+    # Matching the optional query explicitly is what makes this idempotent - a
+    # greedy [^\"']* instead re-appends the hash onto the old one and produces
+    # ?v=00f3442626 on a second run. \" keeps the outer quoting intact.
+    # BRE needs the literal ? escaped, and the whole tail optional so an
+    # unstamped path and a stamped one both match exactly once.
+    sed_args+=(-e "s#\($pat\)\(\\?v=[0-9a-f]*\)\{0,1\}#\1?v=$hash#g")
+  done < <(grep -rhoE '/assets/(css|js)/[A-Za-z0-9._-]+\.(css|js)' "$ROOT"/web/*.html | sort -u)
+
+  if [ ${#sed_args[@]} -eq 0 ]; then
+    echo "ERROR: no assets discovered - refusing to publish unstamped HTML" >&2
+    rm -rf "$stamp_dir"
+    return 1
+  fi
+  echo ">> Stamping ${#sed_args[@]} assets by content hash"
+
+  for page in $(cd "$ROOT/web" && ls *.html); do
+    sed "${sed_args[@]}" "$ROOT/web/$page" > "$stamp_dir/$page"
+    sudo install -m 644 "$stamp_dir/$page" "/opt/mega-magic-web/$page"
+    rm -f "$stamp_dir/$page"
   done
   rmdir "$stamp_dir"
 
+  # Fail loudly rather than letting a week-old asset reach a browser. Any
+  # /assets/ reference in the published HTML must carry a ?v= stamp.
+  for page in /opt/mega-magic-web/*.html; do
+    while IFS= read -r ref; do
+      if ! grep -q "$(printf '%s' "$ref" | sed 's/\./\\./g')?v=" "$page"; then
+        echo "ERROR: $(basename "$page") references $ref with no ?v= stamp" >&2
+        missing=1
+      fi
+    done < <(grep -rhoE '/assets/(css|js)/[A-Za-z0-9._-]+\.(css|js)' "$page" | sort -u)
+  done
+  if [ "$missing" -ne 0 ]; then
+    echo "ERROR: cache-busting incomplete - fix before serving" >&2
+    return 1
+  fi
+
   sudo systemctl reload nginx
-  echo ">> Frontend published (assets v: css=$vcss redesign=$vredesign js=$vapi app=$vapp theme=$vtheme i18n=$vi18n) + nginx reloaded"
+  echo ">> Frontend published (all assets content-hash stamped) + nginx reloaded"
 }
 
 deploy_api() {
