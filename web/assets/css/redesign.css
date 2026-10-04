@@ -180,7 +180,7 @@ body.page-pricing {
   -webkit-backdrop-filter: none;
 }
 
-.page-app .rail-head { padding: 0 10px 18px; }
+.page-app .rail-head { padding: 0 8px 17px; }
 .page-app .rail-sub {
   margin-top: 5px;
   color: var(--ink-muted);
@@ -1918,7 +1918,7 @@ body.page-pricing {
 /* Operator frame */
 .page-app .layout { grid-template-columns: 240px minmax(0, 1fr); background: var(--background); }
 .page-app .rail { padding: 20px 18px 14px; background: var(--sidebar); border-right-color: var(--sidebar-border); }
-.page-app .rail-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 0 8px 17px; }
+.page-app .rail-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .page-app .rail-head > div:first-child { min-width: 0; }
 .page-app .rail-actions { display: flex; align-items: center; gap: 6px; }
 .page-app .theme-toggle {
