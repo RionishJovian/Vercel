@@ -205,3 +205,15 @@ guest_wifi:
   enabled: false
   voucher_access_enabled: false
   bridge_scan_interval: 30s
+
+vps:
+  endpoint_host: ""
+  # Magic Hub enrollment. These MUST be present here, not only as VPS_HUB_*
+  # environment variables: the server loads config.yaml with viper and binds
+  # env vars only for ai.* keys, so a missing hub key makes every
+  # /vps/peers/{id}/quick-enroll call fail with 503 "not enabled".
+  hub_lookup_enabled: false
+  hub_enrollment_enabled: false
+  hub_url: "https://hub.example.com/internal/provisioner"
+  hub_key_id: "v1"
+  hub_signing_key: ""

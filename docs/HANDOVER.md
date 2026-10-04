@@ -226,7 +226,42 @@ Use the venv binary when running certbot manually.
 
 ---
 
-## 10. Three bugs that cost real time - read before deploying
+## 10. Enrollment returns 503 if the hub keys are not in `config.yaml`
+
+`/vps/peers/{id}/quick-enroll` answers **503 "Magic Hub enrollment is not
+enabled"** whenever `hub_enrollment_enabled`, `hub_lookup_enabled`, `hub_url`,
+`hub_key_id` or `hub_signing_key` are absent from the `vps:` block of
+`/home/mmapp/app/config.yaml`.
+
+**Setting `VPS_HUB_*` in the environment does nothing.** `cmd/server/main.go`
+loads `config.yaml` through viper, and only the `ai.*` keys are bound with
+`BindEnv` - `AutomaticEnv` never fires for the rest. So the env vars can look
+perfect (`tr /proc/<pid>/environ` shows them all set to `true`) while the
+handler still sees `cfg.VPS.HubEnrollmentEnabled == false` and refuses.
+
+The 503 branch is `hub_enrollment.go`: it fires when **any** of
+`enrollmentHub`, `liveDevice`, `livePlan` is nil. `ConfigureHubLookup` sets
+`liveDevice` and `livePlan`; `ConfigureHubEnrollment` sets `enrollmentHub` and
+is only called inside the `if cfg.VPS.HubLookupEnabled` block in
+`server.go`. Fix the `vps:` block in `config.yaml` and restart - do not chase
+WireGuard topology, which is a different failure with a different symptom.
+
+**Verify the fix the right way:** an unauthenticated call must return **401**,
+not 503. 503 means still-disabled; 401 means the gate is open and only auth
+stands in the way. After the 2026-10-04 fix all quick-enroll calls return 401
+and the 503 count stays at zero.
+
+## 11. Maps render blank until `img-src` allows tile hosts
+
+The Sites screen showed an empty canvas and "Some map data could not load."
+Cause: `add_header Content-Security-Policy` in
+`/etc/nginx/sites-available/mega-magic` had `img-src 'self' data: blob:`,
+which blocks every external map tile. Three identical CSP lines exist in that
+file - fix all three. Current value also allows
+`tiles.openfreemap.org`, `*.tile.openstreetmap.org`, `*.basemaps.cartocdn.com`
+and `server.arcgisonline.com`.
+
+## 12. Three bugs that cost real time - read before deploying
 
 **D. "Everything is done" is not a thing you may say until features are
 audited.** On 2026-10-04 this handover's author reported "all done" after
