@@ -14,7 +14,16 @@ import (
 	"mega-magic/internal/auth"
 	"mega-magic/internal/database"
 	"mega-magic/internal/model"
+	"mega-magic/internal/provisioner/routeros"
 )
+
+// deref returns the value behind an optional string, or "" when unset.
+func deref(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
+}
 
 // PortalHandler serves the captive-portal surface.
 //
@@ -312,6 +321,8 @@ func (h *PortalHandler) StaffUpdateConfig(c *gin.Context) {
 		GraceMinutes         *int               `json:"guest_grace_minutes"`
 		GraceDataMB          *int               `json:"guest_grace_data_mb"`
 		MMQRURL              *string            `json:"mmqr_url"`
+		MediaHost            *string            `json:"media_host"`
+		MediaPort            *string            `json:"media_port"`
 		BankName             *string            `json:"bank_name"`
 		BankAccount          *string            `json:"bank_account"`
 		BankHolder           *string            `json:"bank_holder"`
@@ -335,6 +346,12 @@ func (h *PortalHandler) StaffUpdateConfig(c *gin.Context) {
 	if req.MMQRURL != nil && !safePortalImageURL(*req.MMQRURL) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "QR image must be an HTTPS URL or a same-origin path"})
 		return
+	}
+	if req.MediaHost != nil {
+		if _, _, mediaErr := routeros.MediaTarget(*req.MediaHost, deref(req.MediaPort)); mediaErr != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": mediaErr.Error()})
+			return
+		}
 	}
 	// Brand colours are owner-supplied strings that end up in the GUEST page's
 	// CSS. Reject anything that is not a literal hex colour before it can reach
@@ -401,6 +418,13 @@ func (h *PortalHandler) StaffUpdateConfig(c *gin.Context) {
 		}
 		if req.MMQRURL != nil {
 			existing.MMQRURL = *req.MMQRURL
+		}
+		if req.MediaHost != nil {
+			existing.MediaHost = strings.TrimSpace(*req.MediaHost)
+			existing.MediaPort = ""
+			if host, port, _ := routeros.MediaTarget(existing.MediaHost, deref(req.MediaPort)); host != "" {
+				existing.MediaPort = port
+			}
 		}
 		if req.BankName != nil {
 			existing.BankName = *req.BankName

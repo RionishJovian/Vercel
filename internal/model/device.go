@@ -175,6 +175,12 @@ type PortalConfig struct {
 	// MMQRURL is the owner's MMQR payment QR image (Myanmar QR) guests scan to
 	// make the bank transfer. Served path or https URL.
 	MMQRURL string `json:"mmqr_url,omitempty"`
+	// MediaHost is the owner's LAN media server, stored once per business so a
+	// portal redeploy does not require retyping it. Only a private IPv4 address
+	// on the business network is accepted.
+	MediaHost string `json:"media_host,omitempty"`
+	// MediaPort is the port guests use to reach MediaHost. Defaults to 8096.
+	MediaPort string `json:"media_port,omitempty"`
 	// Guest wifi (Option C): free online-payment window. RouterOS caps the
 	// temporary guest by both time and data; reaching either limit ends access.
 	GuestGraceMinutes int         `json:"guest_grace_minutes"`

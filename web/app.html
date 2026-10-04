@@ -366,6 +366,9 @@ let disposeSitePicker = null;
 // one-shot confirmation outside that discarded DOM so a successful action does
 // not appear to do nothing when its old status element disappears.
 let PORTAL_NOTICE = "";
+// Media server configured once per business in the portal settings, then reused by
+// every HotSpot portal deployment on that business.
+let PORTAL_MEDIA = {media_host: "", media_port: ""};
 
 async function loadView(name, main, me) {
   if (!canOpenView(name, me)) {
@@ -3464,7 +3467,7 @@ function wirePortalBranding(main, cfg, collect, plansTbl) {
     if (!document.body.contains(frame)) return;
     push();
   });
-  ["pb-name","pb-welcome","pb-terms","pb-bank-name","pb-bank-holder","pb-bank-acc","mmqr-url","grace-min","grace-data"]
+  ["pb-name","pb-welcome","pb-terms","pb-bank-name","pb-bank-holder","pb-bank-acc","mmqr-url","pb-media-host","pb-media-port","grace-min","grace-data"]
     .forEach(id => { const e = q(id); if (e) e.addEventListener("input", push); });
   ["portal-voucher-enabled", "portal-payment-enabled"]
     .forEach(id => { const e = q(id); if (e) e.addEventListener("change", push); });
@@ -3498,12 +3501,16 @@ function wirePortalBranding(main, cfg, collect, plansTbl) {
       // Branding fields ONLY. The endpoint merges now, so guest plans, the MMQR
       // URL, the grace window and guest consent are left exactly as they are —
       // previously an omitted field was erased by the full-replace upsert.
+      const media = readMediaSettings();
       await MM.put("/portal/config", {
         // Use the literal form values here. Preview fallbacks must never be
         // persisted when an owner intentionally leaves a field empty.
         business_name: val("pb-name"), welcome_text: val("pb-welcome"), terms_text: val("pb-terms"),
         primary_hex: d.primary_hex, glass_tint_hex: d.glass_tint_hex,
         bank_name: d.bank_name, bank_holder: d.bank_holder, bank_account: d.bank_account,
+        // The media server is stored once per business here, not on each portal
+        // deployment, so redeploying the portal never asks for it again.
+        media_host: media.media_host, media_port: media.media_port,
       });
       PORTAL_NOTICE = "Branding saved and verified from the server.";
       await loadView("portal", main, ME);
@@ -3691,8 +3698,7 @@ async function renderPortal(main) {
       <p class="muted small">Save your plans and branding above, then install the portal entrypoint on a connected gateway. Once installed, saved branding and plans update the hosted guest portal without another router upload. Deployment replaces the selected HotSpot login page, with a verified backup.</p>
       <div class="form-row"><label for="pd-router">Gateway</label><select id="pd-router"><option value="">Loading gateways…</option></select></div>
       <div class="form-row"><label for="pd-profile">HotSpot profile</label><select id="pd-profile" disabled><option value="">Select a gateway first</option></select></div>
-      <div class="form-row"><label for="pd-media">Media server on your network</label><input class="input" id="pd-media" type="text" inputmode="decimal" placeholder="192.168.88.10" autocomplete="off" autocapitalize="off" spellcheck="false"><small class="muted">Optional. The private address of your media server so guests on this HotSpot can reach it. Leave empty to offer no media. Port defaults to 8096.</small></div>
-      <div class="form-row"><label for="pd-media-port">Media port</label><input class="input" id="pd-media-port" type="text" inputmode="numeric" placeholder="8096" autocomplete="off"></div>
+      <p class="muted" id="pd-media-note"></p>
       <button class="btn btn-sm" type="button" id="pd-preview" disabled>Review deployment</button>
       <div id="pd-review" hidden></div><button class="btn btn-sm" type="button" id="pd-apply" hidden disabled>Deploy to router</button>
       <p class="muted small" id="pd-status" role="status" aria-live="polite"></p></div></div>`;
@@ -3726,6 +3732,12 @@ async function renderPortal(main) {
             <input class="input" id="pb-bank-holder" placeholder="Account holder" value="${esc((cfg&&cfg.bank_holder)||"")}">
             <input class="input" id="pb-bank-acc" placeholder="Account number" value="${esc((cfg&&cfg.bank_account)||"")}">
           </div></div>
+        <div class="field"><label>Media server on your own network</label>
+          <div class="pl-grid">
+            <input class="input" id="pb-media-host" inputmode="decimal" placeholder="192.168.88.10" autocomplete="off" autocapitalize="off" spellcheck="false" value="${esc((cfg&&cfg.media_host)||"")}">
+            <input class="input" id="pb-media-port" inputmode="numeric" placeholder="8096" autocomplete="off" value="${esc((cfg&&cfg.media_port)||"")}">
+          </div>
+          <small class="muted">Optional. Guests who buy a voucher can reach this server on your local network. Use the private address from your own network, not a public one. Leave empty to offer internet only. Video never passes through our servers.</small></div>
         <button class="btn btn-primary" type="button" id="pb-save">Save branding</button>
         <span id="pb-msg" class="muted small" role="status" aria-live="polite"></span>
       </div>
@@ -3757,6 +3769,7 @@ async function renderPortal(main) {
     const target = PORTAL_NOTICE.startsWith("Branding") ? brandingMessage : planMessage;
     if (target) target.textContent = PORTAL_NOTICE;
     PORTAL_NOTICE = "";
+    PORTAL_MEDIA = {media_host: (cfg && cfg.media_host) || "", media_port: (cfg && cfg.media_port) || ""};
   }
 
   // Plan editor wiring (add / remove / save).
@@ -3822,28 +3835,35 @@ async function renderPortal(main) {
   wirePortalDeployment(main);
 }
 
+// The owner's LAN media server, stored once per business. Private IPv4 only:
+// loopback, unspecified, multicast and public addresses are refused so a LAN
+// service can never be published through the HotSpot walled garden.
+function readMediaSettings() {
+  const hostInput = document.getElementById("pb-media-host");
+  const portInput = document.getElementById("pb-media-port");
+  if (!hostInput) return {media_host: "", media_port: ""};
+  const host = (hostInput.value || "").trim();
+  const port = (portInput?.value || "").trim();
+  if (!host) return {media_host: "", media_port: ""};
+  if (!/^(\d{1,3}\.){3}\d{1,3}$/.test(host)) throw new Error("Enter the media server address as numbers, for example 192.168.88.10");
+  const parts = host.split(".").map(n => Number(n));
+  if (parts.some(n => !Number.isInteger(n) || n < 0 || n > 255)) throw new Error("That media address is not a valid IP address.");
+  if (host.startsWith("127.") || parts[0] === 0 || parts[0] >= 224) throw new Error("Enter the address of your media server on your own network.");
+  const isPrivate = parts[0] === 10 || (parts[0] === 192 && parts[1] === 168) || (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31);
+  if (!isPrivate) throw new Error("The media server must be on your own private network so guests cannot reach it from the internet.");
+  if (port && (!/^\d{1,5}$/.test(port) || Number(port) < 1 || Number(port) > 65535)) throw new Error("Enter a port between 1 and 65535.");
+  return {media_host: host, media_port: port};
+}
+
 async function wirePortalDeployment(main) {
   const router = main.querySelector("#pd-router"), profile = main.querySelector("#pd-profile");
   if (!router) return;
-  const mediaHost = main.querySelector("#pd-media"), mediaPort = main.querySelector("#pd-media-port");
-  // Reject anything but a private IPv4 literal before it reaches the router, so
-  // the owner gets an instant, clear message instead of a server-side error.
+  const mediaNote = main.querySelector("#pd-media-note");
+  // The media server is configured once in the portal settings and reused here, so
+  // a redeploy never asks for it again.
   const mediaPayload = () => {
-    const host = (mediaHost?.value || "").trim();
-    const port = (mediaPort?.value || "").trim();
-    if (!host) return {};
-    if (!/^(\d{1,3}\.){3}\d{1,3}$/.test(host)) throw new Error("Enter the media server address as numbers, for example 192.168.88.10");
-    const parts = host.split(".").map(n => Number(n));
-    if (parts.some(n => !Number.isInteger(n) || n < 0 || n > 255)) throw new Error("That media address is not a valid IP address.");
-    if (host.startsWith("127.")) throw new Error("The media server cannot be this router itself.");
-    if (parts[0] === 0 || parts[0] >= 224) throw new Error("Enter the private address of your media server, not this one.");
-    if (parts[0] === 10 || (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) || (parts[0] === 192 && parts[1] === 168)) {
-      // private address, accepted
-    } else {
-      throw new Error("The media server must be on your own private network, so guests cannot reach it from the internet.");
-    }
-    if (port && (!/^\d{1,5}$/.test(port) || Number(port) < 1 || Number(port) > 65535)) throw new Error("Enter a port between 1 and 65535.");
-    return {media_host: host, media_port: port};
+    const saved = PORTAL_MEDIA;
+    return saved.media_host ? {media_host: saved.media_host, media_port: saved.media_port || "8096"} : {};
   };
   const preview = main.querySelector("#pd-preview"), apply = main.querySelector("#pd-apply");
   const status = main.querySelector("#pd-status"), review = main.querySelector("#pd-review");
@@ -3869,7 +3889,11 @@ async function wirePortalDeployment(main) {
     } catch (e) { if (current === revision) { profile.innerHTML = '<option value="">Profiles unavailable</option>'; status.textContent = errorText(e, "Finish Magic Hub management connection first."); } }
   });
   profile.addEventListener("change", () => { ++revision; reset(); preview.disabled = !profile.value; status.textContent = ""; });
-  mediaHost?.addEventListener("input", () => { if (mediaHost.value.trim() === "") mediaPort.value = ""; });
+  if (mediaNote) {
+    mediaNote.textContent = PORTAL_MEDIA.media_host
+      ? `Guests will be able to reach your media server at ${PORTAL_MEDIA.media_host}:${PORTAL_MEDIA.media_port || "8096"}. Change it under Portal settings.`
+      : "No media server is set, so guests will get internet only. Add one under Portal settings to offer your videos.";
+  }
   preview.addEventListener("click", async () => {
     reset(); const current = revision; preview.disabled = true; status.textContent = "Checking router and preparing review…";
     try {

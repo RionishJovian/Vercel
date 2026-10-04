@@ -28,12 +28,22 @@ const defaultMediaPort = "8096"
 // on the business network - a public address here would expose a LAN service to
 // the internet through the walled garden.
 func mediaTarget(request PortalDeployment) (host, port string, err error) {
-	host = strings.TrimSpace(request.MediaHost)
+	return MediaTarget(request.MediaHost, request.MediaPort)
+}
+
+// MediaTarget validates a media server address and port. It is exported so the
+// portal settings handler applies exactly the same rule as the router step: a
+// private IPv4 address on the business network, and a port in range. An empty
+// host is valid and means "no media service offered".
+func MediaTarget(rawHost, rawPort string) (host, port string, err error) {
+	host = strings.TrimSpace(rawHost)
 	if host == "" {
 		return "", "", nil
 	}
-	if request.MediaPort == "" {
-		request.MediaPort = defaultMediaPort
+	if strings.TrimSpace(rawPort) == "" {
+		rawPort = defaultMediaPort
+	} else {
+		rawPort = strings.TrimSpace(rawPort)
 	}
 	ip := net.ParseIP(host)
 	if ip == nil || ip.To4() == nil || ip.IsUnspecified() || ip.IsMulticast() || ip.IsLoopback() {
@@ -42,7 +52,7 @@ func mediaTarget(request PortalDeployment) (host, port string, err error) {
 	if !ip.IsPrivate() {
 		return "", "", fmt.Errorf("media host must be a private address on the business network, not a public one")
 	}
-	number, e := strconv.Atoi(request.MediaPort)
+	number, e := strconv.Atoi(rawPort)
 	if e != nil || number < 1 || number > 65535 {
 		return "", "", fmt.Errorf("media port must be between 1 and 65535")
 	}
