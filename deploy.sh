@@ -23,19 +23,33 @@ ROOT="$PWD"
 # this host, not /usr/bin, so a hardcoded path breaks every schema check and the
 # build. Probe the usual locations and fail early with an actionable message
 # rather than aborting mid-script.
-GO="${GO:-}"
-if [ -z "$GO" ]; then
-  for candidate in /usr/local/go/bin/go /usr/lib/go/bin/go /usr/bin/go; do
-    if [ -x "$candidate" ]; then GO="$candidate"; break; fi
-  done
-fi
+GO=""
+for candidate in /usr/local/go/bin/go /usr/lib/go/bin/go /usr/bin/go; do
+  if [ -x "$candidate" ]; then GO="$candidate"; break; fi
+done
 if [ -z "$GO" ] && command -v go >/dev/null 2>&1; then GO="$(command -v go)"; fi
 if [ -z "$GO" ]; then
-  echo "FATAL: the Go toolchain was not found." >&2
-  echo "  Install it, or set GO=/path/to/go before running this script." >&2
+  echo "FATAL: the Go toolchain was not found in /usr/local/go/bin, /usr/lib/go/bin, /usr/bin or on PATH." >&2
+  echo "  Install Go, then re-run. Nothing has been deployed." >&2
   exit 1
 fi
 export GOROOT="${GOROOT:-$(dirname "$(dirname "$GO")")}"
+
+# Resolve the operator-owned config once. It is deliberately kept OUT of the
+# git-tracked tree, and on this host it lives one level above the checkout
+# (/home/mmapp/app/config.yaml while the source is /home/mmapp/app/src). A bare
+# relative path therefore finds nothing and every schema check fails closed.
+CONFIG=""
+for candidate in "$ROOT/config.yaml" "$ROOT/../config.yaml" /etc/mega-magic/config.yaml; do
+  if [ -f "$candidate" ]; then CONFIG="$(cd "$(dirname "$candidate")" && pwd)/$(basename "$candidate")"; break; fi
+done
+if [ -z "$CONFIG" ]; then
+  echo "FATAL: config.yaml not found." >&2
+  echo "  Looked in $ROOT, $ROOT/.. and /etc/mega-magic." >&2
+  echo "  Nothing has been deployed." >&2
+  exit 1
+fi
+echo ">> Using config: $CONFIG"
 
 deploy_web() {
   echo ">> Syncing frontend web/ -> /opt/mega-magic-web/"
@@ -114,16 +128,16 @@ deploy_api() {
   # ENVIRONMENT is injected again into systemd below. Supplying it here makes
   # the preflight fail closed even if an old config.yaml omits or misspells the
   # environment field. No service is touched when validation fails.
-  ENVIRONMENT=production $GO run ./cmd/config-check --config config.yaml
+  ENVIRONMENT=production $GO run ./cmd/config-check --config "$CONFIG"
 
   echo ">> Verifying required database schema"
   # This is intentionally a check, not an automatic production migration.
   # Apply and complete the two-stage rollout using docs/DATABASE-MIGRATIONS.md.
   # A stale schema stops the deploy before the binary or service is touched.
-  ENVIRONMENT=production $GO run ./cmd/device-ssh-schema --action check --config config.yaml
-  ENVIRONMENT=production $GO run ./cmd/capacity-schema --action check --config config.yaml
-  ENVIRONMENT=production $GO run ./cmd/store-schema --action check --config config.yaml
-  ENVIRONMENT=production $GO run ./cmd/auth-session-schema --action check --config config.yaml
+  ENVIRONMENT=production $GO run ./cmd/device-ssh-schema --action check --config "$CONFIG"
+  ENVIRONMENT=production $GO run ./cmd/capacity-schema --action check --config "$CONFIG"
+  ENVIRONMENT=production $GO run ./cmd/store-schema --action check --config "$CONFIG"
+  ENVIRONMENT=production $GO run ./cmd/auth-session-schema --action check --config "$CONFIG"
 
   echo ">> Building Go binary"
   # Build to a TEMPORARY file first. Two reasons:
