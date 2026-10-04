@@ -98,9 +98,12 @@ func registerMediaRoutes(r *gin.Engine, service *auth.Service, db *database.DB, 
 			return transport.SendReceipt(strconv.FormatInt(bot.TargetChatID, 10), "Magic Media receipt — review before approving\nOrder: "+telegram.OrderReference(receipt.ReviewID)+"\nAmount: "+telegram.FormatMMK(pass.Amount), receipt.ReviewID, photo)
 		},
 	}
-	publishing.PurchasesEnabled = salesReady
+	// The ledger flag alone cannot advertise playable LAN media.
+	publishing.PurchasesEnabled = false
 	playback := handler.NewMediaPlaybackHandler(bridge.NewPostgres(db), salesReady)
-	purchases.PlaybackReady = playback.Available
+	// Catalog reachability is not proof of LAN playback. Do not solicit a bank
+	// transfer until the owner-PC local delivery path has passed acceptance.
+	purchases.PlaybackReady = func(context.Context, string, string) bool { return false }
 	player := r.Group("/api/v1/media-playback", auth.BoundedPortalRateLimit(), auth.CookieOrigin())
 	player.POST("/:id/:passId/session", playback.Session)
 	player.GET("/:id/:passId/catalog/:library", playback.Catalog)

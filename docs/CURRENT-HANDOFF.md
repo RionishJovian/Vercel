@@ -1,5 +1,25 @@
 # Current agent handoff
 
+## 2026-10-04 owner-confirmed LAN-only media boundary
+
+The owner confirmed playback is **only for guests connected to the business's
+RouterBOARD**. Video must travel from the owner's local Jellyfin PC through that
+business network, never through Magic's cloud app, hub, CDN or outbound relay.
+Cloud payment review and authorization are control-plane operations, not media
+delivery. The preceding relay architecture is superseded, not an owner-approved
+design. Source now refuses cloud video requests/uploads and removes the legacy
+stream implementation. Catalog metadata transport remains; it must not be used
+as proof that local playback works. Checkout/public availability are held until
+the LAN delivery path is accepted, so guests are not asked to pay for it yet.
+
+HANDOVER.md now records a Hostinger migration. The old Z.com/unavailable-host
+status below is historical. This continuation has not independently verified
+Hostinger's live configuration or deployed these boundary corrections.
+Remaining implementation: local guest entrypoint, business-network membership
+enforcement, local catalog/player, and connector-scoped paid-pass authorization
+with one-time activation, expiry/refund checks and native guest-device tests.
+Do not infer the guest network from a private IP or trust forwarded IP headers.
+
 ## 2026-10-04 outbound media relay — implemented/tested locally, host unavailable
 
 The previously missing catalog/player relay is now implemented with a maintained

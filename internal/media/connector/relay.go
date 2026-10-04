@@ -54,34 +54,14 @@ func (r *Runner) RelayStep(ctx context.Context) error {
 		}
 		return r.upload(ctx, task.ID, bytes.NewReader(data), PlaybackMetadata{Status: 200, ContentType: "application/json", ContentLength: int64(len(data))})
 	}
-	if task.Operation != "stream" {
-		return errors.New("invalid relay operation")
-	}
-	reader, writer := io.Pipe()
-	defer reader.Close()
-	metadata := make(chan PlaybackMetadata, 1)
-	result := make(chan error, 1)
-	go func() {
-		_, err := r.StreamMedia(ctx, writer, task.Library, task.Item, task.Range, task.Expires, check, func(m PlaybackMetadata) error { metadata <- m; return nil })
-		writer.CloseWithError(err)
-		result <- err
-	}()
-	select {
-	case m := <-metadata:
-		e = r.upload(ctx, task.ID, reader, m)
-		cancel()
-		reader.Close()
-		<-result
-		return e
-	case e := <-result:
-		return e
-	case <-ctx.Done():
-		reader.Close()
-		<-result
-		return ctx.Err()
-	}
+	// Cloud transport is metadata-only. Video stays on the owner's LAN even
+	// when an older cloud release mistakenly requests a streaming task.
+	return errors.New("playback requires the business local network")
 }
 func (r *Runner) upload(ctx context.Context, id string, body io.Reader, m PlaybackMetadata) error {
+	if m.ContentType != "application/json" || m.Status != 200 || m.ContentLength < 0 || m.ContentLength > 1<<20 || m.ContentRange != "" {
+		return errors.New("cloud transport accepts catalog metadata only")
+	}
 	u := r.cloud
 	u.Path = "/api/v1/media-connector/relay/" + id + "/socket"
 	if u.Scheme == "https" {

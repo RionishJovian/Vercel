@@ -57,3 +57,21 @@ func TestRelayFramesBoundedForLargeCatalog(t *testing.T) {
 		t.Fatal(e)
 	}
 }
+
+func TestCloudUploadRejectsMediaBeforeNetworkAccess(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("video upload reached cloud")
+		w.WriteHeader(500)
+	}))
+	defer server.Close()
+	runner, err := New(server.URL, &fakeLocal{}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runner.Close()
+	for _, typ := range []string{"video/mp4", "audio/mpeg", "application/octet-stream"} {
+		if err := runner.upload(context.Background(), strings.Repeat("b", 64), strings.NewReader("movie"), PlaybackMetadata{Status: 200, ContentType: typ, ContentLength: 5}); err == nil {
+			t.Fatalf("accepted cloud upload %s", typ)
+		}
+	}
+}

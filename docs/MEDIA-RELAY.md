@@ -1,5 +1,16 @@
 # Owner-PC catalog and playback relay
 
+## Superseded architecture — do not deploy for video
+
+The owner confirmed on 2026-10-04 that playback is only for guests on the
+business's RouterBOARD network. Movie bytes must remain on that local network.
+The historical implementation and tests below describe the rejected cloud
+video relay, not the target architecture or current source behavior. Source
+now rejects cloud stream requests and video uploads; only catalog metadata can
+use this transport. Local playback and its network/paid-access acceptance are
+still required before offering paid purchases. Hostinger migration is recorded
+in HANDOVER; the unavailable Z.com hosting notes below are historical.
+
 ## Source implementation, 2026-10-04 — not deployed
 
 The owner selects up to sixteen playable Jellyfin libraries in the appearance

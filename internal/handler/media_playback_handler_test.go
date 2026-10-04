@@ -94,7 +94,7 @@ func (l *playbackLedger) AuthorizeMediaPass(ctx context.Context, bid, pass, hash
 	return p, nil
 }
 
-func TestOutboundRelayGuestCatalogSeekAndIsolation(t *testing.T) {
+func TestCloudCatalogNeverStreamsMediaOrActivatesPass(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	ledger := &playbackLedger{pass: bridge.MediaPass{ID: relayPass, State: "paid", DurationSeconds: 3600}}
 	handler := NewMediaPlaybackHandler(ledger, true)
@@ -237,7 +237,7 @@ func TestOutboundRelayGuestCatalogSeekAndIsolation(t *testing.T) {
 	}
 	response = request("GET", path+"stream/"+strings.Repeat("3", 32)+"/"+relayItem, "", "")
 	response.Body.Close()
-	if response.StatusCode != 403 {
+	if response.StatusCode != 410 {
 		t.Fatal("unselected library accepted")
 	}
 	for _, seek := range []string{"", "bytes=4-7"} {
@@ -247,26 +247,22 @@ func TestOutboundRelayGuestCatalogSeekAndIsolation(t *testing.T) {
 		if e != nil {
 			t.Fatal(e)
 		}
-		if seek == "" {
-			if response.StatusCode != 200 || string(data) != media {
-				t.Fatalf("stream: %d %q", response.StatusCode, data)
-			}
-		} else if response.StatusCode != 206 || string(data) != "4567" || response.Header.Get("Content-Range") != "bytes 4-7/16" {
-			t.Fatal("seek failed")
+		if response.StatusCode != 410 || !strings.Contains(string(data), "local_playback_required") || strings.HasPrefix(response.Header.Get("Content-Type"), "video/") {
+			t.Fatalf("cloud must not stream: %d %q", response.StatusCode, data)
 		}
 		if strings.Contains(string(data), "local-only-fixture-key") {
 			t.Fatal("local key leaked")
 		}
 	}
 	ledger.mu.Lock()
-	if ledger.activations != 1 {
-		t.Error("seeking restarted timer")
+	if ledger.activations != 0 {
+		t.Error("cloud request consumed paid time")
 	}
 	ledger.pass.State = "refunded"
 	ledger.mu.Unlock()
 	response = request("GET", path+"stream/"+relayLibrary+"/"+relayItem, "", "")
 	response.Body.Close()
-	if response.StatusCode != 403 {
+	if response.StatusCode != 410 {
 		t.Fatal("refunded pass streamed")
 	}
 	ledger.mu.Lock()
@@ -278,12 +274,12 @@ func TestOutboundRelayGuestCatalogSeekAndIsolation(t *testing.T) {
 	response = request("GET", path+"stream/"+relayLibrary+"/"+relayItem, "", "bytes=0-")
 	data, err := io.ReadAll(response.Body)
 	response.Body.Close()
-	if response.StatusCode != 206 || err == nil || len(data) >= len(media) || time.Since(began) > 2*time.Second {
-		t.Fatalf("open stream did not expire: %d %q %v", response.StatusCode, data, err)
+	if response.StatusCode != 410 || err != nil || time.Since(began) > 2*time.Second {
+		t.Fatalf("cloud stream was not refused: %d %q %v", response.StatusCode, data, err)
 	}
 	response = request("GET", path+"stream/"+relayLibrary+"/"+relayItem, "", "")
 	response.Body.Close()
-	if response.StatusCode != 403 {
+	if response.StatusCode != 410 {
 		t.Fatal("expired pass restarted")
 	}
 	// A guest cookie is publication/pass scoped, including API restarts.

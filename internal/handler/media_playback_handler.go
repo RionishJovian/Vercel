@@ -222,82 +222,13 @@ func (h *MediaPlaybackHandler) Available(ctx context.Context, bid, publication s
 	return false
 }
 
-type timedWriter struct {
-	writer  gin.ResponseWriter
-	expires time.Time
+func (h *MediaPlaybackHandler) Stream(c *gin.Context) {
+	// This endpoint must never proxy media. Guests play from the owner PC on
+	// the business LAN; the cloud handles management and authorization only.
+	c.Header("Cache-Control", "no-store")
+	c.JSON(http.StatusGone, gin.H{"error": "Playback is available only on the business local network.", "code": "local_playback_required"})
 }
 
-func (w timedWriter) Write(p []byte) (int, error) {
-	until := time.Now().Add(5 * time.Second)
-	if w.expires.Before(until) {
-		until = w.expires
-	}
-	if e := http.NewResponseController(w.writer).SetWriteDeadline(until); e != nil {
-		return 0, e
-	}
-	return w.writer.Write(p)
-}
-func (h *MediaPlaybackHandler) Stream(c *gin.Context) {
-	c.Header("Cache-Control", "private, no-store")
-	c.Header("X-Content-Type-Options", "nosniff")
-	bid, hash, e := h.guest(c)
-	if e != nil {
-		c.Status(403)
-		return
-	}
-	library := c.Param("library")
-	check := func(ctx context.Context) error {
-		return h.check(ctx, bid, c.Param("id"), c.Param("passId"), hash, library, false)
-	}
-	if h.check(c.Request.Context(), bid, c.Param("id"), c.Param("passId"), hash, library, false) != nil {
-		c.Status(403)
-		return
-	}
-	// Do not spend paid time while the PC is offline or rejects this file. The
-	// provisional task bound is replaced by the ledger deadline once bytes are ready.
-	pass, e := h.Store.MediaPass(c.Request.Context(), bid, c.Param("passId"), hash)
-	if e != nil || pass.DurationSeconds < 1 || pass.DurationSeconds > 30*24*3600 {
-		c.Status(403)
-		return
-	}
-	until := time.Now().Add(time.Duration(pass.DurationSeconds) * time.Second)
-	if pass.ExpiresAt != nil {
-		until = *pass.ExpiresAt
-	}
-	ctx, cancel := context.WithDeadline(c.Request.Context(), until)
-	defer cancel()
-	response, finish, e := h.Broker.Request(ctx, bid, relay.Task{Operation: "stream", Library: library, Item: c.Param("item"), Range: c.GetHeader("Range"), Expires: until}, check)
-	if e != nil {
-		c.Status(503)
-		return
-	}
-	defer finish()
-	defer response.Body.Close()
-	if !jellyfin.ValidateStreamMetadata(response.Status, response.Length, c.GetHeader("Range"), response.Range) {
-		c.Status(502)
-		return
-	}
-	typ, _, e := mime.ParseMediaType(response.Type)
-	if e != nil || !strings.HasPrefix(typ, "video/") && !strings.HasPrefix(typ, "audio/") {
-		c.Status(502)
-		return
-	}
-	pass, e = h.Store.ActivateMediaPass(ctx, bid, c.Param("passId"), hash)
-	if e != nil || pass.ExpiresAt == nil {
-		c.Status(403)
-		return
-	}
-	c.Header("Content-Type", typ)
-	c.Header("X-Accel-Buffering", "no")
-	c.Header("Accept-Ranges", "bytes")
-	c.Header("Content-Length", strconv.FormatInt(response.Length, 10))
-	if response.Range != "" {
-		c.Header("Content-Range", response.Range)
-	}
-	c.Status(response.Status)
-	_, _ = access.Copy(ctx, timedWriter{c.Writer, *pass.ExpiresAt}, *pass.ExpiresAt, check, func(context.Context) (io.ReadCloser, error) { return response.Body, nil })
-	_ = http.NewResponseController(c.Writer).SetWriteDeadline(time.Time{})
-}
 func (h *MediaPlaybackHandler) connector(c *gin.Context) (string, string, error) {
 	value := c.GetHeader("Authorization")
 	if !strings.HasPrefix(value, "Bearer ") {
@@ -363,7 +294,7 @@ func (h *MediaPlaybackHandler) Socket(c *gin.Context) {
 	e = wsjson.Read(headerCtx, socket, &metadata)
 	stop()
 	typ, _, te := mime.ParseMediaType(metadata.ContentType)
-	if e != nil || te != nil || metadata.ContentLength < 0 || metadata.ContentLength > 1<<40 || metadata.Status != 200 && metadata.Status != 206 || typ != "application/json" && !strings.HasPrefix(typ, "video/") && !strings.HasPrefix(typ, "audio/") || strings.ContainsAny(metadata.ContentRange, "\r\n") || len(metadata.ContentRange) > 100 || typ == "application/json" && metadata.ContentLength > 1<<20 {
+	if e != nil || te != nil || metadata.ContentLength < 0 || metadata.ContentLength > 1<<20 || metadata.Status != 200 || typ != "application/json" || metadata.ContentRange != "" {
 		return
 	}
 	stream := websocket.NetConn(ctx, socket, websocket.MessageBinary)
