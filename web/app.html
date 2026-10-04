@@ -224,7 +224,7 @@
   <nav class="rail" aria-label="Primary">
     <div class="rail-head">
       <div>
-        <div class="rail-brand"><img class="brand-logo" src="/assets/images/mikromagic-mark-20260930.png" alt="">Mega Magic</div>
+        <div class="rail-brand"><picture><source srcset="/assets/images/mikromagic-mark-20260930.webp" type="image/webp"><img class="brand-logo" src="/assets/images/mikromagic-mark-20260930.png" alt=""></picture>Mega Magic</div>
         <div class="rail-sub" id="rail-biz">—</div>
       </div>
       <div class="rail-actions">
@@ -4515,7 +4515,7 @@ const PRODUCT_GUIDE = [
 async function renderGuide(main) {
   const focus = sessionStorage.getItem("mm_guide_focus") || ""; sessionStorage.removeItem("mm_guide_focus");
   main.querySelector("#content").innerHTML = `
-    <section class="guide-hero panel"><div><span class="fleet-kicker">MEGA MAGIC GUIDE</span><h2>Find the tool you need.</h2><p>Choose a task below to open the right workspace. Each description explains what you can accomplish there.</p></div><img src="/assets/images/magic-dude-guide-network-20260930.png" alt="Magic Dude explaining a network operations map"></section>
+    <section class="guide-hero panel"><div><span class="fleet-kicker">MEGA MAGIC GUIDE</span><h2>Find the tool you need.</h2><p>Choose a task below to open the right workspace. Each description explains what you can accomplish there.</p></div><picture><source srcset="/assets/images/magic-dude-guide-network-20260930.webp" type="image/webp"><img src="/assets/images/magic-dude-guide-network-20260930.png" alt="Magic Dude explaining a network operations map"></picture></section>
     <div class="guide-tools"><div class="field"><label for="guide-search">Find a feature</label><input class="input" id="guide-search" placeholder="Search routers, vouchers, security…"></div></div>
     <div class="guide-grid" id="guide-grid">${PRODUCT_GUIDE.filter(([view]) => canOpenView(view)).map(([view, group, title, text], index) => `<article class="guide-card panel${focus === view ? " is-focused" : ""}" data-guide-card data-guide-search="${esc(`${group} ${title} ${text}`.toLowerCase())}">
       <div class="guide-card-number">${String(index + 1).padStart(2, "0")}</div><div><span class="fleet-kicker">${esc(group)}</span><h3>${esc(title)}</h3><p>${esc(text)}</p><button class="btn btn-sm" data-guide-open="${esc(view)}" type="button">Open ${esc(title)}</button></div>
