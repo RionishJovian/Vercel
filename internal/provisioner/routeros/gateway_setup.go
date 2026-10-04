@@ -195,6 +195,24 @@ func gatewaySteps(g GatewaySetup, network *net.IPNet) (GatewayPlan, []gatewaySte
 
 func gatewaySelector(s gatewayStep) string { return s.field + "=" + routerOSQuoted(s.key) }
 
+// radiusHostReachable verifies from the router itself that the RADIUS server
+// answers before the setup switches HotSpot to use-radius=yes. RouterOS cannot
+// probe a UDP port from a script, so this tests host reachability with ping.
+// A server that silently drops ICMP is refused, which fails safe: local voucher
+// users keep working, whereas an unreachable RADIUS server locks every guest out.
+func radiusHostReachable(ctx context.Context, r CommandRunner, address string) (bool, error) {
+	out, err := r.Run(ctx, `/ping `+address+` count=2 interval=500ms`)
+	if err != nil || len(out) > 4096 {
+		return false, fmt.Errorf("RADIUS reachability probe unreadable")
+	}
+	for _, bad := range []string{"0 packets received", "host unreachable", "timeout"} {
+		if strings.Contains(out, bad) {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
 func gatewayPreflight(ctx context.Context, r CommandRunner, g GatewaySetup, network *net.IPNet, steps []gatewayStep) error {
 	count := func(command string) (int, error) {
 		out, e := r.Run(ctx, command)
@@ -230,6 +248,9 @@ func gatewayPreflight(ctx context.Context, r CommandRunner, g GatewaySetup, netw
 		return fmt.Errorf("customer subnet overlaps an existing router address or route")
 	}
 	if g.RadiusAddress != "" {
+		if reachable, e := radiusHostReachable(ctx, r, g.RadiusAddress); e != nil || !reachable {
+			return fmt.Errorf("the router cannot reach the RADIUS server at %s; this setup would leave HotSpot unable to authenticate guests. Leave RADIUS empty to use local voucher users", g.RadiusAddress)
+		}
 		n, e := count("/ip hotspot print count-only")
 		if e != nil || n > 0 {
 			return fmt.Errorf("existing Hotspots must keep their RADIUS policy; this setup cannot add a global RADIUS server to them")

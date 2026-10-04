@@ -11,12 +11,13 @@ import (
 )
 
 type gatewayRunner struct {
-	commands   []string
-	objects    map[string]map[string]string
-	failMenu   string
-	addresses  string
-	routes     string
-	interfaces string
+	commands    []string
+	objects     map[string]map[string]string
+	failMenu    string
+	addresses   string
+	routes      string
+	interfaces  string
+	radiusProbe string
 }
 
 var gatewayTestFields = regexp.MustCompile(`([a-z-]+)="([^"\\]*)"`)
@@ -34,6 +35,12 @@ func (r *gatewayRunner) Run(_ context.Context, cmd string) (string, error) {
 	}
 	if cmd == gatewayRoutesCommand {
 		return r.routes, nil
+	}
+	if strings.HasPrefix(cmd, "/ping ") {
+		if r.radiusProbe == "" {
+			return "0 packets transmitted, 0 packets received, 0% packet loss", nil
+		}
+		return r.radiusProbe, nil
 	}
 	if cmd == gatewayPoolsCommand {
 		if pool := r.objects["/ip pool"]; pool != nil {
@@ -208,5 +215,47 @@ func TestGatewaySetupSecretNotExposedAndPreviewBinding(t *testing.T) {
 	g.PoolEnd = "192.168.50.100"
 	if _, e := quickConfigApplier(r).ApplyGateway(context.Background(), "biz-1", "dev-1", g); e == nil || len(r.commands) > 0 {
 		t.Fatal("changed preview reached router")
+	}
+}
+
+// A RADIUS address the router cannot reach would set use-radius=yes with nothing
+// answering, locking every guest out of HotSpot. The preflight must refuse it.
+func TestGatewaySetupRefusesUnreachableRADIUS(t *testing.T) {
+	g := validGatewaySetup()
+	g.RadiusAddress = "10.0.0.10"
+	g.RadiusSecret = "secret-for-test-only"
+	g, network, err := normalizeGatewaySetup(g)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, steps := gatewaySteps(g, network)
+	r := &gatewayRunner{
+		objects:     map[string]map[string]string{},
+		radiusProbe: "0 packets transmitted, 0 packets received, 0% packet loss",
+	}
+	err = gatewayPreflight(context.Background(), r, g, network, steps)
+	if err == nil || !strings.Contains(err.Error(), "cannot reach the RADIUS server") {
+		t.Fatalf("unreachable RADIUS must be refused, got %v", err)
+	}
+	if strings.Contains(strings.Join(r.commands, "\n"), "/radius add") {
+		t.Fatal("no RADIUS configuration may be written when the host is unreachable")
+	}
+}
+
+func TestGatewaySetupAcceptsReachableRADIUS(t *testing.T) {
+	g := validGatewaySetup()
+	g.RadiusAddress = "10.0.0.10"
+	g.RadiusSecret = "secret-for-test-only"
+	g, network, err := normalizeGatewaySetup(g)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, steps := gatewaySteps(g, network)
+	r := &gatewayRunner{
+		objects:     map[string]map[string]string{},
+		radiusProbe: "2 packets transmitted, 2 packets received, 0% packet loss",
+	}
+	if err := gatewayPreflight(context.Background(), r, g, network, steps); err != nil {
+		t.Fatalf("reachable RADIUS must be accepted, got %v", err)
 	}
 }
