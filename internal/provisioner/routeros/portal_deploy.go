@@ -69,6 +69,10 @@ type PortalDeploymentPlan struct {
 	File         string   `json:"file"`
 	Steps        []string `json:"steps"`
 	Confirmation string   `json:"confirmation"`
+	// MediaHost and MediaPort echo the reviewed target so the operator's apply
+	// call matches exactly what was previewed.
+	MediaHost string `json:"media_host,omitempty"`
+	MediaPort string `json:"media_port,omitempty"`
 }
 type PortalDeploymentResult struct {
 	Verified   bool                 `json:"verified"`
@@ -163,7 +167,7 @@ func portalPreflight(ctx context.Context, r CommandRunner, businessID, deviceID 
 	if !gatewayInterfacePattern.MatchString(server) {
 		return s, fmt.Errorf("invalid HotSpot server")
 	}
-	s.plan = PortalDeploymentPlan{Profile: request.Profile, Version: request.Version, Server: server, File: s.destination + "/login.html"}
+	s.plan = PortalDeploymentPlan{Profile: request.Profile, Version: request.Version, Server: server, File: s.destination + "/login.html", MediaHost: s.mediaHost, MediaPort: s.mediaPort}
 	file := "name=" + routerOSQuoted(directory+"/login.html")
 	out, err = r.Run(ctx, "/file print count-only where "+file)
 	if err != nil || strings.TrimSpace(out) != "1" {
@@ -198,7 +202,12 @@ func portalPreflight(ctx context.Context, r CommandRunner, businessID, deviceID 
 	} else if strings.TrimSpace(out) != "0" {
 		return s, fmt.Errorf("ambiguous managed portal access rule")
 	}
-	s.plan.Steps = []string{"Clone all existing HotSpot files into a separate persistent directory; retain the original directory for rollback", "Allow TCP 443 to mikromagic.com for HotSpot " + server + " (hostname resolves to IPs, possibly shared CDN addresses)", "Install the HTTPS hosted portal entrypoint and switch only profile " + request.Profile, "Read back and verify the login page, profile and access rule; requires RouterOS file copy support"}
+	steps := []string{"Clone all existing HotSpot files into a separate persistent directory; retain the original directory for rollback", "Allow TCP 443 to mikromagic.com for HotSpot " + server + " (hostname resolves to IPs, possibly shared CDN addresses)"}
+	if s.mediaHost != "" {
+		steps = append(steps, "Allow guests on this HotSpot to reach the media server at " + s.mediaHost + ":" + s.mediaPort + " on your local network")
+	}
+	steps = append(steps, "Install the HTTPS hosted portal entrypoint and switch only profile "+request.Profile, "Read back and verify the login page, profile and access rule; requires RouterOS file copy support")
+	s.plan.Steps = steps
 	encoded, _ := json.Marshal([]any{businessID, deviceID, s.plan, s.original, s.replacement, s.hasGarden})
 	digest := sha256.Sum256(encoded)
 	s.plan.Confirmation = hex.EncodeToString(digest[:])
