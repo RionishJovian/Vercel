@@ -26,8 +26,14 @@ ALTER TABLE public.portal_configs ADD CONSTRAINT portal_configs_media_host_check
     media_host IS NULL
     OR (
       media_host ~ '^([0-9]{1,3}\.){3}[0-9]{1,3}$'
-      AND split_part(media_host, '.', 1)::integer BETWEEN 1 AND 223
+      -- Every octet must be a real value, not just the first and last:
+      -- without this, "10.999.1.5" would pass the private branch below.
+      AND split_part(media_host, '.', 1)::integer BETWEEN 1 AND 255
+      AND split_part(media_host, '.', 2)::integer BETWEEN 0 AND 255
+      AND split_part(media_host, '.', 3)::integer BETWEEN 0 AND 255
       AND split_part(media_host, '.', 4)::integer BETWEEN 1 AND 254
+      -- Reject multicast (224-239) and reserved (240+) outright.
+      AND split_part(media_host, '.', 1)::integer < 224
       AND (
         (split_part(media_host, '.', 1)::integer = 10)
         OR (split_part(media_host, '.', 1)::integer = 192 AND split_part(media_host, '.', 2)::integer = 168)
