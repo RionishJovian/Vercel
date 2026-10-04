@@ -18,6 +18,75 @@ const pingFail = "    sent=2 received=0 packet-loss=100% \n"
 const pingOKOut = "    sent=2 received=2 packet-loss=0% min-rtt=105us avg-rtt=117us \n"
 const pingRowsOnly = "Columns: SEQ, HOST, SIZE, TTL, TIME\n0 10.99.0.1 56 64 2ms627us\n1 10.99.0.1 56 64 2ms179us\n"
 
+type logRunner struct {
+	out string
+	err error
+	cmd string
+}
+
+func (r *logRunner) Run(_ context.Context, command string) (string, error) {
+	r.cmd = command
+	return r.out, r.err
+}
+
+func TestObserveLogParsesRouterEntries(t *testing.T) {
+	run := &logRunner{out: "topics: hotspot, dhcp\ntime: mar/10/2026 09:14:22\nuser mm-guest logged in\n\ntopics: wireguard\ntime: mar/10/2026 09:15:01\npeer handshake failed\n"}
+	entries, err := ObserveLog(context.Background(), run, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("want 2 entries, got %d: %+v", len(entries), entries)
+	}
+	if len(entries[0].Topics) != 2 || entries[0].Topics[0] != "hotspot" || entries[0].Topics[1] != "dhcp" {
+		t.Fatalf("topics not parsed: %+v", entries[0])
+	}
+	if entries[0].Text != "user mm-guest logged in" {
+		t.Fatalf("text not parsed: %+v", entries[0])
+	}
+	if entries[1].Time == "" || entries[1].Text != "peer handshake failed" {
+		t.Fatalf("second entry not parsed: %+v", entries[1])
+	}
+	if !strings.Contains(run.cmd, `topics~"error"`) {
+		t.Fatalf("default filter missing: %s", run.cmd)
+	}
+}
+
+func TestObserveLogRejectsInjectionInTopicFilter(t *testing.T) {
+	for _, bad := range []string{`error"] ; /system reboot`, "ERROR", "wire guard", "a|b|c|d|e|f|g|h|i", "hotspot;"} {
+		if _, err := ObserveLog(context.Background(), &logRunner{}, bad); err == nil {
+			t.Fatalf("topic filter %q should be refused", bad)
+		}
+	}
+}
+
+func TestObserveLogIsBoundedAndReadOnly(t *testing.T) {
+	huge := strings.Repeat("x", maxDeviceLogBytes*3)
+	entries, err := ObserveLog(context.Background(), &logRunner{out: huge}, "hotspot")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) > 1 {
+		t.Fatalf("output not bounded: %d entries", len(entries))
+	}
+	run := &logRunner{}
+	if _, err := ObserveLog(context.Background(), run, "hotspot"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(run.cmd, "/log print") {
+		t.Fatalf("capture must be read-only, got %q", run.cmd)
+	}
+	if strings.Contains(run.cmd, "remove") || strings.Contains(run.cmd, " set ") {
+		t.Fatalf("capture must not mutate the log: %q", run.cmd)
+	}
+}
+
+func TestObserveLogSurfacesRunnerFailure(t *testing.T) {
+	if _, err := ObserveLog(context.Background(), &logRunner{err: errors.New("boom")}, ""); err == nil {
+		t.Fatal("runner failure must be reported, not swallowed")
+	}
+}
+
 func TestObserve_classify(t *testing.T) {
 	cases := []struct {
 		name      string

@@ -3,6 +3,7 @@ package routeros
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -154,6 +155,97 @@ func (p *Prober) ObserveVersion(ctx context.Context, _ string) (version, channel
 // parseUptimeSeconds converts a RouterOS uptime duration ("1h", "2h30m", "45s")
 // to seconds. RouterOS prints uptime values as human durations, not raw
 // seconds, so atoi would read them as 0. Returns 0 on an unparseable string.
+// DeviceLogEntry is one line from the router's own log.
+type DeviceLogEntry struct {
+	Topics []string `json:"topics"`
+	Time   string   `json:"time"`
+	Text   string   `json:"text"`
+}
+
+// maxDeviceLogBytes bounds the capture so a chatty router cannot flood a request.
+const maxDeviceLogBytes = 4096
+
+// deviceLogTopicPattern allows a conservative OR-list of topic names. The value
+// is interpolated into a RouterOS filter string, so anything that could terminate
+// the quoted argument or inject a second command is rejected.
+var deviceLogTopicPattern = regexp.MustCompile(`^[a-z]{1,16}(?:\|[a-z]{1,16}){0,7}$`)
+
+// ObserveLog reads the most recent entries from the router log. It is used when a
+// device turns unhealthy, so the incident carries router-side evidence instead of
+// only what the platform believes. Read-only: nothing is written or cleared.
+//
+// The `print where topics~...` filter is applied by RouterOS, and the output is
+// capped both by the command and locally.
+func ObserveLog(ctx context.Context, run CommandRunner, topics string) ([]DeviceLogEntry, error) {
+	filter := "error"
+	if trimmed := strings.TrimSpace(topics); trimmed != "" {
+		if !deviceLogTopicPattern.MatchString(trimmed) {
+			return nil, fmt.Errorf("invalid log topic filter")
+		}
+		filter = trimmed
+	}
+	out, err := run.Run(ctx, `/log print where topics~"`+filter+`"`)
+	if err != nil {
+		return nil, fmt.Errorf("device log unreadable")
+	}
+	if len(out) > maxDeviceLogBytes {
+		out = out[:maxDeviceLogBytes]
+	}
+	entries := parseDeviceLog(out)
+	return entries, nil
+}
+
+// splitTopics parses RouterOS's comma-and-space separated topic list.
+func splitTopics(value string) []string {
+	topics := []string{}
+	for _, topic := range strings.Split(value, ",") {
+		if trimmed := strings.TrimSpace(topic); trimmed != "" {
+			topics = append(topics, trimmed)
+		}
+	}
+	return topics
+}
+
+// RouterOS prints log lines as: topics list on one row, then time, then message.
+func parseDeviceLog(out string) []DeviceLogEntry {
+	entries := []DeviceLogEntry{}
+	var pending *DeviceLogEntry
+	for _, line := range strings.Split(strings.ReplaceAll(out, "\r", ""), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		// RouterOS prints "topics: ..." and "time: ..." on their own rows, then
+		// the message on the following row.
+		if key, value, ok := strings.Cut(line, ":"); ok {
+			key = strings.TrimSpace(key)
+			switch key {
+			case "topics":
+				if pending != nil && pending.Text != "" {
+					entries = append(entries, *pending)
+				}
+				pending = &DeviceLogEntry{Topics: splitTopics(value)}
+				continue
+			case "time":
+				if pending == nil {
+					pending = &DeviceLogEntry{}
+				}
+				pending.Time = strings.TrimSpace(value)
+				continue
+			}
+		}
+		if pending != nil {
+			pending.Text = line
+			entries = append(entries, *pending)
+			pending = nil
+		}
+	}
+	if pending != nil && pending.Text != "" {
+		entries = append(entries, *pending)
+	}
+	return entries
+}
+
 func parseUptimeSeconds(s string) int {
 	s = strings.TrimSpace(s)
 	if s == "" {
