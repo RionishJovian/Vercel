@@ -1,12 +1,16 @@
 # Network controls — 2026-10-03
 
-## Shared network layout cleanup — rollout pending
+## Shared network layout cleanup — deployed October 5
 
 The four network workspaces no longer repeat the page title inside their
 setup card. Current router records now use shared spacing and definition-list
 alignment, with stacked labels and values on mobile. The network layout
-regression test verifies the single-title contract. Deployment and visual
-acceptance are tracked separately from this source change.
+regression test verifies the single-title contract. The frontend was published
+with content-hashed asset references after verifying the rollback archive.
+Live WAN, Customer internet, Wi-Fi and LAN/Hotspot entry layouts were inspected;
+day and night appearance were checked. Published CSS and JavaScript match the
+tested source. Populated lab-router inventory returned HTTP 502, so live
+inventory layout acceptance remains pending; no router configuration changed.
 
 ## October 5 update — deployed; physical router acceptance pending
 
