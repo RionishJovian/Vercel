@@ -61,6 +61,12 @@ until approved physical AP acceptance. No customer router was changed by deploym
 [network workflow scope and acceptance](docs/NETWORK-SETUP-WORKFLOW.md).
 
 The project is in **functional workflow completion and production acceptance**.
+The October 5 deployed update exposes current network records even when editing
+is unavailable, and locks device/task navigation while an apply is in progress.
+Browser tests cover read-only access, secret omission, escaped router values,
+and keeping the verified result visible. Web and API were deployed on October 5;
+public assets match the tested source and production health checks pass.
+Physical ax2 management and customer-network operation remain unverified.
 The API, database and console exist. Work now completes network and business
 operations and proves that customer actions change the intended state, survive
 reloads and respect tenant boundaries. The entire product is not yet certified

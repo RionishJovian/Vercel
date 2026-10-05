@@ -24,8 +24,19 @@ window.MMNetwork = (() => {
  const workspaces={wan:['Internet connections','Choose how your business connects to the internet.'],pppoe:['Customer internet','Manage subscriber services, customer logins and speed plans.'],wifi:['Wi-Fi networks','Manage the radios on the selected device. Remote access points need their own connected device.'],existing:['LAN and Hotspot','Manage the services already running on your customer network.']};
  const objects=(inventory,key)=>(inventory.objects?.[key]||[]);
  const label=o=>o.values.name||o.values['service-name']||o.values.address||o.id;
+ const secretField=key=>/password|passphrase|pre-shared-key|private-key|secret/i.test(key);
+ const currentNames={'interface':'Port','gateway':'Gateway','add-default-route':'Automatic default route','disabled':'State','dst-address':'Destination','distance':'Route priority','default-route-distance':'Route priority','use-peer-dns':'Use ISP DNS','configuration.ssid':'Wi-Fi network name','configuration.country':'Country','configuration.mode':'Radio mode','ssid':'Wi-Fi network name','country':'Country','mode':'Mode','user':'ISP username','name':'Name','address':'Address','dynamic':'Dynamic','routing-table':'Routing table','comment':'Comment'};
+ function currentSettings(inventory,kind,s){
+  const menus=kind==='wan'?[['dhcp_clients','Automatic internet connections'],['pppoe_clients','PPPoE internet connections'],['routes','Router routes']]:s.menu?[[s.menu,s.title]]:[];
+  const sections=menus.map(([menu,title])=>{
+   if(!inventory.available?.[menu])return `<section><h4>${esc(title)}</h4><p>This information is unavailable from the router.</p></section>`;
+   const records=objects(inventory,menu);
+   return `<section><h4>${esc(title)}</h4>${records.length?records.map(o=>`<article><h5>${esc(label(o))}</h5><dl>${Object.entries(o.values||{}).filter(([key])=>!secretField(key)).map(([key,value])=>`<dt>${esc(currentNames[key]||s.fields.find(f=>f[0]===key)?.[1]||key)}</dt><dd>${esc(key==='disabled'?(['yes','true'].includes(value)?'Disabled':'Enabled'):value||'Not reported')}</dd>`).join('')}</dl></article>`).join(''):'<p>No records reported by this router.</p>'}</section>`;
+  }).join('');
+  return sections?`<div data-current-settings><h3>Current router settings</h3><p>Read from the selected device. Refresh status to read again.</p>${sections}</div>`:'';
+ }
  async function mount(host,workspace,routers,canEdit,api=MM){
-  let revision=0,inventory=null,defaults={},review=null,pending=null;
+  let revision=0,inventory=null,defaults={},review=null,pending=null,applying=false;
   const kinds=choices[workspace];
   host.innerHTML=`<section class="panel network-workspace"><header><p class="network-eyebrow">NETWORK MANAGEMENT</p><h2>${esc(workspaces[workspace][0])}</h2><p>${esc(workspaces[workspace][1])}</p></header><ol class="network-steps" aria-label="Change workflow"><li>1 · Choose device</li><li>2 · Configure</li><li>3 · Review and apply</li></ol>
    <label>Managed device<select class="input" data-router><option value="">Choose a connected device</option>${routers.map(r=>`<option value="${esc(r.device_id)}">${esc(r.hardware_name)}</option>`).join('')}</select></label>
@@ -34,6 +45,7 @@ window.MMNetwork = (() => {
   const current=()=>host.isConnected&&select.value;
   const error=e=>(e.data&&e.data.error)||e.message||'Request failed';
   async function reload(){
+   if(applying)return;
    const stamp=++revision,id=select.value;review=null;pending=null;inventory=null;
    if(!id){editor.textContent='Choose a device.';return}
    editor.textContent='Reading live router inventory…';
@@ -55,16 +67,19 @@ window.MMNetwork = (() => {
    editor.querySelector('[data-kind]').onchange=drawSettings;drawSettings();
   }
   function drawSettings(){
+   if(applying)return;
    ++revision;review=null;pending=null;
    const kind=editor.querySelector('[data-kind]').value,s=schema[kind],pane=editor.querySelector('[data-settings]');
    editor.querySelectorAll('[data-task]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.task===kind)));
-   if(!canEdit){pane.textContent='An owner or administrator must change network settings.';return}
-   if(inventory.write_enabled!==true){pane.textContent='Router changes are not enabled in this release. Hardware and connectivity acceptance must finish before rollout; nothing was applied.';return}
-   if((kind==='wifi'||kind==='wireless')&&inventory.wifi_write_enabled!==true){pane.textContent='Wi-Fi changes are awaiting physical-radio acceptance. No SSID was changed. WAN, PPPoE and existing-network controls have a separate rollout.';return}
-   if(s.menu&&!inventory.available?.[s.menu]){pane.textContent='This RouterOS menu could not be read safely or is not supported on this device. No changes are offered.';return}
+   const actual=currentSettings(inventory,kind,s);
+   const blocked=message=>{pane.innerHTML=actual+`<p class="network-note">${esc(message)}</p>`};
+   if(!canEdit){blocked('An owner or administrator must change network settings.');return}
+   if(inventory.write_enabled!==true){blocked('Router changes are not enabled in this release. Nothing was applied.');return}
+   if((kind==='wifi'||kind==='wireless')&&inventory.wifi_write_enabled!==true){blocked('Wi-Fi editing is not enabled yet. Current radio settings are shown above.');return}
+   if(s.menu&&!inventory.available?.[s.menu]){blocked('This RouterOS menu could not be read safely or is not supported on this device. No changes are offered.');return}
    let list=s.menu?objects(inventory,s.menu):[];
    if(kind==='lease')list=list.filter(o=>!['yes','true'].includes(o.values.dynamic));
-   pane.innerHTML=`<header><p class="network-eyebrow">CONFIGURE</p><h3>${esc(s.title)}</h3><p>${esc(descriptions[kind])}</p></header>`+(s.menu?`<label>Choose a record<select class="input" data-record>${s.create?'<option value="">Create new</option>':''}${list.map(o=>`<option value="${esc(o.id)}">${esc(label(o))}</option>`).join('')}</select></label>`:'')+'<div data-fields></div>';
+   pane.innerHTML=actual+`<header><p class="network-eyebrow">CONFIGURE</p><h3>${esc(s.title)}</h3><p>${esc(descriptions[kind])}</p></header>`+(s.menu?`<label>Choose a record<select class="input" data-record>${s.create?'<option value="">Create new</option>':''}${list.map(o=>`<option value="${esc(o.id)}">${esc(label(o))}</option>`).join('')}</select></label>`:'')+'<div data-fields></div>';
    if(s.menu&&!s.create&&!list.length){pane.innerHTML+='<p>No existing records. Use Network setup for a customer LAN / Hotspot, or create a PPPoE subscriber service.</p>';return}
    const record=pane.querySelector('[data-record]');if(record)record.onchange=fields;fields();
    function fields(){
@@ -101,7 +116,8 @@ window.MMNetwork = (() => {
       output.innerHTML=`<h3>Review before applying</h3><ul>${review.steps.map(t=>`<li>${esc(t)}</li>`).join('')}</ul>${review.warnings.map(t=>`<p>${esc(t)}</p>`).join('')}<label><input type="checkbox" data-consent> I checked this device and the proposed changes. Apply to this router.</label><button class="btn" type="button" data-apply disabled>Back up and apply to router</button>`;
       const apply=output.querySelector('[data-apply]');output.querySelector('[data-consent]').onchange=e=>apply.disabled=!e.target.checked;
       apply.onclick=async()=>{
-       if(!review||!pending)return;const request={...pending,confirmation:review.confirmation};review=null;pending=null;++revision;
+       if(applying||!review||!pending)return;applying=true;const request={...pending,confirmation:review.confirmation};review=null;pending=null;++revision;
+       const navigation=[select,...editor.querySelectorAll('[data-task],[data-reload],[data-record]')].map(el=>[el,el.disabled]);navigation.forEach(([el])=>el.disabled=true);
        const savedStamp=revision;select.disabled=true;form.querySelectorAll('input,select,button').forEach(el=>el.disabled=true);apply.disabled=true;output.textContent='Backing up, applying and verifying router settings…';
        try{
         const data=await api.post(`/routers/${encodeURIComponent(id)}/network/apply`,request);
@@ -110,7 +126,7 @@ window.MMNetwork = (() => {
         form.querySelectorAll('input[type="password"]').forEach(el=>el.value='');
         output.textContent=`Router settings verified. Backup: ${data.result.backup}. Test a real client before calling the service operational. Reload router to edit again.`;
        }catch(e){if(output.isConnected&&savedStamp===revision)output.textContent=`Apply failed. ${error(e)} ${e.data?.result?.rolled_back?'Previous settings restored and verified.':'Rollback not confirmed; inspect the router and its backup before retrying.'}`}
-       finally{select.disabled=false;editor.querySelector('[data-reload]').disabled=false;request.values={}}
+       finally{applying=false;navigation.forEach(([el,disabled])=>{if(el.isConnected)el.disabled=disabled});request.values={}}
       };
      }catch(e){if(output.isConnected&&stamp===revision)output.textContent=`Review failed; nothing applied. ${error(e)}`}
     };

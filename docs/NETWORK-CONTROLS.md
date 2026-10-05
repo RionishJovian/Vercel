@@ -1,5 +1,26 @@
 # Network controls — 2026-10-03
 
+## October 5 update — deployed; physical router acceptance pending
+
+Current settings now remain visible for read-only users and when write flags
+are off. The internet workspace lists actual DHCP clients, PPPoE clients and
+routes; record-based workspaces display their inventory values. Unavailable
+menus and empty menus have distinct states. Router values are HTML-escaped and
+secret fields are omitted defensively. No illustrative or remembered values
+are substituted for a router inventory read.
+
+While applying a reviewed operation, device selection, task selection, record
+selection and refresh are locked. This prevents navigating away from the
+pending result or starting another operation before verification finishes.
+Navigation is restored afterward; refreshing reads the router again.
+
+`scripts/test-network-layout.mjs` passed against jsdom 30.0.1, covering these
+behaviors and the existing consent/review invalidation boundaries. Web and API
+were deployed on October 5 after a verified rollback backup, passing VPS tests,
+configuration validation and all four required schema checks. Public asset
+bytes match the tested source. No ax2 or customer router was changed; physical
+router acceptance remains pending.
+
 ## Scope and rollout
 
 Dedicated navigation exposes WAN and failover, PPPoE subscribers, Wi-Fi networks,
