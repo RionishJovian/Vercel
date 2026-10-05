@@ -12,6 +12,8 @@ let posts=0;
 const inventory={write_enabled:true,wifi_write_enabled:false,interfaces:[{name:'ether1',type:'ether',running:true}],available:{dhcp_clients:true,pppoe_clients:true,routes:true,wifi:true},objects:{dhcp_clients:[{id:'*1',values:{interface:'ether1',gateway:'192.168.100.1','add-default-route':'yes',disabled:'no'}}],pppoe_clients:[],routes:[],wifi:[{id:'*2',values:{name:'wifi1','configuration.ssid':'<img src=x onerror=alert(1)>','configuration.country':'Myanmar','security.passphrase':'PRIVATE_FIXTURE_PASSWORD',disabled:'no'}}]}};
 const api={get:async()=>({inventory}),post:async()=>{posts++;return {review:{steps:['Set routing'],warnings:[],confirmation:'test-only'}}}};
 await window.MMNetwork.mount(host,'wan',[{device_id:'one',hardware_name:'Test router'}],true,api);
+assert.equal(host.querySelector('.network-workspace > header h2'),null,'Workspace must not repeat the page title');
+assert.equal(host.querySelector('.network-workspace').getAttribute('aria-label'),'Internet connections controls');
 const device=host.querySelector('[data-router]');
 device.value='one';
 await device.onchange();

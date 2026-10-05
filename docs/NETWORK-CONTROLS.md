@@ -1,5 +1,13 @@
 # Network controls — 2026-10-03
 
+## Shared network layout cleanup — rollout pending
+
+The four network workspaces no longer repeat the page title inside their
+setup card. Current router records now use shared spacing and definition-list
+alignment, with stacked labels and values on mobile. The network layout
+regression test verifies the single-title contract. Deployment and visual
+acceptance are tracked separately from this source change.
+
 ## October 5 update — deployed; physical router acceptance pending
 
 Current settings now remain visible for read-only users and when write flags

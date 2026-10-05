@@ -35,6 +35,15 @@
 .network-workspace #gateway-setup-form .input { width:100%; box-sizing:border-box; }
 .network-workspace #gateway-status:empty { display:none; }
 .network-review:not(:empty) { padding:20px; margin-top:24px; border:1px solid var(--accent); border-radius: var(--radius-md); }
+.network-settings [data-current-settings] { display:grid; gap:24px; margin-bottom:32px; }
+.network-settings [data-current-settings] > h3,.network-settings [data-current-settings] > p { margin:0; }
+.network-settings [data-current-settings] section { display:grid; gap:16px; }
+.network-settings [data-current-settings] h4,.network-settings [data-current-settings] h5 { margin:0; }
+.network-settings [data-current-settings] article { padding:20px; border:1px solid var(--line); border-radius:var(--radius-md); min-width:0; }
+.network-settings [data-current-settings] dl { display:grid; grid-template-columns:minmax(140px,1fr) minmax(0,2fr); gap:12px 24px; margin:16px 0 0; }
+.network-settings [data-current-settings] dt { color:var(--ink-soft); }
+.network-settings [data-current-settings] dd { margin:0; overflow-wrap:anywhere; }
+@media(max-width:640px) { .network-settings [data-current-settings] dl { grid-template-columns:minmax(0,1fr); gap:6px; } .network-settings [data-current-settings] dd { margin-bottom:12px; } }
 @media(max-width:640px) { .panel.network-workspace { padding:var(--panel-inset); } .network-field-grid { grid-template-columns:1fr; gap:20px; } .network-context { align-items:flex-start; flex-direction:column; padding:20px; } .network-task { padding:20px; } .network-tasks { grid-template-columns:1fr; } .network-settings fieldset { padding:16px; } }
 .page-app {
   --workspace-gap: 20px;

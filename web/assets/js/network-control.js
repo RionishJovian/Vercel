@@ -38,7 +38,7 @@ window.MMNetwork = (() => {
  async function mount(host,workspace,routers,canEdit,api=MM){
   let revision=0,inventory=null,defaults={},review=null,pending=null,applying=false;
   const kinds=choices[workspace];
-  host.innerHTML=`<section class="panel network-workspace"><header><p class="network-eyebrow">NETWORK MANAGEMENT</p><h2>${esc(workspaces[workspace][0])}</h2><p>${esc(workspaces[workspace][1])}</p></header><ol class="network-steps" aria-label="Change workflow"><li>1 · Choose device</li><li>2 · Configure</li><li>3 · Review and apply</li></ol>
+  host.innerHTML=`<section class="panel network-workspace" aria-label="${esc(workspaces[workspace][0])} controls"><header><p class="network-eyebrow">START WITH YOUR DEVICE</p><p>${esc(workspaces[workspace][1])}</p></header><ol class="network-steps" aria-label="Change workflow"><li>1 · Choose device</li><li>2 · Configure</li><li>3 · Review and apply</li></ol>
    <label>Managed device<select class="input" data-router><option value="">Choose a connected device</option>${routers.map(r=>`<option value="${esc(r.device_id)}">${esc(r.hardware_name)}</option>`).join('')}</select></label>
    <div data-editor aria-live="polite">${routers.length?'Choose a device to read its current settings.':'Connect a device from Gateways first.'}</div></section>`;
   const select=host.querySelector('[data-router]'),editor=host.querySelector('[data-editor]');
