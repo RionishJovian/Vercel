@@ -516,11 +516,29 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 		// PUBLIC captive-portal endpoints — anonymous, NO auth middleware. The
 		// tenant is resolved from the DEVICE the client is attached to (not from
 		// the voucher code).
+		// The guest media catalogue reads magic_media_publications, so it stays
+		// hidden until that table exists WITH row-level security enforced. Same
+		// check media_routes.go performs for the owner-side publication endpoints.
+		// A failure here must not take the portal down, so it degrades to "no
+		// catalogue" rather than aborting startup.
+		mediaCatalogueReady := false
+		if e := db.QueryRow(`SELECT EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relname='magic_media_publications' AND c.relrowsecurity AND c.relforcerowsecurity)`).Scan(&mediaCatalogueReady); e != nil {
+			mediaCatalogueReady = false
+		}
+		mediaCatalogueHandler := &handler.MediaCatalogueHandler{
+			Store:       mediaBridge.NewPostgres(db),
+			DeviceIndex: database.NewDeviceRepository(db),
+			Ready:       mediaCatalogueReady,
+		}
 		portalPublic := tv1.Group("/portal", auth.BoundedPortalRateLimit(), boundedPortalBody())
 		{
 			portalPublic.GET("/:deviceId/config", portalHandler.PublicConfig)
 			portalPublic.POST("/:deviceId/redeem", portalHandler.PublicRedeem)
 			portalPublic.GET("/status", portalHandler.PublicStatus)
+			// Media catalogue: the owner's published library for the business that
+			// owns THIS hotspot. Resolved from the device id, so no publication
+			// hash is ever exposed to a guest and tenants cannot cross-read.
+			portalPublic.GET("/:deviceId/media", mediaCatalogueHandler.PublicCatalogue)
 			// Billing: guest submits a purchase request (device-anchored).
 			portalPublic.POST("/:deviceId/purchase", billingHandler.PublicCreatePurchase)
 			// Guest wifi (Option C): online-banking purchase with a free grace

@@ -52,6 +52,9 @@ func registerMediaRoutes(r *gin.Engine, service *auth.Service, db *database.DB, 
 	owner.PUT("/publication", publishing.Publish)
 	owner.DELETE("/publication", publishing.Unpublish)
 	r.GET("/api/v1/media-guest/:id", auth.BoundedAuthRateLimit(), publishing.Public)
+	// The guest catalogue itself is registered on the portal group in server.go,
+	// alongside the other anonymous guest routes, so it inherits the portal rate
+	// limit and the cookie-origin check. Expose the pieces it needs here.
 	// Paid access is a separate explicit rollout gate; a migrated theme/ledger
 	// alone must never solicit payment for an unverified playback service.
 	salesReady := false
