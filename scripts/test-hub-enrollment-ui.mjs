@@ -9,25 +9,26 @@ try {
   const status={textContent:'',innerHTML:''};
   const form={values:{router_public_key:key,management_rest_port:'443',confirm_enrollment:'on'},reportValidity:()=>true,
     querySelector:()=>button,addEventListener(event,handler){assert.equal(event,'submit');submitHandler=handler}};
-  const container={dataset:{hubEnrollment:'gateway/a'},isConnected:true,querySelector:selector=>selector==='form'?form:status};
-  const api={post(path,body){calls++;assert.equal(path,'/vps/peers/gateway%2Fa/enroll');assert.equal(body.confirm_enrollment,true);assert.equal(body.router_public_key,key);return new Promise(r=>resolve=r)}};
+  const container={dataset:{hubEnrollment:'gateway/a'},isConnected:true,querySelector:selector=>selector==='form'?form:selector==='[role="status"]'?status:null};
+  const api={post(path,body){calls++;assert.equal(path,'/vps/peers/gateway%2Fa/quick-enroll');assert.deepEqual(body,{management_rest_port:443,confirm_enrollment:true});return new Promise(r=>resolve=r)}};
   const esc=value=>String(value??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
   mountHubEnrollment({querySelectorAll:()=>[container]},{api,escape:esc});
   const event={preventDefault(){}};
   const pending=submitHandler(event);assert(button.disabled);await submitHandler(event);assert.equal(calls,1);
-  resolve({state:'hub_peer_enrolled',router_configuration_required:true,router_script:'<script>not HTML</script>',disconnect_script:'disconnect fixture',tunnel_address:'<img src=x>',hub_public_key:key,endpoint:'hub:51820',allowed_ips:['10.77.0.1/32']});await pending;
-  assert(!button.disabled);assert(!status.innerHTML.includes('<img'));assert(status.innerHTML.includes('&lt;img'));assert(status.innerHTML.includes('LAN access is not yet verified'));
+  resolve({state:'hub_peer_enrolled',router_configuration_required:true,one_paste:true,automatic_management:true,router_script:'<script>not HTML</script>',disconnect_script:'disconnect fixture',tunnel_address:'<img src=x>',hub_public_key:key,endpoint:'hub:51820',allowed_ips:['10.77.0.1/32']});await pending;
+  assert(!button.disabled);assert(!status.innerHTML.includes('<img'));assert(status.innerHTML.includes('&lt;img'));assert(status.innerHTML.includes('Finish connection verifies the tunnel and router'));
   assert(!status.innerHTML.includes('<script>'));assert(status.innerHTML.includes('&lt;script&gt;'));assert(status.innerHTML.includes('Copy script'));
   form.values.confirm_enrollment='';await submitHandler(event);assert.equal(calls,1);assert.match(status.textContent,/Confirm/);
-  form.values.confirm_enrollment='on';form.values.router_public_key='password';await submitHandler(event);assert.equal(calls,1);
-  form.values.router_public_key=key;
+  form.values.confirm_enrollment='on';
   const stale=submitHandler(event);container.isConnected=false;const previous=status.innerHTML;
   resolve({state:'hub_peer_enrolled',router_configuration_required:true});await stale;assert.equal(status.innerHTML,previous);
   container.isConnected=true;
   api.post=async()=>({state:'hub_peer_enrolled',router_configuration_required:true});
   await submitHandler(event);assert.match(status.textContent,/not confirmed/);
   api.post=async()=>{throw {status:503,message:'INTERNAL_SECRET'}};
-  await submitHandler(event);assert.match(status.textContent,/not enabled/);assert(!status.textContent.includes('INTERNAL_SECRET'));assert(!button.disabled);
+  await submitHandler(event);assert.match(status.textContent,/preparation is unavailable/);assert(!status.textContent.includes('INTERNAL_SECRET'));assert(!button.disabled);
+  api.post=async()=>{throw {status:409,data:{code:'hub_router_key_unavailable'},message:'INTERNAL_SECRET'}};
+  await submitHandler(event);assert.match(status.textContent,/original installation script is no longer available/);assert(!status.textContent.includes('INTERNAL_SECRET'));assert(!button.disabled);
   let prepareHandler,clickHandler;
   const prepare={disabled:false,isConnected:true,addEventListener(event,handler){assert.equal(event,'click');prepareHandler=handler}};
   const output={textContent:'',innerHTML:''};
@@ -47,5 +48,26 @@ try {
   try {await clickHandler({target:{closest:()=>copy}});assert.equal(copy.textContent,'Copied');
     navigator.clipboard.writeText=async()=>{throw Error('unavailable')};await clickHandler({target:{closest:()=>copy}});assert(text.focused&&text.selected);
   } finally {Object.defineProperty(globalThis,'navigator',{value:previousNavigator,configurable:true});}
-  console.log('Hub enrollment UI passed: explicit consent, duplicate guard, encoded gateway, escaped results, disabled deployment, detached page and honest connection state.');
+  let finishHandler,finishResolve,finishCalls=0;
+  const finishButton={disabled:false,isConnected:true,addEventListener(event,handler){assert.equal(event,'click');finishHandler=handler}};
+  const finishStatus={textContent:''};
+  const third={dataset:{hubEnrollment:'gateway/a'},isConnected:true,
+    querySelector(selector){return selector==='form'?form:selector==='[role="status"]'?status:selector==='[data-hub-finish]'?finishButton:selector==='[data-hub-finish-status]'?finishStatus:null}};
+  api.post=(path,body)=>{finishCalls++;assert.equal(path,'/vps/peers/gateway%2Fa/finish');assert.deepEqual(body,{});return new Promise(r=>finishResolve=r)};
+  mountHubEnrollment({querySelectorAll:()=>[third]},{api,escape:esc});
+  const checking=finishHandler();assert(finishButton.disabled);await finishHandler();assert.equal(finishCalls,1);
+  finishResolve({state:'hub_peer_enrolled'});await checking;
+  assert.match(finishStatus.textContent,/Connection not verified/);assert(!finishButton.disabled);
+  api.post=async()=>{throw {status:409,data:{code:'hub_handshake_unverified',error:'INTERNAL_SECRET'}}};
+  await finishHandler();assert.match(finishStatus.textContent,/router may be offline/);assert.match(finishStatus.textContent,/does not reset/);assert(!finishStatus.textContent.includes('INTERNAL_SECRET'));
+  api.post=async()=>{throw {status:409,data:{code:'hub_management_unverified'}}};
+  await finishHandler();assert.match(finishStatus.textContent,/tunnel has a recent handshake/);assert.match(finishStatus.textContent,/management is not verified/);
+  api.post=async()=>{throw {status:503}};
+  await finishHandler();assert.match(finishStatus.textContent,/temporarily unavailable/);assert(!finishStatus.textContent.includes('generate a new script'));
+  api.post=(path,body)=>{finishCalls++;assert.equal(path,'/vps/peers/gateway%2Fa/finish');assert.deepEqual(body,{});return new Promise(r=>finishResolve=r)};
+  const verified=finishHandler();finishResolve({state:'management_authenticated'});await verified;
+  assert.match(finishStatus.textContent,/Router management is ready/);assert.match(finishStatus.textContent,/LAN devices require their own verification/);
+  const detached=finishHandler();third.isConnected=false;const lastStatus=finishStatus.textContent;
+  finishResolve({state:'management_authenticated'});await detached;assert.equal(finishStatus.textContent,lastStatus);
+  console.log('Hub enrollment UI passed: quick-enroll contract, explicit consent, duplicate guards, escaped scripts, detached pages, unavailable deployment and verified Finish connection state.');
 } finally {globalThis.FormData=originalFormData}

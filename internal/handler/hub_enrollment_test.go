@@ -121,7 +121,7 @@ func TestQuickEnrollmentPreservesExistingTunnel(t *testing.T) {
 	c.Set(auth.ContextKeyUserID, "owner")
 	c.Set(auth.ContextKeyUserRole, "OWNER")
 	h.QuickEnrollGateway(c)
-	if w.Code != 200 || stub.calls != 0 || calls != 1 {
+	if w.Code != 409 || !strings.Contains(w.Body.String(), "hub_router_key_unavailable") || stub.calls != 0 || calls != 1 {
 		t.Fatal(w.Code, w.Body.String(), stub.calls, calls)
 	}
 }

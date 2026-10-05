@@ -14,7 +14,14 @@ export function mountHubEnrollment(root, {api, escape:esc}) {
         if(!container.isConnected)return;
         if(result.state!=='management_authenticated')throw Error('unverified');
         message.textContent='Connected. Router management is ready. LAN devices require their own verification.';
-      } catch(error) {if(container.isConnected)message.textContent=error.status===503?'Automatic setup is unavailable on this deployment.':'Connection not verified yet. Run the entire script and retry. Setup expires after 30 minutes or an app restart; generate a new script if needed.';}
+      } catch(error) {
+        if(container.isConnected)message.textContent=error.data?.code==='hub_handshake_unverified'
+          ?'No recent tunnel connection is verified. The router may be offline or the network path may be blocked. Your gateway record is kept; this check does not reset it or require a new script.'
+          :error.data?.code==='hub_management_unverified'
+          ?'The tunnel has a recent handshake, but router management is not verified. This check does not reset the connection. If setup expired or the app restarted, its management script may need renewal.'
+          :error.status===503?'Connection checking is temporarily unavailable. Your gateway record is kept; no connection was confirmed.'
+          :'Connection not verified yet. Your gateway record is kept. No reset was performed.';
+      }
       finally {if(finish.isConnected)finish.disabled=false;}
     });
     const scriptPanel=(name,title,script)=>{
@@ -67,7 +74,8 @@ export function mountHubEnrollment(root, {api, escape:esc}) {
           <p>Finish connection verifies the tunnel and router before enabling management. Keep this script private.</p>`;
       } catch(error) {
         if(!container.isConnected)return;
-        status.textContent=error.status===503?'Enrollment is not enabled on this deployment yet. No connection was confirmed.':
+        status.textContent=error.data?.code==='hub_router_key_unavailable'?'This gateway already has a reserved tunnel key, but its original installation script is no longer available. The existing connection was preserved; no replacement key was installed.':
+          error.status===503?'Enrollment preparation is unavailable. No connection was confirmed; your gateway record is preserved.':
           error.status===403?'Your account needs gateway-management permission and an active plan.':
           'One-paste enrollment was not confirmed. Retry once; no router changes were made.';
       } finally {

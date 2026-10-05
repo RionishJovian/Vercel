@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"golang.org/x/crypto/ssh"
+	"mega-magic/internal/hub"
 	"mega-magic/internal/provisioner/routeros"
 )
 
@@ -115,5 +116,77 @@ func TestAutomaticManagementScriptAndOutputBounds(t *testing.T) {
 	}
 	if _, err := b.Write([]byte("x")); err == nil {
 		t.Fatal("unbounded router response")
+	}
+}
+
+func TestAutomaticEnrollmentRunsAsOneBlock(t *testing.T) {
+	private, key, err := hub.GenerateRouterKeypair()
+	if err != nil {
+		t.Fatal(err)
+	}
+	peer := hub.Peer{RouterID: "router", RouterPublicKey: key, HubPublicKey: key,
+		Endpoint: "hub.example.com:51820", AllowedIPs: []string{"10.77.0.9/32"},
+		EnrollmentVersion: 1, State: "active", TunnelAddress: "10.77.0.2/32"}
+	scripts, err := hub.BuildRouterScripts("router", peer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	quick, err := hub.BuildQuickConnectScript("router", peer, private)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tunnel := range []string{scripts.Setup, quick} {
+		p := pendingManagement{user: "mm-test", public: "ssh-rsa public", proof: strings.Repeat("b", 64), routerKey: key, tunnelScript: tunnel, sourceCIDR: "10.77.0.9/32"}
+		combined, err := automaticEnrollmentScript("router", p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// There must be no second top-level block that a terminal can execute
+		// after the first block reports a tunnel error.
+		if strings.Contains(combined, "\n}\n{") || !strings.HasPrefix(combined, "{\n") || !strings.HasSuffix(combined, "\n}") {
+			t.Fatal("management can execute independently of tunnel setup")
+		}
+		guard := strings.Index(combined, "Magic Hub tunnel missing or ambiguous")
+		write := strings.Index(combined, "/user/group add")
+		if guard < 0 || write < 0 || guard > write || !strings.Contains(combined, `comment] != "mega-magic:mmh-`) || !strings.Contains(combined, `public-key] != "`+key+`"`) {
+			t.Fatal("management writes precede tunnel identity checks")
+		}
+	}
+	if _, err := automaticEnrollmentScript("router", pendingManagement{tunnelScript: ":error \"failed\""}); err == nil {
+		t.Fatal("accepted tunnel without an execution block")
+	}
+}
+
+func TestManagementSourceCIDR(t *testing.T) {
+	for _, tc := range []struct {
+		addresses []string
+		want      string
+	}{
+		{[]string{"10.77.0.1/24"}, "10.77.0.1/32"},
+		{[]string{"10.77.0.9/32", "fd00::9/64"}, "10.77.0.9/32"},
+		{[]string{"10.77.0.1/24", "10.77.0.9/32"}, ""},
+		{[]string{"8.8.8.8/32"}, ""},
+		{nil, ""},
+	} {
+		var addresses []net.Addr
+		for _, raw := range tc.addresses {
+			ip, network, _ := net.ParseCIDR(raw)
+			network.IP = ip
+			addresses = append(addresses, network)
+		}
+		got, err := managementSourceCIDR(addresses)
+		if got != tc.want || (err == nil) != (tc.want != "") {
+			t.Fatalf("addresses=%v got=%s err=%v", tc.addresses, got, err)
+		}
+	}
+	key := strings.Repeat("a", 64)
+	p := pendingManagement{user: "mm-test", proof: key, sourceCIDR: "10.77.0.1/32", tunnelScript: "{\n:put \"tunnel\"\n}"}
+	script, err := automaticEnrollmentScript("router", p)
+	if err != nil || !strings.Contains(script, "address=10.77.0.1/32") || strings.Contains(script, "10.77.0.9/32") {
+		t.Fatal("source address did not follow current topology", err)
+	}
+	p.sourceCIDR = "10.77.0.0/24"
+	if _, err := automaticEnrollmentScript("router", p); err == nil {
+		t.Fatal("subnet-wide management accepted")
 	}
 }

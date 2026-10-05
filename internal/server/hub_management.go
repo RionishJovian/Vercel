@@ -24,7 +24,7 @@ func configureHubManagement(h *handler.VPSHandler, db *database.DB, cfg *config.
 		return errors.New("management credential encryption unavailable")
 	}
 	source := database.NewDeviceCredentialSource(db, box)
-	configureAutomaticHubManagement(h, source, cfg.Provisioner.AllowedTargetCIDRs)
+	configureAutomaticHubManagement(h, source, cfg.Provisioner.AllowedTargetCIDRs, cfg.WireGuard.Interface)
 	// Validate the outbound allowlist once before registering the route callback.
 	if _, err := routeros.NewCIDRTargetSource(enrollmentTarget{}, cfg.Provisioner.AllowedTargetCIDRs); err != nil {
 		return err

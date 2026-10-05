@@ -88,6 +88,7 @@ func TestFinishConnectionBoundaries(t *testing.T) {
 		{"foreign", "OWNER", "foreign", "10.77.0.2/32", &now, 409},
 		{"stale", "OWNER", "tenant", "10.77.0.2/32", &old, 409},
 		{"missing", "OWNER", "tenant", "10.77.0.2/32", nil, 409},
+		{"management-failed", "OWNER", "tenant", "10.77.0.2/32", &now, 409},
 		{"public", "OWNER", "tenant", "8.8.8.8/32", &now, 502},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -100,6 +101,9 @@ func TestFinishConnectionBoundaries(t *testing.T) {
 				if biz != "tenant" || id != "router" || address != "10.77.0.2" || key != "trusted" {
 					t.Fatal("client-supplied identity")
 				}
+				if tc.name == "management-failed" {
+					return errors.New("INTERNAL_SECRET")
+				}
 				return nil
 			})
 			w := httptest.NewRecorder()
@@ -110,8 +114,17 @@ func TestFinishConnectionBoundaries(t *testing.T) {
 			c.Set(auth.ContextKeyUserID, "owner")
 			c.Set(auth.ContextKeyUserRole, tc.role)
 			h.FinishGatewayConnection(c)
-			if w.Code != tc.want || (calls == 1) != (tc.want == 200) {
+			if w.Code != tc.want || (calls == 1) != (tc.want == 200 || tc.name == "management-failed") {
 				t.Fatal(w.Code, w.Body.String(), calls)
+			}
+			if tc.want == 409 {
+				code := "hub_handshake_unverified"
+				if tc.name == "management-failed" {
+					code = "hub_management_unverified"
+				}
+				if !strings.Contains(w.Body.String(), `"code":"`+code+`"`) || strings.Contains(w.Body.String(), "INTERNAL_SECRET") {
+					t.Fatal("incorrect connection diagnosis or internal error disclosure", w.Body.String())
+				}
 			}
 		})
 	}

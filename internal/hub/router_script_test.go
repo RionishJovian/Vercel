@@ -83,4 +83,14 @@ func TestQuickConnectKeepsPrivateKeyOnlyInOnePasteScript(t *testing.T) {
 	if _, err := BuildQuickConnectScript("gateway", p, "not-a-key"); err == nil {
 		t.Fatal("invalid private key accepted")
 	}
+	if strings.Contains(script, "step 1 first") || strings.Contains(script, "Magic Hub step 2") {
+		t.Fatal("one-paste script still instructs a missing preparation step")
+	}
+	otherPrivate, _, err := GenerateRouterKeypair()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := BuildQuickConnectScript("gateway", p, otherPrivate); err == nil {
+		t.Fatal("mismatched private key accepted")
+	}
 }

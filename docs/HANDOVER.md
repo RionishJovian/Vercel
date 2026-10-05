@@ -1,5 +1,164 @@
 # HANDOVER - MikroMagic / Mega Magic
 
+### 2026-10-05 AX2 one-paste recovery — implementation validated, rollout pending
+
+Quick-enroll now refuses to label an existing allocation's step-two-only script
+as one-paste when the original private-key installation artifact is unavailable.
+It preserves the existing peer and returns `hub_router_key_unavailable`.
+Fresh scripts validate private/public key agreement and do not instruct a
+missing preparation step. A cached full script remains eligible for retry.
+
+Automatic management reads the configured WireGuard interface's unique private
+IPv4 address and restricts the RouterOS account, SSH service and firewall to
+that single host. It refuses ambiguous/public sources or allocations without a
+scoped return route. This fixes the combined Hostinger app/hub source `.1`
+versus the previous hardcoded split-host source `.9`; it does not widen access
+to a subnet. Focused Go and enrollment UI tests passed locally.
+
+Live read-only checks: AX2 allocation `10.77.0.4/32` has no handshake; wg0 sends
+from `10.77.0.1`. The owner approved recovery. Before resetting this unused
+allocation, back up and compare the current peer store and WireGuard config;
+preserve other devices. No physical router execution is authorized by script
+generation alone. New source deployment and replacement script verification
+are still pending at the time of this entry.
+
+### 2026-10-05 app repairs deployed at 09:14 UTC
+
+SSH authenticated successfully using the owner's existing key. Live source was
+clean at `bb3b507fa41cc8ff80459c85c03e6bdcc5db7d90`, matching local HEAD. Staged
+the reviewed patch only after verifying the rollback archive checksum and
+byte-comparing extracted original source, running binary and served assets.
+Backup: `/var/backups/megamagic/app-repair-20261005.Oq4uZd/before.tar`.
+
+VPS tests passed for `internal/server`, `internal/hub`, `internal/handler`;
+production configuration and device-SSH, capacity, store and authentication
+session schema checks passed. No migrations or configuration edits were needed.
+Ran `./deploy.sh web` as mmapp, built the API as mmapp, replaced the verified
+service binary at `/home/mmapp/app/server`, and restarted only mega-magic-api.
+The running executable hash matches the installed binary. API/nginx remain
+active, nginx configuration validates, public app/sign-in/health return 200,
+and unauthenticated routers return 401. Both changed public JS assets match
+local tested bytes with new version URLs. Backend executable SHA256:
+`801f182cb3f5f3bc45e03fb1c1c8e3b2d2995d40f4ad4c34dd56996bd5717f2e`.
+
+Signed-in Safari loaded the deployed Gateways view with three saved devices.
+AX2's read-only Check Magic Hub returned "No recent tunnel handshake" and the
+page explicitly states that it does not authenticate management, verify LAN
+access or change the connection. No setup-generation or router-write action
+was taken during browser verification.
+
+This deploy includes current network inventory display, apply navigation and
+duplicate guards, single-block automatic enrollment with tunnel identity
+preflight, and distinct tunnel/management verification diagnostics. Earlier
+"local only" entries below describe the prior stages; these fixes are now
+deployed. Physical router execution, handshake and management remain unverified.
+No router configuration, account credentials, SSH/WireGuard service settings,
+billing or subscriptions were changed by this deployment. Local/remote source
+changes remain uncommitted.
+
+### 2026-10-05 connection-check diagnostics — local only
+
+Finish connection now returns distinct codes for an unverified recent Hub
+handshake and failed management verification. The UI keeps those stages
+separate and does not prescribe regenerating/re-pasting a script for every
+failure. An unavailable server check is described as unavailable, rather than
+proof that setup is disabled. The check preserves the gateway record and does
+not reset enrollment. Backend and UI regression tests cover both failure
+stages, temporary unavailability, and omission of internal error details.
+These diagnostics remain local; they do not repair the provider IP block or
+prove a physical router connection. The owner's power, cable and alternate
+internet limitations must not be treated as missing willingness or consent.
+
+### 2026-10-05 one-paste execution repair — local only
+
+The automatic enrollment generator previously concatenated two independent
+RouterOS blocks. A tunnel error could return the terminal to its prompt before
+the remaining pasted management block ran. It now emits one execution block,
+so tunnel errors stop the later management commands. Management also checks
+that the dedicated interface exists, has the expected ownership comment and
+public key, and is enabled before changing accounts, keys or firewall rules.
+This follows RouterOS's documented stop-on-runtime-error behavior:
+https://manual.mikrotik.com/docs/developer-guides/scripting/
+
+`go test ./internal/server ./internal/hub ./internal/handler` passed locally,
+including both fresh and existing-tunnel script generation and preflight order.
+This prevents continuing into management after a tunnel failure; it is not a
+transaction or rollback of earlier tunnel commands. It does not recreate an
+orphaned tunnel whose private key was lost. Deployment and physical RouterOS
+execution remain unverified because production access is blocked and the owner
+cannot currently keep the router powered.
+
+### 2026-10-05 network controls and deployment access
+
+Local network-control changes expose current router records when role or rollout
+gates disable editing, distinguish empty records from unreadable menus, escape
+router-provided values, and omit secret fields. Apply now locks device/task/record
+navigation and refresh until completion and prevents duplicate submissions.
+The network layout browser test, network workspace regressions, enrollment UI
+test, JavaScript syntax check, and `git diff --check` passed locally. These
+changes have **not been deployed** or verified against a powered router.
+
+Hostinger support reviewer Linas stated in the owner's hPanel chat that its
+firewall blocks the current source public IP due to reputation and declined to
+remove that block. This is a provider report, not an independently inspected
+firewall rule. The Mac SSH timeout occurs before authentication. A fresh hPanel
+Web console session also remained blank/loading; whether the same block affects
+that endpoint is unconfirmed. Asked support which destinations/protocols are
+blocked and for an approved console access method. No production changes were
+made in this deployment attempt. Do not disable VPS protections or assume a new
+SSH key fixes a TCP timeout. The owner cannot currently use another ISP/mobile
+data or keep the ax2 powered; hardware acceptance must remain explicitly pending
+while software work continues.
+
+### 2026-10-05 local enrollment verification
+
+Updated `scripts/test-hub-enrollment-ui.mjs` to match the current quick-enroll
+API contract and DOM selectors. Added Finish connection checks for duplicate
+requests, unverified responses, authenticated management, and detached pages.
+The UI test, create-only Hub enrollment test, four auth-client tests, and Go
+tests in `internal/config`, `internal/handler`, and `internal/server` passed
+locally. This does not verify production migrations or physical router
+enrollment. WinBox was disconnected during this check; router management
+remains unverified. No production configuration changes were made.
+
+### 2026-10-05 enrollment proxy repair
+
+Live AX2 quick-enroll requests returned 502; Nginx logged upstream enrollment
+GET/POST requests as 404. The loaded Hub configuration matched the prefix
+`/internal/provisioner/v1/peers` without a trailing slash but replaced it with
+`/v1/peers/`, producing a double slash for by-router requests. Corrected peers
+and relays proxy_pass URI replacements to omit the trailing slash, preserving
+the existing location prefixes and authentication headers. Backup verified at
+`/root/magic-hub.before-enrollment-slash-20261005`. Nginx configuration test and
+reload passed; loaded config was read back and nginx remained active. An
+unsigned endpoint probe returned 401. Authenticated script generation and
+physical router enrollment still require verification; 401 alone does not
+prove successful generation.
+
+Follow-up: authenticated Hub GETs returned 200 after the proxy repair, but
+AX2 quick-enroll returned 409. The running Hub had no `MM_HUB_ENDPOINT`
+setting and therefore advertised the default loopback endpoint
+`127.0.0.1:51820`, which the app's script validator rejects. Backed up
+`/etc/mikromagic-hub.env` to
+`/root/mikromagic-hub.env.before-endpoint-20261005`, added
+`MM_HUB_ENDPOINT=156.67.216.128:51820`, and restarted only mikromagic-hub.
+Service remained active. Signed HTTPS read-only lookup returned 200 with
+endpoint `156.67.216.128:51820`, route `10.77.0.1/32`, enrollmentVersion 1,
+and active state. Script generation subsequently succeeded, but the returned
+script was `BuildRouterScripts.Setup` (step 2), because AX2 already had a Hub
+allocation from an earlier failed generation. It did not create an interface.
+Owner's WinBox execution failed with `input does not match any value of
+interface`; `/interface/wireguard print detail` returned no rows.
+
+Verified AX2's old peer `dfae050b-8874-40ec-9ac1-e22de6895545` had handshake
+timestamp 0 and transfer counters 0/0. Backed up and byte-compared the peer
+store at `/root/magic-hub-peers.before-ax2-recovery-20261005.json`, then used
+the signed, router-scoped DELETE API to mark only that allocation removed.
+HTTP 200, removed store state, and absence of its old public key from live
+wg0 were verified. Fresh generation must now create a new key and return the
+interface-creation script. Owner execution and Finish connection remain
+pending. No application source fix for orphaned allocations has been deployed.
+
 **Read this before changing anything on production.**
 Updated 2026-10-04 after the migration to Hostinger. The live system beats this
 file; if they disagree, verify against production and fix this file at the same time.

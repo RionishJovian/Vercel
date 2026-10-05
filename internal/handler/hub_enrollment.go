@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"mega-magic/internal/auth"
@@ -205,6 +206,13 @@ func (h *VPSHandler) QuickEnrollGateway(c *gin.Context) {
 	script, err = h.automaticPrepare(c.Request.Context(), biz, device.DeviceID, peer.RouterPublicKey, script)
 	if err != nil {
 		c.JSON(503, gin.H{"error": "automatic management preparation failed"})
+		return
+	}
+	// Automatic management may recover the original one-paste artifact from its
+	// short-lived cache. A peer record alone cannot recover the router private
+	// key, so never advertise the legacy step-two script as fresh installation.
+	if !strings.Contains(script, "private-key=\"") {
+		c.JSON(409, gin.H{"error": "existing router key cannot be recovered; enrollment preserved", "code": "hub_router_key_unavailable"})
 		return
 	}
 	c.JSON(200, gin.H{"peer_id": peer.PeerID, "device_id": device.DeviceID, "tunnel_address": peer.TunnelAddress,

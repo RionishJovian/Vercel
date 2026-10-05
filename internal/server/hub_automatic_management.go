@@ -25,16 +25,32 @@ import (
 type pendingManagement struct {
 	private, public, proof, user, routerKey string
 	tunnelScript                            string
+	sourceCIDR                              string
 	expires                                 time.Time
 }
 
 // Pending keys live for 30 minutes in memory, never in plaintext database rows.
 // A restart requires another setup script. Verified keys use the existing
 // encrypted credential store and pinned transport, including after restarts.
-func configureAutomaticHubManagement(h *handler.VPSHandler, source *database.DeviceCredentialSource, cidrs []string) {
+func configureAutomaticHubManagement(h *handler.VPSHandler, source *database.DeviceCredentialSource, cidrs []string, interfaceName string) {
 	var mu sync.Mutex
 	pending := make(map[string]pendingManagement)
 	h.ConfigureAutomaticManagement(func(ctx context.Context, biz, id, routerKey, tunnelScript string) (string, error) {
+		iface, err := net.InterfaceByName(interfaceName)
+		if err != nil {
+			return "", errors.New("management tunnel interface unavailable")
+		}
+		addresses, err := iface.Addrs()
+		if err != nil {
+			return "", err
+		}
+		sourceCIDR, err := managementSourceCIDR(addresses)
+		if err != nil {
+			return "", err
+		}
+		if !strings.Contains(tunnelScript, `dst-address="`+sourceCIDR+`"`) {
+			return "", errors.New("management source is not included in scoped tunnel routes")
+		}
 		previous, err := source.TargetForDevice(ctx, biz, id)
 		if err != nil && !errors.Is(err, routeros.ErrNoTarget) {
 			return "", err
@@ -50,8 +66,8 @@ func configureAutomaticHubManagement(h *handler.VPSHandler, source *database.Dev
 			}
 		}
 		key := biz + "/" + id
-		if p, ok := pending[key]; ok && p.routerKey == routerKey {
-			return p.tunnelScript + "\n" + automaticManagementScript(id, p), nil
+		if p, ok := pending[key]; ok && p.routerKey == routerKey && p.sourceCIDR == sourceCIDR {
+			return automaticEnrollmentScript(id, p)
 		}
 		if len(pending) >= 256 {
 			return "", errors.New("too many pending enrollments")
@@ -71,8 +87,13 @@ func configureAutomaticHubManagement(h *handler.VPSHandler, source *database.Dev
 		hash := sha256.Sum256([]byte(biz + "/" + id))
 		p := pendingManagement{private: string(pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(private)})), public: strings.TrimSpace(string(ssh.MarshalAuthorizedKey(pub))), proof: hex.EncodeToString(proof), user: fmt.Sprintf("mm-%x", hash[:6]), routerKey: routerKey, expires: time.Now().Add(30 * time.Minute)}
 		p.tunnelScript = tunnelScript
+		p.sourceCIDR = sourceCIDR
+		script, err := automaticEnrollmentScript(id, p)
+		if err != nil {
+			return "", err
+		}
 		pending[key] = p
-		return p.tunnelScript + "\n" + automaticManagementScript(id, p), nil
+		return script, nil
 	}, func(ctx context.Context, biz, id, address, routerKey string) error {
 		mu.Lock()
 		defer mu.Unlock()
@@ -124,6 +145,49 @@ func configureAutomaticHubManagement(h *handler.VPSHandler, source *database.Dev
 	})
 }
 
+// The combined app/hub host and split-host deployments use different source
+// addresses. Read the configured tunnel interface; never broaden to a subnet.
+func managementSourceCIDR(addresses []net.Addr) (string, error) {
+	var source string
+	for _, address := range addresses {
+		ip, _, err := net.ParseCIDR(address.String())
+		if err != nil {
+			return "", errors.New("invalid management interface address")
+		}
+		if ip.To4() == nil {
+			continue
+		}
+		if !ip.IsPrivate() || source != "" {
+			return "", errors.New("ambiguous or public management source")
+		}
+		source = ip.String() + "/32"
+	}
+	if source == "" {
+		return "", errors.New("management interface has no private IPv4 address")
+	}
+	return source, nil
+}
+
+// Keep both stages in one RouterOS execution block: a tunnel validation error
+// must stop execution before accounts, keys or management rules are changed.
+func automaticEnrollmentScript(id string, p pendingManagement) (string, error) {
+	ip, network, err := net.ParseCIDR(p.sourceCIDR)
+	if err != nil || ip.To4() == nil || !ip.IsPrivate() {
+		return "", errors.New("invalid management source")
+	}
+	ones, bits := network.Mask.Size()
+	if ones != 32 || bits != 32 {
+		return "", errors.New("management source must be a single host")
+	}
+	tunnel := strings.TrimSpace(p.tunnelScript)
+	management := strings.TrimSpace(automaticManagementScript(id, p))
+	if !strings.HasPrefix(tunnel, "{\n") || !strings.HasSuffix(tunnel, "\n}") {
+		return "", errors.New("invalid tunnel execution block")
+	}
+	management = strings.ReplaceAll(management, "10.77.0.9/32", p.sourceCIDR)
+	return strings.TrimSuffix(tunnel, "\n}") + "\n" + strings.TrimPrefix(management, "{\n"), nil
+}
+
 func automaticManagementScript(id string, p pendingManagement) string {
 	hash := sha256.Sum256([]byte(id))
 	iface := fmt.Sprintf("mmh-%x", hash[:6])
@@ -132,6 +196,10 @@ func automaticManagementScript(id string, p pendingManagement) string {
 	// authorized-key data. No operator text reaches the RouterOS commands.
 	return fmt.Sprintf(`{
 # Dedicated Magic Hub management. Run within 30 minutes of generation.
+:local managementIface [/interface/wireguard find where name="%s"]
+:if ([:len $managementIface] != 1) do={ :error "STOP: Magic Hub tunnel missing or ambiguous; management unchanged" }
+:if ([/interface/wireguard get $managementIface comment] != "mega-magic:%s") do={ :error "STOP: Magic Hub tunnel ownership mismatch; management unchanged" }
+:if ([/interface/wireguard get $managementIface public-key] != "%s" || [/interface/wireguard get $managementIface disabled]) do={ :error "STOP: Magic Hub tunnel key mismatch or disabled; management unchanged" }
 :if ([/ip/service get [find where name="ssh"] port] != 22) do={ :error "STOP: custom SSH port; use advanced management setup" }
 :local account [/user find where name="%s"]
 :if ([:len $account] > 1) do={ :error "STOP: ambiguous management account" }
@@ -170,7 +238,7 @@ func automaticManagementScript(id string, p pendingManagement) string {
   :if ([:len [/ip/firewall/filter find]] = 0) do={ /ip/firewall/filter add chain=input action=accept in-interface="%s" src-address=10.77.0.9/32 protocol=tcp dst-port=22 comment="%s" } else={ /ip/firewall/filter add chain=input action=accept in-interface="%s" src-address=10.77.0.9/32 protocol=tcp dst-port=22 comment="%s" place-before=0 }
 }
 :put "Setup complete. Return to Mega Magic and select Finish connection."
-}`, p.user, len(marker)+1, marker, p.user, p.user, p.user, p.user, p.proof, marker, p.proof, p.user, p.proof, marker, p.proof, p.user, p.user, p.public, p.user, p.user, marker, iface, iface, marker, iface, marker)
+}`, iface, iface, p.routerKey, p.user, len(marker)+1, marker, p.user, p.user, p.user, p.user, p.proof, marker, p.proof, p.user, p.proof, marker, p.proof, p.user, p.user, p.public, p.user, p.user, marker, iface, iface, marker, iface, marker)
 }
 
 // Bootstrap trust is scoped to the cryptographically authenticated WireGuard

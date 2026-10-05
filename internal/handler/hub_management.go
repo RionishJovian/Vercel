@@ -58,7 +58,7 @@ func (h *VPSHandler) FinishGatewayConnection(c *gin.Context) {
 	defer cancel()
 	p, err := h.liveHub.InspectRouter(ctx, hub.Identity{TenantID: biz, RouterID: id, RequestedBy: user})
 	if err != nil || p.TenantID != biz || p.RouterID != id || p.State != "active" || p.LastHandshakeAt == nil || time.Since(*p.LastHandshakeAt) < 0 || time.Since(*p.LastHandshakeAt) > 5*time.Minute {
-		c.JSON(409, gin.H{"error": "run the script and wait for a recent Magic Hub handshake"})
+		c.JSON(409, gin.H{"code": "hub_handshake_unverified", "error": "No recent Magic Hub handshake is verified. The router may be offline or its tunnel may be unreachable."})
 		return
 	}
 	addr, err := netip.ParsePrefix(p.TunnelAddress)
@@ -67,7 +67,7 @@ func (h *VPSHandler) FinishGatewayConnection(c *gin.Context) {
 		return
 	}
 	if err := h.automaticVerify(ctx, biz, id, addr.Addr().String(), p.RouterPublicKey); err != nil {
-		c.JSON(409, gin.H{"error": "Management not verified. Run the complete setup script, then retry. If the app restarted or setup expired, generate a new script."})
+		c.JSON(409, gin.H{"code": "hub_management_unverified", "error": "Management not verified. Run the complete setup script, then retry. If the app restarted or setup expired, generate a new script."})
 		return
 	}
 	c.JSON(200, gin.H{"state": "management_authenticated", "device_id": id, "lan_reachability_verified": false})

@@ -174,6 +174,11 @@ func BuildQuickConnectScript(deviceID string, peer Peer, privateKey string) (str
 	if !scriptKey(privateKey) {
 		return "", fmt.Errorf("invalid router private key")
 	}
+	private, _ := base64.StdEncoding.DecodeString(privateKey)
+	public, err := curve25519.X25519(private, curve25519.Basepoint)
+	if err != nil || base64.StdEncoding.EncodeToString(public) != peer.RouterPublicKey {
+		return "", fmt.Errorf("router private key does not match allocation")
+	}
 	scripts, err := BuildRouterScripts(deviceID, peer)
 	if err != nil {
 		return "", err
@@ -193,5 +198,8 @@ func BuildQuickConnectScript(deviceID string, peer Peer, privateKey string) (str
 	if idx < 0 {
 		return "", fmt.Errorf("invalid generated setup script")
 	}
-	return scripts.Setup[:idx] + insert + scripts.Setup[idx:], nil
+	setup := scripts.Setup[:idx] + insert + scripts.Setup[idx:]
+	setup = strings.Replace(setup, "# Magic Hub step 2. Review, then paste the entire block in WinBox New Terminal.", "# Magic Hub one-paste setup. Paste the entire block in WinBox New Terminal.", 1)
+	setup = strings.Replace(setup, "STOP: run step 1 first", "STOP: Magic Hub interface creation failed", 1)
+	return setup, nil
 }
