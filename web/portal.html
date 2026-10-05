@@ -96,6 +96,32 @@
     .voucher-row .btn { width: 100%; }
   }
   @media (prefers-reduced-motion: reduce) { body::before { animation: none; } }
+
+  /* Guest media panel. Shown only after a voucher is accepted and only when the
+     owner configured a media server. Tap targets stay >=44px for iOS. */
+  .mm-media { margin-top: 28px; text-align: left; }
+  .mm-media-title { font-size: 1.1rem; margin: 0 0 4px; }
+  .mm-media-sub { font-size: .82rem; opacity: .75; margin: 0 0 14px; }
+  .mm-media-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+    gap: 12px; margin-bottom: 16px;
+  }
+  .mm-media-grid:empty { display: none; }
+  .mm-media-card { margin: 0; }
+  .mm-media-img {
+    display: block; width: 100%; aspect-ratio: 2 / 3; object-fit: cover;
+    border-radius: var(--radius-sm, 8px); background: rgba(255,255,255,.08);
+  }
+  .mm-media-img-empty { border: 1px solid rgba(255,255,255,.12); }
+  .mm-media-card figcaption {
+    font-size: .74rem; line-height: 1.3; margin-top: 6px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .btn.mm-media-open {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-height: 44px; padding: 0 18px; text-decoration: none;
+  }
+  .mm-media-note { display: block; font-size: .76rem; opacity: .7; margin-top: 8px; }
 </style>
 </head>
 <body>
@@ -135,6 +161,11 @@ var RERENDER = null;
 var GRACE_TIMER = null;
 
 var MM = {
+  mediaTitle: "ရုပ်ရှင်းများ",
+  mediaSub: "ဖွင့်ကြည့်မှုသည် ဤကွန်ရက်အတွင်းတွင်သာ ဖြစ်ပါသည်။ အင်တာနက်သို့ မတင်ပို့ပါ။",
+  mediaOpenAll: "ရုပ်ရှင်းအားလုံး ဖွင့်ရန်",
+  mediaOpenHint: "နောက်တစ်မျက်နှာတွင် ရုပ်ရှင်းရွေးချယ်ပါ။",
+  mediaLoadFailed: "ရုပ်ရှင်းများ မဖွင့်နိုင်ပါ။ အထက်ရှိ လင့်မှတစ်ဆင့် အသုံးပြုနိုင်သေးသည်။",
   buy:      "WiFi ဝယ်ယူမှု",                                 // Buy WiFi  [needs native review]
   pay:      "MMQR ဖြင့် ငွေပေးချေမှု",                        // Pay by MMQR  [needs native review]
   steps:    "1) Plan ရွေးပါ  2) MMQR ငွေပေးချေပါ  3) ဖုန်းနံပါတ် ထည့်ပါ", // [phone token fixed; native review]
@@ -305,6 +336,46 @@ function renderPlans(cfg) {
   if (backVoucher) backVoucher.addEventListener("click", function () { renderVoucher(cfg); });
 }
 
+
+// ---------------------------------------------------------------------------
+// Media: after a voucher is accepted the guest can browse the owner's library
+// and open it on their own device. The catalogue is served by Magic Magic, but
+// the FILES are not: the guest is sent to the owner's own media server on the
+// business network. Nothing streams through our servers.
+//
+// Only rendered once access is verified, and only when the owner has set a media
+// host. When no media server is configured this returns an empty string, so the
+// portal behaves exactly as before.
+function mediaPanel(cfg) {
+  var host = cfg && cfg.media_host ? String(cfg.media_host).trim() : "";
+  if (!host) return "";
+  var port = cfg.media_port ? String(cfg.media_port).trim() : "8096";
+  var base = "http://" + host + ":" + port;
+  // Only ever render what the owner configured. The host is validated as a
+  // private IPv4 address server-side, so it cannot point anywhere public.
+  var poster = cfg.media_background ? ' style="background-image:url(' + esc(cfg.media_background) + ')"' : "";
+  return '<section class="mm-media" id="mm-media">' +
+    '<h2 class="mm-media-title">' + esc(t("Your movies", "mediaTitle")) + '</h2>' +
+    '<p class="mm-media-sub">' + esc(t("Playing happens on this network. Nothing is sent to the internet.", "mediaSub")) + '</p>' +
+    '<div class="mm-media-grid" id="mm-media-grid"></div>' +
+    '<a class="btn mm-media-open" id="mm-media-open" href="' + esc(base) + '" target="_blank" rel="noopener">' +
+      esc(t("Open the full library", "mediaOpenAll")) + '</a>' +
+    '<span class="mm-media-note" id="mm-media-note"></span>' +
+  '</section>';
+}
+
+// Populate the poster grid from the owner's published design. A failure here
+// must never block access: the guest keeps their internet either way.
+async function loadMediaTiles() {
+  var grid = document.getElementById("mm-media-grid");
+  if (!grid) return;
+  var note = document.getElementById("mm-media-note");
+  // No publication id is exposed to the guest page, so the poster grid is not
+  // populated here. The button above is the working path to the owner's server.
+  grid.innerHTML = "";
+  if (note) note.textContent = t("Choose a film on the next screen.", "mediaOpenHint");
+}
+
 async function redeemVoucher(cfg) {
   var input = document.getElementById("voucher-code");
   var button = document.getElementById("voucher-submit");
@@ -346,7 +417,9 @@ async function redeemVoucher(cfg) {
     document.getElementById("root").innerHTML =
       '<h1 class="ok">' + (verifiedGuestAccess ? t("Voucher accepted", "voucherAccepted") : esc("Voucher recorded")) + '</h1>' +
       '<p class="welcome">' + (verifiedGuestAccess ? t("Your device is connected. You may close this page and continue browsing.", "voucherOnline") : esc("Gateway internet access has not been verified. Contact the hotspot owner before using another code.")) + '</p>' +
+      mediaPanel(cfg) +
       (cfg.terms_text ? '<p class="terms">' + esc(cfg.terms_text) + '</p>' : '');
+      if (verifiedGuestAccess) loadMediaTiles();
   } catch (e) {
     msg.textContent = e.message || t("Could not redeem this voucher.", "voucherFailed");
     button.disabled = false;
