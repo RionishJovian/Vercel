@@ -130,3 +130,67 @@ def register_hubs(app,current,db,owner,log):
   changed=s.execute(update(RouterPlan).where(RouterPlan.id==id,RouterPlan.reviewed_at.is_(None)).values(reviewed_at=int(time.time()))).rowcount
   if changed:log(s,u,'router_plan_reviewed',id)
   s.commit();s.refresh(p);return plan_json(p)|{'replayed':not bool(changed)}
+
+def onboarding_workflow(router_id: str, hub_id: str, checks: list = None) -> dict:
+    """Simulate router onboarding workflow with check tracking.
+    
+    Returns the onboarding status with passed/pending checks.
+    In a real implementation, this would coordinate with actual RouterOS devices.
+    """
+    from backend.hubs import mock_routeros_checks
+    
+    default_checks = [
+        'Verify RouterOS WireGuard capabilities and existing interfaces/routes',
+        'Compare all live LAN/WAN/VPN subnets for address overlap',
+        'Take a recoverable router backup and review configuration diff',
+        'Register peer on hub through authenticated adapter',
+        'Review hub peer isolation and management-service firewall/TLS restrictions',
+        'Confirm recent handshake, tunnel reachability and management-service authorization'
+    ]
+    
+    if checks is None:
+        checks = default_checks
+    
+    # Run mock checks
+    check_results = mock_routeros_checks(router_id, checks)
+    
+    # Determine overall status
+    all_passed = all(r['status'] == 'passed' for r in check_results.values())
+    pending_checks = [k for k, v in check_results.items() if v['status'] == 'pending']
+    
+    status = 'completed' if all_passed else 'in_progress'
+    
+    return {
+        'router_id': router_id,
+        'hub_id': hub_id,
+        'status': status,
+        'checks': check_results,
+        'pending_count': len(pending_checks),
+        'completed_count': len(check_results) - len(pending_checks),
+        'onboarding_complete': all_passed
+    }
+
+
+def mock_routeros_checks(router_id, checks=None):
+    """Simulate RouterOS capability verification for mock implementations."""
+    default_checks = [
+        'Verify RouterOS WireGuard capabilities and existing interfaces/routes',
+        'Compare all live LAN/WAN/VPN subnets for address overlap',
+        'Take a recoverable router backup and review configuration diff',
+        'Register peer on hub through authenticated adapter',
+        'Review hub peer isolation and management-service firewall/TLS restrictions',
+        'Confirm recent handshake, tunnel reachability and management-service authorization'
+    ]
+    
+    if checks is None:
+        checks = default_checks
+    
+    # Simulate check results - mark first 3 as passed, rest as pending
+    results = {}
+    for i, check in enumerate(checks):
+        if i < 3:
+            results[check] = {'status': 'passed', 'details': 'Mock verification complete'}
+        else:
+            results[check] = {'status': 'pending', 'details': 'Requires real RouterOS device'}
+    
+    return results
