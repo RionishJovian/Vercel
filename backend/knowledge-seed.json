@@ -1,0 +1,35 @@
+[
+  {
+    "id": "guide-hotspot-radius",
+    "title": "Portal, HotSpot and RADIUS: three jobs",
+    "category": "Internet access",
+    "fact": "The captive portal is the guest webpage. MikroTik HotSpot controls network access. RADIUS checks credentials, supplies access rules and receives usage reports.",
+    "why": "Payment approval creates a stored access entitlement; the network adapter still needs to provision credentials and enforcement before a guest can use it.",
+    "requirements": "HotSpot can use local accounts without RADIUS. Cloud RADIUS or local User Manager are authentication choices; their adapters are not connected in this build.",
+    "action": "Captive portal",
+    "source_url": "https://manual.mikrotik.com/docs/authentication-authorization-accounting/radius/",
+    "verified_on": "2026-10-05"
+  },
+  {
+    "id": "guide-local-radius",
+    "title": "Your router may host a RADIUS server",
+    "category": "MikroTik",
+    "fact": "MikroTik User Manager is a separate RADIUS server package. The documented active-session limits are Level 4: 20, Level 5: 50 and Level 6: unlimited by license.",
+    "why": "At approximately 50 guests, a Level 4 router cannot host all those User Manager sessions. Multiple connections from one guest count as separate sessions.",
+    "requirements": "Check exact model, RouterOS version, architecture, storage and license. User Manager excludes SMIPS. Unlimited licensing does not guarantee hardware capacity. Local integration is proposed, not implemented.",
+    "action": "Routers",
+    "source_url": "https://manual.mikrotik.com/docs/getting-started/routeros-licensing/mikrotik-hardware/",
+    "verified_on": "2026-10-05"
+  },
+  {
+    "id": "guide-wireguard",
+    "title": "WireGuard connects your router to Magic Hub",
+    "category": "MikroTik",
+    "fact": "WireGuard creates an encrypted tunnel and authenticates peers using keys. Guest voucher authentication is a separate HotSpot/RADIUS operation.",
+    "why": "Our proposed configuration uses the tunnel for router management and cloud RADIUS traffic, while guest internet stays on the site WAN or Starlink.",
+    "requirements": "Requires supported RouterOS, configured keys, routes and firewall isolation. A registered router or exported onboarding plan does not prove a live tunnel or connectivity.",
+    "action": "Routers",
+    "source_url": "https://manual.mikrotik.com/docs/virtual-private-networks/wireguard/",
+    "verified_on": "2026-10-05"
+  }
+]

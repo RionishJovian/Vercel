@@ -1,0 +1,14 @@
+import {build} from 'esbuild';
+import {mkdir,writeFile,readFile,rm} from 'node:fs/promises';
+import assert from 'node:assert/strict';
+await mkdir('.ui-check',{recursive:true});
+try{
+ const bundle=await build({entryPoints:['src/ReviewIntegrations.jsx'],bundle:true,platform:'node',format:'esm',external:['react'],write:false});await writeFile('.ui-check/review-integrations.mjs',bundle.outputFiles[0].text);
+ const {default:ReviewIntegrations}=await import('../.ui-check/review-integrations.mjs');const React=await import('react');const {renderToStaticMarkup}=await import('react-dom/server');
+ const credentials=[{id:'sample-credential',label:'Counter review bot',provider:'telegram',reviewer_identity:'sample-owner-id',can_decide:true,receive_events:true,expires:1793750400,revoked_at:null}];const actions=[{id:'sample-action',created:1791158400,service_label:'Counter review bot',provider:'telegram',reviewer_identity:'sample-owner-id',order_id:'sample-order',decision:'needs_evidence',reason:'Please attach the complete receipt.'}];
+ const deliveries=[{id:'sample-delivery',credential_id:'sample-credential',service_label:'Counter review bot',order_id:'sample-order',event:'payment.submitted',event_revision:1,state:'failed',attempts:5,cycle_attempts:5,last_error:'Provider unavailable in sample data',credential_available:true,subscription_enabled:true}];
+ const html=renderToStaticMarkup(React.createElement(ReviewIntegrations,{credentials,actions,deliveries,act:()=>{},busy:true}));assert.match(html,/does not connect/);assert.match(html,/authorize this service/);assert.match(html,/External decision history/);assert.match(html,/Event delivery activity/);assert.match(html,/Retry delivery/);assert.match(html,/deduplicate by event ID/);assert.match(html,/Read \+ decisions/);assert.match(html,/disabled=""/);assert.doesNotMatch(html,/mmreview_/);
+ const escaped=renderToStaticMarkup(React.createElement(ReviewIntegrations,{credentials:[{...credentials[0],label:'<script>bad</script>'}],actions:[],act:()=>{}}));assert.match(escaped,/&lt;script&gt;/);
+ const css=await readFile('src/styles.css','utf8');await writeFile('../Review-integrations-preview.html',`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MikroMagic · Review integrations</title><style>${css}\nbody{padding:24px}.preview{max-width:1050px;margin:auto}.preview fieldset{border:0;padding:0}.preview h1{font-size:42px}</style><body><main class="preview"><h1>Review from your own service.</h1><p>Static preview rendered from the actual SME Integrations component. Sample records and disabled controls; no live bot is connected.</p><fieldset disabled>${html}</fieldset></main></body></html>`);
+ console.log('Integration UI: explicit delegation, service status, audit history and escaped content passed.');
+}finally{await rm('.ui-check/review-integrations.mjs',{force:true})}

@@ -1,0 +1,7 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {filterStock,stockCsv,voucherSheet} from '../src/voucher-stock.mjs';
+const vouchers=[{id:'a',site_id:'s',status:'unused',policy:{name:'=BAD()',price:3000,service:'internet',mode:'data'},code_hint:'ABCD',created:100,expires:1100,sale:null,code:'SECRET-A'},{id:'b',site_id:null,status:'redeemed',policy:{name:'Movie',price:1000,service:'media',mode:'title'},code_hint:'ZZZZ',created:100,expires:2000,sale:{refunded_at:100},code:'SECRET-B'}];
+test('stock filters combine site/payment/search/expiry without mutating records',()=>{assert.deepEqual(filterStock(vouchers,{site:'s',payment:'unpaid',search:'abcd',expiring:true},1000).map(v=>v.id),['a']);assert.deepEqual(filterStock(vouchers,{site:'business',payment:'refunded'}).map(v=>v.id),['b']);assert.equal(filterStock(vouchers,{expiring:true},1200).length,0);assert.equal(vouchers.length,2)});
+test('stock CSV excludes full codes and neutralizes formulas',()=>{const csv=stockCsv(vouchers,[]);assert.match(csv,/'=BAD/);assert.doesNotMatch(csv,/SECRET/);assert.match(csv,/redeem_deadline_utc/)});
+test('private sheets escape business/code content and include no active scripts',()=>{const sheet=voucherSheet([{...vouchers[0],code:'<script>bad</script>'}],'<img src=x>');assert.match(sheet,/&lt;script&gt;/);assert.match(sheet,/&lt;img/);assert.doesNotMatch(sheet,/<script|onclick|code_hash/);assert.match(sheet,/break-inside:avoid/)});

@@ -1,0 +1,3 @@
+// Neutralize spreadsheet formulas, including those after leading whitespace.
+export function csvCell(value){let text=String(value??'');if(typeof value!=='number'&&/^[\s\u0000-\u001f]*[=+\-@]/.test(text))text="'"+text;return '"'+text.replaceAll('"','""')+'"'}
+export function ledgerCsv(items){const fields=['id','local_time','timestamp_basis','site_name','source','source_id','kind','currency','amount','signed_amount','service','package_name','method','reference','actor_id'];return '\ufeff'+[fields.map(csvCell).join(','),...items.map(row=>fields.map(k=>csvCell(row[k])).join(','))].join('\r\n')+'\r\n'}

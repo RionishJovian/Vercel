@@ -1,0 +1,17 @@
+import {build} from 'esbuild';
+import {mkdir,writeFile,readFile,rm} from 'node:fs/promises';
+import assert from 'node:assert/strict';
+const dir='.ui-check';await mkdir(dir,{recursive:true});
+try{
+ const bundle=await build({entryPoints:['src/MediaCatalogue.jsx'],bundle:true,platform:'node',format:'esm',external:['react'],write:false});await writeFile(dir+'/media.mjs',bundle.outputFiles[0].text);
+ const {OwnerMediaCatalogue,GuestMediaCatalogue,packageMediaDescription}=await import('../'+dir+'/media.mjs');const React=await import('react');const {renderToStaticMarkup}=await import('react-dom/server');
+ const titles=[{id:'sample-film',name:'Mountain journey',description:'A sample catalogue title for reviewing the interface.',genre:'Adventure',runtime_minutes:94,release_year:2022,published:true,archived:false,revision:2},{id:'sample-draft',name:'City lights',description:'Draft metadata',genre:'Drama',runtime_minutes:110,published:false,archived:false,revision:1}];
+ const policy={name:'Evening media pass',service:'media',mode:'hybrid',price:2000,hours:4,title_hours:48,title:'sample-film',title_snapshot:{id:'sample-film',name:'Mountain journey'}};
+ const entitlements=[{id:'sample-pass',policy,media_policy:{mode:'hybrid',title:policy.title_snapshot},revoked:false}];
+ const owner=renderToStaticMarkup(React.createElement(OwnerMediaCatalogue,{titles,busy:true,act:()=>{},go:()=>{}}));assert.match(owner,/Create draft title/);assert.match(owner,/Set package prices/);assert.match(owner,/Publish/);assert.match(owner,/Archive/);assert.match(owner,/Media gateway not connected/);assert.match(owner,/disabled=""/);
+ const guest=renderToStaticMarkup(React.createElement(GuestMediaCatalogue,{titles:titles.filter(t=>t.published),packages:[{id:'sample-package',...policy}],entitlements,go:()=>{}}));assert.match(guest,/Playback unavailable/);assert.match(guest,/Library: 4 hours/);assert.match(guest,/Mountain journey: 48 hours/);assert.match(guest,/Awaiting media activation/);assert.doesNotMatch(guest,/City lights|Create draft title|stream_url/);
+ assert.equal(packageMediaDescription({service:'combined',media_hours:72}),'Library access: 72 hours, independent of internet limits');
+ const escape=renderToStaticMarkup(React.createElement(GuestMediaCatalogue,{titles:[{...titles[0],name:'<script>x</script>'}],packages:[],entitlements:[],go:()=>{}}));assert.match(escape,/&lt;script&gt;x&lt;\/script&gt;/);assert.doesNotMatch(escape,/<script>/);
+ const css=await readFile('src/styles.css','utf8');await writeFile('../Media-catalogue-preview.html',`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MikroMagic · Media sales</title><style>${css}\nbody{padding:24px}.preview{max-width:1100px;margin:auto}.preview fieldset{border:0;padding:0;margin:0}.preview h1{font-size:42px}.preview>h2{margin:32px 0 20px}</style><body><main class="preview"><h1>A library. A movie. Both.</h1><p>Static preview rendered from the actual React components. Sample metadata and disabled controls. There are no playable files or connected media server.</p><h2>SME catalogue management</h2><fieldset disabled>${owner}</fieldset><h2>Guest browsing and stored passes</h2><fieldset disabled>${guest}</fieldset></main></body></html>`);
+ console.log('Media UI checks passed: owner catalogue actions, guest-only published entries, hybrid windows, no playback claim and text escaping. Static preview generated.');
+}finally{await rm(dir,{recursive:true,force:true})}

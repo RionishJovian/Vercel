@@ -1,0 +1,17 @@
+import {build} from 'esbuild';
+import {mkdir,writeFile,readFile,rm} from 'node:fs/promises';
+import assert from 'node:assert/strict';
+const dir='.ui-check';await mkdir(dir,{recursive:true});
+try{
+ const bundle=await build({entryPoints:['src/MagicHubs.jsx'],bundle:true,platform:'node',format:'esm',external:['react'],write:false});await writeFile(dir+'/hubs.mjs',bundle.outputFiles[0].text);
+ const {MagicHubs,RouterOnboarding}=await import('../'+dir+'/hubs.mjs');const React=await import('react');const {renderToStaticMarkup}=await import('react-dom/server');
+ const hubs=[{id:'sample-hub',name:'Yangon Magic Hub',endpoint:'hub.example.com',port:51820,pool:'10.90.1.0/24',remaining_addresses:252}];const tenants=[{id:'sample-tenant',name:'Sample Cafe'}];const assignments=[{hub_id:'sample-hub',tenant_id:'sample-tenant'}];const routers=[{id:'sample-router',name:'Cafe gateway'}];
+ const plans=[{id:'sample-plan',router_id:'sample-router',hub_id:'sample-hub',address:'10.90.1.2',snapshot:{hub:{endpoint:'hub.example.com',port:51820},router:{interface:'mm-example',address:'10.90.1.2/32',peer_allowed_addresses:['10.90.1.1/32'],persistent_keepalive_seconds:25},hub_peer:{allowed_addresses:['10.90.1.2/32']},checks_required:['Check live address conflicts and RouterOS capabilities','Take backup and review diff','Register peer and verify hub isolation','Confirm handshake, reachability and authorized management services']}}];
+ const platform=renderToStaticMarkup(React.createElement(MagicHubs,{hubs,tenants,assignments,platform:true,busy:true}));assert.match(platform,/Register hub/);assert.match(platform,/Assign hub/);assert.match(platform,/Sample Cafe/);assert.match(platform,/Unverified/);
+ const sme=renderToStaticMarkup(React.createElement(MagicHubs,{hubs}));assert.doesNotMatch(sme,/Register hub|Assign hub/);
+ const onboarding=renderToStaticMarkup(React.createElement(RouterOnboarding,{hubs,routers,plans,busy:true}));assert.match(onboarding,/Create connection plan/);assert.match(onboarding,/10.90.1.1\/32/);assert.match(onboarding,/Mark plan reviewed/);assert.match(onboarding,/disabled=""/);assert.match(onboarding,/private key stays on the router/);assert.match(onboarding,/Unverified/);
+ const platformPlan=renderToStaticMarkup(React.createElement(RouterOnboarding,{hubs,routers,plans,platform:true}));assert.doesNotMatch(platformPlan,/Create connection plan|Mark plan reviewed/);
+ const css=await readFile('src/styles.css','utf8');const html=`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>MikroMagic · Magic Hub preview</title><style>${css}\nbody{padding:24px}.preview{max-width:1100px;margin:auto}.preview fieldset{border:0;padding:0;margin:0}.preview h1{font-size:42px}.preview h2{margin-top:32px}.preview .panel{margin-bottom:20px}</style><body><main class="preview"><h1>MikroMagic · Magic Hub onboarding</h1><p>Static UI preview with sample records. Forms are disabled. Actual authenticated screens use your own business data. No live tunnel is configured.</p><h2>Platform console</h2><fieldset disabled>${platform}</fieldset><h2>SME router onboarding</h2><fieldset disabled>${sme}${onboarding}</fieldset></main></body></html>`;
+ await writeFile('../Magic-Hub-preview.html',html);
+ console.log('Magic Hub UI checks passed: platform assignment, SME scope, review plan, explicit unverified state and consent controls. Static preview generated.');
+}finally{await rm(dir,{recursive:true,force:true})}

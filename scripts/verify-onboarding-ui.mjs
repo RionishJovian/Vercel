@@ -1,0 +1,14 @@
+import {build} from 'esbuild';
+import {mkdir,writeFile,readFile,rm} from 'node:fs/promises';
+import assert from 'node:assert/strict';
+await mkdir('.ui-check',{recursive:true});
+try{
+ const bundle=await build({entryPoints:['src/BusinessOnboarding.jsx'],bundle:true,platform:'node',format:'esm',external:['react'],write:false});await writeFile('.ui-check/onboarding.mjs',bundle.outputFiles[0].text);
+ const {default:BusinessOnboarding,PasswordChange}=await import('../.ui-check/onboarding.mjs');const React=await import('react');const {renderToStaticMarkup}=await import('react-dom/server');
+ const owner={id:'sample-owner',username:'cafe.owner',active:true,must_change_password:true,temporary_password_expires:1791417600};const businesses=[{id:'sample-business',name:'Sample cafe',owners:[owner]}];const resets=[{id:'sample-reset',username:owner.username,tenant_id:'sample-business',actor_id:'sample-operator',reason:'Verified recovery request (sample)',created:1791331200}];
+ const platform=renderToStaticMarkup(React.createElement(BusinessOnboarding,{businesses,resets,act:()=>{},busy:true}));assert.match(platform,/Create business &amp; owner/);assert.match(platform,/Reset owner password/);assert.match(platform,/Owner password reset history/);assert.match(platform,/24 hours/);assert.match(platform,/disabled=""/);assert.doesNotMatch(platform,/temporary_password"|password_hash|shown_once/);
+ const forced=renderToStaticMarkup(React.createElement(PasswordChange,{user:owner,busy:true,forced:true,onChangePassword:()=>{},onLogout:()=>{}}));assert.match(forced,/Set your personal password/);assert.match(forced,/minLength="12"|minlength="12"/);assert.match(forced,/Sign out/);assert.doesNotMatch(forced,/Create business/);
+ const escaped=renderToStaticMarkup(React.createElement(BusinessOnboarding,{businesses:[{...businesses[0],name:'<script>bad</script>'}],act:()=>{},busy:true}));assert.match(escaped,/&lt;script&gt;/);
+ const css=await readFile('src/styles.css','utf8');await writeFile('../Business-onboarding-preview.html',`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MikroMagic · SME onboarding</title><style>${css}\nbody{padding:24px}.preview{max-width:1050px;margin:auto}.preview fieldset{border:0;padding:0}.preview h1{font-size:42px}</style><body><main class="preview"><h1>Bring your next business onboard.</h1><p>Static preview from the actual platform and password-change components. Sample records and disabled controls; no real owner account or password is created here.</p><fieldset disabled>${platform}</fieldset><h1>SME first sign-in</h1><fieldset disabled>${forced}</fieldset></main></body></html>`);
+ console.log('Onboarding UI: platform controls, required first-password flow, reset history and escaped content passed.');
+}finally{await rm('.ui-check/onboarding.mjs',{force:true})}
