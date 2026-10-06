@@ -1,11 +1,11 @@
 from pydantic import BaseModel, Field, ConfigDict, model_validator
-from typing import Literal
+from typing import Literal, Optional
 class Strict(BaseModel):model_config=ConfigDict(extra='forbid',str_strip_whitespace=True)
 class Login(Strict):
  model_config=ConfigDict(extra="forbid",str_strip_whitespace=False)
  username:str=Field(min_length=1,max_length=160)
  password:str=Field(min_length=1,max_length=256)
- mfa_code:str|None=Field(default=None,min_length=1,max_length=80)
+ mfa_code:Optional[str]=Field(default=None,min_length=1,max_length=80)
 class PackageIn(Strict):
  name:str=Field(min_length=1,max_length=120)
  service:Literal['internet','media','combined']
@@ -17,7 +17,7 @@ class PackageIn(Strict):
  clock:Literal['elapsed','connected']='elapsed'
  devices:int=Field(default=1,ge=1,le=100)
  speed:int=Field(default=10,ge=1,le=10000)
- title:str|None=Field(default=None,max_length=160)
+ title:Optional[str]=Field(default=None,max_length=160)
  title_hours:float=Field(default=48,gt=0,le=8760)
  @model_validator(mode='after')
  def validate_policy(self):
@@ -30,7 +30,7 @@ class PackageIn(Strict):
    if self.mode in ['time','both'] and self.hours<=0:raise ValueError('Positive time quota required')
   return self
 class OrderIn(Strict):
- site_id:str|None=Field(default=None,min_length=1,max_length=36)
+ site_id:Optional[str]=Field(default=None,min_length=1,max_length=36)
  portal_revision:int=Field(gt=0)
  package_id:str
  method:str=Field(min_length=1,max_length=80)
@@ -38,7 +38,7 @@ class OrderIn(Strict):
  evidence:str=Field(min_length=1,max_length=4000)
  request_key:str=Field(min_length=16,max_length=80)
 class Decision(Strict):
- expected_receipt_revision:int|None=Field(default=None,ge=0)
+ expected_receipt_revision:Optional[int]=Field(default=None,ge=0)
  decision:Literal['approved','rejected','needs_evidence']
  reason:str=Field(default='',max_length=1000)
  @model_validator(mode='after')
@@ -102,12 +102,12 @@ class PortalDraftIn(Strict):
 class PortalPublishIn(Strict):expected_revision:int=Field(gt=0)
 
 class VoucherIssue(Strict):
- site_id:str|None=Field(default=None,min_length=1,max_length=36)
+ site_id:Optional[str]=Field(default=None,min_length=1,max_length=36)
  package_id:str
  expires_days:int=Field(default=30,ge=1,le=365)
  request_key:str=Field(min_length=16,max_length=80)
 class VoucherRedeem(Strict):
- site_id:str|None=Field(default=None,min_length=1,max_length=36)
+ site_id:Optional[str]=Field(default=None,min_length=1,max_length=36)
  code:str=Field(min_length=26,max_length=64)
  @field_validator('code')
  @classmethod

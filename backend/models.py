@@ -1,3 +1,4 @@
+from typing import Optional
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy import String, Integer, BigInteger, ForeignKey, JSON, UniqueConstraint, Boolean, CheckConstraint, LargeBinary
 import uuid
@@ -13,10 +14,10 @@ class User(Base):
  username:Mapped[str]=mapped_column(String(160),unique=True)
  password_hash:Mapped[str]=mapped_column(String(255))
  role:Mapped[str]=mapped_column(String(20))
- tenant_id:Mapped[str|None]=mapped_column(ForeignKey('tenants.id'))
+ tenant_id:Mapped[Optional[str]]=mapped_column(ForeignKey('tenants.id'))
  active:Mapped[bool]=mapped_column(Boolean,default=True)
  must_change_password:Mapped[bool]=mapped_column(Boolean,default=False,server_default='0')
- temporary_password_expires:Mapped[int|None]=mapped_column(BigInteger,nullable=True)
+ temporary_password_expires:Mapped[Optional[int]]=mapped_column(BigInteger,nullable=True)
  __table_args__=(CheckConstraint("role in ('platform','sme','guest')"),CheckConstraint("role = 'platform' OR tenant_id IS NOT NULL"))
 class SessionToken(Base):
  __tablename__='sessions'
@@ -40,11 +41,11 @@ class Order(Base):
  receipt_revision:Mapped[int]=mapped_column(Integer,default=0,server_default='0')
  id:Mapped[str]=mapped_column(String(36),primary_key=True,default=uid)
  tenant_id:Mapped[str]=mapped_column(ForeignKey('tenants.id'),index=True)
- site_id:Mapped[str|None]=mapped_column(ForeignKey('sites.id'),nullable=True)
+ site_id:Mapped[Optional[str]]=mapped_column(ForeignKey('sites.id'),nullable=True)
  guest_id:Mapped[str]=mapped_column(ForeignKey('users.id'))
  package_id:Mapped[str]=mapped_column(ForeignKey('packages.id'))
  snapshot:Mapped[dict]=mapped_column(JSON)
- payment_context:Mapped[dict|None]=mapped_column(JSON,nullable=True)
+ payment_context:Mapped[Optional[dict]]=mapped_column(JSON,nullable=True)
  amount:Mapped[int]=mapped_column(BigInteger)
  currency:Mapped[str]=mapped_column(String(3),default='MMK')
  method:Mapped[str]=mapped_column(String(80))
@@ -52,21 +53,21 @@ class Order(Base):
  evidence:Mapped[str]=mapped_column(String(4000))
  status:Mapped[str]=mapped_column(String(24),default='pending')
  fulfillment:Mapped[str]=mapped_column(String(24),default='pending')
- reviewer_id:Mapped[str|None]=mapped_column(ForeignKey('users.id'))
- reason:Mapped[str|None]=mapped_column(String(1000))
+ reviewer_id:Mapped[Optional[str]]=mapped_column(ForeignKey('users.id'))
+ reason:Mapped[Optional[str]]=mapped_column(String(1000))
  created:Mapped[int]=mapped_column(BigInteger)
  request_key:Mapped[str]=mapped_column(String(80))
  __table_args__=(UniqueConstraint('guest_id','request_key'),CheckConstraint('amount > 0'))
 class Entitlement(Base):
  __tablename__='entitlements'
  id:Mapped[str]=mapped_column(String(36),primary_key=True,default=uid)
- order_id:Mapped[str|None]=mapped_column(ForeignKey('orders.id'),unique=True,nullable=True)
- voucher_id:Mapped[str|None]=mapped_column(ForeignKey('vouchers.id'),unique=True,nullable=True)
+ order_id:Mapped[Optional[str]]=mapped_column(ForeignKey('orders.id'),unique=True,nullable=True)
+ voucher_id:Mapped[Optional[str]]=mapped_column(ForeignKey('vouchers.id'),unique=True,nullable=True)
  tenant_id:Mapped[str]=mapped_column(ForeignKey('tenants.id'),index=True)
- site_id:Mapped[str|None]=mapped_column(ForeignKey('sites.id'),nullable=True)
+ site_id:Mapped[Optional[str]]=mapped_column(ForeignKey('sites.id'),nullable=True)
  guest_id:Mapped[str]=mapped_column(ForeignKey('users.id'))
  policy:Mapped[dict]=mapped_column(JSON)
- activated:Mapped[int|None]=mapped_column(BigInteger)
+ activated:Mapped[Optional[int]]=mapped_column(BigInteger)
  used_bytes:Mapped[int]=mapped_column(BigInteger,default=0)
  connected_seconds:Mapped[int]=mapped_column(BigInteger,default=0)
  revoked:Mapped[bool]=mapped_column(Boolean,default=False)
@@ -74,7 +75,7 @@ class Entitlement(Base):
 class Audit(Base):
  __tablename__='audit_events'
  id:Mapped[str]=mapped_column(String(36),primary_key=True,default=uid)
- tenant_id:Mapped[str|None]=mapped_column(ForeignKey('tenants.id'),index=True)
+ tenant_id:Mapped[Optional[str]]=mapped_column(ForeignKey('tenants.id'),index=True)
  actor_id:Mapped[str]=mapped_column(ForeignKey('users.id'))
  action:Mapped[str]=mapped_column(String(100))
  target:Mapped[str]=mapped_column(String(160))
@@ -86,9 +87,9 @@ class Outbox(Base):
  order_id:Mapped[str]=mapped_column(ForeignKey('orders.id'))
  event:Mapped[str]=mapped_column(String(50))
  delivered:Mapped[bool]=mapped_column(Boolean,default=False)
- revision:Mapped[int|None]=mapped_column(Integer,nullable=True)
- created:Mapped[int|None]=mapped_column(BigInteger,nullable=True)
- payload:Mapped[dict|None]=mapped_column(JSON,nullable=True)
+ revision:Mapped[Optional[int]]=mapped_column(Integer,nullable=True)
+ created:Mapped[Optional[int]]=mapped_column(BigInteger,nullable=True)
+ payload:Mapped[Optional[dict]]=mapped_column(JSON,nullable=True)
  __table_args__=(UniqueConstraint('order_id','revision',name='uq_outbox_order_revision'),)
 
 class PortalSettings(Base):
@@ -96,15 +97,15 @@ class PortalSettings(Base):
  tenant_id:Mapped[str]=mapped_column(ForeignKey('tenants.id'),primary_key=True)
  revision:Mapped[int]=mapped_column(Integer,default=1)
  draft:Mapped[dict]=mapped_column(JSON)
- published:Mapped[dict|None]=mapped_column(JSON,nullable=True)
- published_revision:Mapped[int|None]=mapped_column(Integer)
+ published:Mapped[Optional[dict]]=mapped_column(JSON,nullable=True)
+ published_revision:Mapped[Optional[int]]=mapped_column(Integer)
  updated:Mapped[int]=mapped_column(BigInteger)
 
 class Voucher(Base):
  __tablename__='vouchers'
  id:Mapped[str]=mapped_column(String(36),primary_key=True,default=uid)
  tenant_id:Mapped[str]=mapped_column(ForeignKey('tenants.id'),index=True)
- site_id:Mapped[str|None]=mapped_column(ForeignKey('sites.id'),nullable=True)
+ site_id:Mapped[Optional[str]]=mapped_column(ForeignKey('sites.id'),nullable=True)
  package_id:Mapped[str]=mapped_column(ForeignKey('packages.id'))
  policy:Mapped[dict]=mapped_column(JSON)
  code_hash:Mapped[str]=mapped_column(String(64),unique=True)
@@ -113,10 +114,10 @@ class Voucher(Base):
  request_key:Mapped[str]=mapped_column(String(80))
  created:Mapped[int]=mapped_column(BigInteger)
  expires:Mapped[int]=mapped_column(BigInteger)
- redeemed_by:Mapped[str|None]=mapped_column(ForeignKey('users.id'))
- redeemed_at:Mapped[int|None]=mapped_column(BigInteger)
+ redeemed_by:Mapped[Optional[str]]=mapped_column(ForeignKey('users.id'))
+ redeemed_at:Mapped[Optional[int]]=mapped_column(BigInteger)
  revoked:Mapped[bool]=mapped_column(Boolean,default=False)
- reason:Mapped[str|None]=mapped_column(String(1000))
+ reason:Mapped[Optional[str]]=mapped_column(String(1000))
  __table_args__=(UniqueConstraint('issued_by','request_key'),CheckConstraint('expires > created'))
 
 class VoucherSale(Base):
@@ -132,10 +133,10 @@ class VoucherSale(Base):
  evidence:Mapped[str]=mapped_column(String(4000))
  recorded_by:Mapped[str]=mapped_column(ForeignKey('users.id'))
  created:Mapped[int]=mapped_column(BigInteger)
- refunded_at:Mapped[int|None]=mapped_column(BigInteger)
- refunded_by:Mapped[str|None]=mapped_column(ForeignKey('users.id'))
- refund_reason:Mapped[str|None]=mapped_column(String(1000))
- refund_reference:Mapped[str|None]=mapped_column(String(160))
+ refunded_at:Mapped[Optional[int]]=mapped_column(BigInteger)
+ refunded_by:Mapped[Optional[str]]=mapped_column(ForeignKey('users.id'))
+ refund_reason:Mapped[Optional[str]]=mapped_column(String(1000))
+ refund_reference:Mapped[Optional[str]]=mapped_column(String(160))
  __table_args__=(CheckConstraint('amount > 0'),)
 
 class Site(Base):
@@ -162,8 +163,8 @@ class SitePortal(Base):
  site_id:Mapped[str]=mapped_column(ForeignKey('sites.id'),primary_key=True)
  revision:Mapped[int]=mapped_column(Integer)
  draft:Mapped[dict]=mapped_column(JSON)
- published:Mapped[dict|None]=mapped_column(JSON,nullable=True)
- published_revision:Mapped[int|None]=mapped_column(Integer)
+ published:Mapped[Optional[dict]]=mapped_column(JSON,nullable=True)
+ published_revision:Mapped[Optional[int]]=mapped_column(Integer)
  updated:Mapped[int]=mapped_column(BigInteger)
 
 class MagicHub(Base):
@@ -192,14 +193,14 @@ class RouterPlan(Base):
  address:Mapped[str]=mapped_column(String(15))
  snapshot:Mapped[dict]=mapped_column(JSON)
  created:Mapped[int]=mapped_column(BigInteger)
- reviewed_at:Mapped[int|None]=mapped_column(BigInteger,nullable=True)
+ reviewed_at:Mapped[Optional[int]]=mapped_column(BigInteger,nullable=True)
  __table_args__=(UniqueConstraint('hub_id','address'),)
 
 class FinancialEvent(Base):
  __tablename__='financial_events'
  id:Mapped[str]=mapped_column(String(80),primary_key=True,default=uid)
  tenant_id:Mapped[str]=mapped_column(ForeignKey('tenants.id'),index=True)
- site_id:Mapped[str|None]=mapped_column(ForeignKey('sites.id'),nullable=True)
+ site_id:Mapped[Optional[str]]=mapped_column(ForeignKey('sites.id'),nullable=True)
  source:Mapped[str]=mapped_column(String(20))
  source_id:Mapped[str]=mapped_column(String(36))
  kind:Mapped[str]=mapped_column(String(16))
@@ -209,7 +210,7 @@ class FinancialEvent(Base):
  package_name:Mapped[str]=mapped_column(String(120))
  method:Mapped[str]=mapped_column(String(80))
  reference:Mapped[str]=mapped_column(String(160))
- actor_id:Mapped[str|None]=mapped_column(ForeignKey('users.id'),nullable=True)
+ actor_id:Mapped[Optional[str]]=mapped_column(ForeignKey('users.id'),nullable=True)
  occurred_at:Mapped[int]=mapped_column(BigInteger,index=True)
  timestamp_basis:Mapped[str]=mapped_column(String(32))
  __table_args__=(UniqueConstraint('source','source_id','kind'),CheckConstraint('amount > 0'),CheckConstraint("kind IN ('collection','refund')"),CheckConstraint("source IN ('guest_order','voucher_sale')"))
@@ -219,9 +220,9 @@ class ThemeSettings(Base):
  id:Mapped[str]=mapped_column(String(32),primary_key=True)
  revision:Mapped[int]=mapped_column(Integer)
  draft:Mapped[dict]=mapped_column(JSON)
- published:Mapped[dict|None]=mapped_column(JSON,nullable=True)
- previous:Mapped[dict|None]=mapped_column(JSON,nullable=True)
- published_revision:Mapped[int|None]=mapped_column(Integer,nullable=True)
+ published:Mapped[Optional[dict]]=mapped_column(JSON,nullable=True)
+ previous:Mapped[Optional[dict]]=mapped_column(JSON,nullable=True)
+ published_revision:Mapped[Optional[int]]=mapped_column(Integer,nullable=True)
  updated:Mapped[int]=mapped_column(BigInteger)
 
 class MediaTitle(Base):
@@ -232,7 +233,7 @@ class MediaTitle(Base):
  description:Mapped[str]=mapped_column(String(4000))
  genre:Mapped[str]=mapped_column(String(80))
  runtime_minutes:Mapped[int]=mapped_column(Integer)
- release_year:Mapped[int|None]=mapped_column(Integer,nullable=True)
+ release_year:Mapped[Optional[int]]=mapped_column(Integer,nullable=True)
  published:Mapped[bool]=mapped_column(Boolean,default=False)
  archived:Mapped[bool]=mapped_column(Boolean,default=False)
  revision:Mapped[int]=mapped_column(Integer,default=1)
@@ -275,8 +276,8 @@ class ReviewCredential(Base):
  token_hash:Mapped[str]=mapped_column(String(64),unique=True)
  created:Mapped[int]=mapped_column(BigInteger)
  expires:Mapped[int]=mapped_column(BigInteger)
- revoked_at:Mapped[int|None]=mapped_column(BigInteger,nullable=True)
- revoke_reason:Mapped[str|None]=mapped_column(String(1000),nullable=True)
+ revoked_at:Mapped[Optional[int]]=mapped_column(BigInteger,nullable=True)
+ revoke_reason:Mapped[Optional[str]]=mapped_column(String(1000),nullable=True)
  __table_args__=(CheckConstraint('expires > created'),)
 class ExternalReviewAction(Base):
  __tablename__='external_review_actions'
@@ -305,11 +306,11 @@ class EventDelivery(Base):
  attempts:Mapped[int]=mapped_column(Integer,default=0)
  cycle_attempts:Mapped[int]=mapped_column(Integer,default=0)
  available_at:Mapped[int]=mapped_column(BigInteger)
- lease_expires:Mapped[int|None]=mapped_column(BigInteger,nullable=True)
- lease_hash:Mapped[str|None]=mapped_column(String(64),nullable=True)
- completion:Mapped[dict|None]=mapped_column(JSON,nullable=True)
- acknowledged_at:Mapped[int|None]=mapped_column(BigInteger,nullable=True)
- last_error:Mapped[str|None]=mapped_column(String(1000),nullable=True)
+ lease_expires:Mapped[Optional[int]]=mapped_column(BigInteger,nullable=True)
+ lease_hash:Mapped[Optional[str]]=mapped_column(String(64),nullable=True)
+ completion:Mapped[Optional[dict]]=mapped_column(JSON,nullable=True)
+ acknowledged_at:Mapped[Optional[int]]=mapped_column(BigInteger,nullable=True)
+ last_error:Mapped[Optional[str]]=mapped_column(String(1000),nullable=True)
  __table_args__=(UniqueConstraint('credential_id','event_id'),CheckConstraint("state IN ('pending','leased','acknowledged','failed')"),CheckConstraint('attempts >= 0 AND cycle_attempts >= 0'))
 
 class BusinessProvisioning(Base):
@@ -368,7 +369,7 @@ class TenantSubscription(Base):
  period_end:Mapped[int]=mapped_column(BigInteger)
  reason:Mapped[str]=mapped_column(String(1000))
  updated:Mapped[int]=mapped_column(BigInteger)
- payment_source_invoice_id:Mapped[str|None]=mapped_column(String(36),nullable=True)
+ payment_source_invoice_id:Mapped[Optional[str]]=mapped_column(String(36),nullable=True)
  __table_args__=(CheckConstraint("state in ('trial','active','past_due','suspended','cancelled')"),CheckConstraint('period_end > period_start'))
 
 class SubscriptionInvoice(Base):
@@ -386,13 +387,13 @@ class SubscriptionInvoice(Base):
  status:Mapped[str]=mapped_column(String(20),default='unpaid')
  destination:Mapped[str]=mapped_column(String(500))
  instructions:Mapped[str]=mapped_column(String(2000))
- method:Mapped[str|None]=mapped_column(String(80),nullable=True)
- reference:Mapped[str|None]=mapped_column(String(160),nullable=True)
- evidence:Mapped[str|None]=mapped_column(String(4000),nullable=True)
- submission_key:Mapped[str|None]=mapped_column(String(80),nullable=True)
- submission_hash:Mapped[str|None]=mapped_column(String(64),nullable=True)
- reviewed_by:Mapped[str|None]=mapped_column(ForeignKey('users.id'),nullable=True)
- reason:Mapped[str|None]=mapped_column(String(1000),nullable=True)
+ method:Mapped[Optional[str]]=mapped_column(String(80),nullable=True)
+ reference:Mapped[Optional[str]]=mapped_column(String(160),nullable=True)
+ evidence:Mapped[Optional[str]]=mapped_column(String(4000),nullable=True)
+ submission_key:Mapped[Optional[str]]=mapped_column(String(80),nullable=True)
+ submission_hash:Mapped[Optional[str]]=mapped_column(String(64),nullable=True)
+ reviewed_by:Mapped[Optional[str]]=mapped_column(ForeignKey('users.id'),nullable=True)
+ reason:Mapped[Optional[str]]=mapped_column(String(1000),nullable=True)
  created_by:Mapped[str]=mapped_column(ForeignKey('users.id'))
  request_key:Mapped[str]=mapped_column(String(80))
  request_hash:Mapped[str]=mapped_column(String(64))
@@ -412,8 +413,8 @@ class AccountMFA(Base):
  __tablename__='account_mfa'
  user_id:Mapped[str]=mapped_column(ForeignKey('users.id'),primary_key=True)
  enabled:Mapped[bool]=mapped_column(Boolean,default=False)
- encrypted_secret:Mapped[str|None]=mapped_column(String(1000),nullable=True)
- enrollment_expires:Mapped[int|None]=mapped_column(BigInteger,nullable=True)
+ encrypted_secret:Mapped[Optional[str]]=mapped_column(String(1000),nullable=True)
+ enrollment_expires:Mapped[Optional[int]]=mapped_column(BigInteger,nullable=True)
  last_step:Mapped[int]=mapped_column(BigInteger,default=-1)
  recovery_hashes:Mapped[list]=mapped_column(JSON,default=list)
  updated:Mapped[int]=mapped_column(BigInteger)

@@ -1,6 +1,6 @@
 """Catalogue metadata and sales policies. No media files or playback authorization."""
 import time
-from typing import Literal
+from typing import Literal, Optional
 from pydantic import Field
 from fastapi import Depends,HTTPException
 from sqlalchemy import select,update
@@ -11,7 +11,7 @@ class MediaIn(Strict):
  description:str=Field(default='',max_length=4000)
  genre:str=Field(default='',max_length=80)
  runtime_minutes:int=Field(gt=0,le=1440)
- release_year:int|None=Field(default=None,ge=1888,le=2100)
+ release_year:Optional[int]=Field(default=None,ge=1888,le=2100)
 class MediaUpdate(Strict):
  expected_revision:int=Field(gt=0)
  settings:MediaIn
