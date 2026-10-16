@@ -552,6 +552,7 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 		{
 			authGroup.POST("/register", authHandler.Register)
 			authGroup.POST("/login", authHandler.Login)
+			authGroup.POST("/invitations/accept", handler.NewInvitationHandler(db, database.NewUserRepository(db), authService).Accept)
 			authGroup.POST("/refresh", authHandler.RefreshToken)
 			authGroup.POST("/logout", authHandler.Logout)
 		}

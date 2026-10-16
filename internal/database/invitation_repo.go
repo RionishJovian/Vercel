@@ -69,3 +69,29 @@ func (r *UserRepository) RevokeInvitationTXN(tx *sql.Tx, businessID, invitationI
 	}
 	return nil
 }
+
+func (r *UserRepository) FindPendingInvitationTXN(tx *sql.Tx, tokenDigest string) (*model.BusinessInvitation, error) {
+	return scanInvitation(tx.QueryRow(`SELECT `+invitationColumns+` FROM business_invitations WHERE token_hash=$1 AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at>now() FOR UPDATE`, tokenDigest))
+}
+
+func (r *UserRepository) AcceptInvitationTXN(tx *sql.Tx, invitationID, businessID, fullName, email, passwordHash, role string) (*model.User, error) {
+	u := &model.User{}
+	var lastLogin sql.NullTime
+	err := tx.QueryRow(`INSERT INTO users (business_id, full_name, email, password_hash, user_role)
+        VALUES ($1,$2,$3,$4,$5)
+        RETURNING user_id,business_id,full_name,email,password_hash,user_role,is_active,last_login_at,created_at,updated_at`,
+		businessID, fullName, email, passwordHash, role).Scan(&u.UserID, &u.BusinessID, &u.FullName, &u.Email, &u.PasswordHash, &u.UserRole, &u.IsActive, &lastLogin, &u.CreatedAt, &u.UpdatedAt)
+	if err != nil {
+		return nil, fmt.Errorf("create invited user: %w", err)
+	}
+	if lastLogin.Valid {
+		u.LastLoginAt = &lastLogin.Time
+	}
+	if _, err = tx.Exec(`INSERT INTO business_memberships(business_id,user_id,role,status,created_at,updated_at) VALUES($1,$2,$3,'active',now(),now())`, businessID, u.UserID, role); err != nil {
+		return nil, fmt.Errorf("activate membership: %w", err)
+	}
+	if _, err = tx.Exec(`UPDATE business_invitations SET accepted_at=now() WHERE invitation_id=$1 AND business_id=$2 AND accepted_at IS NULL AND revoked_at IS NULL`, invitationID, businessID); err != nil {
+		return nil, fmt.Errorf("accept invitation: %w", err)
+	}
+	return u, nil
+}
