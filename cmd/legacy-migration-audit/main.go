@@ -245,7 +245,8 @@ func applyCore(ctx context.Context, source *sql.DB, targetDSN string) error {
 		return err
 	}
 	for vouchers.Next() {
-		var id, tenant, site string
+		var id, tenant string
+		var site sql.NullString
 		var created, expires sql.NullInt64
 		var revoked bool
 		if err := vouchers.Scan(&id, &tenant, &site, &created, &expires, &revoked); err != nil {
