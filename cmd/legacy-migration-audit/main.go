@@ -139,8 +139,9 @@ type legacyTenant struct {
 }
 
 type legacyUser struct {
-	id, username, hash, role, tenant string
-	active                           bool
+	id, username, hash, role string
+	tenant                   sql.NullString
+	active                   bool
 }
 
 type legacySite struct {
@@ -213,12 +214,13 @@ func applyCore(ctx context.Context, source *sql.DB, targetDSN string) error {
 		}
 		if u.role == "platform" {
 			role = "DEVELOPER"
-			u.tenant = platformBusinessID
+			u.tenant.String = platformBusinessID
+			u.tenant.Valid = true
 		}
-		if strings.TrimSpace(u.tenant) == "" {
+		if strings.TrimSpace(u.tenant.String) == "" {
 			return fmt.Errorf("legacy user %s has no tenant and is not a platform user", u.id)
 		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO users(user_id,business_id,full_name,email,password_hash,user_role,is_active) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(user_id) DO UPDATE SET business_id=EXCLUDED.business_id,full_name=EXCLUDED.full_name,email=EXCLUDED.email,password_hash=EXCLUDED.password_hash,user_role=EXCLUDED.user_role,is_active=EXCLUDED.is_active,updated_at=now()`, u.id, u.tenant, u.username, u.username, u.hash, role, u.active); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO users(user_id,business_id,full_name,email,password_hash,user_role,is_active) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(user_id) DO UPDATE SET business_id=EXCLUDED.business_id,full_name=EXCLUDED.full_name,email=EXCLUDED.email,password_hash=EXCLUDED.password_hash,user_role=EXCLUDED.user_role,is_active=EXCLUDED.is_active,updated_at=now()`, u.id, u.tenant.String, u.username, u.username, u.hash, role, u.active); err != nil {
 			return err
 		}
 	}
