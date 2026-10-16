@@ -148,6 +148,8 @@ type legacySite struct {
 	created                    sql.NullInt64
 }
 
+const platformBusinessID = "00000000-0000-0000-0000-000000000001"
+
 // applyCore copies only data whose semantics are lossless. Voucher secrets are
 // intentionally excluded: the legacy table stores hashes/sealed values, not a
 // plaintext code that the new voucher login can use.
@@ -196,7 +198,7 @@ func applyCore(ctx context.Context, source *sql.DB, targetDSN string) error {
 	}
 	tenants.Close()
 
-	users, err := source.QueryContext(ctx, `SELECT id,username,password_hash,role,tenant_id,active FROM users WHERE nullif(btrim(tenant_id),'') IS NOT NULL AND role IN ('sme','guest') ORDER BY id`)
+	users, err := source.QueryContext(ctx, `SELECT id,username,password_hash,role,tenant_id,active FROM users WHERE role IN ('sme','guest','platform') ORDER BY id`)
 	if err != nil {
 		return err
 	}
@@ -208,6 +210,13 @@ func applyCore(ctx context.Context, source *sql.DB, targetDSN string) error {
 		role := "VIEWER"
 		if u.role == "sme" {
 			role = "OWNER"
+		}
+		if u.role == "platform" {
+			role = "DEVELOPER"
+			u.tenant = platformBusinessID
+		}
+		if strings.TrimSpace(u.tenant) == "" {
+			return fmt.Errorf("legacy user %s has no tenant and is not a platform user", u.id)
 		}
 		if _, err := tx.ExecContext(ctx, `INSERT INTO users(user_id,business_id,full_name,email,password_hash,user_role,is_active) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(user_id) DO UPDATE SET business_id=EXCLUDED.business_id,full_name=EXCLUDED.full_name,email=EXCLUDED.email,password_hash=EXCLUDED.password_hash,user_role=EXCLUDED.user_role,is_active=EXCLUDED.is_active,updated_at=now()`, u.id, u.tenant, u.username, u.username, u.hash, role, u.active); err != nil {
 			return err
