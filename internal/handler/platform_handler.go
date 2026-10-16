@@ -1,7 +1,9 @@
 package handler
 
 import (
+	"fmt"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -21,6 +23,7 @@ import (
 type PlatformHandler struct {
 	businessRepo *database.PlatformBusinessRepository
 	incidentRepo *database.PlatformIncidentRepository
+	pricingRepo  *database.PricingRepository
 	db           *database.DB
 	authService  *auth.Service
 }
@@ -28,10 +31,80 @@ type PlatformHandler struct {
 func NewPlatformHandler(
 	businessRepo *database.PlatformBusinessRepository,
 	incidentRepo *database.PlatformIncidentRepository,
+	pricingRepo *database.PricingRepository,
 	db *database.DB,
 	authService *auth.Service,
 ) *PlatformHandler {
-	return &PlatformHandler{businessRepo: businessRepo, incidentRepo: incidentRepo, db: db, authService: authService}
+	return &PlatformHandler{businessRepo: businessRepo, incidentRepo: incidentRepo, pricingRepo: pricingRepo, db: db, authService: authService}
+}
+
+var pricingDatePattern = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
+
+// GetPricing returns the platform-wide price list to the Developer console.
+func (h *PlatformHandler) GetPricing(c *gin.Context) {
+	p, err := h.pricingRepo.GetPromo(c.Request.Context())
+	if err == database.ErrPricingPromoNotFound {
+		c.JSON(http.StatusOK, gin.H{"published": false, "pricing": nil})
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load platform pricing"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"published": true, "pricing": p})
+}
+
+// PutPricing publishes a complete, validated platform subscription price list.
+// This is intentionally separate from tenant portal pricing: only a
+// DEVELOPER can change the public platform subscription offer.
+func (h *PlatformHandler) PutPricing(c *gin.Context) {
+	var p model.PricingPromo
+	if err := c.ShouldBindJSON(&p); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid pricing JSON"})
+		return
+	}
+	if err := validatePricingPromo(&p); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if err := h.pricingRepo.UpsertPromo(c.Request.Context(), &p); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to publish platform pricing"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"published": true, "pricing": p})
+}
+
+func validatePricingPromo(p *model.PricingPromo) error {
+	if p.MonthlyStandardMMK == nil || *p.MonthlyStandardMMK <= 0 || *p.MonthlyStandardMMK > 1000000000 {
+		return fmt.Errorf("monthly_standard_mmk must be between 1 and 1000000000")
+	}
+	if p.AnnualStandardMMK == nil || *p.AnnualStandardMMK <= 0 || *p.AnnualStandardMMK > 1000000000 {
+		return fmt.Errorf("annual_standard_mmk must be between 1 and 1000000000")
+	}
+	if p.MonthlyPromoMMK != nil && (*p.MonthlyPromoMMK <= 0 || *p.MonthlyPromoMMK >= *p.MonthlyStandardMMK) {
+		return fmt.Errorf("monthly_promo_mmk must be positive and below monthly_standard_mmk")
+	}
+	if p.AnnualPromoMMK != nil && (*p.AnnualPromoMMK <= 0 || *p.AnnualPromoMMK >= *p.AnnualStandardMMK) {
+		return fmt.Errorf("annual_promo_mmk must be positive and below annual_standard_mmk")
+	}
+	if (p.StartsOn == nil) != (p.EndsOn == nil) {
+		return fmt.Errorf("starts_on and ends_on must be supplied together")
+	}
+	if p.StartsOn != nil {
+		if !pricingDatePattern.MatchString(*p.StartsOn) || !pricingDatePattern.MatchString(*p.EndsOn) {
+			return fmt.Errorf("starts_on and ends_on must use YYYY-MM-DD")
+		}
+		if *p.StartsOn > *p.EndsOn {
+			return fmt.Errorf("starts_on must not be after ends_on")
+		}
+	}
+	if p.Active && (p.StartsOn == nil || p.MonthlyPromoMMK == nil || p.AnnualPromoMMK == nil) {
+		return fmt.Errorf("an active promotion requires dates and both promo prices")
+	}
+	if p.Label != nil && len(strings.TrimSpace(*p.Label)) > 120 {
+		return fmt.Errorf("label must be 120 characters or fewer")
+	}
+	return nil
 }
 
 // ListBusinesses returns every business across all tenants (DEVELOPER only).
@@ -75,7 +148,6 @@ var validTiers = func() map[string]bool {
 	}
 	return m
 }()
-
 
 // CreateBusiness: POST /platform/businesses — create a tenant atomically.
 func (h *PlatformHandler) CreateBusiness(c *gin.Context) {

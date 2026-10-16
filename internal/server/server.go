@@ -132,6 +132,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	platformHandler := handler.NewPlatformHandler(
 		database.NewPlatformBusinessRepository(db),
 		database.NewPlatformIncidentRepository(db),
+		database.NewPricingRepository(db),
 		db,
 		authService,
 	)
@@ -861,6 +862,8 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 		// or tenantMW.
 		platform := tv1.Group("/platform", auth.CookieOrigin(), auth.Middleware(authService), auth.RequireRole(string(model.RoleDeveloper)))
 		{
+			platform.GET("/pricing", platformHandler.GetPricing)
+			platform.PUT("/pricing", platformHandler.PutPricing)
 			platform.GET("/businesses", platformHandler.ListBusinesses)
 			platform.GET("/incidents", platformHandler.ListOpenIncidents)
 			platform.GET("/incidents/counts", platformHandler.CountIncidents)

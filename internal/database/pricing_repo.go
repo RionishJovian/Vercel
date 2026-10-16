@@ -27,6 +27,39 @@ type PricingRepository struct {
 	db *DB
 }
 
+// UpsertPromo publishes the platform-wide subscription price list. The caller
+// must already have passed the Developer-only platform authorization gate.
+func (r *PricingRepository) UpsertPromo(ctx context.Context, p *model.PricingPromo) error {
+	const q = `
+		INSERT INTO pricing_promo
+			(id, active, starts_on, ends_on, label,
+			 monthly_promo_mmk, monthly_standard_mmk,
+			 annual_promo_mmk, annual_standard_mmk, updated_at)
+		VALUES (true, $1, NULLIF($2,'')::date, NULLIF($3,'')::date, NULLIF($4,''),
+				$5, $6, $7, $8, now())
+		ON CONFLICT (id) DO UPDATE SET
+			active=EXCLUDED.active, starts_on=EXCLUDED.starts_on,
+			ends_on=EXCLUDED.ends_on, label=EXCLUDED.label,
+			monthly_promo_mmk=EXCLUDED.monthly_promo_mmk,
+			monthly_standard_mmk=EXCLUDED.monthly_standard_mmk,
+			annual_promo_mmk=EXCLUDED.annual_promo_mmk,
+			annual_standard_mmk=EXCLUDED.annual_standard_mmk,
+			updated_at=now()`
+	_, err := r.db.ExecContext(ctx, q, p.Active, valueOrEmpty(p.StartsOn), valueOrEmpty(p.EndsOn), valueOrEmpty(p.Label),
+		p.MonthlyPromoMMK, p.MonthlyStandardMMK, p.AnnualPromoMMK, p.AnnualStandardMMK)
+	if err != nil {
+		return fmt.Errorf("upsert pricing promo: %w", err)
+	}
+	return nil
+}
+
+func valueOrEmpty(v *string) string {
+	if v == nil {
+		return ""
+	}
+	return *v
+}
+
 // NewPricingRepository creates a pricing repository.
 func NewPricingRepository(db *DB) *PricingRepository {
 	return &PricingRepository{db: db}
