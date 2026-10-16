@@ -258,7 +258,7 @@ func applyCore(ctx context.Context, source *sql.DB, targetDSN string) error {
 		if created.Valid && created.Int64 > 0 {
 			createdAt = time.Unix(created.Int64, 0).UTC()
 		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO vouchers(id,business_id,site_id,plan_key,plan_label,code,status,created_at,updated_at) VALUES($1,$2,NULLIF($3,'')::uuid,'legacy','Legacy voucher (reissue required)',$4,'revoked',$5,$5) ON CONFLICT(id) DO UPDATE SET business_id=EXCLUDED.business_id,site_id=EXCLUDED.site_id,status='revoked',updated_at=now()`, id, tenant, site, "LEGACY-"+id[:8], createdAt); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO vouchers(id,business_id,plan_key,plan_label,code,status,created_at,updated_at) VALUES($1,$2,'legacy','Legacy voucher (reissue required)',$3,'revoked',$4,$4) ON CONFLICT(id) DO UPDATE SET business_id=EXCLUDED.business_id,status='revoked',updated_at=now()`, id, tenant, "LEGACY-"+id[:8], createdAt); err != nil {
 			return err
 		}
 	}
