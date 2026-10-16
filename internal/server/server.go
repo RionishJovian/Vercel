@@ -843,6 +843,9 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 				team.POST("", teamHandler.Create)
 				team.PUT("/:userId", teamHandler.Update)
 				team.DELETE("/:userId", teamHandler.Delete)
+				team.GET("/invitations", teamHandler.ListInvitations)
+				team.POST("/invitations", teamHandler.CreateInvitation)
+				team.DELETE("/invitations/:invitationId", teamHandler.RevokeInvitation)
 			}
 		}
 

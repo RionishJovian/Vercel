@@ -4,11 +4,13 @@ import (
 	"database/sql"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
 	"mega-magic/internal/auth"
 	"mega-magic/internal/database"
+	"mega-magic/internal/invitations"
 	"mega-magic/internal/model"
 )
 
@@ -55,6 +57,88 @@ func (h *TeamHandler) List(c *gin.Context) {
 		})
 	}
 	c.JSON(http.StatusOK, gin.H{"team": out, "count": len(out)})
+}
+
+// ListInvitations: GET /api/v1/team/invitations
+func (h *TeamHandler) ListInvitations(c *gin.Context) {
+	businessID := auth.GetBusinessID(c)
+	var out []*model.BusinessInvitation
+	err := runInTenant(c, h.db, businessID, func(tx *sql.Tx) error {
+		var e error
+		out, e = h.userRepo.ListInvitationsTXN(tx, businessID)
+		return e
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"invitations": out, "count": len(out)})
+}
+
+// CreateInvitation: POST /api/v1/team/invitations
+// The raw token is returned once. Delivery can be added later without ever
+// storing or logging the token itself.
+func (h *TeamHandler) CreateInvitation(c *gin.Context) {
+	businessID := auth.GetBusinessID(c)
+	invitedBy := auth.GetUserID(c)
+	var body struct {
+		FullName string `json:"full_name"`
+		Email    string `json:"email"`
+		UserRole string `json:"user_role"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
+		return
+	}
+	body.FullName = strings.TrimSpace(body.FullName)
+	body.Email = strings.ToLower(strings.TrimSpace(body.Email))
+	role := model.UserRole(strings.ToUpper(strings.TrimSpace(body.UserRole)))
+	if body.FullName == "" || body.Email == "" || !strings.Contains(body.Email, "@") || !model.IsTenantRole(role) || role == model.RoleOwner {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "full_name, valid email and a non-owner tenant role are required"})
+		return
+	}
+	rawToken, digest, err := invitations.NewToken()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "invitation token generation failed"})
+		return
+	}
+	var created *model.BusinessInvitation
+	expiresAt := time.Now().UTC().Add(7 * 24 * time.Hour)
+	err = runInTenant(c, h.db, businessID, func(tx *sql.Tx) error {
+		var e error
+		created, e = h.userRepo.CreateInvitationTXN(tx, businessID, body.Email, body.FullName, string(role), digest, invitedBy, expiresAt)
+		return e
+	})
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "uq_business_pending_invitation") || strings.Contains(strings.ToLower(err.Error()), "duplicate key") {
+			c.JSON(http.StatusConflict, gin.H{"error": "an active invitation already exists for this email"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create invitation"})
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{
+		"invitation": created,
+		"token":      rawToken,
+		"shown_once": true,
+	})
+}
+
+// RevokeInvitation: DELETE /api/v1/team/invitations/:invitationId
+func (h *TeamHandler) RevokeInvitation(c *gin.Context) {
+	businessID := auth.GetBusinessID(c)
+	err := runInTenant(c, h.db, businessID, func(tx *sql.Tx) error {
+		return h.userRepo.RevokeInvitationTXN(tx, businessID, c.Param("invitationId"))
+	})
+	if err == sql.ErrNoRows {
+		c.JSON(http.StatusNotFound, gin.H{"error": "active invitation not found"})
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to revoke invitation"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"revoked": c.Param("invitationId")})
 }
 
 // Create: POST /api/v1/team  {full_name,email,password,user_role}
