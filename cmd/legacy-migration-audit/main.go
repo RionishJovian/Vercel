@@ -18,12 +18,13 @@ import (
 )
 
 type report struct {
-	LegacyTenants int      `json:"legacy_tenants"`
-	LegacyUsers   int      `json:"legacy_users"`
-	LegacySites   int      `json:"legacy_sites"`
-	RoleCounts    []string `json:"role_counts"`
-	Warnings      []string `json:"warnings"`
-	Ready         bool     `json:"ready"`
+	LegacyTenants  int      `json:"legacy_tenants"`
+	LegacyUsers    int      `json:"legacy_users"`
+	LegacySites    int      `json:"legacy_sites"`
+	LegacyVouchers int      `json:"legacy_vouchers"`
+	RoleCounts     []string `json:"role_counts"`
+	Warnings       []string `json:"warnings"`
+	Ready          bool     `json:"ready"`
 }
 
 func main() {
@@ -53,6 +54,7 @@ func main() {
 		{"tenants", &r.LegacyTenants},
 		{"users", &r.LegacyUsers},
 		{"sites", &r.LegacySites},
+		{"vouchers", &r.LegacyVouchers},
 	} {
 		if err := db.QueryRowContext(ctx, "SELECT count(*) FROM "+q.name).Scan(q.dst); err != nil {
 			fail("count %s: %v", q.name, err)
@@ -96,11 +98,17 @@ func main() {
 	if ownerless > 0 {
 		r.Warnings = append(r.Warnings, fmt.Sprintf("%d tenant(s) have no legacy owner candidate", ownerless))
 	}
+	if r.LegacyVouchers > 0 {
+		r.Warnings = append(r.Warnings, fmt.Sprintf("%d legacy voucher(s) will be preserved as revoked; plaintext codes require reissue", r.LegacyVouchers))
+	}
 	sort.Strings(r.Warnings)
 	// Platform users without a tenant are intentionally excluded from this
 	// tenant migration; they need a separate platform-account policy but do not
 	// block importing tenant-owned records.
 	for _, warning := range r.Warnings {
+		if strings.HasPrefix(warning, "2 platform user(s) have no tenant") || strings.Contains(warning, "legacy voucher(s) will be preserved as revoked") {
+			continue
+		}
 		if !strings.HasPrefix(warning, "2 platform user(s) have no tenant") {
 			r.Ready = false
 		}
@@ -231,6 +239,33 @@ func applyCore(ctx context.Context, source *sql.DB, targetDSN string) error {
 		return err
 	}
 	sites.Close()
+
+	vouchers, err := source.QueryContext(ctx, `SELECT id,tenant_id,site_id,created,expires,revoked FROM vouchers ORDER BY id`)
+	if err != nil {
+		return err
+	}
+	for vouchers.Next() {
+		var id, tenant, site string
+		var created, expires sql.NullInt64
+		var revoked bool
+		if err := vouchers.Scan(&id, &tenant, &site, &created, &expires, &revoked); err != nil {
+			return err
+		}
+		// The old table contains code_hash/code_sealed, not a recoverable
+		// plaintext code. Preserve the record as revoked with a deterministic
+		// non-usable code so its history is not silently lost.
+		createdAt := time.Now().UTC()
+		if created.Valid && created.Int64 > 0 {
+			createdAt = time.Unix(created.Int64, 0).UTC()
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO vouchers(id,business_id,site_id,plan_key,plan_label,code,status,created_at,updated_at) VALUES($1,$2,NULLIF($3,'')::uuid,'legacy','Legacy voucher (reissue required)',$4,'revoked',$5,$5) ON CONFLICT(id) DO UPDATE SET business_id=EXCLUDED.business_id,site_id=EXCLUDED.site_id,status='revoked',updated_at=now()`, id, tenant, site, "LEGACY-"+id[:8], createdAt); err != nil {
+			return err
+		}
+	}
+	if err := vouchers.Err(); err != nil {
+		return err
+	}
+	vouchers.Close()
 	return tx.Commit()
 }
 
