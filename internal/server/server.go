@@ -693,6 +693,9 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 			sites := protected.Group("/sites")
 			{
 				sites.GET("", siteHandler.ListSites)
+				sites.GET("/:id/portal", portalHandler.SiteGetConfig)
+				sites.PUT("/:id/portal", auth.RequireMinRole(model.RoleAdmin), portalHandler.SiteUpdateConfig)
+				sites.POST("/:id/portal/publish", auth.RequireMinRole(model.RoleAdmin), portalHandler.SitePublishConfig)
 				// Editing a site moves routers between locations, so ADMIN+ only.
 				sites.POST("", auth.RequireMinRole(model.RoleAdmin), siteHandler.CreateSite)
 				sites.PUT("/:id", auth.RequireMinRole(model.RoleAdmin), siteHandler.UpdateSite)

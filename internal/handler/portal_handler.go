@@ -36,6 +36,8 @@ type PortalHandler struct {
 	db                  *database.DB
 	deviceRepo          *database.DeviceRepository
 	configRepo          *database.PortalConfigRepository
+	siteRepo            *database.SiteRepository
+	sitePortalRepo      *database.SitePortalRepository
 	sessionRepo         *database.PortalSessionRepository
 	voucherRepo         *database.VoucherRepository
 	quotaRepo           *database.BusinessMeteredQuotaRepository
@@ -55,11 +57,106 @@ func NewPortalHandler(
 		db:                  db,
 		deviceRepo:          deviceRepo,
 		configRepo:          configRepo,
+		siteRepo:            database.NewSiteRepository(db),
+		sitePortalRepo:      database.NewSitePortalRepository(),
 		sessionRepo:         sessionRepo,
 		voucherRepo:         voucherRepo,
 		quotaRepo:           quotaRepo,
 		notifyGuestRedeemed: notifyGuestRedeemed,
 	}
+}
+
+// SiteGetConfig returns the site-specific draft and published portal state.
+// This is the new site-scoped API; /portal/config remains available as the
+// legacy business fallback while existing clients migrate.
+func (h *PortalHandler) SiteGetConfig(c *gin.Context) {
+	businessID := auth.GetBusinessID(c)
+	if businessID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	siteID := c.Param("id")
+	var portal *model.SitePortal
+	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
+		if _, err := h.siteRepo.GetSiteTXN(tx, businessID, siteID); err != nil {
+			return err
+		}
+		var err error
+		portal, err = h.sitePortalRepo.GetBySiteTXN(tx, businessID, siteID)
+		return err
+	})
+	if errors.Is(err, database.ErrSiteNotFound) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "site not found"})
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
+		return
+	}
+	if portal == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "site portal not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"portal": portal})
+}
+
+// SiteUpdateConfig saves a complete site-specific draft. Publishing is a
+// separate explicit action so owners can review changes before guests see them.
+func (h *PortalHandler) SiteUpdateConfig(c *gin.Context) {
+	businessID := auth.GetBusinessID(c)
+	if businessID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	var cfg model.PortalConfig
+	if err := c.ShouldBindJSON(&cfg); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	cfg.BusinessID = businessID
+	siteID := c.Param("id")
+	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
+		if _, err := h.siteRepo.GetSiteTXN(tx, businessID, siteID); err != nil {
+			return err
+		}
+		return h.sitePortalRepo.UpsertDraftTXN(tx, &model.SitePortal{
+			SiteID: siteID, BusinessID: businessID, DraftConfig: &cfg,
+		})
+	})
+	if errors.Is(err, database.ErrSiteNotFound) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "site not found"})
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "site portal draft saved"})
+}
+
+// SitePublishConfig makes the reviewed draft the guest-visible revision.
+func (h *PortalHandler) SitePublishConfig(c *gin.Context) {
+	businessID := auth.GetBusinessID(c)
+	if businessID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	siteID := c.Param("id")
+	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
+		if _, err := h.siteRepo.GetSiteTXN(tx, businessID, siteID); err != nil {
+			return err
+		}
+		return h.sitePortalRepo.PublishTXN(tx, businessID, siteID)
+	})
+	if errors.Is(err, database.ErrSiteNotFound) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "site not found"})
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusConflict, gin.H{"error": "site portal draft not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "site portal published"})
 }
 
 // withTenantTx is used by the STAFF (owner-authenticated) endpoints.
@@ -74,6 +171,26 @@ func (h *PortalHandler) withTenantTx(c *gin.Context, businessID string, fn func(
 // read BEFORE any tenant context exists. Returns (nil, nil) when unknown.
 func (h *PortalHandler) businessForDevice(deviceID string) (*model.Device, error) {
 	return h.deviceRepo.GetDeviceByID(deviceID)
+}
+
+// portalConfigForDeviceTXN prefers the published site configuration when the
+// device is assigned to a site, and falls back to the legacy business config
+// for older devices or sites that have not published a draft yet.
+func (h *PortalHandler) portalConfigForDeviceTXN(tx *sql.Tx, businessID, deviceID string) (*model.PortalConfig, error) {
+	var siteID sql.NullString
+	if err := tx.QueryRow(`SELECT site_id FROM devices WHERE device_id = $1 AND business_id = $2`, deviceID, businessID).Scan(&siteID); err != nil && err != sql.ErrNoRows {
+		return nil, err
+	}
+	if siteID.Valid && siteID.String != "" {
+		portal, err := h.sitePortalRepo.GetBySiteTXN(tx, businessID, siteID.String)
+		if err != nil {
+			return nil, err
+		}
+		if portal != nil && portal.PublishedRevision > 0 && portal.PublishedConfig != nil && portal.PublishedConfig.BusinessName != "" {
+			return portal.PublishedConfig, nil
+		}
+	}
+	return h.configRepo.GetByBusinessTXN(tx, businessID)
 }
 
 // --- public (anonymous) -----------------------------------------------------
@@ -93,7 +210,7 @@ func (h *PortalHandler) PublicConfig(c *gin.Context) {
 
 	var cfg *model.PortalConfig
 	err = withDeviceTenant(h.db, dev.BusinessID, func(tx *sql.Tx) error {
-		pc, e := h.configRepo.GetByBusinessTXN(tx, dev.BusinessID)
+		pc, e := h.portalConfigForDeviceTXN(tx, dev.BusinessID, deviceID)
 		if e != nil {
 			return e
 		}
@@ -155,7 +272,7 @@ func (h *PortalHandler) PublicRedeem(c *gin.Context) {
 		applied gin.H
 	)
 	err = database.WithTenant(tx, dev.BusinessID, func() error {
-		cfg, e := h.configRepo.GetByBusinessTXN(tx, dev.BusinessID)
+		cfg, e := h.portalConfigForDeviceTXN(tx, dev.BusinessID, deviceID)
 		if e != nil {
 			return e
 		}
