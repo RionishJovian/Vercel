@@ -1,0 +1,4 @@
+FROM caddy:2.10-alpine
+COPY web /srv
+COPY deploy/Caddyfile.go-staging /etc/caddy/Caddyfile
+HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=10 CMD wget --quiet --tries=1 --spider http://127.0.0.1/ || exit 1
