@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -93,6 +94,12 @@ func validatePricingPromo(p *model.PricingPromo) error {
 	if p.StartsOn != nil {
 		if !pricingDatePattern.MatchString(*p.StartsOn) || !pricingDatePattern.MatchString(*p.EndsOn) {
 			return fmt.Errorf("starts_on and ends_on must use YYYY-MM-DD")
+		}
+		if _, err := time.Parse("2006-01-02", *p.StartsOn); err != nil {
+			return fmt.Errorf("starts_on is not a valid calendar date")
+		}
+		if _, err := time.Parse("2006-01-02", *p.EndsOn); err != nil {
+			return fmt.Errorf("ends_on is not a valid calendar date")
 		}
 		if *p.StartsOn > *p.EndsOn {
 			return fmt.Errorf("starts_on must not be after ends_on")

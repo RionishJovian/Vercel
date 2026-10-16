@@ -38,4 +38,12 @@ func TestValidatePricingPromoRejectsActiveOfferWithoutDates(t *testing.T) {
 	}
 }
 
+func TestValidatePricingPromoRejectsImpossibleDate(t *testing.T) {
+	p := validPlatformPricing()
+	*p.StartsOn = "2026-02-30"
+	if err := validatePricingPromo(&p); err == nil || !strings.Contains(err.Error(), "valid calendar date") {
+		t.Fatalf("expected calendar-date validation error, got %v", err)
+	}
+}
+
 func ptrPricing(p model.PricingPromo) *model.PricingPromo { return &p }
