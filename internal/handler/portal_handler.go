@@ -114,6 +114,10 @@ func (h *PortalHandler) SiteUpdateConfig(c *gin.Context) {
 		return
 	}
 	cfg.BusinessID = businessID
+	if err := validateSitePortalConfig(&cfg); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
 	siteID := c.Param("id")
 	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
 		if _, err := h.siteRepo.GetSiteTXN(tx, businessID, siteID); err != nil {
@@ -132,6 +136,62 @@ func (h *PortalHandler) SiteUpdateConfig(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "site portal draft saved"})
+}
+
+// validateSitePortalConfig applies the same fail-closed rules as the legacy
+// business portal editor before a site draft can become guest-visible.
+func validateSitePortalConfig(cfg *model.PortalConfig) error {
+	cfg.BusinessName = strings.TrimSpace(cfg.BusinessName)
+	if cfg.BusinessName == "" {
+		return errBusinessNameRequired
+	}
+	if cfg.WelcomeText == "" {
+		cfg.WelcomeText = "Enter your voucher code to connect."
+	}
+	if cfg.TermsText == "" {
+		cfg.TermsText = "By connecting you agree to our terms."
+	}
+	if cfg.PrimaryHex == "" {
+		cfg.PrimaryHex = "#ffb547"
+	}
+	if cfg.GlassTintHex == "" {
+		cfg.GlassTintHex = "#7ad0ff"
+	}
+	if !model.IsHexColor(cfg.PrimaryHex) || !model.IsHexColor(cfg.GlassTintHex) {
+		return errors.New("portal colours must be hex colours like #ffb547")
+	}
+	if cfg.GuestGraceMinutes == 0 {
+		cfg.GuestGraceMinutes = 10
+	}
+	if cfg.GuestGraceDataMB == 0 {
+		cfg.GuestGraceDataMB = 50
+	}
+	if cfg.GuestGraceMinutes < 1 || cfg.GuestGraceMinutes > 1440 {
+		return errors.New("grace time must be between 1 and 1440 minutes")
+	}
+	if cfg.GuestGraceDataMB < 1 || cfg.GuestGraceDataMB > 10240 {
+		return errors.New("grace data must be between 1 and 10240 MB")
+	}
+	if !cfg.VoucherLoginEnabled && !cfg.MobilePaymentEnabled {
+		return errPortalAccessMethodRequired
+	}
+	if cfg.MMQRURL != "" && !safePortalImageURL(cfg.MMQRURL) {
+		return errors.New("QR image must be an HTTPS URL or a same-origin path")
+	}
+	if cfg.MediaHost != "" {
+		if _, _, err := routeros.MediaTarget(cfg.MediaHost, cfg.MediaPort); err != nil {
+			return err
+		}
+	}
+	for _, p := range cfg.GuestPlans {
+		if strings.TrimSpace(p.Key) == "" || strings.TrimSpace(p.Label) == "" {
+			return errors.New("each guest plan needs a key and a label")
+		}
+		if p.Minutes < 0 || p.Amount < 0 || p.DataMB < 0 {
+			return errors.New("guest plan minutes, price and data must be >= 0")
+		}
+	}
+	return nil
 }
 
 // SitePublishConfig makes the reviewed draft the guest-visible revision.
@@ -366,7 +426,17 @@ func (h *PortalHandler) PublicStatus(c *gin.Context) {
 
 	var businessName string
 	err = withDeviceTenant(h.db, sess.BusinessID, func(tx *sql.Tx) error {
-		cfg, e := h.configRepo.GetByBusinessTXN(tx, sess.BusinessID)
+		var deviceID string
+		if sess.DeviceID != nil {
+			deviceID = *sess.DeviceID
+		}
+		var cfg *model.PortalConfig
+		var e error
+		if deviceID != "" {
+			cfg, e = h.portalConfigForDeviceTXN(tx, sess.BusinessID, deviceID)
+		} else {
+			cfg, e = h.configRepo.GetByBusinessTXN(tx, sess.BusinessID)
+		}
 		if e != nil {
 			return e
 		}
