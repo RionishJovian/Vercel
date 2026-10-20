@@ -34,7 +34,7 @@ func TestDB_InvitationTenantIsolationAndAcceptance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	invite, err := repo.CreateInvitationTXN(tx, bizA, "staff@example.test", "Site staff", "OPERATOR", digest, owner, time.Now().UTC().Add(time.Hour))
+	invite, err := repo.CreateInvitationTXN(tx, bizA, "staff@example.test", "Site staff", "ADMIN", digest, owner, time.Now().UTC().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +72,7 @@ func TestDB_InvitationTenantIsolationAndAcceptance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if user.BusinessID != bizA || string(user.UserRole) != "OPERATOR" {
+	if user.BusinessID != bizA || string(user.UserRole) != "ADMIN" {
 		t.Fatalf("accepted user has wrong scope or role: %+v", user)
 	}
 	if err := tx.Commit(); err != nil {

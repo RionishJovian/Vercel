@@ -14,7 +14,7 @@ func TestMagicDudeIncludedRoles(t *testing.T) {
 			t.Errorf("expected %s to be included", role)
 		}
 	}
-	for _, role := range []model.UserRole{model.RoleOperator, model.RoleTechnician, model.RoleViewer, model.RoleSupport} {
+	for _, role := range []model.UserRole{model.RoleViewer} {
 		if magicDudeIncluded(role) {
 			t.Errorf("expected %s to require unlock", role)
 		}

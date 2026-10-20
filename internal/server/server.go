@@ -620,8 +620,8 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 				incidents.GET("", incidentHandler.ListOpen)
 				incidents.GET("/device/:deviceId", incidentHandler.ListByDevice)
 				incidents.POST("", incidentHandler.Create)
-				incidents.POST("/:id/acknowledge", incidentHandler.Acknowledge)
-				incidents.POST("/:id/resolve", incidentHandler.Resolve)
+				incidents.POST("/:id/acknowledge", auth.RequireMinRole(model.RoleAdmin), incidentHandler.Acknowledge)
+				incidents.POST("/:id/resolve", auth.RequireMinRole(model.RoleAdmin), incidentHandler.Resolve)
 				// Stage 1A: apply an incident's suggested_action (high-risk => ADMIN).
 				incidents.POST("/:id/action", auth.RequireMinRole(model.RoleAdmin), incidentActionHandler.Apply)
 			}
@@ -640,7 +640,7 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 			// Read-only per-tenant network topology map + explicit device action
 			// (reboot, plan-gated — queues an intent for the flag-gated consumer).
 			protected.GET("/topology/map", topologyHandler.Map)
-			protected.POST("/topology/:deviceId/reboot", topologyHandler.Reboot)
+			protected.POST("/topology/:deviceId/reboot", auth.RequireMinRole(model.RoleAdmin), topologyHandler.Reboot)
 
 			// VPS: read-only WireGuard peer-provisioning (plan-gated).
 			vpsg := protected.Group("/vps")
@@ -667,9 +667,9 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 			vouchers := protected.Group("/vouchers")
 			{
 				vouchers.GET("", voucherHandler.ListVouchers)
-				vouchers.POST("", auth.RequireMinRole(model.RoleOperator), voucherHandler.CreateVoucher)
+				vouchers.POST("", auth.RequireMinRole(model.RoleAdmin), voucherHandler.CreateVoucher)
 				vouchers.GET("/:code", voucherHandler.GetVoucherByCode)
-				vouchers.PUT("/:id", auth.RequireMinRole(model.RoleOperator), voucherHandler.UpdateVoucherStatus)
+				vouchers.PUT("/:id", auth.RequireMinRole(model.RoleAdmin), voucherHandler.UpdateVoucherStatus)
 				vouchers.DELETE("/:id", auth.RequireMinRole(model.RoleAdmin), voucherHandler.DeleteVoucher)
 				vouchers.POST("/:code/redeem", voucherHandler.RedeemVoucher) // For voucher redemption
 			}
@@ -686,8 +686,8 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 			{
 				storePurchases.GET("", storeHandler.List)
 				storePurchases.POST("", storeHandler.Create)
-				storePurchases.POST("/:purchaseId/approve", auth.RequireMinRole(model.RoleOperator), storeHandler.Approve)
-				storePurchases.POST("/:purchaseId/reject", auth.RequireMinRole(model.RoleOperator), storeHandler.Reject)
+				storePurchases.POST("/:purchaseId/approve", auth.RequireMinRole(model.RoleAdmin), storeHandler.Approve)
+				storePurchases.POST("/:purchaseId/reject", auth.RequireMinRole(model.RoleAdmin), storeHandler.Reject)
 			}
 			protected.GET("/store/checkout-options", storeHandler.CheckoutOptions)
 
@@ -794,7 +794,7 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 				portalStaff.PUT("/config", auth.RequireMinRole(model.RoleAdmin), portalHandler.StaffUpdateConfig)
 			}
 
-			billing := protected.Group("/billing", auth.RequireMinRole(model.RoleOperator))
+			billing := protected.Group("/billing", auth.RequireMinRole(model.RoleAdmin))
 			{
 				billing.GET("/requests", billingHandler.ListRequests)
 				billing.POST("/approve/:requestId", billingHandler.ApprovePurchase)
@@ -811,8 +811,8 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 				gw.POST("/telegram-bot/test", auth.RequireMinRole(model.RoleAdmin), guestWifiHandler.TestBotBinding)
 				gw.GET("/requests", guestWifiHandler.ListGuestRequests)
 				gw.GET("/revenue", guestWifiHandler.GuestRevenue)
-				gw.POST("/approve/:requestId", auth.RequireMinRole(model.RoleOperator), guestWifiHandler.ApproveGuest)
-				gw.POST("/reject/:requestId", auth.RequireMinRole(model.RoleOperator), guestWifiHandler.RejectGuest)
+				gw.POST("/approve/:requestId", auth.RequireMinRole(model.RoleAdmin), guestWifiHandler.ApproveGuest)
+				gw.POST("/reject/:requestId", auth.RequireMinRole(model.RoleAdmin), guestWifiHandler.RejectGuest)
 			}
 
 			webhooks := protected.Group("/webhooks", auth.RequireMinRole(model.RoleAdmin))

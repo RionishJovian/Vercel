@@ -232,6 +232,9 @@ func (h *TeamHandler) Update(c *gin.Context) {
 		if current == nil {
 			return errTeamNotFound
 		}
+		if !model.IsTenantRole(current.UserRole) {
+			return errProtectedTeamRole
+		}
 
 		fullName := strings.TrimSpace(body.FullName)
 		if fullName == "" {
@@ -274,6 +277,8 @@ func (h *TeamHandler) Update(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "team member not found"})
 	case errBadRole:
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid role"})
+	case errProtectedTeamRole:
+		c.JSON(http.StatusForbidden, gin.H{"error": "platform accounts cannot be changed through tenant team management"})
 	case errLastOwner:
 		c.JSON(http.StatusConflict, gin.H{"error": "cannot demote or disable the last owner"})
 	default:
@@ -294,6 +299,9 @@ func (h *TeamHandler) Delete(c *gin.Context) {
 		if current == nil {
 			return errTeamNotFound
 		}
+		if !model.IsTenantRole(current.UserRole) {
+			return errProtectedTeamRole
+		}
 		if current.UserRole == model.RoleOwner && current.IsActive {
 			n, e := h.userRepo.CountActiveOwnersTXN(tx, businessID)
 			if e != nil {
@@ -310,6 +318,8 @@ func (h *TeamHandler) Delete(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"disabled": userID})
 	case errTeamNotFound:
 		c.JSON(http.StatusNotFound, gin.H{"error": "team member not found"})
+	case errProtectedTeamRole:
+		c.JSON(http.StatusForbidden, gin.H{"error": "platform accounts cannot be changed through tenant team management"})
 	case errLastOwner:
 		c.JSON(http.StatusConflict, gin.H{"error": "cannot remove the last owner"})
 	default:
@@ -318,10 +328,11 @@ func (h *TeamHandler) Delete(c *gin.Context) {
 }
 
 var (
-	errEmailTaken   = errTeam("email already in use")
-	errTeamNotFound = errTeam("team member not found")
-	errBadRole      = errTeam("invalid role")
-	errLastOwner    = errTeam("last owner")
+	errEmailTaken        = errTeam("email already in use")
+	errTeamNotFound      = errTeam("team member not found")
+	errBadRole           = errTeam("invalid role")
+	errLastOwner         = errTeam("last owner")
+	errProtectedTeamRole = errTeam("protected platform role")
 )
 
 type errTeam string

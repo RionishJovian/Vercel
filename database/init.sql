@@ -42,7 +42,7 @@ CREATE TABLE users (
     email text NOT NULL UNIQUE,
     password_hash text NOT NULL,
     user_role text NOT NULL DEFAULT 'VIEWER'
-        CHECK (user_role IN ('OWNER', 'ADMIN', 'OPERATOR', 'TECHNICIAN', 'VIEWER', 'SUPPORT', 'DEVELOPER')),
+        CHECK (user_role IN ('OWNER', 'ADMIN', 'VIEWER', 'DEVELOPER')),
     is_active boolean NOT NULL DEFAULT true,
     last_login_at timestamptz,
     created_at timestamptz NOT NULL DEFAULT now(),
@@ -878,7 +878,7 @@ CREATE TABLE IF NOT EXISTS operator_feature_grants (
 );
 
 CREATE TABLE IF NOT EXISTS operator_feature_role_defaults (
-    role text NOT NULL CHECK (role IN ('OWNER','ADMIN','OPERATOR','TECHNICIAN','VIEWER','SUPPORT','DEVELOPER')),
+    role text NOT NULL CHECK (role IN ('OWNER','ADMIN','VIEWER','DEVELOPER')),
     feature text NOT NULL CHECK (feature IN (
         'vouchers','portal_deploy','cash_sales','bank_edit','router_config',
         'reboot','alerts','syslog_ai','poe','telegram')),
@@ -893,7 +893,7 @@ CREATE TABLE IF NOT EXISTS operator_feature_role_defaults (
 );
 
 CREATE TABLE IF NOT EXISTS portal_mode_role_defaults (
-    role text NOT NULL CHECK (role IN ('OWNER','ADMIN','OPERATOR','TECHNICIAN','VIEWER','SUPPORT','DEVELOPER')),
+    role text NOT NULL CHECK (role IN ('OWNER','ADMIN','VIEWER','DEVELOPER')),
     mode text NOT NULL CHECK (mode IN ('hybrid_light','commerce')),
     legacy_role text NOT NULL,               -- see note above
     updated_by uuid REFERENCES users(user_id) ON DELETE SET NULL,

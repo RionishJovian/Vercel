@@ -5,24 +5,18 @@ import "time"
 type UserRole string
 
 const (
-	RoleOwner      UserRole = "OWNER"
-	RoleAdmin      UserRole = "ADMIN"
-	RoleOperator   UserRole = "OPERATOR"
-	RoleTechnician UserRole = "TECHNICIAN"
-	RoleViewer     UserRole = "VIEWER"
-	RoleSupport    UserRole = "SUPPORT"
-	RoleDeveloper  UserRole = "DEVELOPER"
+	RoleOwner     UserRole = "OWNER"
+	RoleAdmin     UserRole = "ADMIN"
+	RoleViewer    UserRole = "VIEWER"
+	RoleDeveloper UserRole = "DEVELOPER"
 )
 
 // roleRank orders roles by capability. DEVELOPER is system-level (highest).
 var roleRank = map[UserRole]int{
-	RoleViewer:     10,
-	RoleSupport:    20,
-	RoleTechnician: 30,
-	RoleOperator:   40,
-	RoleAdmin:      50,
-	RoleOwner:      60,
-	RoleDeveloper:  100,
+	RoleViewer:    10,
+	RoleAdmin:     50,
+	RoleOwner:     60,
+	RoleDeveloper: 100,
 }
 
 // RoleRank returns a role's capability rank (0 for unknown roles).
@@ -34,7 +28,7 @@ func HasAtLeastRole(role, min UserRole) bool {
 }
 
 // TenantRoles are the roles an OWNER may grant to staff (never DEVELOPER).
-var TenantRoles = []UserRole{RoleOwner, RoleAdmin, RoleOperator, RoleTechnician, RoleViewer, RoleSupport}
+var TenantRoles = []UserRole{RoleOwner, RoleAdmin, RoleViewer}
 
 // IsTenantRole reports whether r is a grantable tenant role.
 func IsTenantRole(r UserRole) bool {

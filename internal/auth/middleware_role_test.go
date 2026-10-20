@@ -21,10 +21,6 @@ func TestRequireMinRole(t *testing.T) {
 		{"OWNER", model.RoleAdmin, http.StatusOK},
 		{"ADMIN", model.RoleOwner, http.StatusForbidden},
 		{"ADMIN", model.RoleAdmin, http.StatusOK},
-		{"OPERATOR", model.RoleOperator, http.StatusOK},
-		{"OPERATOR", model.RoleAdmin, http.StatusForbidden},
-		{"TECHNICIAN", model.RoleTechnician, http.StatusOK},
-		{"SUPPORT", model.RoleTechnician, http.StatusForbidden},
 		{"VIEWER", model.RoleViewer, http.StatusOK},
 		{"DEVELOPER", model.RoleOwner, http.StatusOK},
 	}

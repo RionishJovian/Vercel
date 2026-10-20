@@ -502,7 +502,7 @@ function actionKind(inc) {
 }
 function applyFixCell(inc) {
   const k = actionKind(inc);
-  if (FIX_KINDS[k]) return `<button class="btn btn-sm" data-fix="${esc(inc.id)}" data-kind="${esc(k)}">Apply fix</button>`;
+  if (FIX_KINDS[k]) return ["ADMIN", "OWNER", "DEVELOPER"].includes(ME?.user?.user_role) ? `<button class="btn btn-sm" data-fix="${esc(inc.id)}" data-kind="${esc(k)}">Apply fix</button>` : '<span class="muted small">Admin action required</span>';
   if (k === "review" || k === "none") return `<span class="muted small">Manual review</span>`;
   return "";
 }
@@ -1927,6 +1927,7 @@ async function renderIncidents(main) {
   const data = await MM.get("/incidents");
   const list = Array.isArray(data.incidents) ? data.incidents : asArray(data);
   const content = main.querySelector("#content");
+  const canManage = ["ADMIN", "OWNER", "DEVELOPER"].includes(ME?.user?.user_role);
   if (!list.length) {
     content.innerHTML = `<div class="empty"><div class="empty-title">No open incidents</div>AI-detected problems and policy alerts will appear here.</div>`;
     return;
@@ -1943,9 +1944,9 @@ async function renderIncidents(main) {
       <td class="muted small">${esc((inc.detail && inc.detail.replace(/\s+/g," ")) ? inc.detail.slice(0,80) : "—")}</td>
       <td>${ts(inc.opened_at)}</td>
       <td>
-        <button class="btn btn-sm" data-act="ack" data-id="${esc(inc.id)}">Acknowledge</button>
+        ${canManage ? `<button class="btn btn-sm" data-act="acknowledge" data-id="${esc(inc.id)}">Acknowledge</button>
         <button class="btn btn-sm" data-act="resolve" data-id="${esc(inc.id)}">Resolve</button>
-        ${applyFixCell(inc)}
+        ${applyFixCell(inc)}` : '<span class="muted small">Read only</span>'}
       </td>
     </tr>`).join("");
   content.innerHTML = `<table>
@@ -3536,7 +3537,7 @@ function revenueDayKey(value) {
 async function renderRevenue(main) {
   // Full-ledger hotspot totals are separate from the limited review inbox.
   // Legacy business-pass purchases are visible for review but are not WiFi sales.
-  const canDecide = ["OPERATOR", "ADMIN", "OWNER", "DEVELOPER"].includes(ME?.user?.user_role);
+  const canDecide = ["ADMIN", "OWNER", "DEVELOPER"].includes(ME?.user?.user_role);
   const [guestResult, billingResult, summaryResult] = await Promise.allSettled([
     MM.get("/guest-wifi/requests"),
     MM.get("/billing/requests"),
@@ -4084,7 +4085,7 @@ async function renderSecurity(main) {
 }
 
 /* ---------- Team (C3) ---------- */
-const TEAM_ROLES = ["OWNER", "ADMIN", "OPERATOR", "TECHNICIAN", "VIEWER", "SUPPORT"];
+const TEAM_ROLES = ["OWNER", "ADMIN", "VIEWER"];
 
 async function renderTeam(main) {
   const content = main.querySelector("#content");

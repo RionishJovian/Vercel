@@ -10,10 +10,6 @@ func TestHasAtLeastRole(t *testing.T) {
 		{RoleOwner, RoleOwner, true},
 		{RoleOwner, RoleAdmin, true},
 		{RoleAdmin, RoleOwner, false},
-		{RoleOperator, RoleTechnician, true},
-		{RoleViewer, RoleOperator, false},
-		{RoleSupport, RoleViewer, true},
-		{RoleTechnician, RoleOperator, false},
 		{RoleDeveloper, RoleOwner, true}, // system role passes everything
 		{UserRole("NOPE"), RoleViewer, false},
 	}
@@ -25,7 +21,7 @@ func TestHasAtLeastRole(t *testing.T) {
 }
 
 func TestIsTenantRole(t *testing.T) {
-	for _, r := range []UserRole{RoleOwner, RoleAdmin, RoleOperator, RoleTechnician, RoleViewer, RoleSupport} {
+	for _, r := range []UserRole{RoleOwner, RoleAdmin, RoleViewer} {
 		if !IsTenantRole(r) {
 			t.Fatalf("%s must be a grantable tenant role", r)
 		}

@@ -28,4 +28,7 @@ for (const view of ['wan','pppoe','wifi','existing']) {
 }
 assert.ok(app.includes('businessStatusBadge(state, "payment")'));
 assert.ok(app.includes('businessStatusBadge(v.status, "voucher")'));
-console.log('Audit UI regressions passed: payment/voucher states, truthful topology, unavailable capability, guide coverage.');
+assert.ok(app.includes('data-act="acknowledge"'));
+assert.ok(!app.includes('data-act="ack"'));
+assert.match(app, /const canManage = \["ADMIN", "OWNER", "DEVELOPER"\]\.includes/);
+console.log('Audit UI regressions passed: payment/voucher states, truthful topology, incident route/role contract, unavailable capability, guide coverage.');
