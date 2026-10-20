@@ -228,3 +228,59 @@ including the db.go DSN fix, init.sql device_discovery_labels hunk, hub
 capability, guest sessions, backups UI and the domain migration). No
 push, PR, merge, production migration, deployment or customer-router
 action is authorized by this local session.
+
+## 2026-10-21 Codex continuation: connection and browser reliability completed
+
+The owner asked Codex to continue the interrupted app task after Hermes hit its
+provider budget limit. Hermes configuration work was stopped; this continuation
+is local application work only.
+
+- Hermes had already committed `8d09874`: lib/pq keyword connection values are
+  quoted, including empty passwords and literal whitespace, apostrophes and
+  backslashes. The dedicated disposable trust-auth connection regression is
+  committed with it.
+- Codex completed and committed `32281ad`: the synthetic media editor provides
+  synchronous confirmation answers, avoiding the headless Chrome native-dialog
+  race. The test asserts the warning text and both outcomes: Cancel sends no
+  DELETE and preserves the publication; Confirm issues exactly one DELETE and
+  withdraws the page. Unexpected real dialogs, runtime exceptions and CSP errors
+  still fail the test. The browser teardown retains Hermes's bounded SIGKILL
+  escalation for a child that fails to exit after SIGTERM.
+
+Verification used a clean git archive of `32281ad` and fresh `npm ci`; it did
+not reuse the mixed working tree's dependencies or uncommitted source:
+
+- Media browser test: 5/5 consecutive standalone runs passed in the clean
+  export, after 5/5 initial working-tree runs.
+- Full critical UI suite: 10/10 passed on each of 3 consecutive clean runs.
+- Web audit: all 6 HTML surfaces passed. Prototype build and actual Go server
+  build passed. The prototype is still separate from the Go/web application.
+- Disposable PostgreSQL, passwordless `MM_TEST_DB_URL` and explicit
+  `MM_TEST_TRUST_AUTH=true`: internal Go suite 570 top-level PASS / 0 FAIL /
+  20 SKIP, plus 444 nested subtest passes. The connection parsing regression
+  executed, including empty and injection-shaped password values.
+- Correctly seeded disposable `MM_TEST_DSN`: credential/pricing tests 4/4 PASS.
+- Disposable `MM_MEDIA_TEST_DSN`: media bridge package 11/11 PASS, including
+  its 8 PostgreSQL tests. These runs resolve 12 of the initial 20 skips;
+  the remaining 8 are the explicitly gated router lab/CHR/live/hardware tests.
+- Actual SCRAM-SHA-256 password authentication, using a synthetic password
+  containing whitespace, an apostrophe and a backslash: portal-media upgrade
+  and fresh-schema tests plus role migration/import regressions 5/5 PASS,
+  with no skips.
+- Whitespace checks passed. All unrelated tracked dirty file contents matched
+  the hashes captured before the continuation. The private PostgreSQL cluster
+  was stopped successfully.
+
+Evidence is under
+`/Users/aces/Documents/Codex/2026-10-21/asd/work/app-continuation-32281ad/`.
+This is local verification, not production migration, deployment or physical
+router acceptance. No push, PR, merge or deployment occurred.
+
+Next resume point: the interrupted two-fix task is complete. Recheck the mixed
+tree (82 status entries at this snapshot), then separate the remaining workflow
+revamp into coherent dependency-complete commits. Preserve existing work and
+the app/data/auth/tenant/Hub boundaries. Remaining groups include device
+discovery labels, Hub capability/enrollment, guest sessions, backups UI,
+navigation/layout and domain/deployment restoration work; inspect dependencies
+before choosing a group. Publishing, production migrations, deployments and
+customer-router actions remain outside this local task's scope.
