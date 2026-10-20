@@ -100,3 +100,67 @@ test:api change; those belong to the revamp commits.
 Next: review these three commits; then separate the workflow-revamp work
 into coherent commits of its own. No push, PR, merge, production migration,
 deployment or customer-router action is authorized by this local session.
+
+## 2026-10-21 continuation: role-consolidation database fixes (Codex review)
+
+Commit `792ab4b` (on top of a3b2e87) fixes the two committed-HEAD review
+findings plus a third instance found by sweeping the documented import
+pipeline:
+
+- `migrations/20261018180000_prune_roles_oper_tech_supp.sql` now reassigns
+  existing OPERATOR/TECHNICIAN/SUPPORT rows to ADMIN (the documented
+  consolidation target) across users, business_memberships,
+  business_invitations and both role-default tables BEFORE enforcing the
+  stricter CHECK constraints, touches only the role column (tenant
+  associations preserved), and wraps the whole script in BEGIN/COMMIT so
+  the documented `psql -v ON_ERROR_STOP=1` path — and a plain autocommit
+  run, and any single-connection runner — rolls back completely on failure.
+- `scripts/migration/sql/120_entitlements_features.sql` emitted OPERATOR
+  into both role-default tables; now emits ADMIN.
+- `scripts/migration/run_phase1.sh` computed `new_role='OPERATOR'` for
+  site-less agents; now ADMIN. A repo-wide sweep found no other producer
+  of removed roles.
+- New `internal/database/role_prune_migration_integration_test.go` covers
+  the old-role upgrade (mapping, tenant boundaries, supported roles stay
+  valid, removed roles rejected afterwards), full rollback of a failed
+  migration, and the legacy entitlements import against the pruned schema.
+
+Verification actually run (disposable local PostgreSQL 17.11 on
+127.0.0.1:5544 — Homebrew binaries, trust auth + fixture password;
+production databases were never contacted):
+
+- New focused tests via the Go harness: 3/3 PASS.
+- psql repro of the reported failure (sabotaged final ADD CONSTRAINT, plain
+  autocommit, no ON_ERROR_STOP): migration fails, prints ROLLBACK, and the
+  OPERATOR row + old users constraint are byte-identical afterwards — the
+  preceding DROP CONSTRAINT no longer leaks. Success path with
+  ON_ERROR_STOP=1: OPERATOR/TECHNICIAN/SUPPORT users and invitations become
+  ADMIN, VIEWER untouched, a fresh OPERATOR insert is rejected.
+- Working tree, harness active: `go test -count=1 ./internal/...`
+  580 PASS / 0 FAIL / 17 SKIP; `npm run test:critical-ui` 13/13;
+  `audit-web-ui` pass; `npm run build` artifacts present; `go build
+  ./cmd/server` OK; `git diff --check` clean.
+- CLEAN EXPORT of `792ab4b` with FRESH `npm ci` (no reused node_modules):
+  `test:critical-ui` 10/10; `audit-web-ui` pass; `npm run build` artifacts
+  present; `git diff --check` clean; `go build` OK;
+  `go test -count=1 ./internal/...` 564 PASS / 3 FAIL / 20 SKIP.
+
+The 3 export failures are PRE-EXISTING, proven by running them identically
+at the parent `a3b2e87`: `TestDB_PortalDevice_isolation`,
+`TestDB_PortalDeviceAnchored_isolation` and
+`TestGuestWifi_approveGrantsExtensionOnce` all fail with
+`column "media_host" does not exist` — committed tests reading
+`portal_configs.media_host`, a column that exists only in the UNCOMMITTED
+workflow-revamp init.sql hunks. They are the revamp workstream's to resolve
+(commit the init.sql media columns together with those tests). The same
+export run also exposed a committed-tree DSN quirk: `database.New` builds
+an unquoted keyword DSN, so an empty password makes lib/pq drop the dbname
+and the connection fails; the UNCOMMITTED `quoteConnectionValue` fix in
+`internal/database/db.go` addresses it. Fixtures avoid it by using a
+passworded URL (as production DSNs have).
+
+Next resume point: review `792ab4b`; then land the workflow-revamp commits
+which must include the init.sql portal-media columns and the db.go DSN
+quoting fix so the three pre-existing failures reconcile. No push, PR,
+merge, production migration, deployment or customer-router action is
+authorized by this local session.
