@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -35,6 +36,8 @@ type VPSHandler struct {
 	managementAuth   func(context.Context, string, string, string, string, string, int, string) error
 	automaticPrepare func(context.Context, string, string, string, string) (string, error)
 	automaticVerify  func(context.Context, string, string, string, string) error
+	quickKeysMu      sync.Mutex
+	quickKeys        map[string]quickEnrollmentKey
 }
 
 func NewVPSHandler(db *database.DB, deviceRepo *database.DeviceRepository, quotaRepo *database.BusinessMeteredQuotaRepository, mon *monitoring.MonitoringService, wg config.WireGuardConfig, endpointHost string) *VPSHandler {
