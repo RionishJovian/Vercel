@@ -101,6 +101,7 @@ func guestVoucherSchemaReady(db *database.DB) error {
 		columns                  []string
 	}{
 		{"guest_voucher_grants", "guest_voucher_snapshot_guard", "guard_guest_voucher_snapshot", []string{"voucher_id", "business_id", "device_id", "minutes", "data_mb", "state", "client_mac", "first_used_at", "expires_at", "lease_token", "lease_until", "updated_at"}},
+		{"guest_voucher_grants", "guest_voucher_activation_guard", "guard_guest_voucher_activation", []string{"activated_at"}},
 		{"guest_access_recovery", "guest_access_recovery_guard", "guard_guest_access_recovery", []string{"voucher_id", "business_id", "device_id", "secret_hash", "current_mac", "pending_mac", "state", "transfer_id", "completed_transfer_id", "used_bytes", "transfer_count", "window_started_at", "updated_at"}},
 	} {
 		var ready bool

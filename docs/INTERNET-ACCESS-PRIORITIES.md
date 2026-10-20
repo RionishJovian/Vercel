@@ -138,3 +138,52 @@ production issuance was used. Evidence is under
 Next priority is voucher revenue: distinguish issued face value and usage from
 confirmed sales and approved portal payments. Real captive login, internet
 traffic, quotas and reconnection remain pending hardware acceptance.
+
+## Owner-confirmed activation-based voucher reporting — 2026-10-21
+
+The owner clarified that printing leaves a voucher unused. The guest buys the
+printed code and enters it on the Internet Hotspot portal. Successful activation
+should update the dashboard automatically; there is no additional staff sale
+confirmation step. Label this **activated voucher value**, separately from
+approved portal payments or bank-confirmed cash settlement.
+
+The existing first-use reservation fixes elapsed validity and the client binding;
+printing does not start it, and retries/reconnects do not replenish validity or
+data. The new nullable `guest_voucher_grants.activated_at` is written once by
+verified finalization, not by issuance, printing or reservation. A database
+trigger protects that timestamp. Failed/stale finalization creates no activation
+value. Existing active records are not assigned invented historical timestamps.
+
+The new authenticated, tenant-scoped `GET /api/v1/voucher-report` summarizes the
+complete recorded guest-grant inventory and activation value by Yangon day,
+7/30-day windows and gateway. Business passes, foreign tenants and vouchers
+without guest grants are excluded. Unused stock, activation in progress, active
+grants, expiry/revocation and first-use records without a verified timestamp are
+shown separately. Recorded activation value remains historical after revocation;
+it is not a refund-adjusted cash ledger or a current online-guest count.
+
+Revenue now keeps voucher activations and approved portal payments in separate
+sections. An unavailable source does not hide the other or become zero. The
+payment inbox and CSV identify portal versus business-pass sources and clearly
+describe their limited inbox scope.
+
+Clean-source verification with fresh npm dependencies passed 31 UI entries,
+all six web-audit surfaces, the actual Go server build and Chromium revenue
+acceptance including payment approval/readback and 390px layout. The internal
+Go suite on disposable PostgreSQL passed 582 top-level tests with zero failures;
+20 separately gated fixture/hardware tests skipped. The mixed tree passed 34 UI
+entries. Database coverage includes activation exactly once, immutable time,
+no legacy backfill, tenant/RLS isolation, a 139-record report and Yangon windows.
+
+**Rollout dependency:** apply
+`migrations/20261021090000_guest_voucher_activation.sql` before deploying this
+backend with guest voucher access enabled. Startup preflight rejects a missing
+column/guard; the app does not auto-migrate. The migration was exercised only in
+disposable local databases. No production migration, deployment, payment,
+voucher issuance or router write occurred. If reverting the application binary,
+retain the additive column to preserve activation history.
+
+Evidence: `/Users/aces/Documents/Codex/2026-10-21/asd/work/voucher-report/`.
+Next: Internet Hotspot portal flow checks locally, then physical DHCP/DNS,
+valid/invalid-code login, internet traffic, quota/expiry and reconnection when
+the owner's lab router is available.

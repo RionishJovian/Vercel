@@ -74,7 +74,11 @@ const server = createServer(async (req, res) => {
   if (url.pathname === "/api/v1/guest-wifi/requests") return json(200, { requests: guestPurchaseRequests });
   if (url.pathname === "/api/v1/guest-wifi/revenue") {
     const amount = guestPurchaseRequests.some(r=>r.status==="approved") ? 3500 : 0;
-    return json(200,{all_time:amount,today:amount,last7:amount,last30:amount,pending_count:amount?0:1,days:[],plans:[]});
+    return json(200,{all_time:amount,today:amount,last7:amount,last30:amount,total:1,approved:amount?1:0,pending:amount?0:1,rejected:0,days:[],plans:[]});
+  }
+  if (url.pathname === "/api/v1/voucher-report") {
+    if (!process.env.E2E_REVENUE_ONLY) return json(503,{error:'Voucher report not configured in this fixture'});
+    return json(200,{source:'guest-internet-vouchers',recorded_count:139,recorded_face_value:74500,first_use_count:6,available_count:131,reserved_count:1,activated_count:2,expired_count:3,revoked_count:1,other_count:1,activation_count:3,activation_time_unknown_count:3,activation_value:6500,activation_today:1500,activation_last7:3500,activation_last30:3500,gateways:[{device_id:'dev-1',gateway_name:'Cafe gateway',recorded_count:139,available_count:131,reserved_count:1,activated_count:2,expired_count:3,revoked_count:1,other_count:1,activation_value:6500}]});
   }
   if (url.pathname === "/api/v1/guest-wifi/approve/guest-pending" && req.method === "POST") {
     guestPurchaseRequests = guestPurchaseRequests.map(r => r.id === "guest-pending" ? { ...r, status: "approved", decided_at: "2026-09-30T02:05:00Z" } : r);
@@ -286,7 +290,25 @@ try {
   await cdp.send("Page.addScriptToEvaluateOnNewDocument", { source: `localStorage.setItem('mm_token','acceptance-token')` });
   await cdp.send("Page.navigate", { url: `http://127.0.0.1:${port}/app.html#portal` });
   await waitFor(() => cdp.eval("!!document.querySelector('#plan-add')"), "portal editor");
-  if (process.env.E2E_VOUCHER_BATCH_ONLY) {
+  if (process.env.E2E_REVENUE_ONLY) {
+    await cdp.eval("loadView('revenue',document.querySelector('#main'),ME)");
+    await waitFor(()=>cdp.eval("!!document.querySelector('[data-voucher-summary]')"),'voucher activation summary');
+    assert.equal(await cdp.eval("document.querySelector('[data-voucher-summary]').textContent.includes('6,500 MMK')"),true,'Full recorded activation value is shown');
+    assert.equal(await cdp.eval("document.querySelector('#voucher-activation-report').textContent.includes('74,500 MMK')"),true,'Unused inventory face value stays separate');
+    assert.equal(await cdp.eval("document.querySelector('[data-portal-summary]').textContent.includes('6,500')"),false,'Voucher activations are not added to portal payments');
+    await cdp.pointerClick('[data-purchase-source="guest-wifi"][data-purchase-action="approve"]');
+    await waitFor(()=>cdp.eval("document.querySelector('[data-portal-summary]')?.textContent.includes('3,500 MMK')"),'approved portal payment readback');
+    assert.equal(await cdp.eval("document.querySelector('[data-voucher-summary]').textContent.includes('6,500 MMK')"),true,'Approving a payment does not activate or sell another voucher');
+    if (process.env.E2E_SCREENSHOT) {
+      await cdp.send('Emulation.setDeviceMetricsOverride',{width:1440,height:1080,deviceScaleFactor:1,mobile:false});
+      await cdp.eval("document.querySelector('#voucher-activation-report').scrollIntoView({block:'start'})");
+      const shot=await cdp.send('Page.captureScreenshot',{format:'png'});
+      await writeFile(process.env.E2E_SCREENSHOT,Buffer.from(shot.data,'base64'));
+    }
+    await cdp.send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:2,mobile:true});
+    assert.equal(await cdp.eval('document.documentElement.scrollWidth<=innerWidth+1'),true,'Voucher reporting fits a phone viewport');
+    console.log('Revenue Chromium acceptance passed: voucher activation value, unused inventory, portal payment approval/readback and mobile layout remain separate.');
+  } else if (process.env.E2E_VOUCHER_BATCH_ONLY) {
     await cdp.eval("loadView('vouchers',document.querySelector('#main'),ME)");
     await waitFor(()=>cdp.eval("!!document.querySelector('#guest-voucher-form')"),'guest voucher issuance form');
     await cdp.eval("document.querySelector('#gv-gateway').value='dev-1';document.querySelector('#gv-label').value='Daily Wi-Fi';document.querySelector('#gv-count').value='105';document.querySelector('#gv-price').value='1500'");
@@ -423,11 +445,11 @@ try {
   // current decision endpoint, not placeholder chart data.
   await cdp.eval("loadView('revenue', document.querySelector('#main'), ME)");
   await waitFor(() => cdp.eval("!!document.querySelector('#revenue-export')"), "revenue workspace");
-  assert.equal(await cdp.eval("document.querySelector('.revenue-summary').textContent.includes('0 MMK')"), true, "legacy business-pass revenue is excluded from guest sales");
+  assert.equal(await cdp.eval("document.querySelector('[data-portal-summary]').textContent.includes('0 MMK')"), true, "legacy business-pass revenue is excluded from guest sales");
   assert.equal(await cdp.eval("document.querySelectorAll('[data-purchase-action=approve]').length"), 1, "pending request exposes a real approval control");
   await cdp.pointerClick("[data-purchase-action=approve]");
   await waitFor(() => guestPurchaseRequests.find(r => r.id === "guest-pending")?.status === "approved", "guest revenue approval API write");
-  await waitFor(() => cdp.eval("document.querySelector('.revenue-summary').textContent.includes('3,500 MMK')"), "guest-only revenue readback after approval");
+  await waitFor(() => cdp.eval("document.querySelector('[data-portal-summary]').textContent.includes('3,500 MMK')"), "guest-only revenue readback after approval");
 
   await cdp.eval("loadView('portal', document.querySelector('#main'), ME)");
   await waitFor(() => cdp.eval("!!document.querySelector('#plan-add')"), "portal editor after revenue");

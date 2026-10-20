@@ -664,6 +664,7 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 				policies.DELETE("/:id", incidentHandler.DeletePolicy)
 			}
 
+			protected.GET("/voucher-report", voucherHandler.VoucherReport)
 			vouchers := protected.Group("/vouchers")
 			{
 				vouchers.GET("", voucherHandler.ListVouchers)

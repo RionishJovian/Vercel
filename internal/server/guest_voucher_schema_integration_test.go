@@ -12,7 +12,7 @@ func TestDB_GuestVoucherSchemaReadiness(t *testing.T) {
 	if guestVoucherSchemaReady(nil) == nil || guestVoucherSchemaReady(db) == nil {
 		t.Fatal("missing guest schema accepted")
 	}
-	for _, path := range []string{"../../migrations/20261001200000_guest_voucher_grants.sql", "../../migrations/20261001210000_guest_access_recovery.sql", "../../migrations/20261002200000_guest_recovery_completion.sql"} {
+	for _, path := range []string{"../../migrations/20261001200000_guest_voucher_grants.sql", "../../migrations/20261001210000_guest_access_recovery.sql", "../../migrations/20261002200000_guest_recovery_completion.sql", "../../migrations/20261021090000_guest_voucher_activation.sql"} {
 		b, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatal(err)
@@ -26,6 +26,8 @@ func TestDB_GuestVoucherSchemaReadiness(t *testing.T) {
 	}
 	// Each mutation is only in this test's randomly named disposable database.
 	for _, stmt := range []string{
+		`ALTER TABLE guest_voucher_grants DROP COLUMN activated_at`,
+		`ALTER TABLE guest_voucher_grants DISABLE TRIGGER guest_voucher_activation_guard`,
 		`ALTER TABLE guest_access_recovery NO FORCE ROW LEVEL SECURITY`,
 		`ALTER TABLE guest_voucher_grants DISABLE ROW LEVEL SECURITY`,
 		`ALTER TABLE guest_access_recovery DISABLE TRIGGER guest_access_recovery_guard`,

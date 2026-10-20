@@ -341,7 +341,7 @@ const VIEWS = {
   i18n:     { title: "Translations", lead: "Customize interface wording for the languages your customers use." },
   vouchers: { title: "Vouchers", lead: "Create guest access codes, manage resellers, and print voucher sheets." },
   store:    { title: "Store", lead: "Buy account plans, Magic Coins, and additional product capabilities." },
-  revenue:  { title: "Revenue", lead: "Track hotspot sales, approve payments, and compare plan performance." },
+  revenue:  { title: "Revenue", lead: "Track voucher activations, review portal payments, and compare access activity." },
   coins:    { title: "Magic Coins", lead: "Check your balance and review every credit or purchase." },
   unlockkeys:{ title: "Unlock keys", lead: "See which additional product capabilities your business has activated." },
   portal:   { title: "Captive portal", lead: "Choose how guests connect and customize the Wi-Fi page they see." },
@@ -3604,20 +3604,38 @@ function revenueDayKey(value) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+function voucherRevenuePanel(result) {
+  const report = result.status === "fulfilled" ? result.value : null;
+  const fields = ["recorded_count","recorded_face_value","first_use_count","available_count","reserved_count","activated_count","expired_count","revoked_count","other_count","activation_count","activation_time_unknown_count","activation_value","activation_today","activation_last7","activation_last30"];
+  const validNumber = value => typeof value === "number" && Number.isFinite(value) && value >= 0;
+  const gatewayFields = ["recorded_count","available_count","reserved_count","activated_count","expired_count","revoked_count","other_count","activation_value"];
+  if (!report || report.source !== "guest-internet-vouchers" || !fields.every(key=>validNumber(report[key])) || !Array.isArray(report.gateways) || !report.gateways.every(g=>g && gatewayFields.every(key=>validNumber(g[key])))) {
+    return `<section class="panel" aria-label="Voucher activations"><div class="panel-head"><h2 class="panel-title">Voucher activations</h2></div><div class="panel-body"><p role="alert">Voucher activation reporting is unavailable. No voucher totals are inferred from printing, payment requests or an incomplete list.</p></div></section>`;
+  }
+  const periods = [["Today",report.activation_today],["Last 7 days",report.activation_last7],["Last 30 days",report.activation_last30],["All time recorded",report.activation_value]];
+  const rows = report.gateways.map(g=>`<tr><td>${esc(g.gateway_name)}</td><td>${esc(g.recorded_count)}</td><td>${esc(g.available_count)}</td><td>${esc(g.reserved_count)}</td><td>${esc(g.activated_count)}</td><td>${esc(g.expired_count)}</td><td>${esc(g.revoked_count)}</td><td>${esc(g.other_count)}</td><td>${esc(mmk(g.activation_value))}</td></tr>`).join("");
+  return `<section class="panel" id="voucher-activation-report" aria-label="Voucher activations"><div class="panel-head"><div><h2 class="panel-title">Voucher activations</h2><p class="muted small">Printing leaves codes unused. A successful first portal activation counts once; reconnecting does not create another activation.</p></div></div><div class="panel-body">
+    <div class="revenue-summary" data-voucher-summary>${periods.map(([label,amount])=>`<div class="stat"><div class="stat-label">${label}</div><div class="stat-value revenue-value">${esc(mmk(amount))}</div><div class="muted small">Activated voucher value · Yangon time</div></div>`).join("")}</div>
+    <p>${esc(report.activation_count)} recorded activations · ${esc(report.recorded_count)} current voucher records · ${esc(mmk(report.recorded_face_value))} recorded face value.</p>
+    <p class="muted small">${esc(report.available_count)} unused · ${esc(report.reserved_count)} activating · ${esc(report.activated_count)} unexpired active grants · ${esc(report.expired_count)} expired · ${esc(report.revoked_count)} revoked/blocked · ${esc(report.other_count)} need inspection. First use has started for ${esc(report.first_use_count)} codes. These counts do not show guests currently online.</p>
+    <p class="muted small">Activated voucher value is separate from bank-confirmed payments. Unused printed codes do not count toward it. Current inventory excludes deleted records.</p>
+    ${report.activation_time_unknown_count ? `<p role="note">${esc(report.activation_time_unknown_count)} first-use records have no verified activation timestamp and are excluded from activation-value totals.</p>` : ""}
+    <div class="tablewrap"><table><thead><tr><th>Gateway</th><th>Recorded codes</th><th>Unused</th><th>Activating</th><th>Active grants</th><th>Expired</th><th>Revoked/blocked</th><th>Inspect</th><th>Activated value</th></tr></thead><tbody>${rows || '<tr><td colspan="9">No guest internet vouchers recorded.</td></tr>'}</tbody></table></div>
+  </div></section>`;
+}
+
 async function renderRevenue(main) {
   // Full-ledger hotspot totals are separate from the limited review inbox.
   // Legacy business-pass purchases are visible for review but are not WiFi sales.
   const canDecide = ["ADMIN", "OWNER", "DEVELOPER"].includes(ME?.user?.user_role);
-  const [guestResult, billingResult, summaryResult] = await Promise.allSettled([
+  const [guestResult, billingResult, summaryResult, voucherResult] = await Promise.allSettled([
     MM.get("/guest-wifi/requests"),
     MM.get("/billing/requests"),
     MM.get("/guest-wifi/revenue"),
+    MM.get("/voucher-report"),
   ]);
-  if (summaryResult.status !== "fulfilled") throw new Error("Complete hotspot revenue is unavailable. Totals are not shown from a partial request list.");
-  const summary = summaryResult.value;
-  if (guestResult.status === "rejected" && billingResult.status === "rejected") {
-    throw guestResult.reason || billingResult.reason || new Error("Revenue records unavailable");
-  }
+  const candidate = summaryResult.status === "fulfilled" ? summaryResult.value : null;
+  const summary = candidate && ["today","last7","last30","all_time","total","approved","pending","rejected"].every(key=>typeof candidate[key] === "number" && Number.isFinite(candidate[key]) && candidate[key] >= 0) && Array.isArray(candidate.days) && Array.isArray(candidate.plans) ? candidate : null;
   const sourced = (result, source) => result.status === "fulfilled"
     ? asArray(result.value && result.value.requests ? result.value.requests : result.value)
       .map(request => ({ ...request, _revenue_source: source }))
@@ -3631,12 +3649,12 @@ async function renderRevenue(main) {
   const start7 = new Date(startToday); start7.setDate(start7.getDate() - 6);
   const start30 = new Date(startToday); start30.setDate(start30.getDate() - 29);
   const sumSince = start => Number(start === startToday ? summary.today : start === start7 ? summary.last7 : summary.last30);
-  const all = Number(summary.all_time);
+  const all = Number(summary?.all_time);
 
-  const days = asArray(summary.days).map(d => ({ ...d, amount: Number(d.amount), label: new Date(`${d.key}T12:00:00+06:30`).toLocaleDateString(undefined, { weekday: "short", timeZone: "Asia/Yangon" }) }));
+  const days = asArray(summary?.days).map(d => ({ ...d, amount: Number(d.amount), label: new Date(`${d.key}T12:00:00+06:30`).toLocaleDateString(undefined, { weekday: "short", timeZone: "Asia/Yangon" }) }));
   const dayMax = Math.max(1, ...days.map(d => d.amount));
 
-  const plans = asArray(summary.plans);
+  const plans = asArray(summary?.plans);
 
   const planRows = plans.length ? plans.map(p => `<tr>
     <td><span class="num">${esc(p.key)}</span></td><td class="num">${p.requests}</td>
@@ -3652,20 +3670,22 @@ async function renderRevenue(main) {
       <button class="btn btn-sm" data-purchase-action="approve" data-purchase-source="${source}" data-request-id="${esc(r.id)}">Approve</button>
       <button class="btn btn-sm" data-purchase-action="reject" data-purchase-source="${source}" data-request-id="${esc(r.id)}">Reject</button>
     </div>` : `<span class="muted small">${state === "pending" ? "Read only" : "Decided"}</span>`;
-    return `<tr><td>${ts(r.created_at)}</td><td class="num">${esc(r.plan_key || "—")}</td>
+    return `<tr><td>${ts(r.created_at)}</td><td>${source === "guest-wifi" ? "Portal payment" : "Business pass"}</td><td class="num">${esc(r.plan_key || "—")}</td>
       <td class="num">${esc(mmk(r.amount))}</td><td class="mono">${esc(reference)}</td>
       <td>${businessStatusBadge(state, "payment")}</td><td>${actions}</td></tr>`;
-  }).join("") : `<tr><td colspan="6" class="muted small">No payment requests yet.</td></tr>`;
+  }).join("") : `<tr><td colspan="7" class="muted small">${guestResult.status === "rejected" && billingResult.status === "rejected" ? "Payment inbox unavailable." : "No payment requests reported by available sources."}</td></tr>`;
 
   main.querySelector("#content").innerHTML = `
-    <div class="revenue-summary" aria-label="Revenue summary">
+    ${voucherRevenuePanel(voucherResult)}
+    <h2>Approved portal payments</h2>
+    ${summary ? `<div class="revenue-summary" data-portal-summary aria-label="Portal payment summary">
       <div class="stat"><div class="stat-label">Today</div><div class="stat-value revenue-value">${esc(mmk(sumSince(startToday)))}</div><div class="muted small">Owner-approved hotspot sales · Yangon time</div></div>
       <div class="stat"><div class="stat-label">Last 7 days</div><div class="stat-value revenue-value">${esc(mmk(sumSince(start7)))}</div><div class="muted small">Rolling window</div></div>
       <div class="stat"><div class="stat-label">Last 30 days</div><div class="stat-value revenue-value">${esc(mmk(sumSince(start30)))}</div><div class="muted small">Rolling window</div></div>
       <div class="stat"><div class="stat-label">All time</div><div class="stat-value revenue-value">${esc(mmk(all))}</div><div class="muted small">${Number(summary.approved)} approved hotspot sales · full ledger</div></div>
     </div>
     <div class="revenue-grid">
-      <section class="panel"><div class="panel-head"><div><h2 class="panel-title">Seven-day earnings</h2><p class="muted small">Current database totals from approved portal payments; refresh the page to fetch new sales.</p></div><button class="btn btn-sm" id="revenue-export" type="button">Export CSV</button></div>
+      <section class="panel"><div class="panel-head"><div><h2 class="panel-title">Seven-day approved payments</h2><p class="muted small">Approved portal payments only. Voucher activation value and business passes are separate.</p></div></div>
         <div class="panel-body"><div class="revenue-bars">${days.map(d => `<div class="revenue-bar-item" title="${esc(d.key)} · ${esc(mmk(d.amount))}"><span class="revenue-bar-value">${d.amount ? esc(mmk(d.amount)) : "—"}</span><span class="revenue-bar-track"><i style="height:${Math.max(d.amount ? 8 : 2, Math.round(d.amount / dayMax * 100))}%"></i></span><span>${esc(d.label)}</span></div>`).join("")}</div></div>
       </section>
       <section class="panel"><div class="panel-head"><h2 class="panel-title">Payment funnel</h2></div><div class="panel-body">
@@ -3676,8 +3696,8 @@ async function renderRevenue(main) {
         <p class="muted small">Approval rate: ${summary.total ? Math.round(summary.approved / summary.total * 100) : 0}% · manual approval, not bank settlement verification</p>
       </div></section>
     </div>
-    <section class="panel" style="margin-top:14px"><div class="panel-head"><h2 class="panel-title">Plan performance</h2></div><div class="panel-body tablewrap"><table><thead><tr><th>Plan</th><th>Requests</th><th>Approved</th><th>Approval rate</th><th>Revenue</th></tr></thead><tbody>${planRows}</tbody></table></div></section>
-    <section class="panel" style="margin-top:14px"><div class="panel-head"><div><h2 class="panel-title">Payment inbox</h2><p class="muted small">Latest 50 guest requests and legacy business-pass requests. Legacy passes are excluded from hotspot totals. ${guestResult.status === "rejected" || billingResult.status === "rejected" ? "Warning: one inbox source is unavailable." : ""}</p></div><span id="revenue-message" class="muted small" role="status" aria-live="polite"></span></div><div class="panel-body tablewrap"><table><thead><tr><th>Submitted</th><th>Plan</th><th>Amount</th><th>Bank reference</th><th>Status</th><th>Decision</th></tr></thead><tbody>${requestRows}</tbody></table></div></section>`;
+    <section class="panel" style="margin-top:14px"><div class="panel-head"><h2 class="panel-title">Portal plan performance</h2></div><div class="panel-body tablewrap"><table><thead><tr><th>Plan</th><th>Requests</th><th>Approved</th><th>Approval rate</th><th>Approved value</th></tr></thead><tbody>${planRows}</tbody></table></div></section>` : `<section class="panel"><div class="panel-body"><p role="alert">Complete portal-payment totals are unavailable. Totals are not calculated from the limited payment inbox.</p></div></section>`}
+    <section class="panel" style="margin-top:14px"><div class="panel-head"><div><h2 class="panel-title">Payment inbox</h2><p class="muted small">Latest 50 guest requests and legacy business-pass requests. Legacy passes are excluded from hotspot totals. ${guestResult.status === "rejected" || billingResult.status === "rejected" ? "Warning: one or more inbox sources are unavailable." : ""}</p><button class="btn btn-sm" id="revenue-export" type="button">Export payment inbox CSV</button></div><span id="revenue-message" class="muted small" role="status" aria-live="polite"></span></div><div class="panel-body tablewrap"><table><thead><tr><th>Submitted</th><th>Source</th><th>Plan</th><th>Amount</th><th>Bank reference</th><th>Status</th><th>Decision</th></tr></thead><tbody>${requestRows}</tbody></table></div></section>`;
 
   main.querySelector("#revenue-export").addEventListener("click", () => {
     const cell = value => {
@@ -3685,11 +3705,11 @@ async function renderRevenue(main) {
       if (/^(?:\s*[=+\-@]|\t|\r)/.test(text)) text = "'" + text;
       return `"${text.replaceAll('"', '""')}"`;
     };
-    const lines = [["submitted_at", "decided_at", "plan", "amount_mmk", "bank_reference", "status"],
-      ...requests.map(r => [r.created_at, r.decided_at || "", r.plan_key || "", Number(r.amount || 0), r.bank_reference || "", r.status || ""])]
+    const lines = [["source", "submitted_at", "decided_at", "plan", "amount_mmk", "bank_reference", "status"],
+      ...requests.map(r => [r._revenue_source, r.created_at, r.decided_at || "", r.plan_key || "", Number(r.amount || 0), r.bank_reference || "", r.status || ""])]
       .map(row => row.map(cell).join(","));
     const url = URL.createObjectURL(new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" }));
-    const a = document.createElement("a"); a.href = url; a.download = `mikrotik-magic-revenue-${revenueDayKey(now)}.csv`;
+    const a = document.createElement("a"); a.href = url; a.download = `mega-magic-payment-inbox-${revenueDayKey(now)}.csv`;
     document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
   });
 

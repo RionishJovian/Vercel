@@ -392,3 +392,39 @@ Next: voucher revenue reporting, keeping issued value, usage, confirmed sales
 and approved portal payments distinct. No production deployment, production
 voucher creation, physical printer test or router write occurred. Physical
 guest internet acceptance still awaits the owner's unavailable lab router.
+
+## Voucher activation reporting continuation — 2026-10-21
+
+The owner confirmed the lifecycle: printing leaves codes unused; a guest enters
+the purchased code on the portal, and successful activation updates value/counts
+automatically. Do not introduce a separate staff "record sale" step. Report
+**activated voucher value**, with approved portal payments and bank settlement
+kept distinct. First-use reservation already anchors validity and client binding;
+this task does not reset that deadline or allowance on failed attempts/reconnect.
+
+`20261021090000_guest_voucher_activation.sql` adds a nullable, guarded
+`activated_at`. Verified `GuestVoucherRepository.FinalizeTXN` writes it once in
+the same transaction as activation; issuance/reservation and stale finalization
+do not. Legacy active rows are not backfilled. The server preflight now requires
+the column/guard before enabling guest voucher access. Apply the migration
+before a future authorized backend rollout; do not auto-migrate or remove the
+column when reverting the binary.
+
+`GET /api/v1/voucher-report` is authenticated and RLS scoped. It aggregates the
+full explicit guest-grant inventory, activation dates/value in Yangon time and
+per-gateway state/value. Face value, reservations, active grants, missing verified
+timestamps and historical activated value are distinct. Business passes/foreign
+tenants are excluded; no cash receipt is inferred. The UI keeps voucher and
+portal totals independent and exposes source/limited scope in inbox CSV export.
+
+An isolated HEAD export plus only task dependencies, fresh npm ci and private
+loopback PostgreSQL passed: 582 internal Go top-level tests, zero failures,
+20 gated fixture/hardware skips; critical UI 31/31; six-surface audit; actual Go
+server build; Chromium voucher reporting, portal approval/readback and 390px
+layout. The mixed tree passed 34 UI entries. All private clusters stopped.
+Evidence: `/Users/aces/Documents/Codex/2026-10-21/asd/work/voucher-report/`.
+Screenshot: `/Users/aces/Documents/Codex/2026-10-21/asd/outputs/voucher-revenue-preview-20261021.png`.
+
+No production migration/deployment, actual payment/issuance or router write ran.
+Continue with the Internet Hotspot portal flow locally; physical guest access
+remains pending while the owner's router is unavailable. Preserve the mixed tree.
