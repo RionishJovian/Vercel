@@ -363,3 +363,32 @@ Evidence: `/Users/aces/Documents/Codex/2026-10-21/asd/work/gateway-setup/`.
 Continue with guest internet voucher batch issuance/printing. No deployment or
 physical router operation occurred, and physical guest-network acceptance is
 still pending. Preserve unrelated mixed-tree work when staging the next group.
+
+## Guest voucher printing continuation — 2026-10-21
+
+The basic setup fix is committed as `eff1cd4`. The next local slice fixes guest
+voucher batch printing in `web/app.html`. Issuance retains the exact returned
+batch as the default print source, including its response data allowance, and
+keeps it available if the inventory refresh fails. The operator can explicitly
+switch to loaded inventory. Fresh usage/expiry status updates retained IDs;
+older inventory and preview samples do not leak into that batch's printout.
+
+Tiles now print current `price_mmk` values (including free vouchers), the plan
+and known guest time/data limits. Preview and print use matching border boxes,
+fit readable type or omit details with a notice, reserve A4 cut gaps/padding,
+and allow thermal strips to grow for dense rows. A view failure after successful
+issuance cannot offer a replacement submit. This is a temporary page selection,
+not persistent batch history; inventory rows without data allowance do not
+invent it.
+
+Six new DOM regressions passed. Clean HEAD plus only this slice, with fresh npm
+ci, passed 25 critical UI entries; the mixed tree passed 28. Six-surface audit
+and real Chromium synthetic acceptance passed, including 105 returned codes,
+100 + 5 disjoint print selections, price/time/data, A4/thermal fit, and 390px
+layout. Evidence: `/Users/aces/Documents/Codex/2026-10-21/asd/work/voucher-batch/`.
+Screenshot: `/Users/aces/Documents/Codex/2026-10-21/asd/outputs/voucher-batch-preview-20261021.png`.
+
+Next: voucher revenue reporting, keeping issued value, usage, confirmed sales
+and approved portal payments distinct. No production deployment, production
+voucher creation, physical printer test or router write occurred. Physical
+guest internet acceptance still awaits the owner's unavailable lab router.

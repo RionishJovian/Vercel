@@ -105,3 +105,36 @@ Evidence: `/Users/aces/Documents/Codex/2026-10-21/asd/work/gateway-setup/`.
 
 Continue with guest internet voucher batch issuance and printing. Actual guest
 DHCP, DNS, captive login and internet access still require the unavailable router.
+
+## Guest voucher batch printing — 2026-10-21
+
+Issuance now keeps the exact returned batch selected for printing instead of
+discarding it and selecting unrelated inventory. The operator can explicitly
+switch to loaded inventory. Selections remain bounded to 100 codes, with Next
+for larger batches; preview samples never enter print documents. A successful
+issuance remains printable when inventory refresh fails. A view-rendering error
+after issuance reports that codes were created and blocks a duplicate submit.
+
+Printed prices now use the API's `price_mmk`, including zero, with the legacy
+`amount` fallback retained. Tiles include the plan and known guest validity/data
+allowances. New-batch data allowance comes from the issuance response; existing
+inventory without that field does not invent one. Refreshed usage/expiry status
+is applied to retained batch IDs without admitting unrelated codes.
+
+Preview and print share border-box sizing and adaptive type. A4 geometry reserves
+padding and cut gaps; overly dense tiles omit complete detail lines with a
+preview notice, preserving the code. Continuous thermal strips can grow to keep
+codes readable. The latest-batch selection is local to this page, retained when
+saving its print layout; persistent batch history is not implemented here.
+
+Six new DOM tests passed. Isolated source with fresh npm dependencies passed all
+25 critical UI entries; the mixed tree passed 28. Six-surface web audit passed.
+Chromium accepted one synthetic 105-code issuance, disjoint 100 + 5 printed
+selections, correct price/time/data, no samples/older codes in printed documents,
+fitting A4/thermal tiles and a 390px viewport. No physical printer, router or
+production issuance was used. Evidence is under
+`/Users/aces/Documents/Codex/2026-10-21/asd/work/voucher-batch/`.
+
+Next priority is voucher revenue: distinguish issued face value and usage from
+confirmed sales and approved portal payments. Real captive login, internet
+traffic, quotas and reconnection remain pending hardware acceptance.

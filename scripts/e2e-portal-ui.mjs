@@ -7,7 +7,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { extname, join, normalize, resolve } from "node:path";
 
@@ -16,6 +16,7 @@ const webRoot = join(root, "web");
 const chrome = process.env.CHROME_BIN || (process.platform === "darwin"
   ? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
   : "google-chrome");
+const issuedVoucherBatches = [];
 let config = {
   business_name: "Acceptance Coffee",
   welcome_text: "Welcome",
@@ -91,6 +92,17 @@ const server = createServer(async (req, res) => {
     const body=JSON.parse(raw); portalDeployments.push(body);
     if(body.confirmation!=="portal-preview"||body.version!=="1234567890abcdef") return json(400,{error:"preview required"});
     return json(200,{result:{verified:true,backup:"flash/hotspot-original"}});
+  }
+  if (process.env.E2E_VOUCHER_BATCH_ONLY) {
+    if (url.pathname === "/api/v1/guest-vouchers/config") return json(200,{enabled:true});
+    if (url.pathname === "/api/v1/vouchers") return json(200,{vouchers:[{id:'older',code:'OLDER-INVENTORY',plan_key:'business-pass',price_mmk:500,status:'unused'}]});
+    if (url.pathname === "/api/v1/voucher-resellers") return json(200,{resellers:[],count:0,active:0});
+    if (url.pathname === "/api/v1/voucher-print-layout") return json(200,{layout:{business_name:'Acceptance Coffee',wifi_name:'Guest Wi-Fi',show_price:true,show_expiry:true}});
+    if (url.pathname === "/api/v1/guest-vouchers" && req.method === "POST") {
+      let raw='';for await(const chunk of req)raw+=chunk;
+      const body=JSON.parse(raw);issuedVoucherBatches.push(body);
+      return json(201,{product:'guest-internet',data_mb:body.data_mb,validity_starts:'first_use',vouchers:Array.from({length:body.count},(_,i)=>({id:`new-${i}`,code:`BATCH-${i+1}`,plan_key:'guest-internet',plan_label:body.plan_label,price_mmk:body.price_mmk,duration_minutes:body.duration_minutes,device_id:body.device_id,status:'unused'}))});
+    }
   }
   if (url.pathname === "/api/v1/routers/dev-1/quick-config") return json(200, {config:{identity:"lab",dns_servers:["1.1.1.1"],allow_remote_dns:false}});
   if (url.pathname === "/api/v1/routers/dev-1/network/inventory") return json(200,{inventory:{write_enabled:true,wifi_write_enabled:true,interfaces:[{name:'ether1',type:'ether',running:true},{name:'ether2',type:'ether',running:true}],available:{wifi:true,wireless:false,subscribers:true,ppp_profiles:true,dhcp:true,pools:true,pppoe_clients:true},objects:{wifi:[{id:'*1',values:{name:'wifi1','configuration.ssid':'Business','configuration.country':'myanmar',disabled:'no'}}],dhcp_clients:[{id:'*2',values:{interface:'ether1',gateway:'192.0.2.1'}},{id:'*3',values:{interface:'ether2',gateway:'198.51.100.1'}}],ppp_profiles:[{id:'*4',values:{name:'business'}}],pools:[{id:'*5',values:{name:'clients',ranges:'192.168.70.10-192.168.70.200'}}],dhcp:[{id:'*6',values:{name:'customers','address-pool':'clients','lease-time':'1h',disabled:'no'}}]}}});
@@ -274,7 +286,44 @@ try {
   await cdp.send("Page.addScriptToEvaluateOnNewDocument", { source: `localStorage.setItem('mm_token','acceptance-token')` });
   await cdp.send("Page.navigate", { url: `http://127.0.0.1:${port}/app.html#portal` });
   await waitFor(() => cdp.eval("!!document.querySelector('#plan-add')"), "portal editor");
-  if (process.env.E2E_NETWORK_CONTROL_ONLY) {
+  if (process.env.E2E_VOUCHER_BATCH_ONLY) {
+    await cdp.eval("loadView('vouchers',document.querySelector('#main'),ME)");
+    await waitFor(()=>cdp.eval("!!document.querySelector('#guest-voucher-form')"),'guest voucher issuance form');
+    await cdp.eval("document.querySelector('#gv-gateway').value='dev-1';document.querySelector('#gv-label').value='Daily Wi-Fi';document.querySelector('#gv-count').value='105';document.querySelector('#gv-price').value='1500'");
+    await cdp.pointerClick('#gv-create');
+    await waitFor(()=>cdp.eval("document.querySelector('#pl-batch-source')?.value==='issued'"),'new batch selected for printing');
+    assert.equal(issuedVoucherBatches.length,1,'one batch is issued');
+    assert.equal(issuedVoucherBatches[0].device_id,'dev-1');
+    assert.equal(await cdp.eval("document.querySelector('#pl-batch-range').textContent.includes('1–100 of 105')"),true);
+    assert.equal(await cdp.eval("document.querySelector('#pl-stage').textContent.includes('OLDER-INVENTORY')"),false);
+    await cdp.pointerClick('#pl-print');
+    await waitFor(()=>cdp.eval("document.querySelector('iframe[aria-hidden=true]')?.contentDocument?.querySelectorAll('.sheet-code').length===100"),'first selection print document');
+    assert.equal(await cdp.eval("document.querySelector('iframe[aria-hidden=true]').contentDocument.body.textContent.includes('1500 MMK')"),true);
+    assert.equal(await cdp.eval("document.querySelector('iframe[aria-hidden=true]').contentDocument.body.textContent.includes('1440 min from first use · 1024 MB')"),true);
+    assert.equal(await cdp.eval("document.querySelector('iframe[aria-hidden=true]').contentDocument.body.textContent.includes('SAMPLE-')"),false);
+    assert.equal(await cdp.eval("[...document.querySelector('#pl-stage').querySelectorAll('.sheet-code')].every(code=>{const c=code.getBoundingClientRect(),t=code.closest('.sheet-tile').getBoundingClientRect();return c.top>=t.top&&c.bottom<=t.bottom})"),true,'Voucher codes stay visible in the preview');
+    assert.equal(await cdp.eval("[...document.querySelector('#pl-stage').querySelectorAll('.sheet-tile > div')].every(line=>{const r=line.getBoundingClientRect(),t=line.closest('.sheet-tile').getBoundingClientRect();return r.top>=t.top&&r.bottom<=t.bottom})"),true,'Preview branding, price and allowance lines fit inside their cut lines');
+    assert.equal(await cdp.eval("(() => { const doc=document.querySelector('iframe[aria-hidden=true]').contentDocument;return [...doc.querySelectorAll('.sheet-tile > div')].every(line=>{const r=line.getBoundingClientRect(),t=line.closest('.sheet-tile').getBoundingClientRect();return r.top>=t.top&&r.bottom<=t.bottom})})()"),true,'Printed details fit the same border boxes as the preview');
+    assert.equal(await cdp.eval("(() => {const doc=document.querySelector('iframe[aria-hidden=true]').contentDocument;return [...doc.querySelectorAll('.sheet')].every(sheet=>[...sheet.querySelectorAll('.sheet-tile')].every(tile=>tile.getBoundingClientRect().bottom<=sheet.getBoundingClientRect().bottom+0.1))})()"),true,'Grid gaps and padding cannot push the last row past the A4 page');
+    await cdp.pointerClick('#pl-batch-next');
+    assert.equal(await cdp.eval("document.querySelector('#pl-batch-range').textContent.includes('101–105 of 105')"),true);
+    await cdp.pointerClick('#pl-print');
+    await waitFor(()=>cdp.eval("document.querySelectorAll('iframe[aria-hidden=true]')[1]?.contentDocument?.querySelectorAll('.sheet-code').length===5"),'last selection print document');
+    if (process.env.E2E_SCREENSHOT) {
+      await cdp.send('Emulation.setDeviceMetricsOverride',{width:1280,height:960,deviceScaleFactor:1,mobile:false});
+      await cdp.eval("document.querySelector('#pl-a4r').dispatchEvent(new Event('input'))");
+      await cdp.eval("document.querySelector('#pl-batch-source').scrollIntoView({block:'start'})");
+      const shot=await cdp.send('Page.captureScreenshot',{format:'png'});
+      await writeFile(process.env.E2E_SCREENSHOT,Buffer.from(shot.data,'base64'));
+    }
+    await cdp.pointerClick('#pl-mode-thermal');
+    assert.equal(await cdp.eval("[...document.querySelector('#pl-stage').querySelectorAll('.sheet-tile > div')].every(line=>{const r=line.getBoundingClientRect(),t=line.closest('.sheet-tile').getBoundingClientRect();return r.top>=t.top&&r.bottom<=t.bottom})"),true,'Default thermal details fit their tiles');
+    await cdp.eval("document.querySelector('#pl-tr').value='40';document.querySelector('#pl-tr').dispatchEvent(new Event('input'))");
+    assert.equal(await cdp.eval("[...document.querySelector('#pl-stage').querySelectorAll('.sheet-code')].every(code=>{const r=code.getBoundingClientRect(),t=code.closest('.sheet-tile').getBoundingClientRect();return r.top>=t.top&&r.bottom<=t.bottom})"),true,'Dense continuous strips keep readable codes inside their tiles');
+    await cdp.send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:2,mobile:true});
+    assert.equal(await cdp.eval('document.documentElement.scrollWidth<=innerWidth+1'),true,'Voucher batch preview fits mobile');
+    console.log('Voucher batch Chromium acceptance passed: one issuance, exact returned batch, 100 + 5 print selections, price/time/data details, no samples or older codes, and mobile layout.');
+  } else if (process.env.E2E_NETWORK_CONTROL_ONLY) {
     const choose=async view=>{
       await cdp.eval(`loadView(${JSON.stringify(view)},document.querySelector('#main'),ME)`);
       await waitFor(()=>cdp.eval("!!document.querySelector('[data-router]')"),'network device selector');
