@@ -4105,21 +4105,23 @@ async function renderTeam(main) {
     <tr>
       <td><span class="num">${esc(u.full_name)}</span></td>
       <td class="mono">${esc(u.email)}</td>
-      <td><select class="input" data-role="${esc(u.user_id)}" style="width:auto;padding:3px 6px">${roleOpts(u.user_role)}</select></td>
+      <td>${TEAM_ROLES.includes(u.user_role) ? `<select class="input" data-role="${esc(u.user_id)}" style="width:auto;padding:3px 6px">${roleOpts(u.user_role)}</select>` : `<span class="mono">${esc(u.user_role)}</span>`}</td>
       <td>${u.is_active ? `<span class="status ok">Active</span>` : `<span class="status unknown">Disabled</span>`}</td>
-      <td><button class="btn btn-sm" data-save="${esc(u.user_id)}">Save</button>
-          <button class="btn btn-sm" data-disable="${esc(u.user_id)}"${u.is_active ? "" : " disabled"}>Disable</button></td>
+      <td>${TEAM_ROLES.includes(u.user_role) ? `<button class="btn btn-sm" data-save="${esc(u.user_id)}">Save</button>
+          <button class="btn btn-sm" data-disable="${esc(u.user_id)}"${u.is_active ? "" : " disabled"}>Disable</button>` : '<span class="muted small">Platform-managed account</span>'}</td>
     </tr>`).join("");
 
   content.innerHTML = `
     <div class="panel"><div class="panel-head"><h2 class="panel-title">Team</h2></div>
-      <div class="panel-body">${team.length ? `<table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody></table>` : `<div class="empty"><div class="empty-title">No team members</div>Add a staff user below.</div>`}</div></div>
+      <div class="panel-body">
+        <div class="notice" style="margin-bottom:16px">User roles (OWNER, ADMIN, VIEWER) control what each person can do inside this business. They are separate from the business access tier (capacity and pricing), which only a platform DEVELOPER can change.</div>
+        ${team.length ? `<table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody></table>` : `<div class="empty"><div class="empty-title">No team members</div>Add a staff user below.</div>`}</div></div>
     <div class="panel" style="margin-top:14px"><div class="panel-head"><h2 class="panel-title">Add team member</h2></div>
       <div class="panel-body">
         <div class="field"><label>Full name</label><input class="input" id="tm-name"></div>
         <div class="field"><label>Email</label><input class="input" id="tm-email" type="email"></div>
         <div class="field"><label>Password (8+ chars)</label><input class="input" id="tm-pass" type="password"></div>
-        <div class="field"><label>Role</label><select class="input" id="tm-role">${roleOpts("OPERATOR")}</select></div>
+        <div class="field"><label>Role</label><select class="input" id="tm-role">${roleOpts("ADMIN")}</select></div>
         <button class="btn btn-primary" id="tm-add">Add member</button>
         <span id="tm-msg" class="muted small"></span>
       </div></div>`;
@@ -4292,7 +4294,14 @@ function platformCreateForm() {
       <div class="field"><label>Company name *</label><input class="input" id="pt-company"></div>
       <div class="field"><label>Owner email *</label><input class="input" id="pt-email" type="email"></div>
       <div class="field"><label>Owner password * (8+ chars)</label><input class="input" id="pt-pass" type="password"></div>
-      <div class="field"><label>Access tier</label><select class="input" id="pt-tier"><option>SMALL_WISP</option><option>ENTERPRISE_ISP</option><option>GLOBAL_ADMIN</option></select></div>
+      <div class="field"><label>Access tier</label>
+        <select class="input" id="pt-tier">
+          <option value="SMALL_WISP">Small WISP</option>
+          <option value="ENTERPRISE_ISP">Enterprise ISP</option>
+          <option value="GLOBAL_ADMIN">Global admin</option>
+        </select>
+        <p class="muted small">Access tier determines the business's capacity limits and pricing plan. This is separate from user roles which control individual permissions within the business.</p>
+      </div>
       <div class="field"><label>Device quota limit (optional)</label><input class="input" id="pt-quota" inputmode="numeric"></div>
       <button class="btn btn-primary" id="pt-create">Create tenant</button>
       <span id="pt-msg" class="muted small"></span>
@@ -4389,7 +4398,7 @@ async function wirePlatformAdmin(content, main) {
       const s = await MM.get(`/platform/businesses/${encodeURIComponent(id)}/state`);
       alert([
         "Company: " + s.company_name,
-        "Tier: " + s.access_tier,
+        "Access Tier: " + s.access_tier + " (determines capacity limits and pricing)",
         "Active: " + s.is_active,
         "Owner: " + s.owner_email,
         "Devices: " + s.device_count + " / " + s.device_quota_limit,
@@ -4403,6 +4412,15 @@ async function wirePlatformAdmin(content, main) {
 
 function platformBusinessTable(bizs, selfBusinessID) {
   if (!bizs.length) return `<div class="empty"><div class="empty-title">No businesses</div>No tenants are registered yet.</div>`;
+
+  // Add a header explaining the difference
+  const header = `
+    <div class="notice" style="margin-bottom: 16px;">
+      <strong>Note:</strong> Access tiers (SMALL_WISP, ENTERPRISE_ISP, GLOBAL_ADMIN) determine
+      business capacity limits and pricing. User roles (OWNER, ADMIN, VIEWER) are managed
+      separately in each business's Team settings.
+    </div>`;
+
   const rows = bizs.map(b => {
     const isSelf = selfBusinessID && b.business_id === selfBusinessID;
     const suspBtn = isSelf
@@ -4421,8 +4439,12 @@ function platformBusinessTable(bizs, selfBusinessID) {
         <button class="btn btn-sm" data-resetpw="${esc(b.business_id)}">Reset pw</button>
         <button class="btn btn-sm" data-state="${esc(b.business_id)}">View state</button>
       </td>
-    </tr>`; }).join("");
-  return `<table><thead><tr><th>Company</th><th>Owner</th><th>Tier</th><th>Device limit</th><th>Status</th><th>Created</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+    </tr>`;
+  }).join("");
+
+  const table = `<table><thead><tr><th>Company</th><th>Owner</th><th>Access Tier</th><th>Device limit</th><th>Status</th><th>Created</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+
+  return header + table;
 }
 
 function platformIncidentTable(list, bizs) {
@@ -4479,6 +4501,11 @@ async function renderProfile(main) {
           ${profile.has_avatar ? `<button class="btn btn-sm" data-remove-profile-asset="avatar" type="button">Remove</button>` : ""}</div>
       </div>
     </section>
+    <div class="notice" style="margin-bottom: 16px; margin-top: 16px;">
+      <strong>Note:</strong> Your user role (${esc(profile.user_role)}) controls your permissions within this business.
+      The business's access tier determines capacity limits and pricing, and can only be viewed/changed
+      in the Platform console by DEVELOPER users.
+    </div>
     <div class="profile-grid">
       <section class="panel"><div class="panel-head"><div><h2 class="panel-title">Personal details</h2><p class="muted small">Shown to your team inside this business.</p></div></div><form class="panel-body form-grid" id="profile-form">
         <div class="field"><label for="profile-name">Display name</label><input class="input" id="profile-name" maxlength="255" value="${esc(profile.full_name)}" required></div>
