@@ -60,3 +60,24 @@ Next: follow this priority order for remaining local app work, preserving the
 mixed uncommitted revamp. Resume physical connection and end-to-end acceptance
 when the router is available; this document does not authorize production or
 router mutations.
+
+## Quick Config recovery — 2026-10-21
+
+Fixed two reproduced recovery failures in the identity/DNS applier. Recovery no
+longer inherits cancellation or an expired deadline from the original request;
+it retains context values with its own 30-second limit. The app reports settings
+as restored only after reading back and matching the previous identity/DNS
+values. Failed recovery preserves the original error and reports the rollback
+failure rather than claiming restoration. This restores targeted settings, not
+the complete router configuration or every firewall rule.
+
+New tests reproduced failures before the fix, then passed. An isolated export
+of committed source plus the two changed Go files passed the entire RouterOS
+package with race detection: 119 top-level passes, zero failures and eight
+explicit lab/live/hardware skips. The actual Go server build passed. Evidence:
+`/Users/aces/Documents/Codex/2026-10-21/asd/work/quick-config-recovery/`.
+
+Next local check: saved-router reuse and the basic LAN/DHCP/Hotspot setup flow,
+then voucher batch issuance/printing. This recovery fix does not establish that
+all basic configuration or guest internet functions are complete. The physical
+router remains unavailable; no deployment or router write was performed.

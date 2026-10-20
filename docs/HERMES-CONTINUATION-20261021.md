@@ -321,3 +321,25 @@ no recent/observed handshake. The owner confirmed the hardware is currently
 unavailable. No site assignment, peer, physical router, production database or
 deployment was changed. Physical connection, RouterOS version and guest internet
 acceptance remain unverified. Continue local work in the newly recorded order.
+
+## Quick Config recovery continuation — 2026-10-21
+
+The next priority exposed a cancellation/rollback defect in
+`internal/provisioner/routeros/quick_config.go`. A partial write followed by
+request cancellation previously attempted recovery with the cancelled context.
+The verification-mismatch error also claimed restoration when rollback failed,
+and command success alone was treated as restored without readback.
+
+Recovery now uses an independent 30-second context retaining request values,
+reads back the prior identity/DNS values and marks `rolled_back` only after a
+match. Both the original failure and any rollback failure remain in the error.
+The new regression tests failed before the fix and passed after it. Clean-source
+verification (HEAD export plus the two task-owned Go files) passed 119 RouterOS
+top-level tests with race detection, zero failures and eight gated hardware/lab
+skips; the Go server compiled. Evidence is under
+`/Users/aces/Documents/Codex/2026-10-21/asd/work/quick-config-recovery/`.
+
+No production deployment or router operation occurred. Preserve the mixed tree.
+Continue with saved-router reuse and basic LAN/DHCP/Hotspot setup, followed by
+guest internet voucher batches. Hardware acceptance remains pending while the
+owner's lab router is unavailable.

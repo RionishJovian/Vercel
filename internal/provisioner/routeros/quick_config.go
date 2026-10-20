@@ -191,25 +191,38 @@ func (a *DeviceApplier) ApplyQuickConfig(ctx context.Context, businessID, peerID
 		return QuickConfigResult{}, fmt.Errorf("quick config binary backup: %w", err)
 	}
 	result := QuickConfigResult{DeviceID: peerID, Backup: name, Before: before}
-	rollback := func() {
-		if rollbackErr := applyQuickConfigCommands(ctx, runner, before); rollbackErr == nil {
-			result.RolledBack = true
+	rollback := func(cause error) error {
+		// The browser can disconnect or the request can expire after a partial
+		// write. Give recovery its own bounded lifetime, retaining context values.
+		recoveryCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+		defer cancel()
+		if err := applyQuickConfigCommands(recoveryCtx, runner, before); err != nil {
+			return fmt.Errorf("%w; rollback failed: %w", cause, err)
 		}
+		restored, err := quickConfigFromRunner(recoveryCtx, runner)
+		if err != nil {
+			return fmt.Errorf("%w; rollback readback failed: %w", cause, err)
+		}
+		if !quickConfigEqual(before, restored) {
+			return fmt.Errorf("%w; rollback verification mismatch", cause)
+		}
+		result.RolledBack = true
+		return fmt.Errorf("%w; previous settings restored", cause)
 	}
 	if err := applyQuickConfigCommands(ctx, runner, want); err != nil {
-		rollback()
+		err = rollback(err)
 		return result, err
 	}
 	after, err := quickConfigFromRunner(ctx, runner)
 	if err != nil {
-		rollback()
-		return result, fmt.Errorf("verify quick config: %w", err)
+		err = rollback(fmt.Errorf("verify quick config: %w", err))
+		return result, err
 	}
 	result.After = after
 	result.Verified = quickConfigEqual(want, after)
 	if !result.Verified {
-		rollback()
-		return result, fmt.Errorf("quick config verification mismatch; previous settings restored")
+		err = rollback(fmt.Errorf("quick config verification mismatch"))
+		return result, err
 	}
 	return result, nil
 }
