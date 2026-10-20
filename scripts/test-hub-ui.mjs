@@ -10,7 +10,7 @@ const context=vm.createContext({encodeURIComponent,Date,Map,Number,String,
 vm.runInContext(source.slice(start,end),context);
 const gateway={device_id:'gateway/a',hardware_name:'Gateway',deployment_layer:'MAIN_GATEWAY'};
 assert(context.routerBoardPanel([gateway],{}).includes('data-hub-check='));
-for (const step of ['1. Prepare this gateway','2. Connect to Magic Hub','3. Verify the tunnel','4. Authenticate router management']) assert(context.routerBoardPanel([gateway],{}).includes(step));
+for (const step of ['1. Connect with one paste','2. Finish connection']) assert(context.routerBoardPanel([gateway],{}).includes(step));
 assert(!context.routerBoardPanel([{...gateway,deployment_layer:'ACCESS_POINT'}],{}).includes('data-hub-check='));
 context.ME.user.user_role='VIEWER';
 assert(!context.routerBoardPanel([gateway],{}).includes('data-hub-check='));

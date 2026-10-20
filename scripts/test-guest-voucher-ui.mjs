@@ -17,7 +17,8 @@ nodes['guest-voucher-form']=form;nodes['gv-create']=button;nodes['gv-message']={
 for(const [id,value] of Object.entries(values))nodes[id]={value};
 const context=vm.createContext({
   ME:{user:{user_role:'OWNER'}},SITE_EDITOR_ROLES:['OWNER','ADMIN','DEVELOPER'],
-  asArray:x=>Array.isArray(x)?x:[],esc:x=>String(x??''),badge:x=>x,ts:x=>String(x),
+  asArray:x=>Array.isArray(x)?x:[],esc:x=>String(x??''),badge:x=>x,businessStatusBadge:x=>x,
+  guestVoucherCapabilityMessage:()=>"Guest voucher creation unavailable",ts:x=>String(x),
   wirePrintPreview:()=>{},document:{getElementById:id=>content.innerHTML.includes(`id="${id}"`)?nodes[id]??null:null,querySelectorAll:()=>[]},
   MM:{get:async path=>{getCalls.push(path);if(path==='/guest-vouchers/config')return {enabled};if(path==='/routers')return {routers:[{device_id:'gateway',hardware_name:'CCR',deployment_layer:'MAIN_GATEWAY'},{device_id:'ap',hardware_name:'Access point',deployment_layer:'ACCESS_POINT'}]};if(path==='/vouchers')return {vouchers:[{code:'CODE',price_mmk:1500}]};return {};},post:async(_,body)=>{postCount++;lastBody=body;await new Promise(r=>release=r);}},
 });
