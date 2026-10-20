@@ -191,6 +191,8 @@ CREATE TABLE portal_configs (
     bank_account text,
     bank_holder text,
     mmqr_url text,                -- owner's MMQR payment QR image (Myanmar QR)
+    media_host text,
+    media_port text NOT NULL DEFAULT '8096',
     -- Guest wifi (Option C): the free online-payment window (minutes) and the
     -- data plans the owner sets on the portal (JSON: [{key,label,minutes,amount}]).
     guest_grace_minutes integer NOT NULL DEFAULT 10,
@@ -200,6 +202,20 @@ CREATE TABLE portal_configs (
     mobile_payment_enabled boolean NOT NULL DEFAULT true,
     CONSTRAINT portal_configs_access_method_check
         CHECK (voucher_login_enabled OR mobile_payment_enabled),
+    CONSTRAINT portal_configs_media_port_check
+        CHECK (media_port ~ '^[0-9]{1,5}$' AND media_port::integer BETWEEN 1 AND 65535),
+    CONSTRAINT portal_configs_media_host_check
+        CHECK (media_host IS NULL OR (
+            media_host ~ '^([0-9]{1,3}\.){3}[0-9]{1,3}$'
+            AND split_part(media_host, '.', 1)::integer BETWEEN 1 AND 255
+            AND split_part(media_host, '.', 2)::integer BETWEEN 0 AND 255
+            AND split_part(media_host, '.', 3)::integer BETWEEN 0 AND 255
+            AND split_part(media_host, '.', 4)::integer BETWEEN 1 AND 254
+            AND split_part(media_host, '.', 1)::integer < 224
+            AND (split_part(media_host, '.', 1)::integer = 10
+                OR (split_part(media_host, '.', 1)::integer = 192 AND split_part(media_host, '.', 2)::integer = 168)
+                OR (split_part(media_host, '.', 1)::integer = 172 AND split_part(media_host, '.', 2)::integer BETWEEN 16 AND 31))
+        )),
     updated_at timestamptz NOT NULL DEFAULT now()
 );
 
