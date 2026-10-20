@@ -284,3 +284,40 @@ discovery labels, Hub capability/enrollment, guest sessions, backups UI,
 navigation/layout and domain/deployment restoration work; inspect dependencies
 before choosing a group. Publishing, production migrations, deployments and
 customer-router actions remain outside this local task's scope.
+
+## 2026-10-21 owner priority: router-to-guest internet workflow
+
+Read `docs/INTERNET-ACCESS-PRIORITIES.md` before selecting the next task. The
+owner prioritized router add/connection, quick/basic configuration, guest
+voucher batches, voucher revenue, then Internet Hotspot captive-portal access.
+
+`0747795` fixes a reproduced one-paste enrollment retry failure. Keys are kept
+only in a synchronized, bounded, tenant/device-scoped 30-minute memory cache
+before calling Hub. Retries recover the matching one-paste script after uncertain
+Hub responses or management-preparation errors. Existing tunnels are never
+silently rekeyed. Expiry/restart still requires explicit recovery. Hub responses
+with a foreign business/router identity are rejected before management preparation.
+
+The regression tests failed before the fix (lost artifact / replacement key),
+then passed with race detection. They cover failures before/after Hub reservation,
+management preparation failure, concurrent retries, key/public-key correspondence,
+tenant separation, foreign identities, expiry and bounded memory.
+
+A clean export of `0747795` with fresh npm dependencies passed:
+
+- Focused router/Hub race tests: 10 top-level + 10 nested passes, no skips.
+- Internal Go suite on disposable PostgreSQL: 576 top-level + 448 nested passes,
+  zero failures, 20 skips. Separate credential/pricing tests 4/4, media bridge
+  11/11 and SCRAM-authenticated portal/role tests 5/5 passed. The remaining eight
+  skips require router lab/live/hardware conditions.
+- Critical UI 10/10, six-surface web audit, prototype and Go server builds,
+  whitespace checks. Existing unrelated dirty content hashes were preserved.
+
+Evidence: `/Users/aces/Documents/Codex/2026-10-21/asd/work/router-priority-0747795/`.
+
+The existing signed-in nish@magic app account contains `hAP ax2 lab`, assigned to
+its lab site at tunnel address 10.77.0.8. A read-only current Hub check reported
+no recent/observed handshake. The owner confirmed the hardware is currently
+unavailable. No site assignment, peer, physical router, production database or
+deployment was changed. Physical connection, RouterOS version and guest internet
+acceptance remain unverified. Continue local work in the newly recorded order.
