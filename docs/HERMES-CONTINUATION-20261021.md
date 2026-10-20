@@ -164,3 +164,67 @@ which must include the init.sql portal-media columns and the db.go DSN
 quoting fix so the three pre-existing failures reconcile. No push, PR,
 merge, production migration, deployment or customer-router action is
 authorized by this local session.
+
+## 2026-10-21 continuation: portal-media baseline fix
+
+Commit `0748ecd` resolves the three database-enabled failures Codex
+reproduced at a3b2e87/03d5aa4 (`TestDB_PortalDevice_isolation`,
+`TestDB_PortalDeviceAnchored_isolation`,
+`TestGuestWifi_approveGrantsExtensionOnce`).
+
+Root cause: the committed PortalConfigRepository/portal handlers already
+read/write `portal_configs.media_host`/`media_port`, and the tracked
+`migrations/20261004130000_portal_media_server.sql` already upgrades
+existing databases — but the fresh `database/init.sql` baseline never
+received the columns. The migration half existed; only the fresh-schema
+half was missing, so no new migration was needed.
+
+- init.sql: the two media columns and their CHECK constraints, byte-
+  identical to the migration's contract (private IPv4 only, numeric port
+  1-65535, default 8096). Only this hunk is committed; the uncommitted
+  device_discovery_labels hunk stays with the revamp work.
+- New `portal_media_migration_integration_test.go`: an existing-schema
+  upgrade fixture (pre-media baseline rebuilt from init.sql, seeded
+  portal settings, tracked migration applied) proving defaults land,
+  every pre-existing setting is preserved, the CHECKs match, the
+  migration is idempotent and the real repository round-trips media
+  values; plus a fresh-schema fixture carrying the same guards.
+
+Clean-source verification (fresh `npm ci` export of `0748ecd`, disposable
+PostgreSQL 17.11; production databases never contacted):
+
+- `go test -count=1 ./internal/...` with the MM_TEST_DB_URL harness:
+  569 PASS / 0 FAIL / 20 SKIP. The three target tests, the role-prune
+  and legacy-import regressions and tenant isolation all PASS.
+- The 20 skips were then resolved or explained: the 4 MM_TEST_DSN tests
+  (device-credential source, pricing promo shape, migrated-promo guard)
+  PASS 4/4 against a correctly initialized disposable fixture (schema +
+  seeded pricing_promo + unconfigured device); all 11
+  internal/media/bridge tests (including the 8 Postgres ones) PASS with
+  MM_MEDIA_TEST_DSN pointing at a disposable loopback `mm_media_test`
+  database (the URL needs `?sslmode=disable` — lib/pq defaults to SSL).
+  The remaining 8 skips are the router lab/live/hardware suites that
+  require a physical disposable router; no disposable database can run
+  them.
+- `test:critical-ui` 10/10; `audit-web-ui` pass; `npm run build` produced
+  dist/client/index.html, dist/server/index.js, dist/.openai/hosting.json;
+  `go build ./cmd/server` OK; `git diff --check` clean.
+- Working tree equivalents: Go 582 PASS / 0 FAIL / 17 SKIP (the 3 target
+  tests included), `test:critical-ui` 13/13, audit pass, build OK.
+
+db.go DSN quoting: inspected per the task. It does NOT block these
+fixtures (they use passworded URLs; only passwordless URLs misparse), so
+per instruction it is documented rather than fixed here: the committed
+`database.New` builds an unquoted keyword DSN, an empty password makes
+lib/pq drop the dbname, and the harness then silently skips. The
+uncommitted `quoteConnectionValue` fix plus its
+`connection_integration_test.go` (gated on MM_TEST_TRUST_AUTH) remain in
+the working tree for the revamp commits.
+
+Next resume point: review `0748ecd`; the committed tree is now green
+against disposable fixtures with only live-router suites skipped. The
+remaining work is the workflow-revamp commits (84 uncommitted entries,
+including the db.go DSN fix, init.sql device_discovery_labels hunk, hub
+capability, guest sessions, backups UI and the domain migration). No
+push, PR, merge, production migration, deployment or customer-router
+action is authorized by this local session.
