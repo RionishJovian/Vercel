@@ -6,7 +6,7 @@ import {mkdtemp,readFile,rm,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join,resolve,extname} from 'node:path';
 const root=resolve(import.meta.dirname,'../web'),id='a'.repeat(64);
-let publication=null,fail=false,writes=0,publicCookies=0;
+let publication=null,fail=false,writes=0,publicCookies=0,unpublishes=0;
 let sales=false,guestToken='',checkouts=0,receiptUploads=0;
 const pass={id:'b'.repeat(64),amount:2500,currency:'MMK',duration_seconds:86400,state:'pending',payment_deadline:new Date(Date.now()+1800000).toISOString(),payment:{bank_name:'QA Bank',bank_account:'123456',bank_holder:'QA Owner',mmqr:''}};
 const server=createServer(async(req,res)=>{
@@ -16,7 +16,7 @@ const server=createServer(async(req,res)=>{
   if(req.method==='GET')return json(200,{publication});
   if(fail){fail=false;return json(409,{error:'Another operator changed this publication. Reload before publishing.'});}
   assert.equal(Number(u.searchParams.get('revision')),publication?.revision||0);
-  if(req.method==='DELETE'){publication=null;res.writeHead(204);return res.end();}
+  if(req.method==='DELETE'){unpublishes++;publication=null;res.writeHead(204);return res.end();}
   let raw='';for await(const c of req)raw+=c;writes++;
   publication={design:JSON.parse(raw),revision:(publication?.revision||0)+1,public_id:id,published_at:new Date().toISOString()};return json(200,{publication});
  }
@@ -31,9 +31,13 @@ const server=createServer(async(req,res)=>{
   assert.equal(req.headers.authorization,guestToken);assert.match(req.headers['content-type'],/^multipart\/form-data;/);let raw='';for await(const c of req)raw+=c;assert.ok(raw.includes('name="receipt"'));receiptUploads++;return json(200,{receipt_submitted:true,owner_notified:false,state:'pending'});
  }
  if(u.pathname==='/harness'){
-  res.writeHead(200,{'Content-Type':'text/html'});return res.end(`<main id="content"></main><script type="module">
+  // Supply synchronous confirmation answers in this synthetic editor. This
+  // avoids Chrome's headless dialog auto-dismiss race while letting the test
+  // assert the message and both Cancel and Confirm behavior. Real dialogs on
+  // any page remain unexpected errors.
+  res.writeHead(200,{'Content-Type':'text/html'});return res.end(`<main id="content"></main><script>window.__mmConfirms=[];window.__mmConfirmResult=true;window.__mmDeleteRequests=0;window.confirm=m=>{window.__mmConfirms.push(String(m));return window.__mmConfirmResult;};</script><script type="module">
    import {mountAppearance} from '/assets/js/media-appearance.js';
-   const req=async(method,path,body)=>{const r=await fetch('/api/v1'+path,{method,headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});const d=r.status===204?null:await r.json();if(!r.ok)throw new Error(d.error);return d;};
+   const req=async(method,path,body)=>{if(method==='DELETE')window.__mmDeleteRequests++;const r=await fetch('/api/v1'+path,{method,headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});const d=r.status===204?null:await r.json();if(!r.ok)throw new Error(d.error);return d;};
    mountAppearance(document.querySelector('main'),{business_id:'business',company_name:'QA cinema'},{email:'qa@test'},{get:p=>req('GET',p),put:(p,b)=>req('PUT',p,b),del:p=>req('DELETE',p)});
   </script>`);
  }
@@ -49,7 +53,7 @@ try{
  const tab=await fetch(`http://127.0.0.1:${debugPort}/json/new?about:blank`,{method:'PUT'}).then(r=>r.json());ws=new WebSocket(tab.webSocketDebuggerUrl);
  await new Promise((ok,bad)=>{ws.addEventListener('open',ok,{once:true});ws.addEventListener('error',bad,{once:true});});
  let serial=0;const pending=new Map(),errors=[];
- ws.addEventListener('message',event=>{const m=JSON.parse(event.data);if(m.method==='Runtime.exceptionThrown')errors.push(m.params.exceptionDetails.text);if(m.method==='Log.entryAdded'&&m.params.entry.source==='security')errors.push(m.params.entry.text);if(m.method==='Page.javascriptDialogOpening')send('Page.handleJavaScriptDialog',{accept:true});if(m.id){const p=pending.get(m.id);pending.delete(m.id);m.error?p.reject(new Error(m.error.message)):p.resolve(m.result);}});
+ ws.addEventListener('message',event=>{const m=JSON.parse(event.data);if(m.method==='Runtime.exceptionThrown')errors.push(m.params.exceptionDetails.text);if(m.method==='Log.entryAdded'&&m.params.entry.source==='security')errors.push(m.params.entry.text);if(m.method==='Page.javascriptDialogOpening'){errors.push('unexpected JavaScript dialog: '+(m.params&&m.params.message||''));send('Page.handleJavaScriptDialog',{accept:true}).catch(e=>errors.push('dialog handler failed: '+e.message));}if(m.id){const p=pending.get(m.id);pending.delete(m.id);m.error?p.reject(new Error(m.error.message)):p.resolve(m.result);}});
  function send(method,params={}){const n=++serial;return new Promise((resolve,reject)=>{pending.set(n,{resolve,reject});ws.send(JSON.stringify({id:n,method,params}));});}
  const evaluate=async expression=>{const r=await send('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});if(r.exceptionDetails)throw new Error(r.exceptionDetails.text);return r.result.value;};
  await send('Page.enable');await send('Runtime.enable');await send('Log.enable');
@@ -78,10 +82,23 @@ try{
  assert.equal(checkouts,1,'reload does not create another order');assert.equal(publicCookies,0,'checkout and upload omit staff cookies');
  const shot=await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});await writeFile('/private/tmp/mm-media-checkout-synthetic.png',Buffer.from(shot.data,'base64'));
  await navigate('/harness');await wait(()=>evaluate(`!!document.querySelector('[data-media-unpublish]')&&!document.querySelector('[data-media-unpublish]').disabled`),'unpublish ready');
+ const cancelled=await evaluate(`window.__mmConfirmResult=false;document.querySelector('[data-media-unpublish]').click();({confirms:window.__mmConfirms,deleteRequests:window.__mmDeleteRequests,disabled:document.querySelector('[data-media-unpublish]').disabled})`);
+ assert.equal(cancelled.confirms.length,1,'Cancel consults exactly one confirm');
+ assert.ok(cancelled.confirms[0].includes('Remove the hosted guest page'),'unpublish confirm message');
+ assert.equal(cancelled.deleteRequests,0,'Cancel does not request unpublish');
+ assert.equal(cancelled.disabled,false,'Cancel leaves the action available');
+ assert.equal(unpublishes,0,'Cancel preserves the publication on the server');
+ assert.ok(publication,'Cancel preserves the hosted guest page');
+ await evaluate('window.__mmConfirmResult=true');
  await evaluate(`document.querySelector('[data-media-unpublish]').click()`);await wait(()=>evaluate(`document.querySelector('#media-design-status').textContent.includes('unpublished')`),'unpublished');
+ const confirms=await evaluate('window.__mmConfirms');
+ assert.equal(confirms.length,2,'each attempt consults exactly one confirm');
+ assert.equal(confirms[1],confirms[0],'Confirm presents the same warning as Cancel');
+ assert.equal(await evaluate('window.__mmDeleteRequests'),1,'Confirm requests unpublish once');
+ assert.equal(unpublishes,1,'Confirm unpublishes once on the server');
  await navigate('/media.html?id='+id);await wait(()=>evaluate(`document.querySelector('#media-guest-status')?.textContent.includes('unpublished')`),'withdrawn link unavailable');
- assert.deepEqual(errors,[]);console.log('Media publishing/receipt browser checks passed: bank details, publish/reload/conflict, guest checkout/upload/approval/reload, delivery failure, cookie isolation, CSP, unpublish.');
+ assert.deepEqual(errors,[]);console.log('Media publishing/receipt browser checks passed: bank details, publish/reload/conflict, guest checkout/upload/approval/reload, delivery failure, cookie isolation, CSP, unpublish Cancel/Confirm.');
 }finally{
- ws?.close();if(browser&&browser.exitCode===null){const ended=new Promise(r=>browser.once('exit',r));browser.kill('SIGTERM');await ended;}
+ ws?.close();if(browser&&browser.exitCode===null){const ended=new Promise(r=>browser.once('exit',r));browser.kill('SIGTERM');const escalate=setTimeout(()=>browser.kill('SIGKILL'),2000);await ended;clearTimeout(escalate);}
  await new Promise(r=>server.close(r));if(profile)await rm(profile,{recursive:true,force:true});
 }
