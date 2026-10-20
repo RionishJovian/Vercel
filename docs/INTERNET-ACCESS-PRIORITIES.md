@@ -81,3 +81,27 @@ Next local check: saved-router reuse and the basic LAN/DHCP/Hotspot setup flow,
 then voucher batch issuance/printing. This recovery fix does not establish that
 all basic configuration or guest internet functions are complete. The physical
 router remains unavailable; no deployment or router write was performed.
+
+## Basic setup context and apply controls — 2026-10-21
+
+Initial LAN/DHCP/Hotspot setup now restores only an authorized saved gateway or
+automatically reads the single registered gateway. A manual selection is shared
+with the other network pages; unavailable browser storage does not block reads.
+This initial setup no longer depends on the unfinished navigation module.
+
+Applying locks the gateway selector and form fields, consumes the reviewed
+request once, prevents duplicate preview/apply requests and requires literal
+`verified: true` before reporting success. Changing inputs or selections
+invalidates review; stale inventory cannot replace the current gateway form.
+Failure unlocks the controls and requires a new review before retrying. Physical
+WAN/LAN roles remain explicit, and opening the page performs reads only.
+
+Nine new DOM regressions passed. Isolated source with fresh npm dependencies
+passed all 19 critical UI test entries; the mixed working tree passed 22,
+including its existing uncommitted workflow tests. Real Chromium acceptance
+passed navigation, suggestions, explicit ports, preview invalidation, synthetic
+verified apply and 390px layout. These use synthetic APIs, not a physical router.
+Evidence: `/Users/aces/Documents/Codex/2026-10-21/asd/work/gateway-setup/`.
+
+Continue with guest internet voucher batch issuance and printing. Actual guest
+DHCP, DNS, captive login and internet access still require the unavailable router.

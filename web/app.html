@@ -1692,25 +1692,35 @@ async function renderNetworkSetup(main) {
   if (!content.isConnected) return;
   const routers = (Array.isArray(data.routers) ? data.routers : asArray(data)).filter(r => r.deployment_layer === "MAIN_GATEWAY");
   const canEdit = SITE_EDITOR_ROLES.includes(ME?.user?.user_role);
-  content.innerHTML = `<section class="panel network-workspace"><header><p class="network-eyebrow">CUSTOMER LAN AND HOTSPOT</p><p>Choose a gateway to start. We suggest addresses from its live inventory; you choose the internet and customer-facing ports. Existing networks are managed separately under LAN and Hotspot.</p></header><ol class="network-steps" aria-label="Setup workflow"><li>1 · Choose gateway</li><li>2 · Configure network</li><li>3 · Review and apply</li></ol>
-    <label>Gateway<select class="input" id="network-router"><option value="">Choose a gateway</option>${routers.map(r=>`<option value="${esc(r.device_id)}">${esc(r.hardware_name)}</option>`).join("")}</select></label>
+  content.innerHTML = `<section class="panel network-workspace"><header><p class="network-eyebrow">CUSTOMER LAN AND HOTSPOT</p><p>Your saved Magic Hub connection is reused. Create a customer network only when needed; opening this page does not reconfigure your gateway.</p></header>
+    <label>Working gateway<select class="input" id="network-router"><option value="">Select a gateway for this change</option>${routers.map(r=>`<option value="${esc(r.device_id)}">${esc(r.hardware_name)}</option>`).join("")}</select></label>
     <div id="network-editor" aria-live="polite">${routers.length ? "Opening this page changes nothing on the router." : 'Connect a gateway from <a href="#gateways">Gateways</a> first.'}</div></section>`;
   const editor = content.querySelector("#network-editor"), select = content.querySelector("#network-router");
   let revision = 0;
-  select.addEventListener("change", async () => {
+  const loadGateway = async () => {
+    if (select.disabled) return;
     const request = ++revision, router = routers.find(r=>r.device_id === select.value);
+    try {
+      if (router) sessionStorage.setItem("mm_selected_router", router.device_id);
+      else sessionStorage.removeItem("mm_selected_router");
+    } catch (_) { /* Storage is optional; router access still uses the saved connection. */ }
     editor.textContent = router ? "Reading router interfaces and checking addresses and routes…" : "Choose a gateway to continue.";
     if (!router) return;
     try {
       const endpoint = `/routers/${encodeURIComponent(router.device_id)}/gateway/`;
       const [inventory, suggested] = await Promise.all([MM.get(endpoint+"interfaces"), MM.get(endpoint+"defaults")]);
-      if (!content.isConnected || revision !== request) return;
+      if (!editor.isConnected || revision !== request) return;
       editor.innerHTML = canEdit ? gatewaySetupForm(asArray(inventory.interfaces), suggested.defaults) : "An owner or administrator must apply network changes.";
-      if (canEdit) wireGatewaySetup(editor, router);
+      if (canEdit) wireGatewaySetup(editor, router, select);
     } catch (e) {
-      if (content.isConnected && revision === request) editor.textContent = `Could not read this gateway's network safely. Check its Magic Hub connection and retry by selecting the gateway again. No settings were applied. ${(e.data && e.data.error) || e.message}`;
+      if (editor.isConnected && revision === request) editor.textContent = `Could not read this gateway's network safely. Check its Magic Hub connection and retry by selecting the gateway again. No settings were applied. ${(e.data && e.data.error) || e.message}`;
     }
-  });
+  };
+  select.addEventListener("change", loadGateway);
+  let saved = "";
+  try { saved = sessionStorage.getItem("mm_selected_router") || ""; } catch (_) {}
+  const selected = routers.find(router=>router.device_id === saved) || (routers.length === 1 ? routers[0] : null);
+  if (selected) { select.value = selected.device_id; await loadGateway(); }
 }
 
 function gatewaySetupForm(interfaces, defaults = {}) {
@@ -1739,27 +1749,52 @@ function gatewaySetupForm(interfaces, defaults = {}) {
     </form>`;
 }
 
-function wireGatewaySetup(container, router) {
+function wireGatewaySetup(container, router, targetSelect) {
   const form = container.querySelector("#gateway-setup-form");
   if (!form || !router) return;
   const status = form.querySelector("#gateway-status"), apply = form.querySelector("#gateway-apply"), preview = form.querySelector("#gateway-preview");
-  let approved = null, revision = 0;
+  let approved = null, revision = 0, applying = false;
   const payload = () => { const f = new FormData(form); return {name:f.get("name").trim(),wan_interface:f.get("wan_interface"),lan_interface:f.get("lan_interface"),vlan_id:Number(f.get("vlan_id")),gateway_cidr:f.get("gateway_cidr").trim(),pool_start:f.get("pool_start").trim(),pool_end:f.get("pool_end").trim(),dns_servers:f.get("dns_servers").split(",").map(s=>s.trim()).filter(Boolean),hotspot:f.has("hotspot"),radius_address:f.get("radius_address").trim(),radius_secret:f.get("radius_secret")}; };
   const endpoint = `/routers/${encodeURIComponent(router.device_id)}/gateway/`;
-  form.addEventListener("input", () => { revision++; approved=null; apply.hidden=true; status.textContent="Settings changed. Preview again before applying."; });
+  const invalidate = () => {
+    if (applying) return;
+    revision++; approved=null; apply.hidden=true;
+    status.textContent="Settings changed. Preview again before applying.";
+  };
+  form.addEventListener("input", invalidate);
+  form.addEventListener("change", invalidate);
   form.addEventListener("submit", async e => {
-    e.preventDefault(); approved=null; apply.hidden=true; preview.disabled=true; status.textContent="Checking the live router…";
+    e.preventDefault();
+    if (applying || preview.disabled || !form.isConnected || (form.reportValidity && !form.reportValidity())) return;
+    approved=null; apply.hidden=true; preview.disabled=true; status.textContent="Checking the live router…";
     const requestedRevision = ++revision;
     try { const request=payload(); const response=await MM.post(endpoint+"preview",request); if (!form.isConnected) return; if (requestedRevision !== revision) {status.textContent="Settings changed while checking. Preview again before applying.";return;} approved={request,confirmation:response.plan.confirmation}; status.innerHTML=`<strong>Review changes to ${esc(router.hardware_name)}</strong><ol>${asArray(response.plan.steps).map(step=>`<li>${esc(step)}</li>`).join("")}</ol><p>Existing addresses, DHCP servers and management configuration will not be replaced.</p>`; apply.hidden=false; }
-    catch(e) { status.textContent=(e.data && e.data.error) || e.message; }
-    finally { preview.disabled=false; }
+    catch(e) { if (form.isConnected && requestedRevision === revision) status.textContent=(e.data && e.data.error) || e.message; }
+    finally { preview.disabled=applying; }
   });
   apply.addEventListener("click", async () => {
-    if (!approved || !confirm(`Create this customer network on ${router.hardware_name}? Review the preview before continuing.`)) return;
-    apply.disabled=true; preview.disabled=true; status.textContent="Backing up, applying and reading settings back…";
-    try { const response=await MM.post(endpoint+"apply",{...approved.request,confirmation:approved.confirmation}); const result=response.result || {}; if (!result.verified) throw new Error("Router verification did not pass."); status.innerHTML=`<strong>Customer network settings applied and verified.</strong><p>Backup: <code>${esc(result.backup)}</code></p><p>Connect a test guest on this LAN/VLAN to verify DHCP, internet access and captive login. Deploy your branded portal from Captive portal settings.</p>`; approved=null; apply.hidden=true; form.elements.radius_secret.value=""; }
-    catch(e) { const result=(e.data && e.data.result)||{}; status.textContent=((e.data && e.data.error)||e.message)+(result.rolled_back ? " New objects were removed and rollback verified." : " No successful verification was reported; inspect the router before retrying."); approved=null; apply.hidden=true; }
-    finally { apply.disabled=false; preview.disabled=false; }
+    if (applying || !approved || !form.isConnected || !confirm(`Create this customer network on ${router.hardware_name}? Review the preview before continuing.`)) return;
+    const request = {...approved.request, confirmation:approved.confirmation};
+    approved=null; applying=true; revision++;
+    const controls = [...form.querySelectorAll("input,select,textarea,button"), ...(targetSelect ? [targetSelect] : [])].map(control=>[control,control.disabled]);
+    controls.forEach(([control])=>control.disabled=true);
+    status.textContent="Backing up, applying and reading settings back…";
+    try {
+      const response=await MM.post(endpoint+"apply",request);
+      if (!form.isConnected) return;
+      const result=response.result || {};
+      if (result.verified !== true) throw new Error("Router verification did not pass.");
+      status.innerHTML=`<strong>Customer network settings applied and verified.</strong><p>Backup: <code>${esc(result.backup)}</code></p><p>Connect a test guest on this LAN/VLAN to verify DHCP, internet access and captive login. Deploy your branded portal from Captive portal settings.</p>`;
+      form.elements.radius_secret.value="";
+    } catch(e) {
+      if (!form.isConnected) return;
+      const result=(e.data && e.data.result)||{};
+      status.textContent=((e.data && e.data.error)||e.message)+(result.rolled_back ? " New objects were removed and rollback verified." : " No successful verification was reported; inspect the router before retrying.");
+    } finally {
+      applying=false; apply.hidden=true;
+      controls.forEach(([control,disabled])=>control.disabled=disabled);
+      request.radius_secret="";
+    }
   });
 }
 

@@ -343,3 +343,23 @@ No production deployment or router operation occurred. Preserve the mixed tree.
 Continue with saved-router reuse and basic LAN/DHCP/Hotspot setup, followed by
 guest internet voucher batches. Hardware acceptance remains pending while the
 owner's lab router is unavailable.
+
+## Basic setup controls continuation — 2026-10-21
+
+Initial LAN/DHCP/Hotspot setup in `web/app.html` now independently restores valid
+saved gateway context (or the single gateway), tolerates disabled browser
+storage and never guesses port roles. The target and fields lock during apply,
+review tokens are consumed once, duplicate submissions are blocked, and changed
+inputs/selections invalidate review. Only literal `verified: true` reports
+success. Stale inventory and detached-form results are ignored.
+
+Nine new DOM regressions passed, including cancellation, failed/unverified
+apply, review races, authorized selection, read-only access and storage failure.
+Isolated HEAD plus the task-owned app changes/new test, with fresh npm ci, passed
+all 19 critical UI entries and the real Chromium initial-network acceptance
+(including synthetic apply and 390px layout). The mixed tree passed 22 entries.
+Evidence: `/Users/aces/Documents/Codex/2026-10-21/asd/work/gateway-setup/`.
+
+Continue with guest internet voucher batch issuance/printing. No deployment or
+physical router operation occurred, and physical guest-network acceptance is
+still pending. Preserve unrelated mixed-tree work when staging the next group.
