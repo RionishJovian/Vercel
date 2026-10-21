@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 
@@ -45,15 +46,54 @@ func registerGuestVoucherRoutes(r *gin.Engine, cfg *config.Config, db *database.
 		Redeemer:     guestaccess.ProvisionService{Store: database.GuestProvisionRepository{DB: db}, Router: routeros.GuestProvisionAdapter{Applier: applier}, Credentials: recovery},
 		Resumer:      guestaccess.ResumeService{Store: recovery, Router: applier},
 		PortalConfig: handler.GuestPortalConfigResolver(db),
+		// Ground-operation voucher login: the RouterBOARD validates issued
+		// codes locally; the app installs them at issue time and
+		// synchronizes their live accounting back through the hub.
+		Provisioner: voucherLoginTransport{applier: applier},
+		Syncer:      voucherLoginTransport{applier: applier},
 	}
 	registerGuestVoucherEndpoints(r, service, db, h, handler.SubscriptionAccess(db, cfg.Billing.SubscriptionOnly, cfg.Billing.ExistingAccountPolicy))
 	return nil
+}
+
+// voucherLoginTransport adapts the live RouterOS applier to the handler's
+// voucher-login interfaces (router -> hub -> app transport stays the hub).
+type voucherLoginTransport struct {
+	applier *routeros.DeviceApplier
+}
+
+func (t voucherLoginTransport) ProvisionVoucherLogins(ctx context.Context, businessID, deviceID string, logins []handler.VoucherLoginSpec) error {
+	out := make([]routeros.VoucherLogin, 0, len(logins))
+	for _, l := range logins {
+		out = append(out, routeros.VoucherLogin{VoucherID: l.VoucherID, Code: l.Code, Minutes: l.Minutes, DataMB: l.DataMB})
+	}
+	return t.applier.ProvisionVoucherLogins(ctx, businessID, deviceID, out)
+}
+
+func (t voucherLoginTransport) ReadVoucherLogins(ctx context.Context, businessID, deviceID string, refs []handler.VoucherLoginSpec) ([]handler.VoucherLoginState, error) {
+	out := make([]routeros.VoucherLogin, 0, len(refs))
+	for _, l := range refs {
+		out = append(out, routeros.VoucherLogin{VoucherID: l.VoucherID, Code: l.Code})
+	}
+	states, err := t.applier.ReadVoucherLogins(ctx, businessID, deviceID, out)
+	if err != nil {
+		return nil, err
+	}
+	adapted := make([]handler.VoucherLoginState, 0, len(states))
+	for _, s := range states {
+		adapted = append(adapted, handler.VoucherLoginState{VoucherID: s.VoucherID, Exists: s.Exists, Disabled: s.Disabled,
+			UptimeSeconds: s.UptimeSeconds, BytesUsed: s.BytesUsed, ActiveMAC: s.ActiveMAC})
+	}
+	return adapted, nil
 }
 
 func registerGuestVoucherEndpoints(r *gin.Engine, service *auth.Service, db *database.DB, h *handler.GuestVoucherHandler, access ...gin.HandlerFunc) {
 	owner := r.Group("/api/v1/guest-vouchers", auth.CookieOrigin(), auth.Middleware(service), auth.RequireActiveTenant(db), auth.RequireMinRole(model.RoleAdmin))
 	owner.Use(access...)
 	owner.POST("", h.Issue)
+	// Router -> hub -> app accounting synchronization for locally validated
+	// voucher codes (ground-operation design).
+	owner.POST("/sync", h.SyncVoucherLogins)
 	owner.GET("/config", func(c *gin.Context) {
 		c.Header("Cache-Control", "no-store")
 		c.JSON(200, gin.H{"enabled": true, "validity_starts": "first_use"})

@@ -23,12 +23,12 @@ import (
 // -----------------------------------------------------------------------------
 
 var (
-	harnessAdmin *database.DB
-	harnessDB    *database.DB
-	harnessName  string
-	harnessSkip  error
-	harnessFatal error
-	harnessOnce  sync.Once
+	harnessAdmin            *database.DB
+	harnessDB               *database.DB
+	harnessName             string
+	harnessSkip             error
+	harnessFatal            error
+	harnessOnce             sync.Once
 	harnessRestrictedNeeded bool // unused; kept for symmetry with the DB package
 )
 
@@ -95,6 +95,27 @@ func setupHarness(base string) {
 		harnessFatal = fmt.Errorf("load schema into %s: %w", harnessName, err)
 		return
 	}
+	// The live deployment carries the guest-voucher migration chain on top of
+	// the baseline (grants, recovery and the activation guard), so the
+	// integration tests must exercise that schema, not the bare baseline.
+	for _, name := range []string{
+		"20260926_guest_wifi_schema.sql",
+		"20260926_rls_backfill.sql",
+		"20261001200000_guest_voucher_grants.sql",
+		"20261001210000_guest_access_recovery.sql",
+		"20261002200000_guest_recovery_completion.sql",
+		"20261021090000_guest_voucher_activation.sql",
+	} {
+		migration, err := os.ReadFile("../../migrations/" + name)
+		if err != nil {
+			harnessFatal = fmt.Errorf("read migration %s: %w", name, err)
+			return
+		}
+		if _, err := db.Exec(string(migration)); err != nil {
+			harnessFatal = fmt.Errorf("load migration %s into %s: %w", name, harnessName, err)
+			return
+		}
+	}
 }
 
 func teardownHarness() {
@@ -151,7 +172,7 @@ func insertBusiness(db *database.DB) string {
 	var id string
 	err := db.QueryRow(
 		`INSERT INTO businesses (company_name, owner_email, access_tier) VALUES ($1, $2, 'SMALL_WISP') RETURNING business_id`,
-		"HandlerHarness Co", "hh-" + randHex(4) + "@example.test",
+		"HandlerHarness Co", "hh-"+randHex(4)+"@example.test",
 	).Scan(&id)
 	if err != nil {
 		panic("insert business: " + err.Error())
@@ -186,7 +207,7 @@ func TestGuestWifi_approveGrantsExtensionOnce(t *testing.T) {
 		database.NewGuestPurchaseRequestRepository(db),
 		database.NewPortalConfigRepository(db),
 		database.NewBusinessMeteredQuotaRepository(db),
-		"/tmp/guest-receipts-" + randHex(4),
+		"/tmp/guest-receipts-"+randHex(4),
 		func(token string) (telegram.Messenger, bool) { return nil, false },
 	)
 
@@ -261,7 +282,7 @@ func TestGuestWifi_rejectGrantsNothing(t *testing.T) {
 		database.NewGuestPurchaseRequestRepository(db),
 		database.NewPortalConfigRepository(db),
 		database.NewBusinessMeteredQuotaRepository(db),
-		"/tmp/guest-receipts-" + randHex(4),
+		"/tmp/guest-receipts-"+randHex(4),
 		func(token string) (telegram.Messenger, bool) { return nil, false },
 	)
 	biz := insertBusiness(db)
@@ -334,7 +355,7 @@ func TestGuestWifi_graceWindowBounds(t *testing.T) {
 		database.NewGuestPurchaseRequestRepository(db),
 		database.NewPortalConfigRepository(db),
 		database.NewBusinessMeteredQuotaRepository(db),
-		"/tmp/guest-receipts-" + randHex(4),
+		"/tmp/guest-receipts-"+randHex(4),
 		func(token string) (telegram.Messenger, bool) { return nil, false },
 	)
 	biz := insertBusiness(db)
@@ -370,7 +391,7 @@ func TestGuestWifi_graceWindowBounds(t *testing.T) {
 	if req == nil || req.GraceStartedAt == nil || req.GraceExpiresAt == nil {
 		t.Fatal("guest request must carry the grace window bounds")
 	}
-	if req.GraceExpiresAt.Sub(*req.GraceStartedAt) != 10 * time.Minute {
+	if req.GraceExpiresAt.Sub(*req.GraceStartedAt) != 10*time.Minute {
 		t.Fatalf("grace window = %v, want 10m", req.GraceExpiresAt.Sub(*req.GraceStartedAt))
 	}
 }
