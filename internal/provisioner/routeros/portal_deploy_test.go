@@ -169,7 +169,7 @@ func TestPortalDeploymentPreviewAndApply(t *testing.T) {
 	if err != nil || !result.Verified || !strings.HasPrefix(result.Backup, "flash/mm-portal-") || r.files[result.Backup] != "<html>Original</html>" {
 		t.Fatalf("%+v %v", result, err)
 	}
-	if !strings.HasPrefix(r.directory, "flash/mm-portal-") || r.files["hotspot/login.html"] != "<html>Original</html>" || r.files[result.Plan.File] != portalLoginHTML("device") {
+	if !strings.HasPrefix(r.directory, "flash/mm-portal-") || r.files["hotspot/login.html"] != "<html>Original</html>" || r.files[result.Plan.File] != portalLoginHTML() {
 		t.Fatal("isolation or persistent staging failed")
 	}
 }

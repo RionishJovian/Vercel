@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
-	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -17,8 +16,8 @@ import (
 )
 
 // The public origin is deployment-owned, never supplied by a browser or router.
-const portalOrigin = "https://mikromagic.com"
-const portalHost = "mikromagic.com"
+const portalOrigin = "https://megamagic.tech"
+const portalHost = "megamagic.tech"
 
 // Jellyfin's default port on the owner's LAN. Guests reach it over the business
 // RouterBOARD network only; the portal never proxies video bytes.
@@ -91,9 +90,54 @@ type PortalDeploymentResult struct {
 	Plan       PortalDeploymentPlan `json:"plan"`
 }
 
-func portalLoginHTML(deviceID string) string {
-	destination, _ := json.Marshal(portalOrigin + "/portal.html?deviceId=" + url.QueryEscape(deviceID))
-	return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Connect to WiFi</title></head><body><p>Opening the WiFi portal…</p><a id="open">Open portal</a><script>var u=` + string(destination) + `+"&mac="+encodeURIComponent("$(mac)")+"&ip="+encodeURIComponent("$(ip)");document.getElementById("open").href=u;location.replace(u);</script><noscript>Enable JavaScript to connect to WiFi.</noscript></body></html>`
+// portalLoginHTML is the router-served voucher entry page. The RouterBOARD
+// substitutes its $(...) macros and validates the code against its own
+// hotspot user list (the app provisions each issued code as a local user), so
+// the guest login never depends on the hosted site, the WAN or the tunnel.
+func portalLoginHTML() string {
+	return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Connect to WiFi</title>
+<style>
+:root{color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:#0b0f1a;color:#f6f8ff;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Inter","Segoe UI",sans-serif}
+.card{width:100%;max-width:380px;padding:30px;border-radius:28px;background:linear-gradient(180deg,rgba(255,255,255,.15),rgba(255,255,255,.065));border:1px solid rgba(255,255,255,.22);box-shadow:0 30px 80px -20px rgba(0,0,0,.66),inset 0 1px 0 rgba(255,255,255,.3);-webkit-backdrop-filter:blur(28px) saturate(175%);backdrop-filter:blur(28px) saturate(175%)}
+.k{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:rgba(246,248,255,.65)}
+h1{font-size:24px;margin:10px 0 6px}
+p{color:rgba(246,248,255,.7);line-height:1.6;margin:0 0 22px}
+label{display:block;margin:0 0 8px}
+input{width:100%;padding:13px 16px;border-radius:14px;border:1px solid rgba(255,255,255,.22);background:rgba(0,0,0,.35);color:#f6f8ff;font:inherit;letter-spacing:.08em;text-transform:uppercase}
+input:focus{outline:2px solid rgba(255,255,255,.35)}
+button{width:100%;margin-top:14px;padding:13px 16px;border:0;border-radius:14px;background:#f6f8ff;color:#0b0f1a;font:inherit;font-weight:600}
+.err{margin:0 0 16px;padding:12px 14px;border-radius:14px;background:rgba(255,64,80,.16);border:1px solid rgba(255,64,80,.4);color:#ffb3bb;line-height:1.5}
+</style></head><body><main class="card">
+<span class="k">WiFi Voucher</span>
+<h1>Connect to WiFi</h1>
+<p>Enter your WiFi voucher code to connect.</p>
+$(if error)<p class="err">$(error)</p>$(endif)
+<form name="sendin" action="$(link-login-only)" method="post" style="display:none">
+<input name="username" autocomplete="off">
+<input name="password" type="hidden">
+<input type="hidden" name="dst" value="$(link-orig)">
+<input type="hidden" name="popup" value="true">
+</form>
+<label class="k" for="voucher">Voucher code</label>
+<input id="voucher" name="voucher" type="text" autocapitalize="characters" autocorrect="off" autocomplete="off" spellcheck="false" autofocus>
+<button type="button" onclick="return doLogin()">Connect</button>
+</main>
+<script src="$(link-login-only)?only-target=iframe&amp;target=%2Fmd5.js"></script>
+<script>
+function doLogin(){
+  var code=document.getElementById('voucher').value.trim();
+  if(!code){document.getElementById('voucher').focus();return false;}
+  document.sendin.username.value=code;
+  if('$(chap-id)'===''){document.sendin.password.value=code;}
+  else{document.sendin.password.value=hexMD5('$(chap-id)'+hexMD5('$(chap-challenge)')+code);}
+  document.sendin.submit();
+  return false;
+}
+</script>
+</body></html>`
 }
 
 func (a *DeviceApplier) PortalProfiles(ctx context.Context, businessID, deviceID string) ([]string, error) {
@@ -118,9 +162,9 @@ func (a *DeviceApplier) PortalProfiles(ctx context.Context, businessID, deviceID
 type portalState struct {
 	plan                                    PortalDeploymentPlan
 	original, replacement, selector, garden string
-	mediaGarden                                                       string
-	mediaHost, mediaPort                                              string
-	hasMediaGarden                                                    bool
+	mediaGarden                             string
+	mediaHost, mediaPort                    string
+	hasMediaGarden                          bool
 	directory, destination                  string
 	hasGarden                               bool
 }
@@ -144,6 +188,12 @@ func portalPreflight(ctx context.Context, r CommandRunner, businessID, deviceID 
 	p := parseValueList(out)
 	if !strings.Contains(","+p["login-by"]+",", ",mac,") {
 		return s, fmt.Errorf("configure MAC authentication for managed guests in gateway setup first")
+	}
+	// The deployed login page authenticates against the RouterBOARD's own user
+	// list, so the profile must accept a form login (HTTP CHAP or PAP). Without
+	// one, a guest's voucher code cannot be validated locally at all.
+	if !strings.Contains(","+p["login-by"]+",", ",http-chap,") && !strings.Contains(","+p["login-by"]+",", ",http-pap,") {
+		return s, fmt.Errorf("voucher login needs HTTP CHAP or PAP enabled on this HotSpot profile")
 	}
 	if v := p["html-directory-override"]; v != "" && v != "none" {
 		return s, fmt.Errorf("external HTML overrides require operator-assisted deployment")
@@ -188,7 +238,7 @@ func portalPreflight(ctx context.Context, r CommandRunner, businessID, deviceID 
 		return s, fmt.Errorf("login page could not be read safely (maximum 24 KB)")
 	}
 	s.original = strings.TrimSuffix(strings.TrimSuffix(out, "\n"), "\r")
-	s.replacement = portalLoginHTML(deviceID)
+	s.replacement = portalLoginHTML()
 	s.garden = "comment=" + routerOSQuoted("mm-portal-"+request.Profile) + " dynamic=no"
 	mediaHost, mediaPort, mediaErr := mediaTarget(request)
 	if mediaErr != nil {
@@ -212,11 +262,11 @@ func portalPreflight(ctx context.Context, r CommandRunner, businessID, deviceID 
 	} else if strings.TrimSpace(out) != "0" {
 		return s, fmt.Errorf("ambiguous managed portal access rule")
 	}
-	steps := []string{"Clone all existing HotSpot files into a separate persistent directory; retain the original directory for rollback", "Allow TCP 443 to mikromagic.com for HotSpot " + server + " (hostname resolves to IPs, possibly shared CDN addresses)"}
+	steps := []string{"Clone all existing HotSpot files into a separate persistent directory; retain the original directory for rollback", "Allow TCP 443 to megamagic.tech for HotSpot " + server + " (paid-plan continuation and hosted pages; voucher login itself stays router-local)"}
 	if s.mediaHost != "" {
-		steps = append(steps, "Allow guests on this HotSpot to reach the media server at " + s.mediaHost + ":" + s.mediaPort + " on your local network")
+		steps = append(steps, "Allow guests on this HotSpot to reach the media server at "+s.mediaHost+":"+s.mediaPort+" on your local network")
 	}
-	steps = append(steps, "Install the HTTPS hosted portal entrypoint and switch only profile "+request.Profile, "Read back and verify the login page, profile and access rule; requires RouterOS file copy support")
+	steps = append(steps, "Install the router-served voucher login page and switch only profile "+request.Profile, "Read back and verify the login page and profile switch; the RouterBOARD validates issued voucher codes against its own user list")
 	s.plan.Steps = steps
 	encoded, _ := json.Marshal([]any{businessID, deviceID, s.plan, s.original, s.replacement, s.hasGarden})
 	digest := sha256.Sum256(encoded)
