@@ -3177,7 +3177,7 @@ async function renderVouchers(main, issuedBatch = null) {
         <div class="field"><label for="gv-count">Number of codes</label><input class="input" id="gv-count" type="number" min="1" max="1000" value="10" required></div>
         <div class="workspace-actions"><button class="btn btn-primary" id="gv-create" type="submit">Create codes</button><span class="muted small" id="gv-message" role="status"></span></div>
       </form></div></div>` : `<div class="panel"><div class="panel-head"><h2 class="panel-title">Guest voucher creation unavailable</h2></div><div class="panel-body"><p class="muted small" role="status">${esc(guestVoucherCapabilityMessage(guestVoucherConfig, canEdit))}</p></div></div>`}
-    <div class="panel"><div class="panel-head"><h2 class="panel-title">Vouchers</h2></div>
+    <div class="panel"><div class="panel-head"><h2 class="panel-title">Vouchers</h2>${guestIssuanceEnabled && guestGateways.length ? `<button class="btn btn-sm" id="gv-sync" type="button">Sync router accounting</button><span class="muted small" id="gv-sync-message" role="status"></span>` : ""}</div>
       <div class="panel-body">
         ${!vRes ? `<p class="muted small" role="alert">Could not load vouchers. Reload this page to retry; this is not an empty voucher list.</p>` : list.length ? `<table>
           <thead><tr><th>Code</th><th>Plan</th><th>Amount</th><th>Status</th><th>Created</th></tr></thead>
@@ -3272,6 +3272,26 @@ async function renderVouchers(main, issuedBatch = null) {
       currentMessage.textContent = created ? "Codes were created, but the view could not refresh. Reload the inventory before creating another batch." : (error.message || "Codes could not be created.");
       currentButton.disabled = created;
     }
+  });
+
+  // Router -> hub -> app accounting sync: the periodic system worker also does
+  // this; this button is the manual, visible check on demand.
+  const gvSync = document.getElementById("gv-sync");
+  if (gvSync) gvSync.addEventListener("click", async () => {
+    const gateway = document.getElementById("gv-gateway");
+    const message = document.getElementById("gv-sync-message");
+    if (!gateway || !gateway.value) { if (message) message.textContent = "Choose a gateway first."; return; }
+    gvSync.disabled = true; if (message) message.textContent = "Reading router accounting…";
+    try {
+      const response = await MM.post("/guest-vouchers/sync", { device_id: gateway.value });
+      const synced = asArray(response && response.synced).length;
+      if (message) message.textContent = synced
+        ? `Router accounting synchronized — ${synced} code(s) updated.`
+        : ((response && response.router) || "Synchronized.");
+      await renderVouchers(main, issuedBatch);
+    } catch (error) {
+      if (message) message.textContent = (error && error.message) || "Router accounting could not be read.";
+    } finally { gvSync.disabled = false; }
   });
 
   if (canEdit) {

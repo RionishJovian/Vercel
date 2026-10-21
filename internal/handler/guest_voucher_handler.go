@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"regexp"
@@ -276,32 +277,74 @@ func (h *GuestVoucherHandler) SyncVoucherLogins(c *gin.Context) {
 		c.JSON(404, gin.H{"error": "gateway unavailable"})
 		return
 	}
-	list, e := h.Vouchers.voucherRepo.ListVouchersByBusiness(biz)
+	results, e := h.syncGatewayVouchers(c.Request.Context(), biz, b.DeviceID, time.Now().UTC())
 	if e != nil {
-		c.JSON(503, gin.H{"error": "voucher records unavailable"})
+		switch {
+		case errors.Is(e, errVoucherLoginUnavailable):
+			c.JSON(503, gin.H{"error": "voucher login synchronization unavailable"})
+		case errors.Is(e, errVoucherRecordsUnavailable):
+			c.JSON(503, gin.H{"error": "voucher records unavailable"})
+		case errors.Is(e, errGatewayAccountingRead):
+			c.JSON(http.StatusBadGateway, gin.H{"error": "gateway accounting could not be read"})
+		default:
+			c.JSON(409, gin.H{"error": "voucher login synchronization could not be applied"})
+		}
 		return
 	}
-	now := time.Now().UTC()
+	if len(results) == 0 {
+		c.JSON(200, gin.H{"synced": []any{}, "router": "no issued vouchers on this gateway"})
+		return
+	}
+	c.JSON(200, gin.H{"synced": results})
+}
+
+// Sync failure classes shared by the admin endpoint and the periodic worker.
+var (
+	errVoucherLoginUnavailable   = errors.New("voucher login synchronization unavailable")
+	errVoucherRecordsUnavailable = errors.New("voucher records unavailable")
+	errGatewayAccountingRead     = errors.New("gateway accounting read failed")
+)
+
+// syncGatewayVouchers is the router -> hub -> app synchronization core shared by
+// the admin endpoint and the periodic system worker. It reads the RouterBOARD's
+// live accounting for every voucher issued on this gateway and applies it to the
+// app's records: router-observed usage marks the voucher used, binds the
+// observed client and starts validity, anchors the immutable activation
+// timestamp while the allowance is still live, and propagates router-side
+// expiry without touching that timestamp. All transitions run inside the same
+// RLS tenant transaction and CHECK/trigger contract as the hosted flow.
+func (h *GuestVoucherHandler) syncGatewayVouchers(ctx context.Context, biz, deviceID string, now time.Time) ([]gin.H, error) {
+	if h.DB == nil || h.Vouchers == nil || h.Syncer == nil {
+		return nil, errVoucherLoginUnavailable
+	}
+	list, e := h.Vouchers.voucherRepo.ListVouchersByBusiness(biz)
+	if e != nil {
+		return nil, errVoucherRecordsUnavailable
+	}
 	specs := []VoucherLoginSpec{}
 	byVoucher := map[string]*model.Voucher{}
 	for _, v := range list {
-		if v.DeviceID == nil || *v.DeviceID != b.DeviceID || v.DurationMinutes == nil {
+		if v.DeviceID == nil || *v.DeviceID != deviceID || v.DurationMinutes == nil {
 			continue
 		}
 		specs = append(specs, VoucherLoginSpec{VoucherID: v.ID, Code: v.Code, Minutes: *v.DurationMinutes})
 		byVoucher[v.ID] = v
 	}
 	if len(specs) == 0 {
-		c.JSON(200, gin.H{"synced": []any{}, "router": "no issued vouchers on this gateway"})
-		return
+		return []gin.H{}, nil
 	}
-	states, e := h.Syncer.ReadVoucherLogins(c.Request.Context(), biz, b.DeviceID, specs)
+	states, e := h.Syncer.ReadVoucherLogins(ctx, biz, deviceID, specs)
 	if e != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": "gateway accounting could not be read: " + e.Error()})
-		return
+		return nil, fmt.Errorf("%w: %v", errGatewayAccountingRead, e)
 	}
 	results := make([]gin.H, 0, len(states))
-	err := runInTenant(c, h.DB, biz, func(tx *sql.Tx) error {
+	tx, err := h.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	grants := database.GuestVoucherRepository{}
+	err = database.WithTenant(tx, biz, func() error {
 		for _, s := range states {
 			v := byVoucher[s.VoucherID]
 			if v == nil {
@@ -315,7 +358,6 @@ func (h *GuestVoucherHandler) SyncVoucherLogins(c *gin.Context) {
 				}
 				applied = append(applied, "voucher:used")
 			}
-			grants := database.GuestVoucherRepository{}
 			grant, e := grants.GetGrantTXN(tx, biz, v.ID)
 			if e != nil {
 				return e
@@ -350,8 +392,57 @@ func (h *GuestVoucherHandler) SyncVoucherLogins(c *gin.Context) {
 		return nil
 	})
 	if err != nil {
-		c.JSON(409, gin.H{"error": "voucher login synchronization could not be applied"})
-		return
+		return nil, err
 	}
-	c.JSON(200, gin.H{"synced": results})
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return results, nil
+}
+
+// SyncBusinessVouchers synchronizes the live voucher-login accounting of every
+// gateway of this business once. The periodic system worker calls it per tenant
+// (router -> hub -> app synchronization for ground-operation vouchers).
+func (h *GuestVoucherHandler) SyncBusinessVouchers(ctx context.Context, biz string) (int, error) {
+	if h.DB == nil || h.Vouchers == nil || h.Syncer == nil {
+		return 0, errVoucherLoginUnavailable
+	}
+	tx, err := h.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	var gateways []string
+	if err := database.WithTenant(tx, biz, func() error {
+		rows, err := tx.QueryContext(ctx, `SELECT device_id::text FROM devices WHERE deployment_layer='MAIN_GATEWAY'`)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var id string
+			if err := rows.Scan(&id); err != nil {
+				return err
+			}
+			gateways = append(gateways, id)
+		}
+		return rows.Err()
+	}); err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	applied := 0
+	for _, id := range gateways {
+		if err := ctx.Err(); err != nil {
+			return applied, err
+		}
+		results, err := h.syncGatewayVouchers(ctx, biz, id, time.Now().UTC())
+		if err != nil {
+			return applied, fmt.Errorf("gateway %s: %w", id, err)
+		}
+		applied += len(results)
+	}
+	return applied, nil
 }

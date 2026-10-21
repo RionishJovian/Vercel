@@ -201,3 +201,61 @@ func TestGuestVoucherSync_rejectsForeignOrMissingGateways(t *testing.T) {
 	}
 	_ = otherBiz
 }
+
+// The periodic worker path (SyncBusinessVouchers): every gateway of the
+// business is synchronized, non-gateway devices are skipped, and a business
+// without issued vouchers is a no-op.
+func TestGuestVoucherSyncBusiness_appliesEveryGateway(t *testing.T) {
+	db := harness_testdb(t)
+	biz, deviceA := loginFixture(t, db)
+	var deviceB, laptop string
+	if err := db.QueryRow(`INSERT INTO devices (business_id, hardware_name, deployment_layer) VALUES ($1, 'Second Gateway', 'MAIN_GATEWAY') RETURNING device_id`, biz).Scan(&deviceB); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`INSERT INTO devices (business_id, hardware_name, deployment_layer) VALUES ($1, 'Guest Laptop', 'ACCESS_POINT') RETURNING device_id`, biz).Scan(&laptop); err != nil {
+		t.Fatal(err)
+	}
+	// A business without issued vouchers synchronizes to a clean zero.
+	emptyBiz, _ := loginFixture(t, db)
+	h := loginHandler(db)
+	h.Syncer = loginSyncStub{}
+	applied, err := h.SyncBusinessVouchers(context.Background(), emptyBiz)
+	if err != nil || applied != 0 {
+		t.Fatalf("empty business must be a no-op, got applied=%d err=%v", applied, err)
+	}
+	// Issue one voucher on the first gateway only; the second gateway and the
+	// access point must be visited without failing the business scan.
+	if w := callIssue(h, biz, deviceA, 1); w.Code != 201 {
+		t.Fatalf("issue status=%d body=%s", w.Code, w.Body.String())
+	}
+	var voucherID string
+	if err := db.QueryRow(`SELECT id FROM vouchers WHERE business_id=$1`, biz).Scan(&voucherID); err != nil {
+		t.Fatal(err)
+	}
+	h.Syncer = loginSyncStub{states: map[string]VoucherLoginState{voucherID: {
+		VoucherID: voucherID, Exists: true, UptimeSeconds: 300, BytesUsed: 4096, ActiveMAC: "11:22:33:44:55:66",
+	}}}
+	applied, err = h.SyncBusinessVouchers(context.Background(), biz)
+	if err != nil {
+		t.Fatalf("business sync failed: %v", err)
+	}
+	if applied != 1 {
+		t.Fatalf("one issued voucher must apply exactly one result, got %d", applied)
+	}
+	var status string
+	if err := db.QueryRow(`SELECT status FROM vouchers WHERE id=$1`, voucherID).Scan(&status); err != nil {
+		t.Fatal(err)
+	}
+	if status != "used" {
+		t.Fatalf("voucher must be used after the business-wide sync, got %q", status)
+	}
+	var state string
+	if err := db.QueryRow(`SELECT state FROM guest_voucher_grants WHERE voucher_id=$1`, voucherID).Scan(&state); err != nil {
+		t.Fatal(err)
+	}
+	if state != "active" {
+		t.Fatalf("grant must be active after the business-wide sync, got %q", state)
+	}
+	_ = deviceB
+	_ = laptop
+}

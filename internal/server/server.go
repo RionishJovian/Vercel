@@ -56,6 +56,10 @@ type Server struct {
 	guestRepairMu     sync.Mutex
 	guestRepairCancel context.CancelFunc
 	guestRepairDone   chan struct{}
+	// Periodic router -> hub -> app voucher-login accounting worker.
+	guestVSyncMu     sync.Mutex
+	guestVSyncCancel context.CancelFunc
+	guestVSyncDone   chan struct{}
 }
 
 func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
@@ -959,6 +963,10 @@ func (s *Server) Start() error {
 		go func() { defer close(done); worker(ctx) }()
 		defer cancel()
 	}
+	if err := s.startGuestVoucherSyncWorker(); err != nil {
+		return fmt.Errorf("voucher login synchronization worker: %w", err)
+	}
+	defer s.stopGuestVoucherSyncWorker()
 	s.sugar.Infow("Starting HTTP server", "addr", s.http.Addr)
 	return s.http.ListenAndServe()
 }
@@ -976,6 +984,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 			return ctx.Err()
 		}
 	}
+	s.stopGuestVoucherSyncWorker()
 	if s.restricted != nil {
 		_ = s.restricted.Close()
 	}
