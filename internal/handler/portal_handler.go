@@ -237,20 +237,7 @@ func (h *PortalHandler) businessForDevice(deviceID string) (*model.Device, error
 // device is assigned to a site, and falls back to the legacy business config
 // for older devices or sites that have not published a draft yet.
 func (h *PortalHandler) portalConfigForDeviceTXN(tx *sql.Tx, businessID, deviceID string) (*model.PortalConfig, error) {
-	var siteID sql.NullString
-	if err := tx.QueryRow(`SELECT site_id FROM devices WHERE device_id = $1 AND business_id = $2`, deviceID, businessID).Scan(&siteID); err != nil && err != sql.ErrNoRows {
-		return nil, err
-	}
-	if siteID.Valid && siteID.String != "" {
-		portal, err := h.sitePortalRepo.GetBySiteTXN(tx, businessID, siteID.String)
-		if err != nil {
-			return nil, err
-		}
-		if portal != nil && portal.PublishedRevision > 0 && portal.PublishedConfig != nil && portal.PublishedConfig.BusinessName != "" {
-			return portal.PublishedConfig, nil
-		}
-	}
-	return h.configRepo.GetByBusinessTXN(tx, businessID)
+	return h.configRepo.GetByDeviceTXN(tx, businessID, deviceID)
 }
 
 // --- public (anonymous) -----------------------------------------------------

@@ -48,7 +48,7 @@ func TestGuestVoucherRedeemBoundary(t *testing.T) {
 			s := &guestRedeemStub{err: tc.err}
 			h := GuestVoucherHandler{Redeemer: s, ResolveDevice: func(string) (*model.Device, error) {
 				return &model.Device{DeviceID: id, BusinessID: "tenant-from-device", DeploymentLayer: "MAIN_GATEWAY"}, nil
-			}, PortalConfig: func(context.Context, string) (*model.PortalConfig, error) {
+			}, PortalConfig: func(context.Context, string, string) (*model.PortalConfig, error) {
 				return &model.PortalConfig{VoucherLoginEnabled: tc.enabled, ConsentRequired: tc.consent}, nil
 			}}
 			r := gin.New()

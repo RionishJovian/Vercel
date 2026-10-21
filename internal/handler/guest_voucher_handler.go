@@ -35,7 +35,7 @@ type GuestVoucherHandler struct {
 	DB            *database.DB
 	Vouchers      *VoucherHandler
 	ResolveDevice func(string) (*model.Device, error)
-	PortalConfig  func(context.Context, string) (*model.PortalConfig, error)
+	PortalConfig  func(context.Context, string, string) (*model.PortalConfig, error)
 	Redeemer      GuestVoucherRedeemer
 	Recoverer     GuestAccessRecoverer
 	Resumer       GuestAccessResumer
@@ -135,7 +135,7 @@ func (h *GuestVoucherHandler) Redeem(c *gin.Context) {
 		c.JSON(404, gin.H{"error": "gateway unavailable"})
 		return
 	}
-	pc, e := h.PortalConfig(c.Request.Context(), dev.BusinessID)
+	pc, e := h.PortalConfig(c.Request.Context(), dev.BusinessID, dev.DeviceID)
 	if e != nil {
 		c.JSON(503, gin.H{"error": "portal configuration unavailable"})
 		return

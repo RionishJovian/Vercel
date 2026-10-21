@@ -428,3 +428,27 @@ Screenshot: `/Users/aces/Documents/Codex/2026-10-21/asd/outputs/voucher-revenue-
 No production migration/deployment, actual payment/issuance or router write ran.
 Continue with the Internet Hotspot portal flow locally; physical guest access
 remains pending while the owner's router is unavailable. Preserve the mixed tree.
+
+## Published-site voucher policy continuation — 2026-10-21
+
+Fixed a mismatch between the public Internet Hotspot page and paid guest access:
+the page used the gateway site's published policy, while redemption and
+reconnection checked business-wide settings. A shared device-scoped resolver now
+serves public config, voucher redemption and paid binding/recovery checks.
+Published voucher enablement and consent apply consistently; later unpublished
+drafts remain private. Unpublished/unassigned gateways retain the legacy business
+fallback. Missing or foreign devices cannot obtain that fallback; inactive
+businesses remain denied. Client-supplied tenant/site fields are not trusted.
+
+Disposable PostgreSQL exercised six published/draft/consent/fallback/inactive
+scenarios through the real public-config, redemption and resume handlers, plus
+missing/foreign device isolation. Focused race checks passed. A clean HEAD export
+plus only this slice passed 584 internal Go top-level tests, zero failures and
+20 separately gated fixture/hardware skips; the actual Go server build passed.
+All private database clusters stopped. Existing dirty revamp files were checked
+against their original hashes and preserved. No migration is needed for this fix;
+it relies on the existing site-portal schema. No push, deployment or router write.
+
+Evidence: `/Users/aces/Documents/Codex/2026-10-21/asd/work/portal-policy/`.
+Next: portal request/error-state checks locally, with physical DHCP/DNS, login,
+internet traffic, expiry/data and reconnect acceptance still pending the lab router.

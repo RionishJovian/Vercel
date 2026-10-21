@@ -1,7 +1,6 @@
 package server
 
 import (
-	"context"
 	"fmt"
 	"net/url"
 
@@ -43,28 +42,9 @@ func registerGuestVoucherRoutes(r *gin.Engine, cfg *config.Config, db *database.
 	applier := routeros.NewDeviceApplier(source, a.Timeout, nil, a.Interface, a.ListenPortRotateTo, a.ResetHold).WithControlConfig(a.PingTarget, a.TDown)
 	recovery := database.GuestRecoveryRepository{DB: db}
 	h := &handler.GuestVoucherHandler{DB: db, Vouchers: vouchers, ResolveDevice: database.NewDeviceRepository(db).GetDeviceByID,
-		Redeemer: guestaccess.ProvisionService{Store: database.GuestProvisionRepository{DB: db}, Router: routeros.GuestProvisionAdapter{Applier: applier}, Credentials: recovery},
-		Resumer:  guestaccess.ResumeService{Store: recovery, Router: applier},
-		PortalConfig: func(ctx context.Context, biz string) (pc *model.PortalConfig, e error) {
-			tx, e := db.BeginTx(ctx, nil)
-			if e != nil {
-				return nil, e
-			}
-			defer tx.Rollback()
-			e = database.WithTenant(tx, biz, func() error {
-				var active bool
-				if e := tx.QueryRowContext(ctx, `SELECT is_active FROM businesses WHERE business_id=$1`, biz).Scan(&active); e != nil {
-					return e
-				}
-				if !active {
-					return guestaccess.ErrProvisionDenied
-				}
-				var err error
-				pc, err = database.NewPortalConfigRepository(db).GetByBusinessTXN(tx, biz)
-				return err
-			})
-			return pc, e
-		},
+		Redeemer:     guestaccess.ProvisionService{Store: database.GuestProvisionRepository{DB: db}, Router: routeros.GuestProvisionAdapter{Applier: applier}, Credentials: recovery},
+		Resumer:      guestaccess.ResumeService{Store: recovery, Router: applier},
+		PortalConfig: handler.GuestPortalConfigResolver(db),
 	}
 	registerGuestVoucherEndpoints(r, service, db, h, handler.SubscriptionAccess(db, cfg.Billing.SubscriptionOnly, cfg.Billing.ExistingAccountPolicy))
 	return nil
