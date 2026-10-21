@@ -163,6 +163,8 @@ var CLIENT_IP = (QS.get("ip") || QS.get("client_ip") || "").trim();
 var LANG = (function () { try { return localStorage.getItem("mm_lang") || "my"; } catch (e) { return "my"; } })();
 var RERENDER = null;
 var GRACE_TIMER = null;
+var CONFIG_PENDING = false;
+var VOUCHER_PENDING = false;
 
 var MM = {
   mediaTitle: "ရုပ်ရှင်းများ",
@@ -198,6 +200,7 @@ function applyLang() {
   if (el) el.textContent = langLabel();
 }
 function toggleLang() {
+  if (VOUCHER_PENDING) return;
   LANG = LANG === "my" ? "en" : "my";
   try { localStorage.setItem("mm_lang", LANG); } catch (e) {}
   applyLang();
@@ -245,16 +248,32 @@ function applyBranding(cfg) {
 /* --- data ---------------------------------------------------------------- */
 
 async function loadConfig() {
+  if (CONFIG_PENDING) return;
+  CONFIG_PENDING = true;
   var root = document.getElementById("root");
+  RERENDER = null;
+  root.innerHTML = '<p class="msg" role="status">' + t("Loading hotspot…", "loadingHotspot") + '</p>';
   try {
-    var res = await fetch(API + "/portal/" + DEVICE + "/config");
+    var res = await fetch(API + "/portal/" + encodeURIComponent(DEVICE) + "/config", { cache: "no-store" });
+    if (!res.ok) throw new Error("config unavailable");
     var d = await res.json();
-    var cfg = d.config || d;
+    var cfg = d && (d.config || d);
+    if (!cfg || typeof cfg !== "object" || Array.isArray(cfg) || typeof cfg.business_name !== "string" || !cfg.business_name.trim()) throw new Error("invalid config");
     cfg.guest_voucher_access = d.guest_voucher_access === true;
     renderPortalHome(cfg);
   } catch (e) {
-    root.innerHTML = '<p class="msg">' + t("Could not load this hotspot.", "loadErr") + '</p>';
+    renderConfigError();
+  } finally {
+    CONFIG_PENDING = false;
   }
+}
+
+function renderConfigError() {
+  RERENDER = renderConfigError;
+  document.getElementById("root").innerHTML =
+    '<p class="msg" role="alert">' + t("Could not load this hotspot. Check your WiFi connection and try again.", "loadErr") + '</p>' +
+    '<button class="btn" id="portal-retry" type="button">' + t("Try again", "retryHotspot") + '</button>';
+  document.getElementById("portal-retry").addEventListener("click", loadConfig);
 }
 
 function accessMethodEnabled(cfg, key) {
@@ -314,6 +333,14 @@ function renderVoucher(cfg) {
 }
 
 function renderPlans(cfg) {
+  if (!accessMethodEnabled(cfg, "mobile_payment_enabled")) {
+    if (accessMethodEnabled(cfg, "voucher_login_enabled")) { renderVoucher(cfg); return; }
+    applyBranding(cfg);
+    RERENDER = function () { renderPlans(cfg); };
+    document.getElementById("root").innerHTML = portalHeading(cfg, "voucherWelcome", "Connect to WiFi") +
+      '<p class="msg" role="status">' + t("Voucher login and mobile payment are currently unavailable. Ask the hotspot owner for help.", "accessUnavailable") + '</p>';
+    return;
+  }
   applyBranding(cfg);
   RERENDER = function () { renderPlans(cfg); };
   var plans = cfg.guest_plans || [];
@@ -409,11 +436,26 @@ async function loadMediaTiles() {
   }
 }
 
+function setVoucherPending(pending) {
+  VOUCHER_PENDING = pending;
+  var button = document.getElementById("voucher-submit");
+  var input = document.getElementById("voucher-code");
+  var payment = document.getElementById("portal-go-payment");
+  var language = document.getElementById("lang");
+  if (button) {
+    button.disabled = pending;
+    button.textContent = pending ? t("Activating…", "activating") : t("Connect", "voucherConnect");
+  }
+  if (input) input.readOnly = pending;
+  if (payment) payment.disabled = pending;
+  if (language) language.setAttribute("aria-disabled", String(pending));
+}
+
 async function redeemVoucher(cfg) {
   var input = document.getElementById("voucher-code");
   var button = document.getElementById("voucher-submit");
   var msg = document.getElementById("voucher-msg");
-  if (!input || !button || !msg) return;
+  if (!input || !button || !msg || VOUCHER_PENDING || button.disabled) return;
   var code = input.value.trim().replace(/\s+/g, "").toUpperCase();
   input.value = code;
   msg.className = "voucher-msg msg";
@@ -430,8 +472,8 @@ async function redeemVoucher(cfg) {
     msg.textContent = t("Open this page from the hotspot login screen, then try again.", "hotspotContext");
     return;
   }
-  button.disabled = true;
-  button.textContent = t("Connecting…", "connecting");
+  setVoucherPending(true);
+  msg.textContent = t("Keep this page open while your voucher is checked.", "voucherChecking");
   try {
     var payload = { client_mac: mac, code: code, consent: consent };
     if (CLIENT_IP) payload.client_ip = CLIENT_IP;
@@ -442,21 +484,25 @@ async function redeemVoucher(cfg) {
       body: JSON.stringify(payload)
     });
     var data = await res.json().catch(function () { return {}; });
+    if (!button.isConnected) return;
     if (!res.ok) throw new Error(data.error || ("http-" + res.status));
-    var verifiedGuestAccess = cfg.guest_voucher_access === true && data.product === "guest-internet" && data.state === "active";
+    var verifiedGuestAccess = cfg.guest_voucher_access === true && data.product === "guest-internet" && data.state === "active" &&
+      new Date(data.expires_at).getTime() > Date.now() && Number.isInteger(data.data_mb) && data.data_mb >= 1 && data.data_mb <= 1048576;
     if (cfg.guest_voucher_access === true && !verifiedGuestAccess) throw new Error("Gateway access verification incomplete. Contact the hotspot owner.");
     applyBranding(cfg);
     RERENDER = null;
     document.getElementById("root").innerHTML =
       '<h1 class="ok">' + (verifiedGuestAccess ? t("Voucher accepted", "voucherAccepted") : esc("Voucher recorded")) + '</h1>' +
-      '<p class="welcome">' + (verifiedGuestAccess ? t("Your device is connected. You may close this page and continue browsing.", "voucherOnline") : esc("Gateway internet access has not been verified. Contact the hotspot owner before using another code.")) + '</p>' +
+      '<p class="welcome">' + (verifiedGuestAccess ? t("Voucher activated for this device. Open a website to check your internet access. If you are asked to sign in again, use the same code.", "voucherActivated") : esc("Gateway internet access has not been verified. Contact the hotspot owner before using another code.")) + '</p>' +
+      (verifiedGuestAccess ? '<p class="steps">' + esc(t("Valid until: ", "voucherExpiry")) + esc(new Date(data.expires_at).toLocaleString()) + '<br>' + esc(t("Total data allowance: ", "voucherAllowance")) + esc(data.data_mb) + ' MB</p>' : '') +
       mediaPanel(cfg) +
       (cfg.terms_text ? '<p class="terms">' + esc(cfg.terms_text) + '</p>' : '');
       if (verifiedGuestAccess) loadMediaTiles();
   } catch (e) {
-    msg.textContent = e.message || t("Could not redeem this voucher.", "voucherFailed");
-    button.disabled = false;
-    button.textContent = t("Connect", "voucherConnect");
+    if (msg.isConnected) msg.textContent = (e.message || t("Could not redeem this voucher.", "voucherFailed")) + ' ' +
+      t("Retry the same code. If access is still unavailable, ask the hotspot owner before using another voucher.", "voucherRetry");
+  } finally {
+    setVoucherPending(false);
   }
 }
 

@@ -211,3 +211,40 @@ it relies on the existing site-portal schema. No push, deployment or router writ
 Evidence: `/Users/aces/Documents/Codex/2026-10-21/asd/work/portal-policy/`.
 Next: portal request/error-state checks locally, with physical DHCP/DNS, login,
 internet traffic, expiry/data and reconnect acceptance still pending the lab router.
+
+## Hotspot portal request handling — 2026-10-21
+
+After the published-policy fix (`2cb2994`), hardened the existing Internet
+Hotspot page. Failed HTTP/config/JSON responses show a retry screen rather than
+access forms. Retry loads fresh config with one request at a time. When both
+published access methods are disabled, payment plans and voucher actions stay
+closed. One in-flight voucher activation blocks repeated Enter/click submissions
+and temporary language/payment navigation; code and consent survive an uncertain
+response for retry. Detached responses cannot overwrite a newer view.
+
+The activation screen requires an active guest grant with future expiry and a
+valid data allowance. It shows those limits and asks the guest to check internet
+access; router provisioning readback alone does not prove guest traffic. Legacy
+redemption stays explicitly unverified and preview remains inert. Original
+validity/data and the backend activation accounting are unchanged.
+
+Eight new DOM regressions passed. Clean source with fresh npm ci passed all
+39 critical UI tests and six web-audit surfaces; the mixed tree passed 42 tests.
+The real in-app browser exercised a synthetic config outage/retry, repeated Enter
+while pending, an uncertain activation response, and successful retry of the
+same code/consent. Fixture logs show exactly two intentional POSTs. The fixture
+never contacted a router or production service. The previous backend slice passed
+584 internal Go tests, 20 separately gated skips, race checks and the server build.
+Two pre-existing portal media-removal lines and all other dirty revamp files are
+preserved outside this commit.
+
+Evidence: `/Users/aces/Documents/Codex/2026-10-21/asd/work/portal-flow/`.
+Synthetic screenshot:
+`/Users/aces/Documents/Codex/2026-10-21/asd/outputs/hotspot-voucher-local-test-20261021.png`.
+
+The owner has now confirmed `hAP ax2 lab` is available and is a spare test router.
+WinBox is connected locally at 192.168.88.1 and shows hAP ax2 / arm64 / RouterOS
+7.24.2 stable. This supersedes earlier hardware-unavailable notes. Next is fresh
+read-only Hub/management verification and a bounded test plan; physical login,
+traffic and expiry/quota checks are not yet accepted. No router configuration,
+production migration/deployment, push or PR has occurred in this slice.
