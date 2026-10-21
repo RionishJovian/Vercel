@@ -1355,6 +1355,61 @@ function routerCapabilityButton(deviceID, kind, label, available, title) {
   return `<button class="routerboard-capability ${available ? "available" : "pending"}" type="button" data-router-capability="${esc(kind)}" data-router-capability-device="${esc(deviceID)}"${title ? ` title="${esc(title)}"` : ""}>${esc(label)}</button>`;
 }
 
+// Capability buttons for one router card. status drives the loading contract:
+// "checking" while the live probe runs, "ready" once the probe answered,
+// "error" with a per-card retry button when the bounded probe failed, and
+// "unknown" before any check (legacy rendering). Cards render immediately
+// from saved data; the live checks refresh them card by card afterwards.
+function routerCapabilitySlot(router, caps, status, message) {
+  const localRadios = caps ? Number((caps.modern_wifi && caps.modern_wifi.count) || 0) + Number((caps.legacy_wireless && caps.legacy_wireless.count) || 0) : 0;
+  const controller = !!(caps && ((caps.modern_capsman && caps.modern_capsman.supported) || (caps.legacy_capsman && caps.legacy_capsman.supported)));
+  const hotspot = !!(caps && caps.hotspot && caps.hotspot.supported);
+  const webfig = !!(caps && caps.webfig && caps.webfig.https_enabled);
+  const pending = status === "checking" || status === "error";
+  const capabilityTitle = status === "error" ? (message || "Capability discovery failed")
+    : status === "checking" ? "Checking this router…"
+    : (caps && caps.error) ? caps.error
+    : caps ? "Detected from this router" : "Capability discovery unavailable";
+  return `${router.deployment_layer === "MAIN_GATEWAY" ? routerCapabilityButton(router.device_id, "gateway", "Router name and DNS", !pending && !!(caps && caps.gateway), capabilityTitle) : ""}
+    ${router.deployment_layer === "MAIN_GATEWAY" ? routerCapabilityButton(router.device_id, "hotspot", "Hotspot readiness", !pending && hotspot, hotspot ? "View this router's hotspot readiness" : capabilityTitle) : ""}
+    ${localRadios > 0 || controller || ["ACCESS_POINT","CONTROLLER"].includes(router.deployment_layer) ? routerCapabilityButton(router.device_id, "wireless", "Wi-Fi readiness", !pending && (localRadios > 0 || controller), "Read-only capability information; SSID configuration is not available here yet") : ""}
+    ${routerCapabilityButton(router.device_id, "webfig", "WebFig status", !pending, webfig ? "HTTPS WebFig is available" : "View what is needed for secure WebFig access")}
+    ${status === "error" ? `<button class="btn btn-sm" type="button" data-capability-retry="${esc(router.device_id)}">Retry capability check</button>` : ""}`;
+}
+
+// Rewrite exactly one card's capability slot. Returns false when the card is
+// gone (the view re-rendered), so a late probe answer cannot touch fresh DOM.
+function renderCapabilityCardSlot(content, router, capabilityByID, status, message) {
+  const card = Array.from(content.querySelectorAll('[data-gateway-id]')).find(item => item.dataset.gatewayId === router.device_id);
+  const slot = card && card.querySelector(".routerboard-capabilities");
+  if (!card?.isConnected || !slot) return false;
+  slot.innerHTML = routerCapabilitySlot(router, capabilityByID.get(router.device_id) || null, status, message);
+  slot.querySelectorAll("[data-capability-retry]").forEach(button => button.addEventListener("click", () => { loadRouterCapability(content, router, capabilityByID); }));
+  return true;
+}
+
+const ROUTER_CAPABILITY_TIMEOUT_MS = 20000;
+
+// One bounded, per-card live capability probe. The card already rendered from
+// saved data; this only refreshes that card's buttons, and leaves a retry
+// button instead of stalling the page when the router does not answer.
+async function loadRouterCapability(content, router, capabilityByID) {
+  if (!renderCapabilityCardSlot(content, router, capabilityByID, "checking")) return;
+  const controller = new AbortController();
+  const bound = setTimeout(() => controller.abort(), ROUTER_CAPABILITY_TIMEOUT_MS);
+  try {
+    const response = await MM.get(`/routers/${encodeURIComponent(router.device_id)}/capabilities`, { signal: controller.signal });
+    const caps = response.capabilities || response;
+    if (caps.device_id !== router.device_id || caps.detected !== true) throw Error("Router tools are unverified");
+    capabilityByID.set(router.device_id, caps);
+    renderCapabilityCardSlot(content, router, capabilityByID, "ready");
+  } catch (error) {
+    const message = error && error.name === "AbortError" ? `Capability check timed out after ${Math.round(ROUTER_CAPABILITY_TIMEOUT_MS / 1000)}s. The router may be unreachable right now.` : ((error.data && error.data.error) || error.message);
+    capabilityByID.set(router.device_id, { error: `Capability discovery failed: ${message}` });
+    renderCapabilityCardSlot(content, router, capabilityByID, "error", message);
+  } finally { clearTimeout(bound); }
+}
+
 function hubLookupMarkup(peer) {
   const label = peer.handshake_status === "recent_handshake" ? "Recent tunnel handshake"
     : peer.handshake_status === "inactive" ? "Hub connection inactive" : "No recent tunnel handshake";
@@ -1388,7 +1443,7 @@ function wireHubLookup(content) {
   }));
 }
 
-function routerBoardPanel(routers, fleet, capabilityByID = new Map()) {
+function routerBoardPanel(routers, fleet, capabilityByID = new Map(), hubCapability = {available:false, lookup_enabled:false, code:"capability_unavailable"}, capabilityStatusByID = new Map()) {
   const canEdit = SITE_EDITOR_ROLES.includes(ME?.user?.user_role);
   const stateByID = new Map(asArray(fleet && fleet.peers).map(peer => [peer.device_id, String(peer.state || "unknown").toLowerCase()]));
   if (!routers.length) return `<div class="panel"><div class="panel-body"><div class="empty"><div class="empty-title">No devices registered in this workspace</div>Add a device record, then verify its management connection.</div></div></div>`;
@@ -1396,21 +1451,12 @@ function routerBoardPanel(routers, fleet, capabilityByID = new Map()) {
     const state = stateByID.get(router.device_id) || (router.is_online ? "up" : "unknown");
     const stateLabel = state === "up" ? "ONLINE" : state.toUpperCase();
     const caps = capabilityByID.get(router.device_id) || null;
-    const localRadios = caps ? Number((caps.modern_wifi && caps.modern_wifi.count) || 0) + Number((caps.legacy_wireless && caps.legacy_wireless.count) || 0) : 0;
-    const controller = !!(caps && ((caps.modern_capsman && caps.modern_capsman.supported) || (caps.legacy_capsman && caps.legacy_capsman.supported)));
-    const managedAPs = caps ? Number((caps.modern_capsman && caps.modern_capsman.count) || 0) + Number((caps.legacy_capsman && caps.legacy_capsman.count) || 0) : 0;
-    const hotspot = !!(caps && caps.hotspot && caps.hotspot.supported);
-    const webfig = !!(caps && caps.webfig && caps.webfig.https_enabled);
-    const capabilityError = caps && caps.error;
-    const capabilityTitle = capabilityError ? capabilityError : (caps ? "Detected from this router" : "Capability discovery unavailable");
+    const capabilityStatus = capabilityStatusByID.get(router.device_id) || (caps ? "ready" : "unknown");
     return `<article class="routerboard-card state-${esc(state)}">
       <header><span class="routerboard-glyph">${MMTheme.icon("router", 22)}</span><div><span class="fleet-kicker">${esc(topologyLayerLabel(router.deployment_layer))}</span><h3>${esc(router.hardware_name || "Unnamed RouterBOARD")}</h3><p>${esc([router.vendor, router.device_model].filter(Boolean).join(" · ") || "MikroTik device")}</p></div><span class="status ${state === "up" ? "ok" : (state === "offline" ? "bad" : "unknown")}">${esc(stateLabel)}</span></header>
       <dl><dt>Transport</dt><dd>${esc(router.transport || "direct")}</dd><dt>Management IP</dt><dd class="mono">${esc(router.management_ip || "Not registered")}</dd><dt>Last signal</dt><dd>${router.last_seen_at ? esc(ts(router.last_seen_at)) : "No verified signal"}</dd><dt>Device ID</dt><dd class="mono">${esc(router.device_id)}</dd></dl>
-      <div class="routerboard-capabilities">
-        ${router.deployment_layer === "MAIN_GATEWAY" ? routerCapabilityButton(router.device_id, "gateway", "Router name and DNS", !!(caps && caps.gateway), capabilityTitle) : ""}
-        ${router.deployment_layer === "MAIN_GATEWAY" ? routerCapabilityButton(router.device_id, "hotspot", "Hotspot readiness", hotspot, hotspot ? "View this router's hotspot readiness" : capabilityTitle) : ""}
-        ${localRadios > 0 || controller || ["ACCESS_POINT","CONTROLLER"].includes(router.deployment_layer) ? routerCapabilityButton(router.device_id, "wireless", "Wi-Fi readiness", localRadios > 0 || controller, "Read-only capability information; SSID configuration is not available here yet") : ""}
-        ${routerCapabilityButton(router.device_id, "webfig", "WebFig status", true, webfig ? "HTTPS WebFig is available" : "View what is needed for secure WebFig access")}
+      <div class="routerboard-capabilities" data-capability-slot="${esc(router.device_id)}">
+        ${routerCapabilitySlot(router, caps, capabilityStatus)}
       </div>
       ${canEdit && router.deployment_layer === "MAIN_GATEWAY" ? `<div class="router-hub-check"><button class="btn btn-sm" type="button" data-hub-check="${esc(router.device_id)}">Check Magic Hub</button><div data-hub-status role="status" hidden></div>
         <details data-hub-enrollment="${esc(router.device_id)}"><summary>Connect Magic Hub</summary>
@@ -1441,14 +1487,10 @@ async function renderSites(main, workspace = location.hash === "#gateways" ? "ga
   let fleet = { peers: [] };
   try { fleet = await MM.get("/fleet/health"); } catch (_) {}
   const routerStateByID = new Map(asArray(fleet.peers).map(peer => [peer.device_id, String(peer.state || "unknown").toLowerCase()]));
-  const capabilityByID = new Map(await Promise.all(routers.map(async router => {
-    try {
-      const response = await MM.get(`/routers/${encodeURIComponent(router.device_id)}/capabilities`);
-      return [router.device_id, response.capabilities || response];
-    } catch (error) {
-      return [router.device_id, { error: (error.data && error.data.error) ? error.data.error : error.message }];
-    }
-  })));
+  // Saved gateway cards render immediately; the live capability probes run
+  // per card after the page paints, each bounded and retryable on its own.
+  const capabilityByID = new Map();
+  const capabilityStatusByID = new Map(routers.map(router => [router.device_id, "checking"]));
   // Sites carry the geo data migrated from Mikromagic. Loaded separately so a
   // site-endpoint failure still leaves router management usable.
   let sites = [];
@@ -1469,7 +1511,7 @@ async function renderSites(main, workspace = location.hash === "#gateways" ? "ga
 
 
   content.innerHTML = `
-    ${routerBoardPanel(routers, fleet, capabilityByID)}
+    ${routerBoardPanel(routers, fleet, capabilityByID, undefined, capabilityStatusByID)}
     <dialog class="router-capability-dialog" id="router-capability-dialog"><div class="router-capability-shell"><button type="button" class="dialog-close" data-capability-close aria-label="Close">×</button><div id="router-capability-content"></div><div class="dialog-actions"><button type="button" class="btn" data-capability-close>Close</button></div></div></dialog>
     ${gatewayOnly ? connPanel(conns) : ""}
     ${canEdit ? `<div class="workspace-actions"><button class="btn btn-primary" type="button" id="site-add">${gatewayOnly ? "Connect new gateway" : "Add downstream device record"}</button></div>` : ""}
@@ -1677,6 +1719,8 @@ async function renderSites(main, workspace = location.hash === "#gateways" ? "ga
     }));
     if (!capabilityDialog.open) capabilityDialog.showModal();
   }));
+
+  routers.forEach(router => { loadRouterCapability(content, router, capabilityByID); });
 
   if (gatewayOnly) {
     wireHubLookup(content); wireConns(main, conns, sites);

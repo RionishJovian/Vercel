@@ -35,7 +35,9 @@ const MM = (() => {
     return refreshInFlight;
   }
 
-  async function req(method, path, body, retried = false) {
+  // signal: optional AbortSignal for bounded, cancellable requests (live
+  // router probes). Absent opts keep every existing call unchanged.
+  async function req(method, path, body, retried = false, signal) {
     const headers = { "Accept": "application/json", "X-MM-CSRF": "1" };
     if (body !== undefined) headers["Content-Type"] = "application/json";
 
@@ -45,13 +47,14 @@ const MM = (() => {
         method,
         headers,
         body: body !== undefined ? JSON.stringify(body) : undefined,
+        signal,
       });
     } catch (e) {
       throw new Error("network-unreachable");
     }
     if (res.status === 401) {
       if (!retried && !path.startsWith("/auth/") && await renew()) {
-        return req(method, path, body, true);
+        return req(method, path, body, true, signal);
       }
 
       authenticated = false;
@@ -74,7 +77,7 @@ const MM = (() => {
     return data;
   }
 
-  const get  = (p) => req("GET", p);
+  const get  = (p, opts) => req("GET", p, undefined, false, opts && opts.signal);
   const post = (p, b) => req("POST", p, b);
   const put  = (p, b) => req("PUT", p, b);
   const del  = (p, b) => req("DELETE", p, b);
