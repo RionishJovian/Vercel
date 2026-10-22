@@ -647,18 +647,10 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 			protected.POST("/topology/:deviceId/reboot", auth.RequireMinRole(model.RoleAdmin), topologyHandler.Reboot)
 
 			// VPS: read-only WireGuard peer-provisioning (plan-gated).
-			vpsg := protected.Group("/vps")
-			{
-				vpsg.GET("/config", vpsHandler.HubConfig)
-				vpsg.GET("/peers/:deviceId", vpsHandler.Peer)
-				vpsg.GET("/peers/:deviceId/health", vpsHandler.Health)
-				vpsg.GET("/peers/:deviceId/live", auth.RequireMinRole(model.RoleAdmin), vpsHandler.LivePeer)
-				vpsg.POST("/peers/:deviceId/enroll", auth.RequireMinRole(model.RoleAdmin), vpsHandler.EnrollGateway)
-				vpsg.POST("/peers/:deviceId/quick-enroll", auth.RequireMinRole(model.RoleAdmin), vpsHandler.QuickEnrollGateway)
-				vpsg.POST("/peers/:deviceId/finish", auth.RequireMinRole(model.RoleAdmin), vpsHandler.FinishGatewayConnection)
-				vpsg.GET("/peers/:deviceId/bootstrap", auth.RequireMinRole(model.RoleAdmin), vpsHandler.GatewayBootstrap)
-				vpsg.POST("/peers/:deviceId/authenticate", auth.RequireMinRole(model.RoleAdmin), vpsHandler.AuthenticateGateway)
-			}
+					vpsg := protected.Group("/vps")
+					{
+						handler.RegisterVPSRoutes(vpsg, vpsHandler)
+					}
 
 			policies := protected.Group("/alert-policies")
 			{
