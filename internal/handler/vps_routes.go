@@ -17,6 +17,9 @@ func RegisterVPSRoutes(
 	vpsg.GET("/peers/:deviceId", vpsHandler.Peer)
 	vpsg.GET("/peers/:deviceId/health", vpsHandler.Health)
 
+	// Read-only deployment availability used by the published Hub workflow.
+	vpsg.GET("/enrollment-capability", auth.RequireMinRole(model.RoleAdmin), vpsHandler.EnrollmentCapability)
+
 	// Live handshake requires Admin
 	vpsg.GET("/peers/:deviceId/live", auth.RequireMinRole(model.RoleAdmin), vpsHandler.LivePeer)
 

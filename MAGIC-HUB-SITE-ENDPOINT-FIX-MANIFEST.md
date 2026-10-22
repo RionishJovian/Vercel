@@ -2,7 +2,7 @@
 
 **Release Branch**: `fix/magic-hub-site-endpoint-0908d54`
 **Base Commit**: `0908d54` (proven production source — exact binary reproduction confirmed)
-**HEAD Commit**: to be committed after review
+**Site-fix commit**: `fea87e1`; follow-up restores the published workflow’s read-only enrollment-capability endpoint. Final source revision is recorded in the deployment log.
 **Date**: 2026-10-22
 
 ## Problem
@@ -114,3 +114,11 @@ All mutations detected by focused tests in isolated compiler overlays. Restored 
 - API config mount: `deployment-root/config.go-production.yaml` → `/app/config.yaml` (read-only)
 - App data volume: `mega-magic-go-staging_app_data` → `/app/data`
 - Public domain: `megamagic.tech`
+
+## Codex follow-up: published workflow availability
+
+Authenticated post-deployment verification of fea87e1 confirmed site readback succeeds, but the published frontend also requests GET /api/v1/vps/enrollment-capability. That route was missing (404), leaving Connect Magic Hub disabled.
+
+The follow-up restores the existing workflow implementation as a read-only handler and registers it through the shared production routing helper with Admin authorization. It returns deployment flags and plan availability only, never keys or router identities, and does not enroll or modify routers. Tests cover disabled/partial/ready deployment states plus anonymous, VIEWER and Admin HTTP authorization.
+
+The fea87e1 artifact hash above identifies that exact release, not this follow-up. The final clean-export build hash and exact deployment/rollback state are recorded in the Codex deployment evidence. Existing production behavior and infrastructure are preserved.
