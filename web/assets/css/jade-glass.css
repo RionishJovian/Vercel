@@ -62,3 +62,20 @@ body.page-app {
 .page-app .md-popup .md-messages{min-height:0;min-width:0;overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y;overflow-anchor:none;-webkit-overflow-scrolling:touch}
 .page-app .md-message-stack{min-width:0;display:flow-root}
 .page-app .md-message-body{overflow-wrap:anywhere}
+
+/* App-owned confirmations follow the same silver/emerald surfaces in both modes. */
+.page-app .app-confirm-dialog{width:min(480px,calc(100vw - 32px));max-height:calc(100dvh - 32px);margin:auto;padding:0;overflow-y:auto;color:var(--foreground);background:var(--surface);background:color-mix(in srgb,var(--surface) 94%,transparent);border:1px solid var(--border-strong);border-radius:24px;box-shadow:0 24px 80px #00191466;backdrop-filter:blur(24px) saturate(125%);-webkit-backdrop-filter:blur(24px) saturate(125%)}
+.page-app .app-confirm-dialog::backdrop{background:#001a2070;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+.page-app .app-confirm-content{padding:28px}
+.page-app .app-confirm-kicker{font-size:11px;font-weight:650;letter-spacing:.12em;color:var(--primary)}
+.page-app .app-confirm-dialog h2{margin:10px 0 18px;font-size:24px;letter-spacing:-.025em}
+.page-app .app-confirm-device{display:grid;gap:6px;padding:14px 16px;border:1px solid var(--border);border-radius:14px;background:var(--surface-elevated)}
+.page-app .app-confirm-device span{font-size:12px;color:var(--foreground-muted);overflow-wrap:anywhere}
+.page-app .app-confirm-dialog p{font-size:14px;line-height:1.6;color:var(--foreground-muted);margin:16px 0}
+.page-app .app-confirm-dialog .app-confirm-warning{color:var(--destructive);font-weight:600}
+.page-app .app-confirm-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:24px;flex-wrap:wrap}
+.page-app .app-confirm-actions .btn{min-height:44px}
+.page-app .app-confirm-delete{color:var(--destructive);border-color:var(--destructive);background:var(--status-danger-soft)}
+.page-app .app-confirm-delete:hover{filter:brightness(.95)}
+@media(max-width:480px){.page-app .app-confirm-content{padding:22px}.page-app .app-confirm-actions .btn{flex:1;white-space:normal}}
+@media(prefers-reduced-transparency:reduce){.page-app .app-confirm-dialog{background:var(--surface);backdrop-filter:none;-webkit-backdrop-filter:none}.page-app .app-confirm-dialog::backdrop{backdrop-filter:none;-webkit-backdrop-filter:none}}

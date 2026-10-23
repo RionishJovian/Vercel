@@ -215,7 +215,7 @@
   <link rel="stylesheet" href="/assets/css/redesign.css">
   <link rel="stylesheet" href="/assets/css/media-appearance.css?v=5">
   <link rel="stylesheet" href="/assets/css/layout.css?v=20261018-2">
-  <link rel="stylesheet" href="/assets/css/jade-glass.css?v=20261023-2">
+  <link rel="stylesheet" href="/assets/css/jade-glass.css?v=20261023-3">
 </head>
 <body class="page-app">
 <div class="lg-orb lg-orb-a"></div>
@@ -1485,14 +1485,55 @@ function wireHubLookup(content) {
   }));
 }
 
+function confirmDeviceRemoval(router) {
+  return new Promise(resolve => {
+    const previousFocus = document.activeElement;
+    const dialog = document.createElement("dialog");
+    dialog.className = "app-confirm-dialog";
+    dialog.id = "device-removal-dialog";
+    dialog.setAttribute("aria-labelledby", "device-removal-title");
+    dialog.setAttribute("aria-describedby", "device-removal-description");
+    dialog.innerHTML = `<div class="app-confirm-content">
+      <span class="app-confirm-kicker">DEVICE MANAGEMENT</span>
+      <h2 id="device-removal-title">Delete device record?</h2>
+      <div class="app-confirm-device"><strong data-device-name></strong><span data-device-id></span></div>
+      <div id="device-removal-description"><p>Associated telemetry, backups and change history may also be deleted. Linked voucher records can prevent deletion.</p>
+      <p>This does not reset the physical router or revoke its Magic Hub connection.</p>
+      <p class="app-confirm-warning">This action is permanent and cannot be undone.</p></div>
+      <div class="app-confirm-actions"><button type="button" class="btn" data-confirm-cancel autofocus>Cancel</button><button type="button" class="btn app-confirm-delete" data-confirm-delete>Delete device record</button></div>
+    </div>`;
+    dialog.querySelector("[data-device-name]").textContent = router.hardware_name || "Unnamed device";
+    dialog.querySelector("[data-device-id]").textContent = "Device ID: " + router.device_id;
+    let settled = false;
+    const finish = confirmed => {
+      if (settled) return;
+      settled = true;
+      if (dialog.open) dialog.close();
+      dialog.remove();
+      if (previousFocus?.isConnected) previousFocus.focus({preventScroll:true});
+      resolve(confirmed);
+    };
+    dialog.querySelector("[data-confirm-cancel]").addEventListener("click", () => finish(false));
+    dialog.querySelector("[data-confirm-delete]").addEventListener("click", () => finish(true));
+    dialog.addEventListener("cancel", event => { event.preventDefault(); finish(false); });
+    dialog.addEventListener("close", () => finish(false));
+    document.body.appendChild(dialog);
+    dialog.showModal();
+    dialog.querySelector("[data-confirm-cancel]").focus({preventScroll:true});
+  });
+}
+
 function wireRouterRemoval(content, main, routers, workspace) {
   content.querySelectorAll("button[data-router-delete]").forEach(button => button.addEventListener("click", async () => {
     if (button.disabled || !SITE_EDITOR_ROLES.includes(ME?.user?.user_role)) return;
     const router = routers.find(item => item.device_id === button.dataset.routerDelete);
     if (!router) return;
-    const name = router.hardware_name || "Unnamed device";
-    if (!confirm(`Permanently delete the saved device record “${name}”?\nDevice ID: ${router.device_id}\n\nAssociated telemetry, backups and change history may also be deleted. Linked voucher records can prevent deletion.\n\nThis does not reset the physical router or revoke its Magic Hub connection. This action cannot be undone.`)) return;
     button.disabled = true;
+    const confirmed = await confirmDeviceRemoval(router);
+    if (!confirmed || !content.isConnected || !SITE_EDITOR_ROLES.includes(ME?.user?.user_role)) {
+      if (button.isConnected) button.disabled = false;
+      return;
+    }
     let removed = false;
     try {
       await MM.del(`/routers/${encodeURIComponent(router.device_id)}`);
