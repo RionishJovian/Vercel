@@ -8,12 +8,16 @@ const context=vm.createContext({encodeURIComponent,Date,Map,Number,String,
   asArray:x=>Array.isArray(x)?x:[],ts:x=>x,esc:x=>String(x??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;'),
   MMTheme:{icon:()=>''},topologyLayerLabel:x=>x});
 vm.runInContext(source.slice(start,end),context);
+const hubAvailable={available:true,lookup_enabled:true};
 const gateway={device_id:'gateway/a',hardware_name:'Gateway',deployment_layer:'MAIN_GATEWAY'};
-assert(context.routerBoardPanel([gateway],{}).includes('data-hub-check='));
-for (const step of ['1. Connect with one paste','2. Finish connection']) assert(context.routerBoardPanel([gateway],{}).includes(step));
-assert(!context.routerBoardPanel([{...gateway,deployment_layer:'ACCESS_POINT'}],{}).includes('data-hub-check='));
-context.ME.user.user_role='VIEWER';
+assert(context.routerBoardPanel([gateway],{},new Map(),hubAvailable).includes('data-hub-check='));
+for (const step of ['1. Connect with one paste','2. Finish connection']) assert(context.routerBoardPanel([gateway],{},new Map(),hubAvailable).includes(step));
+assert(!context.routerBoardPanel([{...gateway,deployment_layer:'ACCESS_POINT'}],{},new Map(),hubAvailable).includes('data-hub-check='));
+assert(context.routerBoardPanel([gateway],{},new Map(),hubAvailable).includes('data-gateway-id="gateway/a"'));
 assert(!context.routerBoardPanel([gateway],{}).includes('data-hub-check='));
+assert(!context.routerBoardPanel([gateway],{}).includes('data-hub-enrollment='));
+context.ME.user.user_role='VIEWER';
+assert(!context.routerBoardPanel([gateway],{},new Map(),hubAvailable).includes('data-hub-check='));
 context.ME.user.user_role='OWNER';
 let click,resolve,calls=0;
 const status={hidden:true,isConnected:true,textContent:'',innerHTML:''};

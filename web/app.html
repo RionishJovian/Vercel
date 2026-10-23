@@ -1494,14 +1494,14 @@ function routerBoardPanel(routers, fleet, capabilityByID = new Map(), hubCapabil
     const stateLabel = state === "up" ? "ONLINE" : state.toUpperCase();
     const caps = capabilityByID.get(router.device_id) || null;
     const capabilityStatus = capabilityStatusByID.get(router.device_id) || (caps ? "ready" : "unknown");
-    return `<article class="routerboard-card state-${esc(state)}">
-      <header><span class="routerboard-glyph">${MMTheme.icon("router", 22)}</span><div><span class="fleet-kicker">${esc(topologyLayerLabel(router.deployment_layer))}</span><h3>${esc(router.hardware_name || "Unnamed RouterBOARD")}</h3><p>${esc([router.vendor, router.device_model].filter(Boolean).join(" · ") || "MikroTik device")}</p></div><span class="status ${state === "up" ? "ok" : (state === "offline" ? "bad" : "unknown")}">${esc(stateLabel)}</span></header>
+    return `<article class="routerboard-card state-${esc(state)}" data-gateway-id="${esc(router.device_id)}">
+    <header><span class="routerboard-glyph">${MMTheme.icon("router", 22)}</span><div><span class="fleet-kicker">${esc(topologyLayerLabel(router.deployment_layer))}</span><h3>${esc(router.hardware_name || "Unnamed RouterBOARD")}</h3><p>${esc([router.vendor, router.device_model].filter(Boolean).join(" · ") || "MikroTik device")}</p></div><span class="status ${state === "up" ? "ok" : (state === "offline" ? "bad" : "unknown")}">${esc(stateLabel)}</span></header>
       <dl><dt>Transport</dt><dd>${esc(router.transport || "direct")}</dd><dt>Management IP</dt><dd class="mono">${esc(router.management_ip || "Not registered")}</dd><dt>Last signal</dt><dd>${router.last_seen_at ? esc(ts(router.last_seen_at)) : "No verified signal"}</dd><dt>Device ID</dt><dd class="mono">${esc(router.device_id)}</dd></dl>
       <div class="routerboard-capabilities" data-capability-slot="${esc(router.device_id)}">
         ${routerCapabilitySlot(router, caps, capabilityStatus)}
       </div>
-      ${canEdit && router.deployment_layer === "MAIN_GATEWAY" ? `<div class="router-hub-check"><button class="btn btn-sm" type="button" data-hub-check="${esc(router.device_id)}">Check Magic Hub</button><div data-hub-status role="status" hidden></div>
-        <details data-hub-enrollment="${esc(router.device_id)}"><summary>Connect Magic Hub</summary>
+      ${canEdit && router.deployment_layer === "MAIN_GATEWAY" ? `<div class="router-hub-check">${hubCapability.lookup_enabled ? `<button class="btn btn-sm" type="button" data-hub-check="${esc(router.device_id)}">Check Magic Hub</button><div data-hub-status role="status" hidden></div>` : `<button class="btn btn-sm" type="button" disabled title="Magic Hub lookup unavailable">Check Magic Hub</button>`}
+        ${hubCapability.available ? `<details data-hub-enrollment="${esc(router.device_id)}"><summary>Connect Magic Hub</summary>
           <h3>1. Connect with one paste</h3><p>Magic Hub creates a one-time RouterOS script. Copy the entire block into WinBox → New Terminal and press Enter. The router keeps its private WireGuard key; no public-key copy step is required.</p>
           <form class="quick-config-form"><label>Router HTTPS management port<input name="management_rest_port" type="number" min="1" max="65535" value="443" required></label>
             <label class="check-label"><input name="confirm_enrollment" type="checkbox" required> I authorize a private Magic Hub connection and a dedicated router management account.</label>
@@ -1510,11 +1510,11 @@ function routerBoardPanel(routers, fleet, capabilityByID = new Map(), hubCapabil
           </form>
           <h3>2. Finish connection</h3><p>After running the entire script in WinBox, verify the connection here. No router username, password or fingerprint entry is needed for automatic setup.</p>
           <button type="button" class="btn" data-hub-finish>Finish connection</button><div data-hub-finish-status role="status" aria-live="polite"></div>
-        </details></div>` : ""}
+        </details>` : `<div class="notice" role="status"><strong>Magic Hub connection unavailable</strong><p>${esc(hubEnrollmentUnavailableMessage(hubCapability.code))}</p></div>`}</div>` : ""}
       <footer>${canEdit ? `<button class="btn btn-sm" type="button" data-edit="${esc(router.device_id)}">Edit record</button>` : ""}<button class="btn btn-sm" type="button" data-router-topology="${esc(router.device_id)}">Topology</button>${canEdit ? `<button class="btn btn-sm" type="button" data-reboot="${esc(router.device_id)}"${state !== "up" ? " disabled title=\"No verified reachability\"" : ""}>Reboot</button>` : ""}</footer>
     </article>`;
   }).join("");
-  return `<section class="routerboard-console"><header><div><span class="fleet-kicker">ROUTER MANAGEMENT</span><h2>${routers.length} managed device${routers.length === 1 ? "" : "s"}</h2><p>Choose a router to manage its settings. Mega Magic shows the tools that this device and RouterOS installation support.</p></div></header><div class="routerboard-grid mobile-device-list">${cards}</div></section>`;
+  return `<section class="routerboard-console"><header><div><span class="fleet-kicker">ROUTER MANAGEMENT</span><h2>${routers.length} registered device${routers.length === 1 ? "" : "s"}</h2><p>Registration is not a verified connection. Complete site assignment and Magic Hub setup before managing supported settings.</p></div></header><div class="routerboard-grid mobile-device-list">${cards}</div></section>`;
 }
 
 async function renderSites(main, workspace = location.hash === "#gateways" ? "gateways" : "routers") {
