@@ -234,7 +234,8 @@ type RecoveryConfig struct {
 
 // ProvisionerConfig configures the real provisioner apply path.
 type ProvisionerConfig struct {
-	Applier ApplierConfig `mapstructure:"applier"`
+	InventoryEnabled bool          `mapstructure:"inventory_enabled"`
+	Applier          ApplierConfig `mapstructure:"applier"`
 
 	// AllowedTargetCIDRs bounds every database-resolved SSH connection (read
 	// and write) to explicit management networks. Empty is safe only while both
@@ -384,7 +385,7 @@ func (cfg *Config) Validate() error {
 			problems = append(problems, "vps Hub lookup requires a valid HTTPS endpoint, key identifier and 32-byte hex signing key")
 		}
 	}
-	routerAccess := cfg.Provisioner.Applier.Enabled || cfg.Provisioner.PostureCapture.Enabled
+	routerAccess := cfg.Provisioner.Applier.Enabled || cfg.Provisioner.PostureCapture.Enabled || cfg.Provisioner.InventoryEnabled
 	if routerAccess {
 		if len(cfg.Provisioner.AllowedTargetCIDRs) == 0 {
 			problems = append(problems, "provisioner.allowed_target_cidrs is required when router access is enabled")

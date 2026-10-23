@@ -18,6 +18,7 @@ import (
 // guard on the real route, which was the original defect.
 func TestCommerceMutationRoutesHaveRoleGuards(t *testing.T) {
 	want := map[string]model.UserRole{
+		"CreatePolicy": model.RoleAdmin, "UpdatePolicy": model.RoleAdmin, "DeletePolicy": model.RoleAdmin,
 		"CreateVoucher": model.RoleAdmin, "UpdateVoucherStatus": model.RoleAdmin,
 		"DeleteVoucher": model.RoleAdmin, "StaffUpdateConfig": model.RoleAdmin,
 		"PortalDeployment": model.RoleAdmin,

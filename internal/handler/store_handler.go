@@ -105,6 +105,10 @@ func (h *StoreHandler) Approve(c *gin.Context) { h.decideHTTP(c, true) }
 func (h *StoreHandler) Reject(c *gin.Context)  { h.decideHTTP(c, false) }
 
 func (h *StoreHandler) decideHTTP(c *gin.Context, approve bool) {
+	if auth.GetUserRole(c) != string(model.RoleDeveloper) {
+		c.JSON(403, gin.H{"error": "platform operator approval required"})
+		return
+	}
 	businessID, actor := auth.GetBusinessID(c), auth.GetUserID(c)
 	reason := ""
 	if !approve {

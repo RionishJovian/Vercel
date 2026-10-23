@@ -38,9 +38,9 @@ window.MMNetwork = (() => {
  async function mount(host,workspace,routers,canEdit,api=MM){
   let revision=0,inventory=null,defaults={},review=null,pending=null,applying=false;
   const kinds=choices[workspace];
-  host.innerHTML=`<section class="panel network-workspace" aria-label="${esc(workspaces[workspace][0])} controls"><header><p class="network-eyebrow">START WITH YOUR DEVICE</p><p>${esc(workspaces[workspace][1])}</p></header><ol class="network-steps" aria-label="Change workflow"><li>1 · Choose device</li><li>2 · Configure</li><li>3 · Review and apply</li></ol>
-   <label>Managed device<select class="input" data-router><option value="">Choose a connected device</option>${routers.map(r=>`<option value="${esc(r.device_id)}">${esc(r.hardware_name)}</option>`).join('')}</select></label>
-   <div data-editor aria-live="polite">${routers.length?'Choose a device to read its current settings.':'Connect a device from Gateways first.'}</div></section>`;
+  host.innerHTML=`<section class="panel network-workspace" aria-label="${esc(workspaces[workspace][0])} controls"><header><p class="network-eyebrow">CURRENT SERVICES AND SETTINGS</p><p>${esc(workspaces[workspace][1])} Your saved Magic Hub connection is reused automatically. Review and apply is required only when changing settings.</p></header>
+   <label>Working router<select class="input" data-router><option value="">Select a router to view</option>${routers.map(r=>`<option value="${esc(r.device_id)}">${esc(r.hardware_name)}</option>`).join('')}</select></label>
+   <div data-editor aria-live="polite">${routers.length?'Select a working router once; it is remembered across network pages.':'No router is registered for this business. Initial onboarding belongs in Magic Hub.'}</div></section>`;
   const select=host.querySelector('[data-router]'),editor=host.querySelector('[data-editor]');
   const current=()=>host.isConnected&&select.value;
   const error=e=>(e.data&&e.data.error)||e.message||'Request failed';
@@ -132,7 +132,10 @@ window.MMNetwork = (() => {
     };
    }
   }
-  select.onchange=reload;
+  select.onchange=()=>{if(select.value)sessionStorage.setItem('mm_selected_router',select.value);return reload()};
+  const requested=typeof sessionStorage==='undefined'?'':sessionStorage.getItem('mm_selected_router');
+  const target=routers.find(r=>r.device_id===requested)||(routers.length===1?routers[0]:null);
+  if(target){select.value=target.device_id;sessionStorage.setItem('mm_selected_router',target.device_id);await reload()}
  }
  return {mount};
 })();

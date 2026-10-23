@@ -29,8 +29,14 @@ func TestDBGuestPortalPublishedPolicyMatchesVoucherAndResume(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = db.Exec(string(schema)); err != nil {
+	var exists bool
+	if err = db.QueryRow(`SELECT to_regclass('public.site_portals') IS NOT NULL`).Scan(&exists); err != nil {
 		t.Fatal(err)
+	}
+	if !exists {
+		if _, err = db.Exec(string(schema)); err != nil {
+			t.Fatal(err)
+		}
 	}
 	gin.SetMode(gin.TestMode)
 	configRepo := database.NewPortalConfigRepository(db)

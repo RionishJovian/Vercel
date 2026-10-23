@@ -475,6 +475,9 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	// When enabled, peer.recover intents reach the real RouterOS Applier through
 	// the approve -> apply -> verify -> rollback gate. A failure here must fail
 	// startup loudly.
+	if err := wireRouterObservations(cfg, db, routerHandler); err != nil {
+		return nil, err
+	}
 	if err := startLiveApplier(cfg, messagingClient, sugar, monitoringService, db, backupHandler, securityHandler, incidentActionHandler, guestWifiHandler); err != nil {
 		return nil, err
 	}
@@ -611,20 +614,12 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 				routers.POST("/:id/webfig/secure", auth.RequireMinRole(model.RoleAdmin), securityHandler.ConfigureWebFig)
 				routers.GET("/:id", routerHandler.GetRouter)
 				// Router write is OWNER/ADMIN (C3 hierarchy; explicit per RM).
-						routers.POST("", auth.RequireMinRole(model.RoleAdmin), routerHandler.CreateRouter)
-						routers.PUT("/:id", auth.RequireMinRole(model.RoleAdmin), routerHandler.UpdateRouter)
-						routers.DELETE("/:id", auth.RequireMinRole(model.RoleAdmin), routerHandler.DeleteRouter)
+				routers.POST("", auth.RequireMinRole(model.RoleAdmin), routerHandler.CreateRouter)
+				routers.PUT("/:id", auth.RequireMinRole(model.RoleAdmin), routerHandler.UpdateRouter)
+				routers.DELETE("/:id", auth.RequireMinRole(model.RoleAdmin), routerHandler.DeleteRouter)
 
-						// Device observations — read-only telemetry (VIEWER).
-						routers.GET("/:id/observations", routerHandler.GetRouterObservations)
-
-						// Discovery labels — metadata only, no router writes (VIEWER read, ADMIN write).
-						routers.GET("/:id/discovery-labels", routerHandler.GetDiscoveryLabels)
-						routers.PUT("/:id/discovery-labels", auth.RequireMinRole(model.RoleAdmin), routerHandler.UpsertDiscoveryLabel)
-
-						// Guest disconnect — router write action (ADMIN).
-						routers.POST("/:id/guests/disconnect", auth.RequireMinRole(model.RoleAdmin), routerHandler.DisconnectGuest)
-					}
+				handler.RegisterRouterObservationRoutes(routers, routerHandler)
+			}
 
 			telemetry := protected.Group("/telemetry")
 			{
@@ -669,9 +664,9 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 			policies := protected.Group("/alert-policies")
 			{
 				policies.GET("", incidentHandler.ListPolicies)
-				policies.POST("", incidentHandler.CreatePolicy)
-				policies.PUT("/:id", incidentHandler.UpdatePolicy)
-				policies.DELETE("/:id", incidentHandler.DeletePolicy)
+				policies.POST("", auth.RequireMinRole(model.RoleAdmin), incidentHandler.CreatePolicy)
+				policies.PUT("/:id", auth.RequireMinRole(model.RoleAdmin), incidentHandler.UpdatePolicy)
+				policies.DELETE("/:id", auth.RequireMinRole(model.RoleAdmin), incidentHandler.DeletePolicy)
 			}
 
 			protected.GET("/voucher-report", voucherHandler.VoucherReport)
@@ -697,8 +692,8 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 			{
 				storePurchases.GET("", storeHandler.List)
 				storePurchases.POST("", storeHandler.Create)
-				storePurchases.POST("/:purchaseId/approve", auth.RequireMinRole(model.RoleAdmin), storeHandler.Approve)
-				storePurchases.POST("/:purchaseId/reject", auth.RequireMinRole(model.RoleAdmin), storeHandler.Reject)
+				storePurchases.POST("/:purchaseId/approve", auth.RequireRole(string(model.RoleDeveloper)), storeHandler.Approve)
+				storePurchases.POST("/:purchaseId/reject", auth.RequireRole(string(model.RoleDeveloper)), storeHandler.Reject)
 			}
 			protected.GET("/store/checkout-options", storeHandler.CheckoutOptions)
 

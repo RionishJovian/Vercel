@@ -11,7 +11,7 @@ export function libraryCards(items) {
 }
 export function mountDashboard(content,business,user,api) {
  content.classList.add('media-console');
- content.innerHTML=`<nav class="media-tabs media-design-actions" aria-label="Media workspace"><button class="btn" data-media-tab="connection">Connection</button><button class="btn" data-media-tab="libraries">Libraries</button><button class="btn" data-media-tab="appearance">Guest design</button></nav><div id="media-workspace"></div>`;
+ content.innerHTML=`<nav class="media-tabs media-design-actions" aria-label="Jellyfin workspace"><button class="btn" data-media-tab="connection">Connection</button><button class="btn" data-media-tab="libraries">Libraries</button><a class="btn" href="#jellyfin-portal">Jellyfin Guest Portal</a></nav><div id="media-workspace"></div>`;
  const tabs=content.querySelector('.media-design-actions');
  tabs.insertAdjacentHTML('afterbegin','<button class="btn" data-media-tab="overview">Overview</button>');
  const workspace=content.querySelector('#media-workspace');let generation=0,connection={};

@@ -1,10 +1,12 @@
 package handler
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -12,6 +14,7 @@ import (
 	"mega-magic/internal/auth"
 	"mega-magic/internal/database"
 	"mega-magic/internal/model"
+	"mega-magic/internal/provisioner/routeros"
 )
 
 type RouterHandler struct {
@@ -20,6 +23,9 @@ type RouterHandler struct {
 	deviceRepo       *database.DeviceRepository
 	allowRepo        *database.DeviceAllowanceRepository
 	messaging        MessagingClient
+	observations     interface {
+		ReadObservations(context.Context, string, string) (routeros.NetworkInventory, error)
+	}
 }
 
 type MessagingClient interface {
@@ -364,108 +370,87 @@ func (h *RouterHandler) GetRouterObservations(c *gin.Context) {
 		return
 	}
 
-	// TODO: Replace with actual router telemetry when connector is implemented.
-	// For now, return unavailable so the UI shows the correct empty state.
-	c.JSON(http.StatusOK, gin.H{
-		"inventory": gin.H{
-			"available": gin.H{
-				"hotspot_sessions": false,
-				"discovery_leases": false,
-				"arp":              false,
-				"neighbors":        false,
-			},
-			"objects": gin.H{
-				"hotspot_sessions": []any{},
-				"discovery_leases": []any{},
-				"arp":              []any{},
-				"neighbors":        []any{},
-			},
-			"write_enabled": false,
-		},
-	})
+	c.Header("Cache-Control", "no-store")
+	if h.observations == nil {
+		c.JSON(503, gin.H{"error": "Read-only router observations are not enabled", "code": "observations_unavailable"})
+		return
+	}
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
+	defer cancel()
+	inventory, err := h.observations.ReadObservations(ctx, businessID, deviceID)
+	if err != nil {
+		c.JSON(502, gin.H{"error": "Router observations could not be read", "code": "observations_unavailable"})
+		return
+	}
+	inventory.WriteEnabled = false
+	inventory.WiFiWriteEnabled = false
+	c.JSON(200, gin.H{"inventory": inventory})
 }
 
 // GetDiscoveryLabels returns saved friendly names and types for discovered devices.
 func (h *RouterHandler) GetDiscoveryLabels(c *gin.Context) {
-	deviceID := c.Param("id")
-	businessID := auth.GetBusinessID(c)
-
-	var device *model.Device
+	businessID, deviceID := auth.GetBusinessID(c), c.Param("id")
+	var labels []*database.DiscoveryLabel
 	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
-		d, err := h.deviceRepo.GetDeviceByIDTXN(tx, deviceID)
-		if err != nil {
-			return &httpError{status: http.StatusInternalServerError, msg: "database error"}
+		d, e := h.deviceRepo.GetDeviceByIDTXN(tx, deviceID)
+		if e != nil {
+			return e
 		}
-		device = d
-		return nil
+		if d == nil || d.BusinessID != businessID {
+			return &httpError{status: 404, msg: "router not found"}
+		}
+		labels, e = h.deviceRepo.GetDiscoveryLabelsTXN(tx, businessID, deviceID)
+		return e
 	})
 	if err != nil {
 		respondErr(c, err)
 		return
 	}
-	if device == nil || device.BusinessID != businessID {
-		c.JSON(http.StatusNotFound, gin.H{"error": "router not found"})
-		return
-	}
-
-	labels, err := h.deviceRepo.GetDiscoveryLabels(deviceID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load discovery labels"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"labels": labels})
+	c.Header("Cache-Control", "no-store")
+	c.JSON(200, gin.H{"labels": labels})
 }
 
 type UpsertDiscoveryLabelRequest struct {
-	MACAddress string `json:"mac_address" binding:"required"`
+	MACAddress string `json:"mac" binding:"required"`
 	Name       string `json:"name" binding:"required"`
 	Kind       string `json:"kind" binding:"required,oneof=other switch ap computer printer controller"`
 }
 
-// UpsertDiscoveryLabel creates or updates a discovery label for a device.
-// This is metadata only — it does not change router configuration.
 func (h *RouterHandler) UpsertDiscoveryLabel(c *gin.Context) {
-	deviceID := c.Param("id")
-	businessID := auth.GetBusinessID(c)
-
-	var device *model.Device
+	var req UpsertDiscoveryLabelRequest
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 4096)
+	if c.ShouldBindJSON(&req) != nil {
+		c.JSON(400, gin.H{"error": "mac, name and supported kind required"})
+		return
+	}
+	mac, e := net.ParseMAC(req.MACAddress)
+	req.Name = strings.TrimSpace(req.Name)
+	if e != nil || len(mac) != 6 || mac[0]&1 != 0 || mac.String() == "00:00:00:00:00:00" || len(req.Name) == 0 || len(req.Name) > 120 {
+		c.JSON(400, gin.H{"error": "valid unicast MAC and name of 1–120 bytes required"})
+		return
+	}
+	businessID, deviceID := auth.GetBusinessID(c), c.Param("id")
+	var labels []*database.DiscoveryLabel
 	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
-		d, err := h.deviceRepo.GetDeviceByIDTXN(tx, deviceID)
-		if err != nil {
-			return &httpError{status: http.StatusInternalServerError, msg: "database error"}
+		d, e := h.deviceRepo.GetDeviceByIDTXN(tx, deviceID)
+		if e != nil {
+			return e
 		}
-		device = d
-		return nil
+		if d == nil || d.BusinessID != businessID {
+			return &httpError{status: 404, msg: "router not found"}
+		}
+		if _, e = h.deviceRepo.UpsertDiscoveryLabelTXN(tx, businessID, deviceID, strings.ToUpper(mac.String()), req.Name, req.Kind); e != nil {
+			return e
+		}
+		labels, e = h.deviceRepo.GetDiscoveryLabelsTXN(tx, businessID, deviceID)
+		return e
 	})
 	if err != nil {
 		respondErr(c, err)
 		return
 	}
-	if device == nil || device.BusinessID != businessID {
-		c.JSON(http.StatusNotFound, gin.H{"error": "router not found"})
-		return
-	}
-
-	var req UpsertDiscoveryLabelRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	_, err = h.deviceRepo.UpsertDiscoveryLabel(businessID, deviceID, req.MACAddress, req.Name, req.Kind)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save discovery label"})
-		return
-	}
-
-	labels, err := h.deviceRepo.GetDiscoveryLabels(deviceID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load discovery labels"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"labels": labels})
+	c.Header("Cache-Control", "no-store")
+	c.JSON(200, gin.H{"labels": labels})
 }
 
 type DisconnectGuestRequest struct {
@@ -476,8 +461,7 @@ type DisconnectGuestRequest struct {
 	Confirm bool   `json:"confirm" binding:"required"`
 }
 
-// DisconnectGuest ends a Hotspot session on the router.
-// This is a write action — it requires router write capability.
+// DisconnectGuest refuses unverified actions until a router write connector is accepted.
 func (h *RouterHandler) DisconnectGuest(c *gin.Context) {
 	deviceID := c.Param("id")
 	businessID := auth.GetBusinessID(c)
@@ -511,10 +495,13 @@ func (h *RouterHandler) DisconnectGuest(c *gin.Context) {
 		return
 	}
 
-	// TODO: Replace with actual router action when connector is implemented.
-	// For now, return unverified so the UI shows the correct pending state.
-	c.JSON(http.StatusOK, gin.H{
-		"verified": false,
-		"note":     "Router action not yet implemented; session may persist.",
-	})
+	// Report unavailability as an error, never as successful disconnection.
+	c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Guest disconnection is unavailable until the router action has passed acceptance", "code": "guest_disconnect_unavailable", "verified": false})
+}
+
+// EnableObservations supplies a read-only interface, separately from router writes.
+func (h *RouterHandler) EnableObservations(reader interface {
+	ReadObservations(context.Context, string, string) (routeros.NetworkInventory, error)
+}) {
+	h.observations = reader
 }

@@ -131,7 +131,7 @@ func (h *GuestWifiHandler) PublicGuestPurchase(c *gin.Context) {
 	// in the device-derived tenant before ANY state change.
 	var cfg *model.PortalConfig
 	err = withDeviceTenant(h.db, dev.BusinessID, func(tx *sql.Tx) error {
-		pc, e := h.configRepo.GetByBusinessTXN(tx, dev.BusinessID)
+		pc, e := h.configRepo.GetByDeviceTXN(tx, dev.BusinessID, deviceID)
 		if e != nil {
 			return e
 		}
@@ -244,16 +244,17 @@ func (h *GuestWifiHandler) PublicGuestPurchase(c *gin.Context) {
 			}
 		}
 		r, e := h.reqRepo.CreateTXN(tx, &model.GuestPurchaseRequest{
-			BusinessID:     dev.BusinessID,
-			DeviceID:       &deviceID,
-			ClientMAC:      clientMAC,
-			PlanKey:        plan.Key,
-			Amount:         plan.Amount,
-			DataMB:         plan.DataMB,
-			GraceStartedAt: &graceStart,
-			GraceExpiresAt: &graceExpires,
-			GraceDataMB:    cfg.GuestGraceDataMB,
-			Status:         "pending",
+			BusinessID:       dev.BusinessID,
+			DeviceID:         &deviceID,
+			ClientMAC:        clientMAC,
+			PlanKey:          plan.Key,
+			PurchasedMinutes: &plan.Minutes,
+			Amount:           plan.Amount,
+			DataMB:           plan.DataMB,
+			GraceStartedAt:   &graceStart,
+			GraceExpiresAt:   &graceExpires,
+			GraceDataMB:      cfg.GuestGraceDataMB,
+			Status:           "pending",
 		})
 		if e != nil {
 			return e
@@ -283,7 +284,7 @@ func (h *GuestWifiHandler) PublicGuestPurchase(c *gin.Context) {
 		"request_id":       req.ID,
 		"status":           req.Status,
 		"plan":             plan.Label,
-		"amount":           plan.Amount,
+		"amount":           req.Amount,
 		"grace_expires_at": graceExpires,
 		"grace_data_mb":    req.GraceDataMB,
 		"grace_minutes":    int(req.GraceExpiresAt.Sub(*req.GraceStartedAt) / time.Minute),
@@ -655,20 +656,14 @@ func (h *GuestWifiHandler) DecideGuest(txSrc func() (*sql.Tx, error), businessID
 			}
 			return nil
 		}
-		// Resolve the plan the guest bought from the OWNER's guest_plans config
-		// (fail closed: an unknown/unset-minutes plan cannot grant a pass).
-		pc, e := h.configRepo.GetByBusinessTXN(tx, businessID)
-		if e != nil {
-			return e
+		// Never reconstruct the paid duration from a mutable plan or convert
+		// historical guest purchases into business Hub/WebFig access.
+		if r.DeviceID == nil || r.PurchasedMinutes == nil {
+			return &httpError{status: 409, msg: "Historical purchase lacks an immutable router-bound allowance; manual review required"}
 		}
-		var minutes int
-		if pc != nil {
-			if g := findGuestPlan(pc.GuestPlans, r.PlanKey); g != nil {
-				minutes = g.Minutes
-			}
-		}
-		if minutes <= 0 && r.DataMB <= 0 {
-			return &httpError{status: http.StatusBadRequest, msg: "guest plan has no duration (fail closed)"}
+		minutes := *r.PurchasedMinutes
+		if minutes < 0 || minutes > 525600 || r.DataMB < 0 || r.DataMB > 1048576 || (minutes == 0 && r.DataMB == 0) {
+			return &httpError{status: 409, msg: "Purchased allowance is invalid; manual review required"}
 		}
 		now := time.Now().UTC()
 		claimed, e := h.reqRepo.ApproveRequestTXN(tx, businessID, requestID, now)
@@ -678,48 +673,15 @@ func (h *GuestWifiHandler) DecideGuest(txSrc func() (*sql.Tx, error), businessID
 		if claimed == nil {
 			return &httpError{status: http.StatusConflict, msg: "request already decided"}
 		}
-		if r.DeviceID != nil {
-			if h.graceRouter == nil {
-				return &httpError{status: http.StatusServiceUnavailable, msg: "router access is unavailable"}
-			}
-			if e := h.graceRouter.DecideGuestAccess(context.Background(), businessID, *r.DeviceID, r.ID, r.ClientMAC, true, minutes, r.DataMB); e != nil {
-				return e
-			}
-			return nil
+		if h.graceRouter == nil {
+			return &httpError{status: http.StatusServiceUnavailable, msg: "router access is unavailable"}
 		}
-		// Compatibility for historical requests without a router anchor. New
-		// guest purchases always grant access on the exact tenant-owned router.
-		if h.quotaRepo == nil {
-			return &httpError{status: http.StatusInternalServerError, msg: "no quota repository configured"}
-		}
-		if err := extendGuestPassTx(tx, h.quotaRepo, businessID, minutes, now); err != nil {
-			return &httpError{status: http.StatusInternalServerError, msg: "failed to grant guest wifi extension: " + err.Error()}
-		}
-		return nil
+		return h.graceRouter.DecideGuestAccess(context.Background(), businessID, *r.DeviceID, r.ID, r.ClientMAC, true, minutes, r.DataMB)
 	})
 	if err != nil {
 		return err
 	}
 	return tx.Commit()
-}
-
-// extendGuestPassTx extends the business's wifi entitlement expiry by minutes,
-// exactly mirroring applyPlanEffectTx from the voucher redemption path.
-func extendGuestPassTx(tx *sql.Tx, qrepo *database.BusinessMeteredQuotaRepository, businessID string, minutes int, now time.Time) error {
-	current, err := qrepo.GetByBusinessTXN(tx, businessID)
-	if err != nil {
-		return err
-	}
-	var currentExpiry *time.Time
-	if current != nil {
-		currentExpiry = current.WebfigPassExpiresAt
-	}
-	newExpiry := voucher.ExtendExpiry(currentExpiry, now, minutes)
-	if current == nil {
-		q := &model.BusinessMeteredQuota{BusinessID: businessID, WebfigPassExpiresAt: &newExpiry}
-		return qrepo.UpsertTXN(tx, q)
-	}
-	return qrepo.ExtendWebfigPassTXN(tx, businessID, newExpiry)
 }
 
 // DecidePurchaseRequest satisfies telegram.PurchaseDecider so the owner's own

@@ -1,12 +1,16 @@
 package handler
 
 import (
+	"context"
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
 	"fmt"
+	"github.com/gin-gonic/gin"
+	"net/http/httptest"
 	"net/url"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -14,6 +18,7 @@ import (
 	"mega-magic/internal/config"
 	"mega-magic/internal/database"
 	"mega-magic/internal/model"
+	"mega-magic/internal/provisioner/routeros"
 	"mega-magic/internal/telegram"
 )
 
@@ -100,6 +105,7 @@ func setupHarness(base string) {
 	// integration tests must exercise that schema, not the bare baseline.
 	for _, name := range []string{
 		"20260926_guest_wifi_schema.sql",
+		"20261024020000_guest_purchase_terms.sql",
 		"20260926_rls_backfill.sql",
 		"20261001200000_guest_voucher_grants.sql",
 		"20261001210000_guest_access_recovery.sql",
@@ -213,6 +219,12 @@ func TestGuestWifi_approveGrantsExtensionOnce(t *testing.T) {
 	)
 
 	biz := insertBusiness(db)
+	var device string
+	if e := db.QueryRow(`INSERT INTO devices(business_id,hardware_name,deployment_layer) VALUES($1,'payment-fixture','MAIN_GATEWAY') RETURNING device_id`, biz).Scan(&device); e != nil {
+		t.Fatal(e)
+	}
+	grant := &paidTermsFixture{}
+	h.EnableGuestGrace(grant)
 	now := time.Now().UTC()
 
 	// Seed portal config: one guest plan ("daily" = 120 min) + a 10-min grace.
@@ -229,7 +241,8 @@ func TestGuestWifi_approveGrantsExtensionOnce(t *testing.T) {
 	graceMax := now.Add(10 * time.Minute)
 	withTenant(db, biz, func(tx *sql.Tx) error {
 		r, err := h.reqRepo.CreateTXN(tx, &model.GuestPurchaseRequest{
-			BusinessID:     biz,
+			BusinessID: biz,
+			DeviceID:   &device, PurchasedMinutes: ptr(120),
 			ClientMAC:      "AA:BB:CC:DD:EE:FF",
 			PlanKey:        "daily",
 			Amount:         2000,
@@ -244,30 +257,29 @@ func TestGuestWifi_approveGrantsExtensionOnce(t *testing.T) {
 		return nil
 	})
 
+	if _, err := db.Exec(`DELETE FROM portal_configs WHERE business_id=$1`, biz); err != nil {
+		t.Fatal(err)
+	}
 	// Approve via the SAME decide-core the owner's bot bridge uses.
 	if err := h.DecidePurchaseRequest(biz, reqID, true); err != nil {
 		t.Fatalf("approve failed: %v", err)
 	}
 
+	if grant.calls != 1 || grant.minutes != 120 {
+		t.Fatalf("wrong purchased grant: %+v", grant)
+	}
+	if err := h.DecidePurchaseRequest(biz, reqID, true); err == nil {
+		t.Fatal("duplicate decision accepted")
+	}
+	if grant.calls != 1 {
+		t.Fatal("duplicate granted again")
+	}
 	q, err := h.quotaRepo.GetByBusiness(biz)
 	if err != nil {
-		t.Fatalf("get quota: %v", err)
+		t.Fatal(err)
 	}
-	if q == nil || q.WebfigPassExpiresAt == nil {
-		t.Fatal("approve must grant the wifi pass")
-	}
-	delta := q.WebfigPassExpiresAt.Sub(now)
-	if delta < 110*time.Minute || delta > 125*time.Minute {
-		t.Fatalf("granted expiry delta = %v, want ~120m (plan-driven)", delta)
-	}
-
-	// Single-wind: a second approve is a no-op (must NOT extend again).
-	before := q.WebfigPassExpiresAt
-	if err := h.DecidePurchaseRequest(biz, reqID, true); err == nil {
-		after, _ := h.quotaRepo.GetByBusiness(biz)
-		if after != nil && after.WebfigPassExpiresAt != before {
-			t.Fatal("double-approve granted again (single-wind violated)")
-		}
+	if q != nil && q.WebfigPassExpiresAt != nil {
+		t.Fatal("guest payment changed business Hub pass")
 	}
 }
 
@@ -394,5 +406,99 @@ func TestGuestWifi_graceWindowBounds(t *testing.T) {
 	}
 	if req.GraceExpiresAt.Sub(*req.GraceStartedAt) != 10*time.Minute {
 		t.Fatalf("grace window = %v, want 10m", req.GraceExpiresAt.Sub(*req.GraceStartedAt))
+	}
+}
+
+type paidTermsFixture struct{ calls, minutes, data int }
+
+func (f *paidTermsFixture) ConfigureGuestGrace(context.Context, string, string, routeros.GuestGrace) error {
+	return nil
+}
+func (f *paidTermsFixture) DecideGuestAccess(_ context.Context, b, d, id, mac string, approve bool, minutes, data int) error {
+	f.calls++
+	f.minutes = minutes
+	f.data = data
+	return nil
+}
+
+func TestGuestWifiPublishedPaymentTerms(t *testing.T) {
+	db := harness_testdb(t)
+	var exists bool
+	if err := db.QueryRow(`SELECT to_regclass('public.site_portals') IS NOT NULL`).Scan(&exists); err != nil {
+		t.Fatal(err)
+	}
+	if !exists {
+		schema, err := os.ReadFile("../../migrations/20261016170000_site_portals.sql")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = db.Exec(string(schema)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	biz := insertBusiness(db)
+	var site, device string
+	if err := db.QueryRow(`INSERT INTO sites(business_id,name) VALUES($1,'Payment site') RETURNING site_id`, biz).Scan(&site); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`INSERT INTO devices(business_id,hardware_name,site_id) VALUES($1,'Payment gateway',$2) RETURNING device_id`, biz, site).Scan(&device); err != nil {
+		t.Fatal(err)
+	}
+	configRepo := database.NewPortalConfigRepository(db)
+	siteRepo := database.NewSitePortalRepository()
+	published := &model.PortalConfig{BusinessID: biz, BusinessName: "Published payment", MobilePaymentEnabled: true, GuestGraceMinutes: 10, GuestGraceDataMB: 50, GuestPlans: []model.GuestPlan{{Key: "daily", Label: "Daily", Minutes: 90, Amount: 1500, DataMB: 256}}}
+	if err := withTenant(db, biz, func(tx *sql.Tx) error {
+		if err := configRepo.UpsertTXN(tx, &model.PortalConfig{BusinessID: biz, BusinessName: "Disabled business fallback", MobilePaymentEnabled: false}); err != nil {
+			return err
+		}
+		if err := siteRepo.UpsertDraftTXN(tx, &model.SitePortal{SiteID: site, BusinessID: biz, DraftConfig: published}); err != nil {
+			return err
+		}
+		return siteRepo.PublishTXN(tx, biz, site)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	repo := database.NewGuestPurchaseRequestRepository(db)
+	h := NewGuestWifiHandler(db, database.NewDeviceRepository(db), database.NewBusinessTelegramBotRepository(db), repo, configRepo, database.NewBusinessMeteredQuotaRepository(db), t.TempDir(), func(string) (telegram.Messenger, bool) { return nil, false })
+	h.EnableGuestGrace(&paidTermsFixture{})
+	if err := h.EnableGuestCookies(strings.Repeat("k", 32)); err != nil {
+		t.Fatal(err)
+	}
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.POST("/portal/:deviceId/purchase", h.PublicGuestPurchase)
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/portal/"+device+"/purchase", strings.NewReader("plan_key=daily&client_mac=02:00:00:00:01:02"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.ServeHTTP(w, req)
+	if w.Code != 201 {
+		t.Fatalf("published site offer refused: %d %s", w.Code, w.Body.String())
+	}
+	var minutes, amount, data int
+	if err := db.QueryRow(`SELECT purchased_minutes,amount,data_mb FROM guest_purchase_requests WHERE business_id=$1`, biz).Scan(&minutes, &amount, &data); err != nil {
+		t.Fatal(err)
+	}
+	if minutes != 90 || amount != 1500 || data != 256 {
+		t.Fatalf("wrong saved offer: %d/%d/%d", minutes, amount, data)
+	}
+	var historical string
+	if err := withTenant(db, biz, func(tx *sql.Tx) error {
+		v, err := repo.CreateTXN(tx, &model.GuestPurchaseRequest{BusinessID: biz, DeviceID: &device, ClientMAC: "02:00:00:00:01:04", PlanKey: "daily", Amount: 1500, Status: "pending"})
+		if err == nil {
+			historical = v.ID
+		}
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.DecidePurchaseRequest(biz, historical, true); err == nil {
+		t.Fatal("historical request without purchased terms was approved")
+	}
+	var status string
+	if err := db.QueryRow(`SELECT status FROM guest_purchase_requests WHERE id=$1`, historical).Scan(&status); err != nil {
+		t.Fatal(err)
+	}
+	if status != "pending" {
+		t.Fatalf("historical request mutated: %s", status)
 	}
 }
