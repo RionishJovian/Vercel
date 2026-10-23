@@ -106,6 +106,7 @@ type AuthResponse struct {
 }
 
 type TokenClaims struct {
+	SessionID  string `json:"-"`
 	UserID     string `json:"user_id"`
 	BusinessID string `json:"business_id"`
 	Email      string `json:"email"`

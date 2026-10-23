@@ -140,6 +140,9 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		db,
 		authService,
 	)
+	platformHandler.SubscriptionOnly = cfg.Billing.SubscriptionOnly
+	platformHandler.ExistingAccountPolicy = cfg.Billing.ExistingAccountPolicy
+
 	// Voucher management for vistors (revenue features)
 	voucherHandler := handler.NewVoucherHandler(db, database.NewVoucherRepository(db), database.NewBusinessMeteredQuotaRepository(db))
 	// Magic Coins — per-user balance + immutable ledger (ported from Mikromagic).
@@ -579,6 +582,7 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 		{
 			protected.GET("/subscription", handler.SubscriptionStatus)
 			protected.GET("/me", authHandler.Me)
+			protected.POST("/me/presence", authHandler.Presence)
 			protected.GET("/me/profile", authHandler.Profile)
 			protected.PUT("/me/profile", authHandler.UpdateProfile)
 			protected.POST("/me/password", authHandler.ChangePassword)
@@ -863,6 +867,7 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 			platform.GET("/pricing", platformHandler.GetPricing)
 			platform.PUT("/pricing", platformHandler.PutPricing)
 			platform.GET("/businesses", platformHandler.ListBusinesses)
+			platform.GET("/accounts", platformHandler.Accounts)
 			platform.GET("/incidents", platformHandler.ListOpenIncidents)
 			platform.GET("/incidents/counts", platformHandler.CountIncidents)
 			// Admin console (tenant management). Same strongest gate as the group:

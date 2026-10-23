@@ -22,11 +22,13 @@ import (
 // MUST be gated by RequireRole(RoleDeveloper) at the router — the strongest
 // gate; no customer role (OWNER, ADMIN, …) can reach it. See server.go.
 type PlatformHandler struct {
-	businessRepo *database.PlatformBusinessRepository
-	incidentRepo *database.PlatformIncidentRepository
-	pricingRepo  *database.PricingRepository
-	db           *database.DB
-	authService  *auth.Service
+	SubscriptionOnly      bool
+	ExistingAccountPolicy string
+	businessRepo          *database.PlatformBusinessRepository
+	incidentRepo          *database.PlatformIncidentRepository
+	pricingRepo           *database.PricingRepository
+	db                    *database.DB
+	authService           *auth.Service
 }
 
 func NewPlatformHandler(

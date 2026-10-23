@@ -3,7 +3,7 @@ package database
 import "fmt"
 
 func CheckAuthSessionSchema(db *DB) error {
-	rows, err := db.Query(`SELECT session_id,user_id,business_id,password_digest,user_role,refresh_digest,expires_at,revoked FROM public.auth_sessions LIMIT 0`)
+	rows, err := db.Query(`SELECT session_id,user_id,business_id,password_digest,user_role,refresh_digest,expires_at,revoked,last_seen_at,last_active_at,last_visible_at FROM public.auth_sessions LIMIT 0`)
 	if err != nil {
 		return fmt.Errorf("apply authentication session migration before deployment")
 	}

@@ -79,3 +79,5 @@ body.page-app {
 .page-app .app-confirm-delete:hover{filter:brightness(.95)}
 @media(max-width:480px){.page-app .app-confirm-content{padding:22px}.page-app .app-confirm-actions .btn{flex:1;white-space:normal}}
 @media(prefers-reduced-transparency:reduce){.page-app .app-confirm-dialog{background:var(--surface);backdrop-filter:none;-webkit-backdrop-filter:none}.page-app .app-confirm-dialog::backdrop{backdrop-filter:none;-webkit-backdrop-filter:none}}
+
+.page-app #platform-accounts{margin-top:18px}.page-app .platform-accounts-table{min-width:960px}.page-app .platform-accounts-table td{vertical-align:top}.page-app .platform-accounts-table td>div{margin-top:6px}.page-app .platform-account-details{max-width:380px;min-width:220px;white-space:normal;padding:12px 0;font-size:13px;line-height:1.6}.page-app .platform-account-controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:14px 0}.page-app .platform-accounts-table summary{color:var(--primary);cursor:pointer}
