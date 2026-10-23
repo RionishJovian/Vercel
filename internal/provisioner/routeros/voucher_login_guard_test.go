@@ -3,9 +3,58 @@ package routeros
 import (
 	"context"
 	"errors"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
+
+func guardCurrentClock() string { return strconv.FormatInt(time.Now().Unix(), 10) }
+
+func TestVoucherGuardRejectsPlausibleWrongDateBeforeAnyWrite(t *testing.T) {
+	for _, offset := range []time.Duration{-366 * 24 * time.Hour, -5 * time.Minute, 5 * time.Minute, 366 * 24 * time.Hour} {
+		t.Run(offset.String(), func(t *testing.T) {
+			var commands []string
+			r := runnerFunc(func(_ context.Context, command string) (string, error) {
+				commands = append(commands, command)
+				return strconv.FormatInt(time.Now().Add(offset).Unix(), 10), nil
+			})
+			err := ensureVoucherLoginGuard(context.Background(), r)
+			if !errors.Is(err, errVoucherGuardClock) || !strings.Contains(err.Error(), "synchronize") {
+				t.Fatalf("plausible but incorrect date accepted: offset=%v err=%v", offset, err)
+			}
+			if len(commands) != 1 || commands[0] != ":put ([:tonsec [:timestamp]] / 1000000000)" {
+				t.Fatalf("bad clock caused additional router operations: %v", commands)
+			}
+		})
+	}
+}
+
+func TestVoucherGuardClockReadWindow(t *testing.T) {
+	start := time.Unix(1_800_000_000, 0)
+	end := start.Add(10 * time.Second)
+	for _, tc := range []struct {
+		name     string
+		epoch    int64
+		rejected bool
+	}{
+		{"sample at start", start.Unix(), false},
+		{"sample at response", end.Unix(), false},
+		{"earliest allowed", start.Unix() - 30, false},
+		{"latest allowed", end.Unix() + 30, false},
+		{"too far behind", start.Unix() - 31, true},
+		{"too far ahead", end.Unix() + 31, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := validateVoucherClockWindow(tc.epoch, start, end); (err != nil) != tc.rejected {
+				t.Fatalf("clock-window error=%v rejected=%v", err, tc.rejected)
+			}
+		})
+	}
+	if !errors.Is(validateVoucherClockWindow(start.Unix(), start, start.Add(-time.Second)), errVoucherGuardClock) {
+		t.Fatal("server wall-clock reversal must fail closed")
+	}
+}
 
 type voucherGuardRunner struct {
 	clock      string
@@ -222,7 +271,7 @@ func TestVoucherGuardProbeRejectsUnsupportedOrUntrustworthyClock(t *testing.T) {
 }
 
 func TestVoucherGuardInstallsLoginExpiryScriptsSchedulerAndOwnedProfile(t *testing.T) {
-	r := &voucherGuardRunner{clock: "1792941234", scripts: map[string]string{}, schedulers: map[string]string{}, profiles: map[string]string{}}
+	r := &voucherGuardRunner{clock: guardCurrentClock(), scripts: map[string]string{}, schedulers: map[string]string{}, profiles: map[string]string{}}
 	if err := ensureVoucherLoginGuard(context.Background(), r); err != nil {
 		t.Fatalf("install failed: %v", err)
 	}
@@ -278,7 +327,7 @@ func TestVoucherGuardMultilineReadbackAndLiteralDrift(t *testing.T) {
 }
 
 func TestVoucherGuardReadbackDetectsWrongInstalledSource(t *testing.T) {
-	r := &voucherGuardRunner{clock: "1792941234", scripts: map[string]string{}, schedulers: map[string]string{}, profiles: map[string]string{}}
+	r := &voucherGuardRunner{clock: guardCurrentClock(), scripts: map[string]string{}, schedulers: map[string]string{}, profiles: map[string]string{}}
 	changed := false
 	wrapper := runnerFunc(func(ctx context.Context, cmd string) (string, error) {
 		if strings.HasPrefix(cmd, "/system script add ") && !changed {
@@ -304,7 +353,7 @@ func TestVoucherGuardRejectsAlteredScheduler(t *testing.T) {
 		"policy no write": guardSchedulerDetail(voucherGuardInterval, note, "read", false),
 	} {
 		t.Run(name, func(t *testing.T) {
-			r := &voucherGuardRunner{clock: "1792941234", scripts: map[string]string{}, schedulers: map[string]string{voucherGuardScheduler: detail}, profiles: map[string]string{}}
+			r := &voucherGuardRunner{clock: guardCurrentClock(), scripts: map[string]string{}, schedulers: map[string]string{voucherGuardScheduler: detail}, profiles: map[string]string{}}
 			if err := ensureVoucherLoginGuard(context.Background(), r); !errors.Is(err, errVoucherGuardConflict) {
 				t.Fatalf("altered scheduler accepted; err=%v", err)
 			}
@@ -320,7 +369,7 @@ func TestVoucherGuardRejectsMarkerOnlyOrAlteredScript(t *testing.T) {
 		"wrong policy":   voucherGuardSourceLogin,
 	} {
 		t.Run(name, func(t *testing.T) {
-			r := &voucherGuardRunner{clock: "1792941234", scripts: map[string]string{voucherGuardScriptName + "-login": guardScriptDetail(source)}, schedulers: map[string]string{}, profiles: map[string]string{}}
+			r := &voucherGuardRunner{clock: guardCurrentClock(), scripts: map[string]string{voucherGuardScriptName + "-login": guardScriptDetail(source)}, schedulers: map[string]string{}, profiles: map[string]string{}}
 			if name == "wrong policy" {
 				r.scripts[voucherGuardScriptName+"-login"] = strings.Replace(guardScriptDetail(source), "policy: read,write", "policy: read", 1)
 			}
@@ -340,7 +389,7 @@ func TestVoucherGuardRejectsMissingOrAlteredProfileHooks(t *testing.T) {
 		"shared code":      "shared-users: 2\non-login: /system script run " + voucherGuardScriptName + "-login\non-logout: \n",
 	} {
 		t.Run(name, func(t *testing.T) {
-			r := &voucherGuardRunner{clock: "1792941234", scripts: map[string]string{}, schedulers: map[string]string{}, profiles: map[string]string{voucherGuardProfile: detail}}
+			r := &voucherGuardRunner{clock: guardCurrentClock(), scripts: map[string]string{}, schedulers: map[string]string{}, profiles: map[string]string{voucherGuardProfile: detail}}
 			if err := ensureVoucherLoginGuard(context.Background(), r); !errors.Is(err, errVoucherGuardConflict) {
 				t.Fatalf("altered profile accepted; err=%v", err)
 			}
@@ -349,7 +398,7 @@ func TestVoucherGuardRejectsMissingOrAlteredProfileHooks(t *testing.T) {
 }
 
 func TestVoucherGuardNeverOverwritesForeignObjects(t *testing.T) {
-	r := &voucherGuardRunner{clock: "1792941234", scripts: map[string]string{}, schedulers: map[string]string{}, profiles: map[string]string{}}
+	r := &voucherGuardRunner{clock: guardCurrentClock(), scripts: map[string]string{}, schedulers: map[string]string{}, profiles: map[string]string{}}
 	r.scripts[voucherGuardScriptName+"-login"] = guardScriptDetail(`{ :log info "not ours" }`)
 	r.scripts[voucherGuardScriptName+"-expiry"] = guardScriptDetail(`{ :log info "not ours" }`)
 	r.schedulers[voucherGuardScheduler] = guardSchedulerDetail(voucherGuardInterval, "/system script run for-a-different-guard", "read,write", false)
@@ -386,7 +435,7 @@ func TestVoucherGuardSchedulerIntervalParsing(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			detail := guardSchedulerDetail(interval, expectedOnEvent, "read,write", false)
-			r := &voucherGuardRunner{clock: "1792941234", scripts: map[string]string{}, schedulers: map[string]string{voucherGuardScheduler: detail}, profiles: map[string]string{}}
+			r := &voucherGuardRunner{clock: guardCurrentClock(), scripts: map[string]string{}, schedulers: map[string]string{voucherGuardScheduler: detail}, profiles: map[string]string{}}
 			err := ensureVoucherLoginGuard(context.Background(), r)
 			if name == "60s" || name == "1m" || name == "00:01:00" {
 				if err != nil {

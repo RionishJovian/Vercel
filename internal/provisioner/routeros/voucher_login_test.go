@@ -21,7 +21,7 @@ func (r *voucherLoginRunner) guardRunner() *voucherGuardRunner {
 	if r.guard == nil {
 		clock := r.clock
 		if clock == "" {
-			clock = "1792941234"
+			clock = guardCurrentClock()
 		}
 		r.guard = &voucherGuardRunner{clock: clock, scripts: map[string]string{}, schedulers: map[string]string{}, profiles: map[string]string{}}
 	}

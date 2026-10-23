@@ -19,7 +19,7 @@ The frozen source, per-file SHA256 manifest and evidence are in `/Users/aces/Doc
 - The owner preview and router deployment share one renderer. Published-site policy wins over private drafts; foreign businesses are denied. Saved design changes invalidate reviewed deployment confirmations before writes.
 - Owner-selected emerald glass guest design is implemented with locally embedded wallpaper/mark. Default complete HTML is 18,358 bytes. Preview cannot submit a real voucher. The approved management Jade Glass theme is retained.
 
-## Final local evidence
+## Integrated baseline evidence (`ddb9031`)
 
 - Isolated functional source: 672 top-level backend tests pass, 0 fail, 12 gated skips (`release-2-internal.jsonl`). These skips are not counted as certification.
 - Critical UI: 62 pass, 0 fail (`combined-v3-ui.log`).
@@ -50,3 +50,11 @@ Deploy only the tested coherent artifact with the existing Compose/proxy topolog
 ## Release-preservation check — 2026-10-23
 
 All 42 functional source/test/asset hashes still match the isolated tested candidate. The four additional owner-context/QA/progress/artwork notes are included in the scoped local commit. The separate design-alternatives directory remains excluded. A fresh SSH public-key attempt to the authorized VPS was rejected (publickey/password); no remote inspection or change succeeded. Restored authorized server access and the unavailable spare router are required before final live acceptance.
+
+## Clock-alignment follow-up — 2026-10-23
+
+Before installing guard objects or voucher users, provisioning now compares the router epoch to the server's actual command-read window, allowing at most 30 seconds outside that window. Plausible but wrong dates (including year offsets) are rejected with a time-synchronization message before writes. The operation does not set the router/server clock or configure NTP. It does not certify clock behavior after issuance or replace hardware acceptance.
+
+The RouterOS package passed 166 top-level tests with race detection and eight explicitly gated hardware skips. New coverage verifies plausible past/future rejection before any further router command, exact skew boundaries, command latency and server clock reversal. The Go model fixtures now use current valid setup timestamps; their sequential retry test is explicitly labelled sequential, not a concurrency proof. Model tests remain distinct from real RouterOS execution.
+
+Evidence: `clock-window-routeros.jsonl`, `clock-guard-release/` and `clock-guard-manifest.json` in the same local evidence directory. The updated isolated Linux AMD64 artifact SHA256 is `73a14cee5a0cdde4c6dd536d2004242dbf5b2d0833cb59f970fa6d368ad45a92` (`megamagic-linux-amd64-clockguard`); this supersedes the earlier binary for a future rollout. The full 672-test backend/62-check UI results above belong to the integrated parent; this follow-up was verified with the affected package plus the server build. No new claim of full hardware or production acceptance is made.

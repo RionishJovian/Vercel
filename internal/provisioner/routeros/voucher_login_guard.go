@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const (
@@ -26,14 +27,17 @@ var (
 )
 
 const (
-	voucherGuardEpochFloor = 1_000_000_000 // 2001-09-09, well after RouterOS 7 era
-	voucherGuardEpochCeil  = 4_102_444_800 // 2100-01-01, well beyond plausible deployments
+	voucherGuardEpochFloor   = 1_000_000_000 // 2001-09-09, well after RouterOS 7 era
+	voucherGuardEpochCeil    = 4_102_444_800 // 2100-01-01, well beyond plausible deployments
+	voucherGuardMaxClockSkew = 30 * time.Second
 )
 
 var voucherGuardEpochPattern = regexp.MustCompile(`^[0-9]+$`)
 
 func probeVoucherGuardClock(ctx context.Context, r CommandRunner) (int64, error) {
+	started := time.Now()
 	out, err := r.Run(ctx, ":put ([:tonsec [:timestamp]] / 1000000000)")
+	finished := time.Now()
 	if err != nil {
 		return 0, fmt.Errorf("%w: :timestamp/:tonsec epoch-second probe failed", errVoucherGuardUnsupported)
 	}
@@ -49,7 +53,25 @@ func probeVoucherGuardClock(ctx context.Context, r CommandRunner) (int64, error)
 		return 0, fmt.Errorf("%w: gateway clock %d outside plausible epoch-second range [%d, %d]",
 			errVoucherGuardClock, epoch, voucherGuardEpochFloor, voucherGuardEpochCeil)
 	}
+	if err := validateVoucherClockWindow(epoch, started, finished); err != nil {
+		return 0, err
+	}
 	return epoch, nil
+}
+
+// Compare against the bounded read window, not just a plausible year. Network
+// latency can place the sample anywhere within that window; a clock outside it
+// by more than 30 seconds cannot supply trustworthy customer first-use times.
+// This gate performs no clock/NTP change and runs before guard/user writes.
+func validateVoucherClockWindow(epoch int64, started, finished time.Time) error {
+	if finished.Unix() < started.Unix() {
+		return fmt.Errorf("%w: server clock changed during the probe; retry after time synchronization", errVoucherGuardClock)
+	}
+	allowance := int64(voucherGuardMaxClockSkew / time.Second)
+	if epoch < started.Unix()-allowance || epoch > finished.Unix()+allowance {
+		return fmt.Errorf("%w: gateway differs from server time by more than the allowed %s read window; synchronize gateway/server time before issuing vouchers", errVoucherGuardClock, voucherGuardMaxClockSkew)
+	}
+	return nil
 }
 
 func parseRouterOSDuration(s string) (int64, error) {

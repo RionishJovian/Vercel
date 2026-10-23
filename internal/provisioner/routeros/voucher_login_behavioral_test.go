@@ -5,10 +5,11 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 )
 
-// behavioralRunner simulates a minimal RouterOS environment for testing
-// the actual guard script behavior, not just source fragments.
+// behavioralRunner models guard decisions in Go; it is not a RouterOS script
+// interpreter and does not replace execution/certification on the real gateway.
 type behavioralRunner struct {
 	clock          int64
 	scripts        map[string]string
@@ -618,7 +619,8 @@ func formatInt(i int64) string {
 // TestVoucherGuardBehavioralLoginCapture verifies that login hook captures
 // first-use anchor ONLY for the voucher that just logged in.
 func TestVoucherGuardBehavioralLoginCapture(t *testing.T) {
-	r := newBehavioralRunner(1792941234)
+	at := time.Now().Unix()
+	r := newBehavioralRunner(at)
 
 	// Install guard
 	if err := ensureVoucherLoginGuard(context.Background(), r); err != nil {
@@ -638,7 +640,7 @@ func TestVoucherGuardBehavioralLoginCapture(t *testing.T) {
 	}
 
 	// Verify ONLY voucher-A got anchored
-	if !strings.Contains(r.users["voucher-A"].comment, ";ft=1792941234;fu=aa:bb:cc:dd:ee:ff") {
+	if !strings.Contains(r.users["voucher-A"].comment, ";ft="+formatInt(at)+";fu=aa:bb:cc:dd:ee:ff") {
 		t.Errorf("voucher-A should have been anchored, got: %s", r.users["voucher-A"].comment)
 	}
 	if strings.Contains(r.users["voucher-B"].comment, ";ft=") {
@@ -649,7 +651,8 @@ func TestVoucherGuardBehavioralLoginCapture(t *testing.T) {
 // TestVoucherGuardBehavioralSchedulerNeverCreatesAnchor verifies that
 // the scheduler/expiry script never creates new first-use anchors.
 func TestVoucherGuardBehavioralSchedulerNeverCreatesAnchor(t *testing.T) {
-	r := newBehavioralRunner(1792941234)
+	at := time.Now().Unix()
+	r := newBehavioralRunner(at)
 
 	// Install guard
 	if err := ensureVoucherLoginGuard(context.Background(), r); err != nil {
@@ -674,17 +677,18 @@ func TestVoucherGuardBehavioralSchedulerNeverCreatesAnchor(t *testing.T) {
 // TestVoucherGuardBehavioralExpiredVoucherDisabled verifies that
 // a valid expired voucher is disabled and its sessions removed.
 func TestVoucherGuardBehavioralExpiredVoucherDisabled(t *testing.T) {
-	// Clock: first use was at 1792940000, limit is 500 seconds, now is 1792941234 (expired)
-	r := newBehavioralRunner(1792941234)
+	at := time.Now().Unix()
+	// First use was 1234 seconds ago, beyond the 500-second limit.
+	r := newBehavioralRunner(at)
 
 	// Install guard
 	if err := ensureVoucherLoginGuard(context.Background(), r); err != nil {
 		t.Fatalf("guard install failed: %v", err)
 	}
 
-	// Add voucher with anchor from time 1792940000, limit 500 seconds
+	// Add an elapsed-expired voucher with a real-looking persisted anchor.
 	// Use MAC with LSB=0 (unicast): 10:22:33:44:55:66 (0x10 = 16, even)
-	r.addUser("voucher-D", "mega-magic:vlogin:dddddddd-dddd-dddd-dddd-dddddddddddd;ft=1792940000;fu=10:22:33:44:55:66", false, 500, voucherGuardProfile)
+	r.addUser("voucher-D", "mega-magic:vlogin:dddddddd-dddd-dddd-dddd-dddddddddddd;ft="+formatInt(at-1234)+";fu=10:22:33:44:55:66", false, 500, voucherGuardProfile)
 	r.addSession("voucher-D", "10:22:33:44:55:66", 100, 1000, 2000)
 
 	// Execute expiry script
@@ -705,8 +709,9 @@ func TestVoucherGuardBehavioralExpiredVoucherDisabled(t *testing.T) {
 // TestVoucherGuardBehavioralUnexpiredVoucherUnchanged verifies that
 // a valid unexpired voucher remains unchanged.
 func TestVoucherGuardBehavioralUnexpiredVoucherUnchanged(t *testing.T) {
-	// Clock: first use was at 1792940000, limit is 5000 seconds, now is 1792941234 (NOT expired)
-	r := newBehavioralRunner(1792941234)
+	at := time.Now().Unix()
+	// First use was 1234 seconds ago, within the 5000-second limit.
+	r := newBehavioralRunner(at)
 
 	// Install guard
 	if err := ensureVoucherLoginGuard(context.Background(), r); err != nil {
@@ -714,7 +719,7 @@ func TestVoucherGuardBehavioralUnexpiredVoucherUnchanged(t *testing.T) {
 	}
 
 	// Add voucher with anchor from time 1792940000, limit 5000 seconds
-	originalComment := "mega-magic:vlogin:eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee;ft=1792940000;fu=aa:bb:cc:dd:ee:ff"
+	originalComment := "mega-magic:vlogin:eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee;ft=" + formatInt(at-1234) + ";fu=aa:bb:cc:dd:ee:ff"
 	r.addUser("voucher-E", originalComment, false, 5000, voucherGuardProfile)
 	r.addSession("voucher-E", "aa:bb:cc:dd:ee:ff", 100, 1000, 2000)
 
@@ -740,7 +745,8 @@ func TestVoucherGuardBehavioralUnexpiredVoucherUnchanged(t *testing.T) {
 // TestVoucherGuardBehavioralMalformedOwnershipNoMutation verifies that
 // malformed/foreign ownership causes no user or session mutations.
 func TestVoucherGuardBehavioralMalformedOwnershipNoMutation(t *testing.T) {
-	r := newBehavioralRunner(1792941234)
+	at := time.Now().Unix()
+	r := newBehavioralRunner(at)
 
 	// Install guard
 	if err := ensureVoucherLoginGuard(context.Background(), r); err != nil {
@@ -755,12 +761,12 @@ func TestVoucherGuardBehavioralMalformedOwnershipNoMutation(t *testing.T) {
 	}{
 		{"wrong prefix", "other:vlogin:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", true},
 		{"invalid UUID dashes", "mega-magic:vlogin:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", true},
-		{"missing fu suffix", "mega-magic:vlogin:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa;ft=1000", true},
-		{"invalid MAC format", "mega-magic:vlogin:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa;ft=1000;fu=invalid-mac", true},
-		{"multicast MAC", "mega-magic:vlogin:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa;ft=1000;fu=01:00:00:00:00:00", true}, // LSB=1
-		{"zero MAC", "mega-magic:vlogin:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa;ft=1000;fu=00:00:00:00:00:00", true},
-		{"non-hex MAC", "mega-magic:vlogin:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa;ft=1000;fu=gg:hh:ii:jj:kk:ll", true},
-		{"trailing data", "mega-magic:vlogin:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa;ft=1000;fu=aa:bb:cc:dd:ee:ff:extra", true},
+		{"missing fu suffix", "mega-magic:vlogin:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa;ft=" + formatInt(at-10) + "", true},
+		{"invalid MAC format", "mega-magic:vlogin:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa;ft=" + formatInt(at-10) + ";fu=invalid-mac", true},
+		{"multicast MAC", "mega-magic:vlogin:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa;ft=" + formatInt(at-10) + ";fu=01:00:00:00:00:00", true}, // LSB=1
+		{"zero MAC", "mega-magic:vlogin:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa;ft=" + formatInt(at-10) + ";fu=00:00:00:00:00:00", true},
+		{"non-hex MAC", "mega-magic:vlogin:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa;ft=" + formatInt(at-10) + ";fu=gg:hh:ii:jj:kk:ll", true},
+		{"trailing data", "mega-magic:vlogin:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa;ft=" + formatInt(at-10) + ";fu=aa:bb:cc:dd:ee:ff:extra", true},
 	}
 
 	for _, tc := range testCases {
@@ -796,7 +802,8 @@ func TestVoucherGuardBehavioralMalformedOwnershipNoMutation(t *testing.T) {
 // TestVoucherGuardBehavioralReconnectRetainsAnchor verifies that
 // reconnect retains the original first-use anchor.
 func TestVoucherGuardBehavioralReconnectRetainsAnchor(t *testing.T) {
-	r := newBehavioralRunner(1792941234)
+	at := time.Now().Unix()
+	r := newBehavioralRunner(at)
 
 	// Install guard
 	if err := ensureVoucherLoginGuard(context.Background(), r); err != nil {
@@ -804,7 +811,7 @@ func TestVoucherGuardBehavioralReconnectRetainsAnchor(t *testing.T) {
 	}
 
 	// Add voucher with existing anchor
-	originalComment := "mega-magic:vlogin:ffffffff-ffff-ffff-ffff-ffffffffffff;ft=1000;fu=aa:bb:cc:dd:ee:ff"
+	originalComment := "mega-magic:vlogin:ffffffff-ffff-ffff-ffff-ffffffffffff;ft=" + formatInt(at-10) + ";fu=aa:bb:cc:dd:ee:ff"
 	r.addUser("voucher-F", originalComment, false, 5000, voucherGuardProfile)
 
 	// Simulate reconnect: new active session with SAME MAC
@@ -815,17 +822,18 @@ func TestVoucherGuardBehavioralReconnectRetainsAnchor(t *testing.T) {
 		t.Fatalf("login script execution failed: %v", err)
 	}
 
-	// Verify anchor unchanged (still ft=1000, not updated to 1792941234)
+	// Verify reconnect preserved the original timestamp.
 	if r.users["voucher-F"].comment != originalComment {
 		t.Errorf("reconnect should retain original anchor, got: %s", r.users["voucher-F"].comment)
 	}
 }
 
-// TestVoucherGuardBehavioralConcurrentExecutionNoOverwrite verifies that
-// concurrent execution does not overwrite first-use evidence.
-func TestVoucherGuardBehavioralConcurrentExecutionNoOverwrite(t *testing.T) {
-	// First clock: initial login at time 1792940000
-	r := newBehavioralRunner(1792940000)
+// TestVoucherGuardBehavioralLaterLoginNoOverwrite verifies that
+// a later login does not overwrite first-use evidence (not a concurrency test).
+func TestVoucherGuardBehavioralLaterLoginNoOverwrite(t *testing.T) {
+	at := time.Now().Unix()
+	// Initial login starts at a current, provisionable clock.
+	r := newBehavioralRunner(at)
 
 	// Install guard
 	if err := ensureVoucherLoginGuard(context.Background(), r); err != nil {
@@ -833,23 +841,23 @@ func TestVoucherGuardBehavioralConcurrentExecutionNoOverwrite(t *testing.T) {
 	}
 
 	// Add voucher with base-form comment
-	r.addUser("voucher-G", "mega-magic:vlogin:gggggggg-gggg-gggg-gggg-gggggggggggg", false, 300, voucherGuardProfile)
+	r.addUser("voucher-G", "mega-magic:vlogin:abcdefab-abcd-abcd-abcd-abcdefabcdef", false, 300, voucherGuardProfile)
 	r.addSession("voucher-G", "aa:bb:cc:dd:ee:ff", 0, 0, 0)
 
-	// Execute login script at time 1792940000
+	// Execute the modeled first-login decision.
 	if err := r.executeLoginScript(); err != nil {
 		t.Fatalf("login script execution failed: %v", err)
 	}
 
-	// Verify anchored at time 1792940000
-	if !strings.Contains(r.users["voucher-G"].comment, ";ft=1792940000;") {
+	// Verify anchored at the modeled first login.
+	if !strings.Contains(r.users["voucher-G"].comment, ";ft="+formatInt(at)+";") {
 		t.Errorf("expected anchor at 1792940000, got: %s", r.users["voucher-G"].comment)
 	}
 	originalAnchor := r.users["voucher-G"].comment
 
-	// Now advance clock to 1792941234 and try to run login script again
-	// (simulating concurrent hook execution or retry)
-	r2 := newBehavioralRunner(1792941234)
+	// Advance the model clock and try another login.
+	// This is sequential reconnect/retry coverage.
+	r2 := newBehavioralRunner(at + 1234)
 	// Copy state
 	for k, v := range r.users {
 		r2.users[k] = v
@@ -861,12 +869,12 @@ func TestVoucherGuardBehavioralConcurrentExecutionNoOverwrite(t *testing.T) {
 	r2.schedulers = r.schedulers
 	r2.profiles = r.profiles
 
-	// Execute login script again at time 1792941234
+	// Execute the modeled later-login decision.
 	if err := r2.executeLoginScript(); err != nil {
 		t.Fatalf("second login script execution failed: %v", err)
 	}
 
-	// Verify anchor NOT overwritten (still 1792940000)
+	// Verify the original anchor was not overwritten.
 	if r2.users["voucher-G"].comment != originalAnchor {
 		t.Errorf("concurrent execution should not overwrite anchor, got: %s", r2.users["voucher-G"].comment)
 	}
@@ -875,7 +883,8 @@ func TestVoucherGuardBehavioralConcurrentExecutionNoOverwrite(t *testing.T) {
 // TestVoucherGuardBehavioralValidPhoneMACAccepted verifies that
 // valid locally administered phone MACs (with LSB=0) are accepted.
 func TestVoucherGuardBehavioralValidPhoneMACAccepted(t *testing.T) {
-	r := newBehavioralRunner(1792941234)
+	at := time.Now().Unix()
+	r := newBehavioralRunner(at)
 
 	// Install guard
 	if err := ensureVoucherLoginGuard(context.Background(), r); err != nil {
@@ -901,7 +910,7 @@ func TestVoucherGuardBehavioralValidPhoneMACAccepted(t *testing.T) {
 				t.Fatalf("login script execution failed: %v", err)
 			}
 
-			if !strings.Contains(r.users[userName].comment, ";ft=1792941234;fu="+mac) {
+			if !strings.Contains(r.users[userName].comment, ";ft="+formatInt(at)+";fu="+mac) {
 				t.Errorf("valid MAC %s should be accepted, got: %s", mac, r.users[userName].comment)
 			}
 		})
