@@ -56,3 +56,9 @@ body.page-app {
 /* Leave room for the 44px theme control without clipping the brand. */
 .page-app .rail-brand{font-size:14px;gap:8px}
 .page-app .rail-brand .brand-logo{width:26px;height:26px;flex-basis:26px}
+
+/* Chat history must shrink inside the fixed popup, including narrow screens.
+   The older mobile 340px minimum otherwise extends underneath the composer. */
+.page-app .md-popup .md-messages{min-height:0;min-width:0;overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y;overflow-anchor:none;-webkit-overflow-scrolling:touch}
+.page-app .md-message-stack{min-width:0;display:flow-root}
+.page-app .md-message-body{overflow-wrap:anywhere}
