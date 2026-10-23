@@ -1,6 +1,6 @@
 # Integrated router-to-guest candidate — 2026-10-23
 
-Status: locally integrated and tested; not deployed or physically certified. The spare hAP ax2 is unavailable per the owner's latest reply. The complete original goal remains open.
+Status: deployed to megamagic.tech on 2026-10-23 after the owner explicitly requested “deploy now”. The server rollout is verified; physical RouterBOARD/phone certification remains incomplete because the spare hAP ax2 is unavailable per the owner's latest reply. The complete original goal remains open.
 
 ## Coherent source
 
@@ -47,7 +47,7 @@ Do not deploy this candidate as hardware-certified while the checks above are ou
 
 Deploy only the tested coherent artifact with the existing Compose/proxy topology, preserving keys, accounts, history and other services. Verify authenticated Hub routes, portal preview, batch recovery and reporting after rollout; guest-internet proof still requires the physical device. Revert the API image/web files on a failed smoke check. Keep additive batch tables/rows on rollback: dropping them would destroy recovery evidence. Router profiles/files need their separately verified rollback. No Caddy/Traefik migration, new service installation or network exposure is part of this candidate.
 
-## Release-preservation check — 2026-10-23
+## Historical release-preservation check — before rollout, 2026-10-23
 
 All 42 functional source/test/asset hashes still match the isolated tested candidate. The four additional owner-context/QA/progress/artwork notes are included in the scoped local commit. The separate design-alternatives directory remains excluded. A fresh SSH public-key attempt to the authorized VPS was rejected (publickey/password); no remote inspection or change succeeded. Restored authorized server access and the unavailable spare router are required before final live acceptance.
 
@@ -58,3 +58,27 @@ Before installing guard objects or voucher users, provisioning now compares the 
 The RouterOS package passed 166 top-level tests with race detection and eight explicitly gated hardware skips. New coverage verifies plausible past/future rejection before any further router command, exact skew boundaries, command latency and server clock reversal. The Go model fixtures now use current valid setup timestamps; their sequential retry test is explicitly labelled sequential, not a concurrency proof. Model tests remain distinct from real RouterOS execution.
 
 Evidence: `clock-window-routeros.jsonl`, `clock-guard-release/` and `clock-guard-manifest.json` in the same local evidence directory. The updated isolated Linux AMD64 artifact SHA256 is `73a14cee5a0cdde4c6dd536d2004242dbf5b2d0833cb59f970fa6d368ad45a92` (`megamagic-linux-amd64-clockguard`); this supersedes the earlier binary for a future rollout. The full 672-test backend/62-check UI results above belong to the integrated parent; this follow-up was verified with the affected package plus the server build. No new claim of full hardware or production acceptance is made.
+
+
+## Authorized production rollout completed — 2026-10-23
+
+This supersedes the historical SSH-access and not-deployed status above. The authorized Hostinger root web console provided access; no password or key was stored in this repository. The running API binary matched the proven 9b17d91 baseline before rollout. The final deployed frontend source is c9ec712542c30324258c49d18472ae5c8f438f0d; compiled API source remains 8dbb1eb because subsequent changes only reconcile the live frontend and its tests.
+
+The live frontend contained additional owner workflow changes. Those were preserved: task navigation, distinct Internet/Jellyfin pages, the existing workflow extension and site-assignment hooks. Existing verified setup, batch print/recovery, revenue and role behavior were retained. The final source passed all 62 critical UI checks, zero failures/skips, recorded in `live-merge-ui-certified-final.log`. Hub coverage explicitly distinguishes available/unavailable capability responses and checks the site-assignment DOM hook.
+
+Deployment evidence (under the same local evidence directory):
+
+- `DEPLOYED-20261023.json` and `DEPLOYED-20261023.md`: exact artifacts, checks and rollback.
+- API image `mega-magic-api:e9b8cac`; web image `mega-magic-web:c9ec712`.
+- VPS build with Go1.26.5 reproduced the tested static Linux AMD64 binary exactly: SHA256 `73a14cee5a0cdde4c6dd536d2004242dbf5b2d0833cb59f970fa6d368ad45a92`.
+- Public `/app.html` SHA256 `d4931aa64cffdb16d1c92389e053d53656aed6ae6b9784acd951f2be311b1bb5`; public Jade stylesheet matches source exactly.
+- Database backup `/root/mm-release-8dbb1eb/backup/database.dump`, SHA256 `74577d3366784f1a1c6f9b154618a5fec506e7884095edc826b9fc3f00bf682c`; its pg_restore catalog was successfully read before migration.
+- Additive batch migration committed. Both batch tables have forced RLS, their single tenant policy and enabled guard trigger. API schema-readiness preflight passed.
+- Public health/readiness successful; database, Redis and NATS all report OK. Final API/web services run with the existing Compose/proxy topology.
+- Authenticated browser readback verified saved Hub site assignment, voucher form/inventory and separate activated-value reporting. Existing finite test voucher remained unused: one recorded voucher, 1,000 MMK face value, zero activations, zero activated value. No new code issued, payment approved, or router configured during deployment.
+
+Rollback preserves customer and recovery data: restore `/root/mm-release-8dbb1eb/backup/compose.go-restore.yaml` to the existing Compose path, then use `docker compose -f /opt/mega-magic-go-restored-20261018T100554Z/deploy/compose.go-restore.yaml up -d --no-deps --no-build --pull never api web`. Original images are pinned as `mega-magic-api:rollback-8dbb1eb` and `mega-magic-web:rollback-8dbb1eb`. Leave additive batch tables/rows intact. Do not restore the database merely to roll back application images.
+
+### Resume at physical acceptance
+
+Do not repeat candidate integration or deploy the older voucher branch. Begin with the eight physical acceptance steps above once the owner confirms spare-router availability. First compare the live owner/site/device/Hub identity and actual router clock; inspect existing profiles/files before writes. The deployed server does not update an offline router's stored login page. Actual phone internet, first use, elapsed/data expiry, offline enforcement and reconnect remain unproven. Do not restart a historical relay or reuse its old approval window.
