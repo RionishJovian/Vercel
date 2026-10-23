@@ -1485,6 +1485,14 @@ function wireHubLookup(content) {
   }));
 }
 
+function hubEnrollmentUnavailableMessage(code) {
+  return code === "plan_required" ? "Magic Hub connection requires an active plan. Open Store to restore access."
+    : code === "hub_lookup_disabled" ? "Magic Hub is not connected to this app deployment. Contact platform support."
+    : code === "hub_enrollment_disabled" ? "New Magic Hub connections are not enabled for this app deployment. Contact platform support."
+    : code === "automatic_management_disabled" ? "Automatic router management is not enabled for this app deployment. Contact platform support."
+    : "Magic Hub connection availability could not be confirmed. Try again later; no router changes were made.";
+}
+
 function routerBoardPanel(routers, fleet, capabilityByID = new Map(), hubCapability = {available:false, lookup_enabled:false, code:"capability_unavailable"}, capabilityStatusByID = new Map()) {
   const canEdit = SITE_EDITOR_ROLES.includes(ME?.user?.user_role);
   const stateByID = new Map(asArray(fleet && fleet.peers).map(peer => [peer.device_id, String(peer.state || "unknown").toLowerCase()]));
