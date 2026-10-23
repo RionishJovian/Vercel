@@ -36,7 +36,8 @@
   <script src="/assets/js/api.js" defer></script>
   <script src="/assets/js/app.js" defer></script>
   <script src="/assets/js/i18n.js" defer></script>
-  <script src="/assets/js/network-control.js" defer></script>
+  <script src="/assets/js/network-control.js?v=20261018-2" defer></script>
+  <script src="/assets/js/workflow-revamp.js?v=2" defer></script>
   <link rel="stylesheet" href="/assets/vendor/maplibre/maplibre-gl.css">
   <style>
     /* ════════════════════════════════════════════════════════════════════
@@ -213,7 +214,7 @@
   </style>
   <link rel="stylesheet" href="/assets/css/redesign.css">
   <link rel="stylesheet" href="/assets/css/media-appearance.css?v=5">
-  <link rel="stylesheet" href="/assets/css/layout.css?v=20261001-1">
+  <link rel="stylesheet" href="/assets/css/layout.css?v=20261018-2">
   <link rel="stylesheet" href="/assets/css/jade-glass.css?v=20261023-1">
 </head>
 <body class="page-app">
@@ -237,32 +238,32 @@
     </div>
     <div class="rail-menu" id="rail-menu">
       <div class="rail-nav-scroll">
-      <div class="rail-section">Operations</div>
       <button class="nav-item" data-view="overview" aria-current="page">Overview</button>
-      <button class="nav-item" data-view="fleet">Fleet health</button>
-      <button class="nav-item" data-view="topology">Topology</button>
-      <button class="nav-item" data-view="incidents">Incidents</button>
+      <div class="rail-section">Business</div>
+      <button class="nav-item" data-view="revenue">Revenue Dashboard</button>
+      <button class="nav-item" data-view="vouchers">Internet Voucher Dashboard</button>
+      <button class="nav-item" data-view="media">Jellyfin Dashboard</button>
+      <div class="rail-section">Operations</div>
       <button class="nav-item" data-view="sites">Sites</button>
-      <button class="nav-item" data-view="gateways">Gateways</button>
-      <button class="nav-item" data-view="network">New network setup</button>
-      <button class="nav-item" data-view="wan">Internet connections</button>
-      <button class="nav-item" data-view="pppoe">Customer internet</button>
-      <button class="nav-item" data-view="wifi">Wi-Fi networks</button>
-      <button class="nav-item" data-view="existing">LAN and Hotspot</button>
-      <button class="nav-item" data-view="routers">Downstream devices</button>
-      <div class="rail-section">Automation</div>
+      <button class="nav-item" data-view="gateways">Magic Hub</button>
+      <button class="nav-item" data-view="routers">Devices</button>
+      <button class="nav-item" data-view="topology">Site Topology</button>
+      <button class="nav-item" data-view="guests">Guests</button>
+      <button class="nav-item" data-view="fleet">Fleet Health</button>
+      <button class="nav-item" data-view="internet">Internet Setup</button>
+      <div class="rail-section">Guest Portals</div>
+      <button class="nav-item" data-view="portal">Internet Hotspot Portal</button>
+      <button class="nav-item" data-view="jellyfin-portal">Jellyfin Guest Portal</button>
+      <div class="rail-section">Store</div>
+      <button class="nav-item" data-view="store">Store</button>
+      <div class="rail-section">Management</div>
+      <button class="nav-item" data-view="team">Staff &amp; Permissions</button>
+      <button class="nav-item" data-view="incidents">Incidents</button>
       <button class="nav-item" data-view="security">Security</button>
       <button class="nav-item" data-view="backups">Backups</button>
       <button class="nav-item" data-view="scans">Fleet scans</button>
-      <div class="rail-section">Business</div>
-      <button class="nav-item" data-view="portal">Captive portal</button>
-      <button class="nav-item" data-view="media">Magic Media</button>
-      <button class="nav-item" data-view="vouchers">Vouchers</button>
-      <button class="nav-item" data-view="store">Store</button>
-      <button class="nav-item" data-view="revenue">Revenue</button>
       <button class="nav-item" data-view="coins">Magic Coins</button>
       <button class="nav-item" data-view="unlockkeys">Unlock keys</button>
-      <button class="nav-item" data-view="team">Team</button>
       <div class="rail-section">Audit</div>
       <button class="nav-item" data-view="events">Event log</button>
       <button class="nav-item" data-view="guide">Product guide</button>
@@ -323,14 +324,18 @@ const VIEWS = {
   overview: { title: "Overview", lead: "See what is healthy, what needs attention, and where to act next." },
   fleet:    { title: "Fleet health", lead: "Check the connection state of every managed router." },
   sites:    { title: "Sites", lead: "Organize routers by location and prepare each site to go live." },
-  routers:  { title: "Downstream devices", lead: "Manage switches, access points and controllers behind your gateway." },
-  gateways: { title: "Gateways", lead: "Connect routers to Magic Hub and check device health and capabilities." },
+  routers:  { title: "Devices", lead: "Discover devices through your site's connected RouterBOARD and organize the equipment you recognize." },
+  "managed-devices": { title: "Managed-device records", lead: "Advanced registration for independently managed switches, access points and controllers." },
+  gateways: { title: "Magic Hub", lead: "Choose a site, connect its RouterBOARD with one paste, then verify secure remote management." },
+  internet: { title: "Internet Setup", lead: "Choose a business task. Network details stay together under the selected site's router." },
+  guests: { title: "Guests", lead: "Read current Hotspot sessions, check usage and manage a selected guest connection." },
+  "jellyfin-portal": { title: "Jellyfin Guest Portal", lead: "Design your local media guest experience separately from internet access vouchers." },
   network:  { title: "New network setup", lead: "Create a customer LAN, assign addresses and enable Hotspot from one guided setup." },
   wan: { title: "Internet connections", lead: "Review internet uplinks, balance connections or prepare a backup ISP." },
   pppoe: { title: "Customer internet", lead: "Configure subscriber services, accounts and bandwidth plans." },
   wifi: { title: "Wi-Fi networks", lead: "Edit SSIDs and security on the device that actually provides Wi-Fi." },
   existing: { title: "LAN and Hotspot", lead: "Manage live DHCP, Hotspot, address pools, reservations and bandwidth limits." },
-  topology: { title: "Topology", lead: "See how the cloud hub, gateways, access points, and client devices connect." },
+  topology: { title: "Site Topology", lead: "Explore your site's network map and open supported device configuration tools." },
   incidents:{ title: "Incidents", lead: "Review network problems, take action, and track their resolution." },
   security: { title: "Security", lead: "Find exposed services and RouterOS versions that need attention." },
   backups:  { title: "Backups", lead: "Create recovery points and restore a router when necessary." },
@@ -340,13 +345,13 @@ const VIEWS = {
   scans:    { title: "Fleet scans", lead: "Inspect your routers for configuration, health, and security findings." },
   aiusage:  { title: "AI usage", lead: "See how Magic Dude is being used and what it costs." },
   i18n:     { title: "Translations", lead: "Customize interface wording for the languages your customers use." },
-  vouchers: { title: "Vouchers", lead: "Create guest access codes, manage resellers, and print voucher sheets." },
-  store:    { title: "Store", lead: "Buy account plans, Magic Coins, and additional product capabilities." },
-  revenue:  { title: "Revenue", lead: "Track voucher activations, review portal payments, and compare access activity." },
+  vouchers: { title: "Internet Voucher Dashboard", lead: "Manage internet data/time vouchers, resellers and printed access codes." },
+  store:    { title: "Store", lead: "Browse items offered by the platform, compare prices and track purchase approvals." },
+  revenue:  { title: "Revenue Dashboard", lead: "Track hotspot sales, approve payments, and compare plan performance." },
   coins:    { title: "Magic Coins", lead: "Check your balance and review every credit or purchase." },
   unlockkeys:{ title: "Unlock keys", lead: "See which additional product capabilities your business has activated." },
-  portal:   { title: "Captive portal", lead: "Choose how guests connect and customize the Wi-Fi page they see." },
-  media:    { title: "Magic Media", lead: "Connect your media computer, manage libraries, and design your guest lounge." },
+  portal:   { title: "Internet Hotspot Portal", lead: "Sell internet data and time through voucher codes or mobile payment. Jellyfin is configured separately." },
+  media:    { title: "Jellyfin Dashboard", lead: "Manage your local media computer, Jellyfin libraries and media-business activity." },
   team:     { title: "Team", lead: "Invite staff and choose what each person is allowed to manage." },
   platform: { title: "Platform", lead: "Manage customer businesses, service health, and platform-wide incidents." },
   profile:  { title: "Your profile", lead: "Manage your photo, language, password, and Telegram approvals." },
@@ -358,7 +363,7 @@ function canOpenView(name, me = ME) {
   const role = me?.user?.user_role;
   if (me?.subscription?.mode === "subscription_only" && ["coins", "unlockkeys"].includes(name)) return false;
   if (["platform", "i18n"].includes(name)) return role === "DEVELOPER";
-  if (["templates", "termlog", "aiusage", "team", "media"].includes(name)) return ["OWNER", "ADMIN", "DEVELOPER"].includes(role);
+  if (["templates", "termlog", "aiusage", "team", "media", "jellyfin-portal"].includes(name)) return ["OWNER", "ADMIN", "DEVELOPER"].includes(role);
   return true;
 }
 let disposeSiteMap = null;
@@ -379,7 +384,8 @@ async function loadView(name, main, me) {
   disposeSiteMap?.(); disposeSiteMap = null;
   disposeSitePicker?.(); disposeSitePicker = null;
   const v = VIEWS[name] || VIEWS.overview;
-  main.innerHTML = `<div class="page-head"><div><h1 class="page-title">${v.title}</h1><p class="page-lead">${v.lead}</p></div>${name === "guide" ? "" : `<button class="btn btn-sm" id="view-guide" type="button">How this works</button>`}</div><div id="content" aria-live="polite">${loading()}</div>`;
+  const taskBack = ["network","wan","pppoe","wifi","existing"].includes(name) ? '<p><a href="#internet">Back to Internet Setup</a></p>' : "";
+  main.innerHTML = `<div class="page-head"><div>${taskBack}<h1 class="page-title">${v.title}</h1><p class="page-lead">${v.lead}</p></div>${name === "guide" ? "" : `<button class="btn btn-sm" id="view-guide" type="button">How this works</button>`}</div><div id="content" aria-live="polite">${loading()}</div>`;
   // Route changes must start at the page heading. Safari otherwise preserves
   // the previous document offset, which can leave the new title clipped above
   // the viewport and makes adjacent sections appear to have uneven spacing.
@@ -393,8 +399,12 @@ async function loadView(name, main, me) {
     if (name === "overview") await renderOverview(main);
     else if (name === "fleet") await renderFleet(main);
     else if (name === "sites") await renderSiteWorkspace(main);
-    else if (name === "routers") await renderSites(main);
+    else if (name === "routers") await renderObservedWorkspace(main, "devices");
+    else if (name === "managed-devices") await renderSites(main, "routers");
     else if (name === "gateways") await renderSites(main, "gateways");
+    else if (name === "internet") await renderInternetWorkspace(main);
+    else if (name === "guests") await renderObservedWorkspace(main, "guests");
+    else if (name === "jellyfin-portal") await renderJellyfinPortal(main);
     else if (name === "network") await renderNetworkSetup(main);
     else if (name === "wan" || name === "pppoe" || name === "wifi" || name === "existing") {
       const data=await MM.get("/routers");
@@ -439,8 +449,36 @@ function loading() {
 
 async function renderMediaAppearance(main) {
   const content = main.querySelector("#content");
-  const {mountDashboard} = await import("/assets/js/media-dashboard.js?v=7");
+  const {mountDashboard} = await import("/assets/js/media-dashboard.js?v=8");
   if (content?.isConnected) mountDashboard(content, ME?.business, ME?.user, MM);
+}
+
+async function renderJellyfinPortal(main) {
+  const content = main.querySelector("#content");
+  const {mountAppearance} = await import("/assets/js/media-appearance.js?v=7");
+  if (content?.isConnected) mountAppearance(content, ME?.business, ME?.user, MM, () => content.isConnected);
+}
+
+async function renderInternetWorkspace(main) {
+  main.querySelector("#content").innerHTML = `<section class="panel"><div class="panel-body"><h2>What would you like to set up?</h2><p>First add a site and finish its Magic Hub connection. Each task reads the selected router before offering changes.</p><div class="revamp-task-grid">${[
+    ["network", "Start a guest internet service", "Guided customer ports, addresses, DHCP and Hotspot setup."],
+    ["wan", "Connect an internet provider", "ISP uplink, primary/backup connections and PPPoE uplink."],
+    ["existing", "Manage LAN and Hotspot", "Existing address pools, reservations, guest login and speed limits."],
+    ["wifi", "Manage Wi-Fi", "Supported radio names and security; physical-radio acceptance is required for writes."],
+    ["pppoe", "Manage subscriber internet", "PPPoE customer accounts and speed plans, when your business uses them."],
+  ].map(([route,title,description]) => `<a class="revamp-task" href="#${route}"><strong>${title}</strong><span>${description}</span></a>`).join("")}</div></div></section>`;
+}
+
+async function renderObservedWorkspace(main, kind) {
+  const host = main.querySelector("#content");
+  const response = await MM.get("/routers");
+  if (!host?.isConnected) return;
+  const routers = asArray(response.routers || response);
+  if (kind === "guests") {
+    let sites = [];
+    try { const data = await MM.get("/sites"); sites = asArray(data.sites || data); } catch (_) { /* Guest reads do not depend on site-label availability. */ }
+    if (host.isConnected) await MMRevamp.mountGuests(host, routers, MM, SITE_EDITOR_ROLES.includes(ME?.user?.user_role), sites);
+  } else await MMRevamp.mountObserved(host, kind, routers, MM, SITE_EDITOR_ROLES.includes(ME?.user?.user_role));
 }
 
 function errorText(err, fallback = "The server did not return a usable response.") {
@@ -491,6 +529,9 @@ async function renderOverview(main) {
     const nav = document.querySelector('.nav-item[data-view="security"]');
     if (nav) nav.click();
   });
+  const setup = document.createElement("section"); setup.className = "panel";
+  setup.innerHTML = `<div class="panel-body"><h2>Your business setup</h2><p>Start with your location, then connect its RouterBOARD. Internet and Jellyfin remain separate business services.</p><div class="revamp-task-grid"><a class="revamp-task" href="#sites"><strong>1 · Add your site</strong><span>Business location and site information.</span></a><a class="revamp-task" href="#gateways"><strong>2 · Connect Magic Hub</strong><span>Assign the site, paste one script and verify management.</span></a><a class="revamp-task" href="#routers"><strong>3 · Discover devices</strong><span>Read the connected RouterBOARD's observations.</span></a><a class="revamp-task" href="#portal"><strong>4 · Internet Hotspot Portal</strong><span>Internet data/time plans, voucher access and guest-page branding.</span></a><a class="revamp-task" href="#jellyfin-portal"><strong>Jellyfin Guest Portal</strong><span>Separate local media guest design.</span></a></div></div>`;
+  content.prepend(setup);
   await renderPulse(main);
 }
 
@@ -559,7 +600,7 @@ async function renderFleet(main) {
   const routerByID = new Map(routers.map(r => [r.device_id, r]));
   main.querySelector("#content").innerHTML = fleetBoard(fleet, routerByID, pulseResult);
   const openRouters = main.querySelector("#fleet-open-routers");
-  if (openRouters) openRouters.addEventListener("click", () => { location.hash = "routers"; });
+  if (openRouters) openRouters.addEventListener("click", () => { location.hash = "gateways"; });
 }
 
 function fleetBoard(fleet, routerByID, pulse) {
@@ -788,7 +829,7 @@ async function renderSiteWorkspace(main) {
   if (!content?.isConnected) return;
   disposeSiteMap?.(); disposeSiteMap = null;
   disposeSitePicker?.(); disposeSitePicker = null;
-  content.innerHTML = `${siteOperationsMap(sites, conns)}${siteGeoPanel(sites)}`;
+  content.innerHTML = `<section class="panel"><div class="panel-body"><h2>Start with your business location</h2><p>1 · Add your site information. 2 · Open <a href="#gateways">Magic Hub</a> to assign and connect its RouterBOARD. 3 · Discover devices and configure your business services.</p></div></section>${siteOperationsMap(sites, conns)}${siteGeoPanel(sites)}`;
   wireSiteGeo(main, sites, () => renderSiteWorkspace(main));
   content.querySelectorAll("[data-site-select]").forEach(button => button.addEventListener("click", async () => {
     localStorage.setItem("mm_selected_site", button.dataset.siteSelect);
@@ -1487,6 +1528,10 @@ async function renderSites(main, workspace = location.hash === "#gateways" ? "ga
     ? router.deployment_layer === "MAIN_GATEWAY" : router.deployment_layer !== "MAIN_GATEWAY");
   let fleet = { peers: [] };
   try { fleet = await MM.get("/fleet/health"); } catch (_) {}
+  let hubCapability = {available:false, lookup_enabled:false, code:"capability_unavailable"};
+  if (gatewayOnly && canEdit) {
+    try { hubCapability = await MM.get("/vps/enrollment-capability"); } catch (_) {}
+  }
   const routerStateByID = new Map(asArray(fleet.peers).map(peer => [peer.device_id, String(peer.state || "unknown").toLowerCase()]));
   // Saved gateway cards render immediately; the live capability probes run
   // per card after the page paints, each bounded and retryable on its own.
@@ -1512,17 +1557,19 @@ async function renderSites(main, workspace = location.hash === "#gateways" ? "ga
 
 
   content.innerHTML = `
-    ${routerBoardPanel(routers, fleet, capabilityByID, undefined, capabilityStatusByID)}
+    ${gatewayOnly ? '<section class="panel"><div class="panel-body"><h2>Connect your site</h2><p><a href="#sites">1 · Add a site</a> → 2 · Assign and connect its RouterBOARD → 3 · Verify management → <a href="#routers">4 · Discover devices</a></p></div></section>' : ''}
+    ${routerBoardPanel(routers, fleet, capabilityByID, hubCapability, capabilityStatusByID)}
     <dialog class="router-capability-dialog" id="router-capability-dialog"><div class="router-capability-shell"><button type="button" class="dialog-close" data-capability-close aria-label="Close">×</button><div id="router-capability-content"></div><div class="dialog-actions"><button type="button" class="btn" data-capability-close>Close</button></div></div></dialog>
-    ${gatewayOnly ? connPanel(conns) : ""}
-    ${canEdit ? `<div class="workspace-actions"><button class="btn btn-primary" type="button" id="site-add">${gatewayOnly ? "Connect new gateway" : "Add downstream device record"}</button></div>` : ""}
+    ${gatewayOnly ? `<details class="panel"><summary>Advanced saved connection records</summary>${connPanel(conns)}</details>` : ""}
+    ${canEdit ? `<div class="workspace-actions"><button class="btn btn-primary" type="button" id="site-add"${gatewayOnly && !sites.length ? ' disabled' : ''}>${gatewayOnly ? "Add site RouterBOARD" : "Add managed device record"}</button>${gatewayOnly && !sites.length ? '<p><a href="#sites">Add a site first to begin onboarding.</a></p>' : ''}</div>` : ""}
     ${gatewayOnly || !capacityLimitsEnabled ? "" : allowancePanel(allowance)}
     ${gatewayOnly || !capacityLimitsEnabled ? "" : requestPanel(requests)}
     <div class="panel" id="site-form" hidden><div class="panel-head"><h2 class="panel-title">${gatewayOnly ? "Add gateway" : "Add device record"}</h2></div>
       <div class="panel-body record-form-grid">
-        <div class="field"><label>Hardware name *</label><input class="input" id="sr-name"></div>
-        <div class="field"><label>Model</label><input class="input" id="sr-model"></div>
-        <div class="field"><label>Deployment layer</label><select class="input" id="sr-layer">${layers.map(l => `<option value="${l}">${l}</option>`).join("")}</select></div>
+        <div class="field"><label>${gatewayOnly ? "RouterBOARD name" : "Device name"} *</label><input class="input" id="sr-name"></div>
+        ${gatewayOnly ? `<div class="field"><label for="sr-site">Business site *</label><select class="input" id="sr-site" required><option value="">Choose the site you added</option>${sites.map(s=>`<option value="${esc(s.site_id)}">${esc(s.name)}</option>`).join("")}</select></div>` : ''}
+        <div class="field"${gatewayOnly ? ' hidden' : ''}><label>Model</label><input class="input" id="sr-model"></div>
+        <div class="field"${gatewayOnly ? ' hidden' : ''}><label>Deployment layer</label><select class="input" id="sr-layer">${layers.map(l => `<option value="${l}">${l}</option>`).join("")}</select></div>
         ${gatewayOnly ? '<p class="muted small">Magic Hub assigns the management address automatically. Add your gateway, then run its one-paste connection script.</p>' : '<div class="field"><label>Management IP</label><input class="input" id="sr-ip"></div><div class="field"><label>MAC address</label><input class="input" id="sr-mac"></div>'}
         <button class="btn btn-primary" type="button" id="sr-save">Create device record</button>
         <span id="sr-msg" class="muted small" role="status"></span>
@@ -1544,6 +1591,7 @@ async function renderSites(main, workspace = location.hash === "#gateways" ? "ga
     const btn = document.querySelector(`.nav-item[data-view="${name}"]`);
     if (btn) btn.click();
   };
+  if (gatewayOnly && canEdit) await MMRevamp.bindSites(content, sites, MM, () => renderSites(main, workspace));
   const wzAdd = document.getElementById("wz-add");
   if (wzAdd) wzAdd.addEventListener("click", () => {
     document.getElementById("site-form").hidden = false;
@@ -1598,11 +1646,17 @@ async function renderSites(main, workspace = location.hash === "#gateways" ? "ga
       transport: gatewayOnly ? "tunnel" : "direct",
     };
     if (!body.hardware_name) { document.getElementById("sr-msg").textContent = "Hardware name is required."; return; }
+    const selectedSite = gatewayOnly ? document.getElementById("sr-site").value : "";
+    if (gatewayOnly && !sites.some(s=>s.site_id===selectedSite)) { document.getElementById("sr-msg").textContent = "Choose a business site first."; return; }
     const save = document.getElementById("sr-save");
     if (save.disabled) return;
     save.disabled = true;
     try {
       const result = await MM.post("/routers", body);
+      if (gatewayOnly && result.router?.device_id) {
+        try { await MM.put(`/vps/peers/${encodeURIComponent(result.router.device_id)}/site`, {site_id:selectedSite}); }
+        catch (e) { await renderSites(main, workspace); showErr(e); return; }
+      }
       await renderSites(main, workspace);
       if (gatewayOnly && result.router?.device_id && content.isConnected) {
         const wizard = Array.from(content.querySelectorAll('[data-hub-enrollment]')).find(el => el.dataset.hubEnrollment === result.router.device_id);
@@ -1652,9 +1706,10 @@ async function renderSites(main, workspace = location.hash === "#gateways" ? "ga
       try {
         const response = await MM.get(`/routers/${encodeURIComponent(router.device_id)}/quick-config`);
         const current = response.config || {};
-        body = `${common}<h3>Gateway basics</h3><p>${canEdit ? "Change the router name and DNS settings. Mega Magic saves a backup first, confirms the new values after applying them, and restores the previous values if the check fails." : "Read-only settings. An owner or administrator is required to change router configuration."}</p>
+        const canApply = canEdit && response.write_enabled === true;
+        body = `${common}<h3>Gateway basics</h3><p>${canApply ? "Change the router name and DNS settings. Mega Magic saves a backup first, confirms the new values after applying them, and restores the previous values if the check fails." : "Read-only settings. Router changes require an owner or administrator and an accepted, write-enabled deployment."}</p>
           <div class="router-capability-facts">${capabilityFact("Board", caps.board_name || "Reported by RouterOS")}${capabilityFact("RouterOS", caps.routeros_version || "Unknown")}${capabilityFact("DHCP server", menuState(caps.dhcp_server))}${capabilityFact("Hotspot", menuState(caps.hotspot))}</div>
-          ${canEdit ? `<div class="quick-config-form">
+          ${canApply ? `<div class="quick-config-form">
             <label>Router identity<input class="input" id="quick-identity" maxlength="63" value="${esc(current.identity || "")}" autocomplete="off"></label>
             <label>DNS servers<input class="input" id="quick-dns" value="${esc(asArray(current.dns_servers).join(", "))}" placeholder="1.1.1.1, 8.8.8.8" inputmode="text" autocomplete="off"><span>Comma-separated IPv4 or IPv6 addresses.</span></label>
             <label class="quick-config-check"><input id="quick-remote-dns" type="checkbox"${current.allow_remote_dns ? " checked" : ""}><span><strong>Answer DNS requests from clients</strong><small>Needed when hotspot and LAN clients use this router as their DNS resolver.</small></span></label>
@@ -1878,12 +1933,24 @@ function openEditRouter(main, r) {
 }
 
 /* ---------- Topology ---------- */
-async function renderTopology(main) {
-  const topo = await MM.get("/topology/map");
+async function renderTopology(main, selectedSite = "") {
+  let topo = await MM.get("/topology/map");
+  let sites = [];
+  try { sites = asArray((await MM.get("/sites")).sites); } catch (_) {}
   let fleet = {peers: []};
   try { fleet = await MM.get("/fleet/health"); } catch (_) {}
   const content = main.querySelector("#content");
-  content.innerHTML = `<div id="topo-tree">${loading()}</div>`;
+  if (selectedSite) {
+    const roots = asArray(topo.roots).filter(n => n.device?.site_id === selectedSite);
+    const ids = new Set(); const collect = n => { ids.add(n.device?.device_id); asArray(n.children).forEach(collect); }; roots.forEach(collect);
+    const orphans = asArray(topo.orphans).filter(d => d.site_id === selectedSite);
+    orphans.forEach(d => ids.add(d.device_id));
+    topo = {...topo, roots, orphans, cycles: [], summary: {...topo.summary,total_devices:ids.size,in_tree:ids.size-orphans.length}};
+    const peers = asArray(fleet.peers).filter(p => ids.has(p.device_id));
+    fleet = {...fleet,peers,unknown:peers.filter(p=>p.state==="unknown").length,offline:peers.filter(p=>p.state==="offline").length,stale:peers.filter(p=>p.state==="stale").length};
+  }
+  content.innerHTML = `<div class="panel"><div class="panel-body"><label>Business site<select class="input" id="topology-site"><option value="">All sites and unassigned devices</option>${sites.map(s=>`<option value="${esc(s.site_id)}"${s.site_id===selectedSite?' selected':''}>${esc(s.name)}</option>`).join("")}</select></label><p class="muted small">This is a management-relationship map, not discovered physical cabling. DHCP/ARP discovery is available under Devices.</p></div></div><div id="topo-tree">${loading()}</div>`;
+  content.querySelector("#topology-site").addEventListener("change", event => renderTopology(main, event.target.value));
   content.querySelector("#topo-tree").innerHTML = topologyTree(topo, fleet);
 
   const selectDevice = (detailID) => {
@@ -1895,10 +1962,11 @@ async function renderTopology(main) {
   if (refresh) refresh.addEventListener("click", async () => {
     refresh.disabled = true;
     refresh.textContent = "Refreshing…";
-    await renderTopology(main);
+    await renderTopology(main, selectedSite);
   });
   const manage = content.querySelector("#topo-manage-routers");
   if (manage) manage.addEventListener("click", () => { location.hash = "routers"; });
+  content.querySelectorAll("[data-config-device]").forEach(link => link.addEventListener("click", () => { sessionStorage.setItem("mm_selected_router", link.dataset.configDevice); }));
 }
 
 function topologyState(d, states) {
@@ -1965,6 +2033,7 @@ function topologyTree(topo, fleet) {
       <div class="topo-detail-title"><span class="topo-glyph">${topologyGlyph(d)}</span><div><small>NODE ${index}</small><strong>${esc(d.hardware_name || "Unnamed device")}</strong></div></div>
       <div class="topo-detail-signal">${signal(meta.level, state)}<strong class="${esc(state)}">${meta.label}</strong><small>${meta.note}</small></div>
       <dl><dt>Role</dt><dd>${esc(topologyLayerLabel(d.deployment_layer))}</dd><dt>Hardware</dt><dd>${esc(model)}</dd><dt>Transport</dt><dd>${esc(d.transport || "direct")}</dd><dt>Device ID</dt><dd class="mono">${esc(d.device_id || "—")}</dd></dl>
+      <div class="revamp-task-grid"><a class="btn" href="#gateways">Connection &amp; supported quick settings</a><a class="btn" href="#existing" data-config-device="${esc(d.device_id)}">Quick network configuration</a><a class="btn" href="#routers" data-config-device="${esc(d.device_id)}">Discover site devices</a></div><p class="muted small">Configuration requires an authenticated device and supported capabilities. This map does not prove physical cabling.</p>
     </div>`);
     return `<li><button class="topo-device topo-state-${esc(state)}${selected}" type="button" data-topo-detail="${detailID}" aria-label="${esc(d.hardware_name || "Device")}, ${esc(state)}">
       <div class="topo-device-head"><span class="topo-node-number">NODE ${index}</span><span class="status ${state === "up" ? "ok" : state === "stale" ? "warn" : state === "offline" ? "bad" : "unknown"}">${esc(state)}</span></div>
@@ -2898,8 +2967,9 @@ async function loadScans() {
    agree on tile size and type scale — otherwise the preview is decoration.
    Two page shapes share one model: an A4 cut sheet (packed by columns × rows per
    page) and a continuous thermal roll (columns × rows per strip of ~120 mm).
-   As packing tightens the type shrinks. Details that cannot fit at readable
-   sizes are omitted so the CODE stays readable. */
+   As packing tightens the type shrinks, and below ~9–10 mm tiles the meta line is
+   dropped entirely so the CODE — the only thing a voucher exists for — stays
+   readable. */
 const SHEET_MM = { a4: { w: 210, h: 297, pad: 8, usable: 281 }, thermal: { usable: 120 } };
 
 /* Injected into the preview stage AND embedded in the print document, so there is
@@ -3761,16 +3831,14 @@ function wirePortalBranding(main, cfg, collect, plansTbl) {
       // Branding fields ONLY. The endpoint merges now, so guest plans, the MMQR
       // URL, the grace window and guest consent are left exactly as they are —
       // previously an omitted field was erased by the full-replace upsert.
-      const media = readMediaSettings();
       await MM.put("/portal/config", {
         // Use the literal form values here. Preview fallbacks must never be
         // persisted when an owner intentionally leaves a field empty.
         business_name: val("pb-name"), welcome_text: val("pb-welcome"), terms_text: val("pb-terms"),
         primary_hex: d.primary_hex, glass_tint_hex: d.glass_tint_hex,
         bank_name: d.bank_name, bank_holder: d.bank_holder, bank_account: d.bank_account,
-        // The media server is stored once per business here, not on each portal
-        // deployment, so redeploying the portal never asks for it again.
-        media_host: media.media_host, media_port: media.media_port,
+        // Media fields are deliberately omitted: this editor owns internet
+        // branding only. Existing media data remains intact in the database.
       });
       PORTAL_NOTICE = "Branding saved and verified from the server.";
       await loadView("portal", main, ME);
@@ -3927,7 +3995,7 @@ async function renderPortal(main) {
     // StaffGetConfig returns { config: ... }. Reading the response envelope as
     // the config made successfully saved plans appear to vanish after reload.
     cfg = response && response.config ? response.config : response;
-  } catch (e) { cfgErr = errorText(e, "Portal configuration has not been created yet."); }
+  } catch (e) { cfgErr = e.status === 404 ? "No Internet Hotspot Portal settings yet. Add your internet plans and branding, then save." : errorText(e, "Portal configuration could not be loaded."); }
   let reqs = [], reqErr = null;
   try {
     const r = await MM.get("/billing/requests"); reqs = r.requests || r || [];
@@ -3958,7 +4026,7 @@ async function renderPortal(main) {
   html += `<input id="mmqr-url" value="${esc((cfg&&cfg.mmqr_url)||"")}" placeholder="https://…/mmqr.jpg or /assets/mmqr.jpg" style="width:100%">`;
   html += `<div class="grid-2" style="margin-top:16px"><div class="form-row"><label for="grace-min">Grace time (minutes)</label><input id="grace-min" type="number" min="1" max="1440" step="1" value="${cfg?.guest_grace_minutes ?? 10}"></div><div class="form-row"><label for="grace-data">Grace data (MB)</label><input id="grace-data" type="number" min="1" max="10240" step="1" value="${cfg?.guest_grace_data_mb ?? 50}"></div></div><p class="muted small">Temporary internet for completing a bank transfer ends when either limit is reached. Data includes uploads and downloads.</p><p class="muted small">Browser recognition guard: on the HTTPS guest portal, a secure cookie remembers the payment request. Reconnecting does not reset its allowance. A recognized MAC change cannot start fresh grace during the existing window or six-hour failed-payment cooldown; reconnect support requires the owner. Clearing cookies or using another browser can evade this extra guard. Banking-only access is not enabled.</p>`;
   html += `<h3 class="small" style="margin:14px 0 6px">Guest data plans</h3>`;
-  html += `<table id="plans-table"><thead><tr><th>Key</th><th>Label</th><th>Minutes</th><th>Price (MMK)</th><th>Data (MB)</th><th></th></tr></thead><tbody>`;
+  html += `<div class="table-scroll"><table id="plans-table"><thead><tr><th>Key</th><th>Label</th><th>Minutes</th><th>Price (MMK)</th><th>Data (MB)</th><th></th></tr></thead><tbody>`;
   plans.forEach((p, i) => {
     html += `<tr id="plan-${i}">` +
       `<td><input data-k="key" value="${esc(p.key||"")}"></td>` +
@@ -3968,7 +4036,7 @@ async function renderPortal(main) {
       `<td><input type="number" data-k="data_mb" min="0" value="${p.data_mb||0}"></td>` +
       `<td><button class="btn-sm" type="button" data-act="del" data-i="${i}">Remove</button></td></tr>`;
   });
-  html += `</tbody></table>`;
+  html += `</tbody></table></div>`;
   html += `<div style="margin-top:8px;display:flex;gap:8px"><button class="btn-sm" type="button" id="plan-add">+ Add plan</button>` +
     `<button class="btn-sm" type="button" id="plan-save">Save access &amp; plans</button><span id="plan-msg" class="muted small" role="status" aria-live="polite"></span></div>`;
   html += `</div></div>`;
@@ -4012,12 +4080,7 @@ async function renderPortal(main) {
             <input class="input" id="pb-bank-holder" placeholder="Account holder" value="${esc((cfg&&cfg.bank_holder)||"")}">
             <input class="input" id="pb-bank-acc" placeholder="Account number" value="${esc((cfg&&cfg.bank_account)||"")}">
           </div></div>
-        <div class="field"><label>Media server on your own network</label>
-          <div class="pl-grid">
-            <input class="input" id="pb-media-host" inputmode="decimal" placeholder="192.168.88.10" autocomplete="off" autocapitalize="off" spellcheck="false" value="${esc((cfg&&cfg.media_host)||"")}">
-            <input class="input" id="pb-media-port" inputmode="numeric" placeholder="8096" autocomplete="off" value="${esc((cfg&&cfg.media_port)||"")}">
-          </div>
-          <small class="muted">Optional. Guests who buy a voucher can reach this server on your local network. Use the private address from your own network, not a public one. Leave empty to offer internet only. Video never passes through our servers.</small></div>
+        <p class="muted small">This portal sells internet data and time only. Configure your media guest experience under <a href="#jellyfin-portal">Jellyfin Guest Portal</a>.</p>
         <button class="btn btn-primary" type="button" id="pb-save">Save branding</button>
         <span id="pb-msg" class="muted small" role="status" aria-live="polite"></span>
       </div>
@@ -4141,10 +4204,7 @@ async function wirePortalDeployment(main) {
   const mediaNote = main.querySelector("#pd-media-note");
   // The media server is configured once in the portal settings and reused here, so
   // a redeploy never asks for it again.
-  const mediaPayload = () => {
-    const saved = PORTAL_MEDIA;
-    return saved.media_host ? {media_host: saved.media_host, media_port: saved.media_port || "8096"} : {};
-  };
+  const mediaPayload = () => ({media_host: "", media_port: ""});
   const preview = main.querySelector("#pd-preview"), apply = main.querySelector("#pd-apply");
   const status = main.querySelector("#pd-status"), review = main.querySelector("#pd-review");
   let plan = null, revision = 0;
@@ -4170,9 +4230,7 @@ async function wirePortalDeployment(main) {
   });
   profile.addEventListener("change", () => { ++revision; reset(); preview.disabled = !profile.value; status.textContent = ""; });
   if (mediaNote) {
-    mediaNote.textContent = PORTAL_MEDIA.media_host
-      ? `Guests will be able to reach your media server at ${PORTAL_MEDIA.media_host}:${PORTAL_MEDIA.media_port || "8096"}. Change it under Portal settings.`
-      : "No media server is set, so guests will get internet only. Add one under Portal settings to offer your videos.";
+    mediaNote.textContent = "Internet access only. Jellyfin Guest Portal is configured separately; this deployment does not publish a media-server access rule.";
   }
   preview.addEventListener("click", async () => {
     reset(); const current = revision; preview.disabled = true; status.textContent = "Checking router and preparing review…";
@@ -4453,8 +4511,9 @@ async function renderBackups(main) {
       <div class="panel-body">
         <select class="input" id="bk-dev">${devices.map(d => `<option value="${esc(d.device_id)}">${esc(d.hardware_name || d.device_id)}</option>`).join("")}</select>
         <div style="margin-top:12px;display:flex;gap:8px">
-          <button class="btn btn-primary" id="bk-capture">Capture backup</button>
+          <button class="btn btn-primary" id="bk-capture" disabled>Capture backup</button>
         </div>
+        <p class="muted small" id="bk-availability" role="status">Checking backup availability…</p>
       </div>
     </div>
     <div class="panel" style="margin-top:14px"><div class="panel-head"><h2 class="panel-title">Backups</h2></div>
@@ -4463,24 +4522,39 @@ async function renderBackups(main) {
       <div class="panel-body" id="bk-hist">${loading()}</div></div>`;
 
   const dev = () => document.getElementById("bk-dev").value;
+  let backupRefresh = 0;
   const refresh = async () => {
-    document.getElementById("bk-list").innerHTML = loading();
-    document.getElementById("bk-hist").innerHTML = loading();
-    let backups = [], changes = [];
-    try { const r = await MM.get(`/devices/${encodeURIComponent(dev())}/backups`); backups = r.backups || []; }
-    catch (e) { document.getElementById("bk-list").innerHTML = `<p class="muted small">${esc(e.data && e.data.error ? e.data.error : e.message)}</p>`; }
-    try { const r = await MM.get(`/devices/${encodeURIComponent(dev())}/changes`); changes = r.changes || []; }
-    catch (_) {}
+    const generation = ++backupRefresh, selectedDevice = dev();
+    const list = content.querySelector("#bk-list"), hist = content.querySelector("#bk-hist");
+    const capture = content.querySelector("#bk-capture"), availability = content.querySelector("#bk-availability");
+    const active = () => content.isConnected && generation === backupRefresh;
+    list.innerHTML = loading(); hist.innerHTML = loading(); capture.disabled = true;
+    availability.textContent = "Checking backup availability…";
+    let backups = [], changes = [], backupError = false, historyError = false, restoreAvailable = false;
+    try {
+      const r = await MM.get(`/devices/${encodeURIComponent(selectedDevice)}/backups`);
+      if (!active()) return;
+      backups = r.backups || []; restoreAvailable = r.restore_available === true;
+      capture.disabled = r.capture_available !== true;
+      availability.textContent = r.capture_available === true ? "Backup capture is available. Restore also requires a valid verification code." : "Backup capture is unavailable. Administrator permission and an enabled router connection are required.";
+    } catch (_) {
+      if (!active()) return;
+      backupError = true;
+      availability.textContent = "Backup availability could not be confirmed. Reload this page to retry.";
+      list.innerHTML = '<p class="muted small" role="alert">Could not load backups. Reload this page to retry.</p>';
+    }
+    try { const r = await MM.get(`/devices/${encodeURIComponent(selectedDevice)}/changes`); changes = r.changes || []; }
+    catch (_) { historyError = true; }
+    if (!active()) return;
 
-    const list = document.getElementById("bk-list");
-    if (backups && backups.length) {
+    if (!backupError && backups.length) {
       list.innerHTML = `<table><thead><tr><th>Label</th><th>Kind</th><th>Size</th><th>Created</th><th></th></tr></thead><tbody>` +
         backups.map(b => `<tr>
           <td><span class="num">${esc(b.label || "—")}</span></td>
           <td class="mono">${esc(b.kind)}</td>
           <td class="num">${esc(b.size_bytes)}</td>
           <td>${ts(b.created_at)}</td>
-          <td><button class="btn btn-sm" data-restore="${esc(b.id)}">Restore</button></td>
+          <td>${restoreAvailable ? `<button class="btn btn-sm" data-restore="${esc(b.id)}">Restore</button>` : '<span class="muted small">Restore unavailable</span>'}</td>
         </tr>`).join("") + `</tbody></table>`;
       list.querySelectorAll("button[data-restore]").forEach(btn => {
         btn.addEventListener("click", async () => {
@@ -4488,7 +4562,7 @@ async function renderBackups(main) {
           if (otp === null) return;
           btn.disabled = true; btn.textContent = "…";
           try {
-            await MM.post(`/devices/${encodeURIComponent(dev())}/restore/${encodeURIComponent(btn.dataset.restore)}`, { otp });
+            await MM.post(`/devices/${encodeURIComponent(selectedDevice)}/restore/${encodeURIComponent(btn.dataset.restore)}`, { otp });
             btn.textContent = "Restored";
           } catch (e) {
             btn.disabled = false; btn.textContent = "Restore";
@@ -4496,12 +4570,13 @@ async function renderBackups(main) {
           }
         });
       });
-    } else if (list) {
-      list.innerHTML = `<div class="empty"><div class="empty-title">No backups</div>Capture a backup to snapshot this device's config.</div>`;
+    } else if (!backupError) {
+      list.innerHTML = `<div class="empty"><div class="empty-title">No backups</div>No saved configuration snapshots are available for this device.</div>`;
     }
 
-    const hist = document.getElementById("bk-hist");
-    if (changes && changes.length) {
+    if (historyError) {
+      hist.innerHTML = '<p class="muted small" role="alert">Could not load change history. Reload this page to retry.</p>';
+    } else if (changes.length) {
       hist.innerHTML = `<table><thead><tr><th>When</th><th>Role</th><th>Action</th><th>Reason</th></tr></thead><tbody>` +
         changes.map(ch => `<tr><td>${ts(ch.timestamp)}</td><td class="mono">${esc(ch.user_role)}</td><td class="mono">${esc(ch.action)}</td><td class="muted small">${esc(ch.reason)}</td></tr>`).join("") +
         `</tbody></table>`;
@@ -4513,10 +4588,13 @@ async function renderBackups(main) {
   document.getElementById("bk-dev").addEventListener("change", refresh);
   document.getElementById("bk-capture").addEventListener("click", async () => {
     const btn = document.getElementById("bk-capture");
+    if (btn.disabled) return;
+    const selectedDevice = dev();
     btn.disabled = true; btn.textContent = "Capturing…";
-    try { await MM.post(`/devices/${encodeURIComponent(dev())}/backups`, {}); }
-    catch (e) { main.querySelector("#content").prepend(Object.assign(document.createElement("div"), { className: "alert", textContent: (e.data && e.data.error) ? e.data.error : e.message })); }
-    btn.disabled = false; btn.textContent = "Capture backup";
+    try { await MM.post(`/devices/${encodeURIComponent(selectedDevice)}/backups`, {}); }
+    catch (e) { if (content.isConnected) content.prepend(Object.assign(document.createElement("div"), { className: "alert", textContent: (e.data && e.data.error) ? e.data.error : e.message })); }
+    if (!content.isConnected) return;
+    btn.textContent = "Capture backup";
     await refresh();
   });
 
@@ -4582,14 +4660,7 @@ function platformCreateForm() {
       <div class="field"><label>Company name *</label><input class="input" id="pt-company"></div>
       <div class="field"><label>Owner email *</label><input class="input" id="pt-email" type="email"></div>
       <div class="field"><label>Owner password * (8+ chars)</label><input class="input" id="pt-pass" type="password"></div>
-      <div class="field"><label>Access tier</label>
-        <select class="input" id="pt-tier">
-          <option value="SMALL_WISP">Small WISP</option>
-          <option value="ENTERPRISE_ISP">Enterprise ISP</option>
-          <option value="GLOBAL_ADMIN">Global admin</option>
-        </select>
-        <p class="muted small">Access tier determines the business's capacity limits and pricing plan. This is separate from user roles which control individual permissions within the business.</p>
-      </div>
+      <div class="field"><label>Access tier</label><select class="input" id="pt-tier"><option>SMALL_WISP</option><option>ENTERPRISE_ISP</option><option>GLOBAL_ADMIN</option></select></div>
       <div class="field"><label>Device quota limit (optional)</label><input class="input" id="pt-quota" inputmode="numeric"></div>
       <button class="btn btn-primary" id="pt-create">Create tenant</button>
       <span id="pt-msg" class="muted small"></span>
@@ -4686,7 +4757,7 @@ async function wirePlatformAdmin(content, main) {
       const s = await MM.get(`/platform/businesses/${encodeURIComponent(id)}/state`);
       alert([
         "Company: " + s.company_name,
-        "Access Tier: " + s.access_tier + " (determines capacity limits and pricing)",
+        "Tier: " + s.access_tier,
         "Active: " + s.is_active,
         "Owner: " + s.owner_email,
         "Devices: " + s.device_count + " / " + s.device_quota_limit,
@@ -4700,15 +4771,6 @@ async function wirePlatformAdmin(content, main) {
 
 function platformBusinessTable(bizs, selfBusinessID) {
   if (!bizs.length) return `<div class="empty"><div class="empty-title">No businesses</div>No tenants are registered yet.</div>`;
-
-  // Add a header explaining the difference
-  const header = `
-    <div class="notice" style="margin-bottom: 16px;">
-      <strong>Note:</strong> Access tiers (SMALL_WISP, ENTERPRISE_ISP, GLOBAL_ADMIN) determine
-      business capacity limits and pricing. User roles (OWNER, ADMIN, VIEWER) are managed
-      separately in each business's Team settings.
-    </div>`;
-
   const rows = bizs.map(b => {
     const isSelf = selfBusinessID && b.business_id === selfBusinessID;
     const suspBtn = isSelf
@@ -4727,12 +4789,8 @@ function platformBusinessTable(bizs, selfBusinessID) {
         <button class="btn btn-sm" data-resetpw="${esc(b.business_id)}">Reset pw</button>
         <button class="btn btn-sm" data-state="${esc(b.business_id)}">View state</button>
       </td>
-    </tr>`;
-  }).join("");
-
-  const table = `<table><thead><tr><th>Company</th><th>Owner</th><th>Access Tier</th><th>Device limit</th><th>Status</th><th>Created</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
-
-  return header + table;
+    </tr>`; }).join("");
+  return `<table><thead><tr><th>Company</th><th>Owner</th><th>Tier</th><th>Device limit</th><th>Status</th><th>Created</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 function platformIncidentTable(list, bizs) {
@@ -4789,11 +4847,6 @@ async function renderProfile(main) {
           ${profile.has_avatar ? `<button class="btn btn-sm" data-remove-profile-asset="avatar" type="button">Remove</button>` : ""}</div>
       </div>
     </section>
-    <div class="notice" style="margin-bottom: 16px; margin-top: 16px;">
-      <strong>Note:</strong> Your user role (${esc(profile.user_role)}) controls your permissions within this business.
-      The business's access tier determines capacity limits and pricing, and can only be viewed/changed
-      in the Platform console by DEVELOPER users.
-    </div>
     <div class="profile-grid">
       <section class="panel"><div class="panel-head"><div><h2 class="panel-title">Personal details</h2><p class="muted small">Shown to your team inside this business.</p></div></div><form class="panel-body form-grid" id="profile-form">
         <div class="field"><label for="profile-name">Display name</label><input class="input" id="profile-name" maxlength="255" value="${esc(profile.full_name)}" required></div>
@@ -4893,25 +4946,29 @@ async function renderProfile(main) {
 
 /* ---------- Customer-ready product guide ---------- */
 const PRODUCT_GUIDE = [
+  ["internet", "Operations", "Internet Setup", "Choose a business task: new guest service, internet provider, LAN/Hotspot, Wi-Fi or subscriber internet. Technical settings stay inside the guided task."],
+  ["guests", "Operations", "Guests", "Read actual Hotspot sessions and usage from your RouterBOARD. Disconnect requires explicit confirmation, an accepted deployment and verified router readback."],
+  ["jellyfin-portal", "Guest Portals", "Jellyfin Guest Portal", "Design a separate guest experience for local media. Internet vouchers and Hotspot branding are configured elsewhere."],
+  ["managed-devices", "Advanced", "Managed-device records", "Advanced registration for independently managed equipment. A record or discovered IP does not automatically grant management access."],
   ["overview", "Operations", "Overview", "Start here to see router availability, open incidents, security warnings, and the next actions your network needs."],
   ["fleet", "Operations", "Fleet health", "Check which routers are online, stale, offline, or waiting for their first management signal."],
   ["topology", "Operations", "Topology", "Trace the path from the cloud hub to gateways, ports, access points, and downstream devices."],
   ["incidents", "Operations", "Incidents", "Review network problems, acknowledge ownership, apply an available fix, and close resolved incidents."],
   ["sites", "Operations", "Sites", "Place business locations on the map, assign routers, and check what each site still needs before going live."],
-  ["gateways", "Operations", "Gateways", "Connect a router to Magic Hub and inspect its device health and supported services."],
+  ["gateways", "Operations", "Magic Hub", "Create a site first, assign its RouterBOARD, then generate one connection script and verify authenticated management."],
   ["network", "Operations", "New network setup", "Choose a gateway and its uplink/customer ports. Use suggested non-overlapping LAN and DHCP addresses, preview the changes, then explicitly apply customer LAN and Hotspot settings."],
   ["wan", "Operations", "Internet connections", "Select actual ISP ports and gateways. Review primary/backup failover or equal-cost sharing before applying with backup and readback. Sharing does not combine one download's bandwidth."],
   ["pppoe", "Operations", "Customer internet", "Load a connected router, use suggested subscriber addresses, and manage PPPoE services, accounts and speed plans through review and explicit apply."],
   ["wifi", "Operations", "Wi-Fi networks", "Choose the actual access-point device to inspect radio capabilities. SSID writes are held until physical-radio acceptance; a radio-free CHR is not an access point."],
   ["existing", "Operations", "LAN and Hotspot", "Read live DHCP, pools, client DNS/gateway, Hotspot profiles, reservations and bandwidth settings. Review edits to existing records before applying."],
-  ["routers", "Operations", "Routers", "Add MikroTik devices, check their connection, configure supported settings, create backups, and reboot them remotely."],
+  ["routers", "Operations", "Devices", "Read DHCP, ARP and neighbor observations through your RouterBOARD. Give identified devices a friendly name and type without entering their discovered network details."],
   ["security", "Automation", "Security", "Find risky RouterOS services or versions, create a backup, and apply an available mitigation from the browser."],
   ["backups", "Automation", "Backups", "Create a router recovery point before maintenance and restore it when recovery is necessary."],
   ["scans", "Automation", "Fleet scans", "Inspect routers for health, configuration, and security issues, then review the findings in one list."],
   ["templates", "Advanced", "RouterOS reference", "Browse built-in RouterOS REST references and save custom request definitions. This library does not execute requests; use the dedicated reviewed network controls to change a router."],
   ["termlog", "Automation", "Terminal log", "Review which commands were sent to a router, who started them, and whether they succeeded."],
-  ["portal", "Business", "Captive portal", "Choose voucher login, mobile payment, or both; customize the guest page; and publish it to the selected router."],
-  ["media", "Business", "Magic Media", "Pair a media computer and manage its Jellyfin libraries. Publish a branded guest page and planned pass settings to a shareable link. One-click installation, paid media access and guest playback are not available yet."],
+  ["portal", "Guest Portals", "Internet Hotspot Portal", "Internet data/time sales only. Choose voucher login, mobile payment, or both, customize the guest page and review publishing to a connected router."],
+  ["media", "Business", "Jellyfin Dashboard", "Pair a media computer and manage its Jellyfin libraries and activity. Guest appearance is separate under Jellyfin Guest Portal. Playback and paid sales require independent acceptance."],
   ["vouchers", "Business", "Vouchers", "Manage resellers and printed layouts. Guest code issuance requires an enabled, accepted guest-voucher deployment; the page explains when it is unavailable. Sample prints do not grant internet access."],
   ["store", "Business", "Store", "Buy a Mega Magic plan or capability, submit the bank reference, and follow approval and activation progress."],
   ["revenue", "Business", "Revenue", "See approved hotspot sales, review pending guest payments, and compare which access plans earn the most."],
@@ -5016,7 +5073,8 @@ window.addEventListener("load", async () => {
 
   const markCurrentRoute = (name) => {
     document.querySelectorAll(".nav-item[data-view]").forEach(b => b.removeAttribute("aria-current"));
-    const btn = document.querySelector(`.nav-item[data-view="${name}"]`);
+    const group = ["network","wan","pppoe","wifi","existing"].includes(name) ? "internet" : name === "managed-devices" ? "routers" : name;
+    const btn = document.querySelector(`.nav-item[data-view="${group}"]`);
     if (btn) {
       btn.setAttribute("aria-current", "page");
       const advanced = btn.closest(".rail-advanced");
