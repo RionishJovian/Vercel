@@ -106,6 +106,7 @@ func setupHarness(base string) {
 	for _, name := range []string{
 		"20260926_guest_wifi_schema.sql",
 		"20261024020000_guest_purchase_terms.sql",
+		"20261024030000_app_account_passes.sql",
 		"20260926_rls_backfill.sql",
 		"20261001200000_guest_voucher_grants.sql",
 		"20261001210000_guest_access_recovery.sql",

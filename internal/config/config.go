@@ -36,6 +36,7 @@ type Config struct {
 
 // Pilot integration is disabled until its migration and acceptance checks pass.
 type MediaConfig struct {
+	PublishingEnabled bool `mapstructure:"publishing_enabled"`
 	ConnectorEnabled  bool `mapstructure:"connector_enabled"`
 	PaidAccessEnabled bool `mapstructure:"paid_access_enabled"`
 }

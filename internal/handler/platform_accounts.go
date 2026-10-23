@@ -4,7 +4,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"mega-magic/internal/auth"
 	"mega-magic/internal/model"
-	"mega-magic/internal/subscription"
 	"net/http"
 	"time"
 )
@@ -46,28 +45,20 @@ func (h *PlatformHandler) Accounts(c *gin.Context) {
 		pass := a["pass"].(map[string]any)
 		expiry := accountTime(pass["expires_at"])
 		state := "no_pass"
-		if pass["kind"] == "spark" {
-			state = "free"
-		} else if pass["kind"] != "none" {
-			state = "unverified"
-			if expiry != nil {
+		if pass["kind"] != "none" {
+			state = "scheduled"
+			if expiry != nil && !expiry.After(now) {
 				state = "expired"
-				if expiry.After(now) {
-					state = "active"
-				}
+			} else if start := accountTime(pass["activated_at"]); start != nil && !start.After(now) {
+				state = "active"
+			}
+			if accountTime(pass["revoked_at"]) != nil {
+				state = "revoked"
 			}
 		}
 		pass["state"] = state
-		if h.SubscriptionOnly {
-			sub := subscription.Evaluate(now, accountTime(pass["trial_expires_at"]), accountTime(pass["paid_expires_at"]), h.ExistingAccountPolicy)
-			a["subscription"] = sub
-		} else {
-			a["subscription"] = gin.H{"mode": "legacy", "state": "legacy_feature_gates", "access": a["is_active"]}
-		}
+		a["subscription"] = gin.H{"scope": "account", "authority": "app_account_passes", "enforced": false, "state": "existing_access_preserved"}
 		access := a["is_active"] == true
-		if h.SubscriptionOnly {
-			access = access && a["subscription"].(subscription.Status).Access
-		}
 		role := model.UserRole(a["user_role"].(string))
 		admin := model.HasAtLeastRole(role, model.RoleAdmin)
 		hubExpiry := accountTime(a["limits"].(map[string]any)["hub_pass_expires_at"])

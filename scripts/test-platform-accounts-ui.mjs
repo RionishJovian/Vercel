@@ -10,7 +10,7 @@ function fixture(get){const dom=new JSDOM('<section id="accounts"><div data-acco
 const tick=()=>new Promise(r=>setTimeout(r,0));
 const account={email:'<script>bad</script>',company_name:'Cafe',user_role:'VIEWER',is_active:true,presence:'idle',pass:{kind:'annual',state:'active',scope:'account',expires_at:'2027-01-01'},limits:{scope:'business',device_count:2,device_quota_limit:10,ai_token_balance:0,legacy_capacity_enforced:true},permissions:{voucher_issuance:false},ai_usage_30d:{calls:0,tokens:0}};
 test('account rows distinguish presence, pass, expiry, missing activation and shared limits',()=>{
- const f=fixture();const html=f.context.platformAccountTable([account]);f.panel.innerHTML=html;assert.equal(f.panel.querySelector('script'),null);assert.match(f.panel.textContent,/Idle/);assert.match(f.panel.textContent,/Annual/);assert.match(f.panel.textContent,/Historical activation time is not available/);assert.match(f.panel.textContent,/not per-user allowances/);assert.match(f.panel.textContent,/balance: 0/);assert.match(f.panel.textContent,/voucher issuance: Restricted/);assert.match(f.panel.textContent,/Account enabled/);
+ const f=fixture();const html=f.context.platformAccountTable([account]);f.panel.innerHTML=html;assert.equal(f.panel.querySelector('script'),null);assert.match(f.panel.textContent,/Idle/);assert.match(f.panel.textContent,/Annual/);assert.match(f.panel.textContent,/Old Store transactions are not imported/);assert.match(f.panel.textContent,/not per-user allowances/);assert.match(f.panel.textContent,/balance: 0/);assert.match(f.panel.textContent,/voucher issuance: Restricted/);assert.match(f.panel.textContent,/Account enabled/);
 });
 test('unavailable account API never fabricates offline accounts or zero balances',async()=>{
  const f=fixture(async()=>{throw Error('private internal detail');});await f.context.loadPlatformAccounts(f.panel,0);assert.match(f.panel.textContent,/unavailable/);assert.doesNotMatch(f.panel.textContent,/private internal/);assert(f.panel.querySelector('[data-accounts-retry]'));
@@ -29,4 +29,12 @@ test('presence starts once, observes idle and visibility, and sends no user/sess
 });
 test('revoked presence stops sending rather than looping unauthorized requests',async()=>{
  const f=presenceFixture(()=>{throw {status:401};});f.client.start();await tick();f.interval();await tick();assert.equal(f.calls.length,1);
+});
+test('pass recording uses explicit UTC terms and blocks duplicate submits',async()=>{
+ const row={...account,user_id:'account-id',pass:{kind:'none',scope:'account',state:'no_pass'}};
+ const f=fixture(async()=>({accounts:[row],total:1,limit:50,as_of:'now'})),writes=[];
+ f.context.MM.put=async(path,body)=>{writes.push({path,body:JSON.parse(JSON.stringify(body))});return {recorded:true};};
+ await f.context.loadPlatformAccounts(f.panel);
+ const form=f.panel.querySelector('[data-record-pass]');form.elements.activation.value='2026-10-24T01:00';form.elements.expiry.value='2026-11-24T01:00';form.requestSubmit();form.dispatchEvent(new f.dom.window.Event('submit',{cancelable:true}));await tick();
+ assert.equal(writes.length,1);assert.equal(writes[0].path,'/platform/accounts/account-id/pass');assert.equal(writes[0].body.activated_at,'2026-10-24T01:00:00.000Z');assert.equal(writes[0].body.expires_at,'2026-11-24T01:00:00.000Z');assert.equal(writes[0].body.revision,0);
 });

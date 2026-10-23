@@ -15,12 +15,12 @@ function fixture(failures=[]) {
   Object.assign(window,{ME:{user:{user_role:'OWNER'}},asArray:v=>Array.isArray(v)?v:[],ts:v=>String(v??''),businessStatusBadge:v=>String(v),apiErrorText:e=>e.message,
     esc:v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),Blob:globalThis.Blob});
   const bodies={'/voucher-report':structuredClone(report),'/guest-wifi/revenue':structuredClone(portal),'/guest-wifi/requests':{requests:[{id:'same-id',plan_key:'=FORMULA',status:'pending',amount:3500,bank_reference:'@bank'}]},'/billing/requests':{requests:[{id:'same-id',plan_key:'Business',status:'pending',amount:99999}]}};
-  const writes=[],exports=[];let downloaded='';
-  window.MM={get:async path=>{if(failures.includes(path))throw Error('private database details');return bodies[path];},post:async(path,body)=>{writes.push({path,body});return {};}};
+  const writes=[],exports=[],reads=[];let downloaded='';
+  window.MM={get:async path=>{reads.push(path);if(failures.includes(path))throw Error('private database details');return bodies[path];},post:async(path,body)=>{writes.push({path,body});return {};}};
   window.URL.createObjectURL=blob=>{exports.push(blob);return 'blob:fixture';};window.URL.revokeObjectURL=()=>{};
   window.HTMLAnchorElement.prototype.click=function(){downloaded=this.download;};
   window.eval(functions);
-  return {dom,window,main:window.document.querySelector('main'),bodies,writes,exports,get downloaded(){return downloaded;}};
+  return {dom,window,main:window.document.querySelector('main'),bodies,writes,exports,reads,get downloaded(){return downloaded;}};
 }
 
 test('Voucher activation value, unused stock and portal payments stay separate',async t=>{
@@ -71,7 +71,7 @@ test('Inbox export identifies source and scope and neutralizes spreadsheet formu
   const f=fixture();t.after(()=>f.dom.window.close());await f.window.renderRevenue(f.main);
   f.main.querySelector('#revenue-export').click();
   const csv=await f.exports[0].text();
-  assert.match(csv,/"source","submitted_at"/);assert.match(csv,/"guest-wifi"/);assert.match(csv,/"billing"/);
+  assert.match(csv,/"source","submitted_at"/);assert.match(csv,/"guest-wifi"/);assert.doesNotMatch(csv,/"billing"/);
   assert.match(csv,/"'=FORMULA"/);assert.match(csv,/"'@bank"/);
   assert.match(f.downloaded,/payment-inbox/);
   assert.ok(!csv.includes('74500')&&!csv.includes('6500'),'Inbox export cannot masquerade as complete voucher revenue');
@@ -81,8 +81,8 @@ test('Identical request IDs keep their source when approving; viewers cannot dec
   const f=fixture();t.after(()=>f.dom.window.close());await f.window.renderRevenue(f.main);
   f.main.querySelector('[data-purchase-source="guest-wifi"][data-purchase-action="approve"]').click();await flush();
   assert.equal(f.writes[0].path,'/guest-wifi/approve/same-id');
-  f.main.querySelector('[data-purchase-source="billing"][data-purchase-action="reject"]').click();await flush();
-  assert.equal(f.writes[1].path,'/billing/reject/same-id');
+  assert.equal(f.main.querySelector('[data-purchase-source="billing"]'),null);
+  assert.ok(!f.reads.includes('/billing/requests'),'Revenue must not load the old business-pass inbox');
   f.window.ME.user.user_role='VIEWER';await f.window.renderRevenue(f.main);
   assert.equal(f.main.querySelector('[data-purchase-action]'),null);
   assert.ok(f.main.querySelector('[data-voucher-summary]'));

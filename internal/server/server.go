@@ -370,6 +370,9 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	portalHandler.GuestVoucherAccess = cfg.GuestWifi.VoucherAccessEnabled
 
 	// Start the policy evaluator: watches NATS telemetry and auto-opens incidents.
+	if err := registerMediaPublishingRoutes(r, authService, db, cfg, handler.SubscriptionAccess(db, cfg.Billing.SubscriptionOnly, cfg.Billing.ExistingAccountPolicy)); err != nil {
+		return nil, fmt.Errorf("media publishing: %w", err)
+	}
 	if cfg.Media.ConnectorEnabled {
 		if err := registerMediaRoutes(r, authService, db, cfg, handler.SubscriptionAccess(db, cfg.Billing.SubscriptionOnly, cfg.Billing.ExistingAccountPolicy)); err != nil {
 			return nil, fmt.Errorf("media connector schema/routes: %w", err)
@@ -584,6 +587,7 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 		protected.Use(handler.SubscriptionAccess(db, authHandler.SubscriptionOnly, authHandler.SubscriptionExistingPolicy))
 		{
 			protected.GET("/subscription", handler.SubscriptionStatus)
+			protected.GET("/me/app-pass", authHandler.AppPass)
 			protected.GET("/me", authHandler.Me)
 			protected.POST("/me/presence", authHandler.Presence)
 			protected.GET("/me/profile", authHandler.Profile)
@@ -873,6 +877,7 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 			platform.PUT("/pricing", platformHandler.PutPricing)
 			platform.GET("/businesses", platformHandler.ListBusinesses)
 			platform.GET("/accounts", platformHandler.Accounts)
+			platform.PUT("/accounts/:userId/pass", platformHandler.RecordAccountPass)
 			platform.GET("/incidents", platformHandler.ListOpenIncidents)
 			platform.GET("/incidents/counts", platformHandler.CountIncidents)
 			// Admin console (tenant management). Same strongest gate as the group:

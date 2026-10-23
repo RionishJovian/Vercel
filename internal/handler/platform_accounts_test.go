@@ -10,6 +10,7 @@ import (
 	"mega-magic/internal/model"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -44,7 +45,9 @@ func TestPlatformAccountsAndSessionPresence(t *testing.T) {
 	router := gin.New()
 	protected := router.Group("/api/v1", auth.Middleware(service))
 	protected.POST("/me/presence", account.Presence)
+	protected.GET("/me/app-pass", account.AppPass)
 	protected.GET("/platform/accounts", auth.RequireRole(string(model.RoleDeveloper)), platform.Accounts)
+	protected.PUT("/platform/accounts/:userId/pass", auth.RequireRole(string(model.RoleDeveloper)), platform.RecordAccountPass)
 	request := func(method, path, bearer, body string) *httptest.ResponseRecorder {
 		t.Helper()
 		w := httptest.NewRecorder()
@@ -178,7 +181,7 @@ func TestPlatformAccountsAndSessionPresence(t *testing.T) {
 		}
 		a := find(owner.UserID)
 		p := a["pass"].(map[string]any)
-		if p["kind"] != "annual" || p["state"] != "active" || p["activated_at"] != nil {
+		if p["kind"] != "none" || p["state"] != "no_pass" || p["activated_at"] != nil || a["legacy"].(map[string]any)["account_tier"] != "annual" {
 			t.Fatal(p)
 		}
 		if a["permissions"].(map[string]any)["voucher_issuance"] != true || find(viewer.UserID)["permissions"].(map[string]any)["voucher_issuance"] != false {
@@ -207,29 +210,55 @@ func TestPlatformAccountsAndSessionPresence(t *testing.T) {
 		if _, err := db.Exec(`INSERT INTO service_purchases(business_id,user_id,service_key,service_label,price_mmk,payment_method,status,idempotency_key,decided_at,activated_expires_at) VALUES($1,$2,'annual','Annual',10000,'magic_coins','approved',$3,$4,$5)`, biz, owner.UserID, randHex(10), approved, expiry); err != nil {
 			t.Fatal(err)
 		}
+
 		platform.SubscriptionOnly = true
-		platform.ExistingAccountPolicy = "require_payment"
-		for _, u := range []*model.User{owner, viewer} {
-			a := find(u.UserID)
-			p := a["pass"].(map[string]any)
-			if p["scope"] != "business" || p["kind"] != "annual" || accountTime(p["activated_at"]) == nil || !accountTime(p["activated_at"]).Equal(approved) || !accountTime(p["expires_at"]).Equal(expiry) {
-				t.Fatal(p)
-			}
-			if a["subscription"].(map[string]any)["state"] != "paid" {
-				t.Fatal(a)
-			}
+		if p := find(owner.UserID)["pass"].(map[string]any); p["kind"] != "none" {
+			t.Fatalf("old Store imported as current pass: %v", p)
+		}
+		body := func(revision int, revoked bool) string {
+			return fmt.Sprintf(`{"plan":"annual","activated_at":%q,"expires_at":%q,"revision":%d,"revoked":%t}`, approved.Format(time.RFC3339), expiry.Format(time.RFC3339), revision, revoked)
+		}
+		endpoint := "/api/v1/platform/accounts/" + owner.UserID + "/pass"
+		if w := request("PUT", endpoint, ownerToken, body(0, false)); w.Code != 403 {
+			t.Fatalf("owner self grant: %d", w.Code)
+		}
+		if w := request("PUT", endpoint, devToken, body(0, false)); w.Code != 200 {
+			t.Fatalf("operator record: %d %s", w.Code, w.Body)
+		}
+		if w := request("PUT", endpoint, devToken, body(0, false)); w.Code != 409 {
+			t.Fatalf("stale update: %d", w.Code)
+		}
+		p := find(owner.UserID)["pass"].(map[string]any)
+		if p["scope"] != "account" || p["authority"] != "app_account_passes" || p["kind"] != "annual" || p["state"] != "active" || !accountTime(p["activated_at"]).Equal(approved) || !accountTime(p["expires_at"]).Equal(expiry) {
+			t.Fatal(p)
+		}
+		if w := request("GET", "/api/v1/me/app-pass", ownerToken, ""); w.Code != 200 || !strings.Contains(w.Body.String(), `"kind": "annual"`) {
+			t.Fatalf("own app pass: %d %s", w.Code, w.Body)
+		}
+		if w := request("GET", "/api/v1/me/app-pass", viewerToken, ""); w.Code != 200 || strings.Contains(w.Body.String(), `annual`) {
+			t.Fatalf("staff inherited pass: %d %s", w.Code, w.Body)
+		}
+		if p := find(viewer.UserID)["pass"].(map[string]any); p["kind"] != "none" {
+			t.Fatal("business staff inherited individual pass", p)
 		}
 		if _, err := db.Exec(`UPDATE service_purchases SET activated_expires_at=clock_timestamp()-interval '1 second' WHERE business_id=$1`, biz); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := db.Exec(`UPDATE business_subscription_trials SET trial_started_at=now()-interval '15 days',trial_expires_at=now()-interval '1 day' WHERE business_id=$1`, biz); err != nil {
-			t.Fatal(err)
+		if p := find(owner.UserID)["pass"].(map[string]any); p["state"] != "active" {
+			t.Fatal("legacy transaction changed current pass", p)
 		}
-		if find(owner.UserID)["subscription"].(map[string]any)["access"] != false {
-			t.Fatal("expired access shown as active")
+		if w := request("PUT", endpoint, devToken, body(1, true)); w.Code != 200 {
+			t.Fatal(w.Code, w.Body)
 		}
-		if find(owner.UserID)["permissions"].(map[string]any)["router_management"] != false {
-			t.Fatal("expired subscription shown as permitted")
+		if p := find(owner.UserID)["pass"].(map[string]any); p["state"] != "revoked" {
+			t.Fatal(p)
+		}
+		var events int
+		if err := db.QueryRow(`SELECT count(*) FROM app_account_pass_events WHERE user_id=$1`, owner.UserID).Scan(&events); err != nil || events != 2 {
+			t.Fatalf("audit events=%d %v", events, err)
+		}
+		if find(owner.UserID)["subscription"].(map[string]any)["enforced"] != false {
+			t.Fatal("recording silently enabled enforcement")
 		}
 	})
 }
