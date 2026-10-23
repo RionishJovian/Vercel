@@ -1485,6 +1485,29 @@ function wireHubLookup(content) {
   }));
 }
 
+function wireRouterRemoval(content, main, routers, workspace) {
+  content.querySelectorAll("button[data-router-delete]").forEach(button => button.addEventListener("click", async () => {
+    if (button.disabled || !SITE_EDITOR_ROLES.includes(ME?.user?.user_role)) return;
+    const router = routers.find(item => item.device_id === button.dataset.routerDelete);
+    if (!router) return;
+    const name = router.hardware_name || "Unnamed device";
+    if (!confirm(`Permanently delete the saved device record “${name}”?\nDevice ID: ${router.device_id}\n\nAssociated telemetry, backups and change history may also be deleted. Linked voucher records can prevent deletion.\n\nThis does not reset the physical router or revoke its Magic Hub connection. This action cannot be undone.`)) return;
+    button.disabled = true;
+    let removed = false;
+    try {
+      await MM.del(`/routers/${encodeURIComponent(router.device_id)}`);
+      removed = true;
+      if (content.isConnected) await renderSites(main, workspace);
+    } catch (error) {
+      if (content.isConnected) showErr(removed
+        ? new Error("The device record was deleted, but the list could not refresh. Reload this page.")
+        : error);
+    } finally {
+      if (!removed && button.isConnected) button.disabled = false;
+    }
+  }));
+}
+
 function hubEnrollmentUnavailableMessage(code) {
   return code === "plan_required" ? "Magic Hub connection requires an active plan. Open Store to restore access."
     : code === "hub_lookup_disabled" ? "Magic Hub is not connected to this app deployment. Contact platform support."
@@ -1519,7 +1542,7 @@ function routerBoardPanel(routers, fleet, capabilityByID = new Map(), hubCapabil
           <h3>2. Finish connection</h3><p>After running the entire script in WinBox, verify the connection here. No router username, password or fingerprint entry is needed for automatic setup.</p>
           <button type="button" class="btn" data-hub-finish>Finish connection</button><div data-hub-finish-status role="status" aria-live="polite"></div>
         </details>` : `<div class="notice" role="status"><strong>Magic Hub connection unavailable</strong><p>${esc(hubEnrollmentUnavailableMessage(hubCapability.code))}</p></div>`}</div>` : ""}
-      <footer>${canEdit ? `<button class="btn btn-sm" type="button" data-edit="${esc(router.device_id)}">Edit record</button>` : ""}<button class="btn btn-sm" type="button" data-router-topology="${esc(router.device_id)}">Topology</button>${canEdit ? `<button class="btn btn-sm" type="button" data-reboot="${esc(router.device_id)}"${state !== "up" ? " disabled title=\"No verified reachability\"" : ""}>Reboot</button>` : ""}</footer>
+      <footer>${canEdit ? `<button class="btn btn-sm" type="button" data-edit="${esc(router.device_id)}">Edit record</button><button class="btn btn-sm" type="button" data-router-delete="${esc(router.device_id)}">Delete device record</button>` : ""}<button class="btn btn-sm" type="button" data-router-topology="${esc(router.device_id)}">Topology</button>${canEdit ? `<button class="btn btn-sm" type="button" data-reboot="${esc(router.device_id)}"${state !== "up" ? " disabled title=\"No verified reachability\"" : ""}>Reboot</button>` : ""}</footer>
     </article>`;
   }).join("");
   return `<section class="routerboard-console"><header><div><span class="fleet-kicker">ROUTER MANAGEMENT</span><h2>${routers.length} registered device${routers.length === 1 ? "" : "s"}</h2><p>Registration is not a verified connection. Complete site assignment and Magic Hub setup before managing supported settings.</p></div></header><div class="routerboard-grid mobile-device-list">${cards}</div></section>`;
@@ -1678,6 +1701,8 @@ async function renderSites(main, workspace = location.hash === "#gateways" ? "ga
   content.querySelectorAll("button[data-edit]").forEach(btn => btn.addEventListener("click", () => {
     openEditRouter(main, routers.find(r => r.device_id === btn.dataset.edit));
   }));
+
+  wireRouterRemoval(content, main, routers, workspace);
 
   content.querySelectorAll("button[data-reboot]").forEach(btn => btn.addEventListener("click", async () => {
     const id = btn.dataset.reboot;
