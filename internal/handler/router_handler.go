@@ -339,3 +339,182 @@ func (h *RouterHandler) DeleteRouter(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"message": "router deleted"})
 }
+
+// GetRouterObservations returns the latest observed inventory for a router.
+// This is read-only telemetry — no router configuration is changed.
+func (h *RouterHandler) GetRouterObservations(c *gin.Context) {
+	deviceID := c.Param("id")
+	businessID := auth.GetBusinessID(c)
+
+	var device *model.Device
+	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
+		d, err := h.deviceRepo.GetDeviceByIDTXN(tx, deviceID)
+		if err != nil {
+			return &httpError{status: http.StatusInternalServerError, msg: "database error"}
+		}
+		device = d
+		return nil
+	})
+	if err != nil {
+		respondErr(c, err)
+		return
+	}
+	if device == nil || device.BusinessID != businessID {
+		c.JSON(http.StatusNotFound, gin.H{"error": "router not found"})
+		return
+	}
+
+	// TODO: Replace with actual router telemetry when connector is implemented.
+	// For now, return unavailable so the UI shows the correct empty state.
+	c.JSON(http.StatusOK, gin.H{
+		"inventory": gin.H{
+			"available": gin.H{
+				"hotspot_sessions": false,
+				"discovery_leases": false,
+				"arp":              false,
+				"neighbors":        false,
+			},
+			"objects": gin.H{
+				"hotspot_sessions": []any{},
+				"discovery_leases": []any{},
+				"arp":              []any{},
+				"neighbors":        []any{},
+			},
+			"write_enabled": false,
+		},
+	})
+}
+
+// GetDiscoveryLabels returns saved friendly names and types for discovered devices.
+func (h *RouterHandler) GetDiscoveryLabels(c *gin.Context) {
+	deviceID := c.Param("id")
+	businessID := auth.GetBusinessID(c)
+
+	var device *model.Device
+	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
+		d, err := h.deviceRepo.GetDeviceByIDTXN(tx, deviceID)
+		if err != nil {
+			return &httpError{status: http.StatusInternalServerError, msg: "database error"}
+		}
+		device = d
+		return nil
+	})
+	if err != nil {
+		respondErr(c, err)
+		return
+	}
+	if device == nil || device.BusinessID != businessID {
+		c.JSON(http.StatusNotFound, gin.H{"error": "router not found"})
+		return
+	}
+
+	labels, err := h.deviceRepo.GetDiscoveryLabels(deviceID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load discovery labels"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"labels": labels})
+}
+
+type UpsertDiscoveryLabelRequest struct {
+	MACAddress string `json:"mac_address" binding:"required"`
+	Name       string `json:"name" binding:"required"`
+	Kind       string `json:"kind" binding:"required,oneof=other switch ap computer printer controller"`
+}
+
+// UpsertDiscoveryLabel creates or updates a discovery label for a device.
+// This is metadata only — it does not change router configuration.
+func (h *RouterHandler) UpsertDiscoveryLabel(c *gin.Context) {
+	deviceID := c.Param("id")
+	businessID := auth.GetBusinessID(c)
+
+	var device *model.Device
+	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
+		d, err := h.deviceRepo.GetDeviceByIDTXN(tx, deviceID)
+		if err != nil {
+			return &httpError{status: http.StatusInternalServerError, msg: "database error"}
+		}
+		device = d
+		return nil
+	})
+	if err != nil {
+		respondErr(c, err)
+		return
+	}
+	if device == nil || device.BusinessID != businessID {
+		c.JSON(http.StatusNotFound, gin.H{"error": "router not found"})
+		return
+	}
+
+	var req UpsertDiscoveryLabelRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	_, err = h.deviceRepo.UpsertDiscoveryLabel(businessID, deviceID, req.MACAddress, req.Name, req.Kind)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save discovery label"})
+		return
+	}
+
+	labels, err := h.deviceRepo.GetDiscoveryLabels(deviceID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load discovery labels"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"labels": labels})
+}
+
+type DisconnectGuestRequest struct {
+	ID      string `json:"id" binding:"required"`
+	MAC     string `json:"mac" binding:"required"`
+	Address string `json:"address" binding:"required"`
+	User    string `json:"user" binding:"required"`
+	Confirm bool   `json:"confirm" binding:"required"`
+}
+
+// DisconnectGuest ends a Hotspot session on the router.
+// This is a write action — it requires router write capability.
+func (h *RouterHandler) DisconnectGuest(c *gin.Context) {
+	deviceID := c.Param("id")
+	businessID := auth.GetBusinessID(c)
+
+	var device *model.Device
+	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
+		d, err := h.deviceRepo.GetDeviceByIDTXN(tx, deviceID)
+		if err != nil {
+			return &httpError{status: http.StatusInternalServerError, msg: "database error"}
+		}
+		device = d
+		return nil
+	})
+	if err != nil {
+		respondErr(c, err)
+		return
+	}
+	if device == nil || device.BusinessID != businessID {
+		c.JSON(http.StatusNotFound, gin.H{"error": "router not found"})
+		return
+	}
+
+	var req DisconnectGuestRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if !req.Confirm {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "confirmation required"})
+		return
+	}
+
+	// TODO: Replace with actual router action when connector is implemented.
+	// For now, return unverified so the UI shows the correct pending state.
+	c.JSON(http.StatusOK, gin.H{
+		"verified": false,
+		"note":     "Router action not yet implemented; session may persist.",
+	})
+}

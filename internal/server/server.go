@@ -611,10 +611,20 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 				routers.POST("/:id/webfig/secure", auth.RequireMinRole(model.RoleAdmin), securityHandler.ConfigureWebFig)
 				routers.GET("/:id", routerHandler.GetRouter)
 				// Router write is OWNER/ADMIN (C3 hierarchy; explicit per RM).
-				routers.POST("", auth.RequireMinRole(model.RoleAdmin), routerHandler.CreateRouter)
-				routers.PUT("/:id", auth.RequireMinRole(model.RoleAdmin), routerHandler.UpdateRouter)
-				routers.DELETE("/:id", auth.RequireMinRole(model.RoleAdmin), routerHandler.DeleteRouter)
-			}
+						routers.POST("", auth.RequireMinRole(model.RoleAdmin), routerHandler.CreateRouter)
+						routers.PUT("/:id", auth.RequireMinRole(model.RoleAdmin), routerHandler.UpdateRouter)
+						routers.DELETE("/:id", auth.RequireMinRole(model.RoleAdmin), routerHandler.DeleteRouter)
+
+						// Device observations — read-only telemetry (VIEWER).
+						routers.GET("/:id/observations", routerHandler.GetRouterObservations)
+
+						// Discovery labels — metadata only, no router writes (VIEWER read, ADMIN write).
+						routers.GET("/:id/discovery-labels", routerHandler.GetDiscoveryLabels)
+						routers.PUT("/:id/discovery-labels", auth.RequireMinRole(model.RoleAdmin), routerHandler.UpsertDiscoveryLabel)
+
+						// Guest disconnect — router write action (ADMIN).
+						routers.POST("/:id/guests/disconnect", auth.RequireMinRole(model.RoleAdmin), routerHandler.DisconnectGuest)
+					}
 
 			telemetry := protected.Group("/telemetry")
 			{
