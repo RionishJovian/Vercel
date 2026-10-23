@@ -29,4 +29,15 @@ Before API replacement: capture current image IDs, tag rollback image, copy Comp
 
 ## Still pending
 
-Physical RouterBOARD/phone internet, first use, elapsed expiry, data cap and reconnect acceptance; inventory activation; actual guest disconnect; paid scheduler verification and router/database reconciliation after uncertain commits; remaining legacy billing/entitlement and site-editor restructuring. Commercial policy (account vs business, pricing, seats/limits) remains an owner decision. No live payment execution, customer role writes, voucher consumption, router reset or hardware certification is included.
+Physical RouterBOARD/phone internet, first use, elapsed expiry, data cap and reconnect acceptance; physical read-only observation acceptance; actual guest disconnect; paid scheduler verification and router/database reconciliation after uncertain commits; remaining legacy billing/entitlement and site-editor restructuring. Commercial policy (account vs business, pricing, seats/limits) remains an owner decision. No live payment execution, customer role writes, voucher consumption, router reset or hardware certification is included.
+
+
+## Production receipt
+
+Deployed API source fa3b6ef791c0c159730b121835bc0cf91e013ed4. Independently rebuilt on the VPS; its SHA256 exactly matches the local binary above. Runtime image: sha256:c72237ec5ce831b5b29671fd1a49d056e5c7ae77cd177b378fbb8fbdb20d7161. Compose now pins mega-magic-api:fa3b6ef; web image unchanged.
+
+Backup directory: /root/mm-rollout-backups/takeover-fa3b6ef-20261023T185217Z. Contains validated database.dump, database-toc.txt, compose.yaml, config.yaml, previous binary and API/web image IDs. Source, deploy script, logs and DEPLOYED.txt: /root/mm-takeover-fa3b6ef/.
+
+Readback: /ready reports database/nats/redis OK; live API binary hash verified; public app HTML remains reachable; all five existing app containers running. Database reports ENABLE + FORCE RLS for labels and the purchased_minutes column exists. Zero pending historical purchase requests have missing purchased_minutes at rollout. Authenticated browser GET discovery-labels returns {"labels":[]}; observations reports observations_unavailable for the unavailable router. Existing production inventory_enabled:true is honored by the new read-only reader; no configuration toggle was changed. No customer role write, live payment decision or physical router mutation was performed.
+
+Application rollback: restore compose.yaml and previous binary from that backup, then run the existing Compose project with --no-deps --no-build --pull never api. Additive schema changes need not be removed. Do not restore the full database over new transactions for an application rollback.
