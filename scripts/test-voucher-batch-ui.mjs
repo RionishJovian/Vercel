@@ -23,12 +23,12 @@ function fixture({listFailure=false}={}) {
   window.MM={
     async get(path) {
       if(path==='/vouchers') {if(listFailure)throw Error('Inventory unavailable');return {vouchers:[old]};}
-      if(path==='/guest-vouchers/config')return {enabled:true};
+      if(path==='/guest-vouchers/config')return {enabled:true,batch_recovery_enabled:true};
       if(path==='/routers')return {routers:[{device_id:'gateway',hardware_name:'Cafe',deployment_layer:'MAIN_GATEWAY'}]};
       if(path==='/voucher-print-layout')return {layout:{show_price:true,show_expiry:true}};
       return {};
     },
-    async post(path,body) {writes.push({path,body});return {vouchers:issued,product:'guest-internet',data_mb:1024,validity_starts:'first_use'};},
+    async post(path,body) {writes.push({path,body});return {batch_id:body.batch_id,state:'ready',vouchers:issued,product:'guest-internet',data_mb:1024,validity_starts:'first_use'};},
   };
   window.eval(functions);
   return {dom,window,writes,main:window.document.querySelector('main')};

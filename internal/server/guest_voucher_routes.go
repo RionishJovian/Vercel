@@ -82,7 +82,8 @@ func (t voucherLoginTransport) ReadVoucherLogins(ctx context.Context, businessID
 	adapted := make([]handler.VoucherLoginState, 0, len(states))
 	for _, s := range states {
 		adapted = append(adapted, handler.VoucherLoginState{VoucherID: s.VoucherID, Exists: s.Exists, Disabled: s.Disabled,
-			UptimeSeconds: s.UptimeSeconds, BytesUsed: s.BytesUsed, ActiveMAC: s.ActiveMAC})
+			UptimeSeconds: s.UptimeSeconds, BytesUsed: s.BytesUsed, ActiveMAC: s.ActiveMAC,
+			FirstUseEpoch: s.FirstUseEpoch, FirstMAC: s.FirstMAC})
 	}
 	return adapted, nil
 }
@@ -91,12 +92,15 @@ func registerGuestVoucherEndpoints(r *gin.Engine, service *auth.Service, db *dat
 	owner := r.Group("/api/v1/guest-vouchers", auth.CookieOrigin(), auth.Middleware(service), auth.RequireActiveTenant(db), auth.RequireMinRole(model.RoleAdmin))
 	owner.Use(access...)
 	owner.POST("", h.Issue)
+	owner.GET("/batches", h.ListIssueBatches)
+	owner.GET("/batches/:batchId", h.GetIssueBatch)
+	owner.POST("/batches/:batchId/retry", h.RetryIssueBatch)
 	// Router -> hub -> app accounting synchronization for locally validated
 	// voucher codes (ground-operation design).
 	owner.POST("/sync", h.SyncVoucherLogins)
 	owner.GET("/config", func(c *gin.Context) {
 		c.Header("Cache-Control", "no-store")
-		c.JSON(200, gin.H{"enabled": true, "validity_starts": "first_use"})
+		c.JSON(200, gin.H{"enabled": true, "validity_starts": "first_use", "batch_recovery_enabled": true, "batch_id_required": true, "max_batch_size": handler.GuestVoucherIssueBatchLimit})
 	})
 	public := r.Group("/api/v1/portal", auth.CookieOrigin(), auth.BoundedPortalRateLimit(), boundedPortalBody())
 	public.POST("/:deviceId/guest-voucher", h.Redeem)
@@ -122,6 +126,8 @@ func guestVoucherSchemaReady(db *database.DB) error {
 	}{
 		{"guest_voucher_grants", "guest_voucher_snapshot_guard", "guard_guest_voucher_snapshot", []string{"voucher_id", "business_id", "device_id", "minutes", "data_mb", "state", "client_mac", "first_used_at", "expires_at", "lease_token", "lease_until", "updated_at"}},
 		{"guest_voucher_grants", "guest_voucher_activation_guard", "guard_guest_voucher_activation", []string{"activated_at"}},
+		{"guest_voucher_issue_batches", "guest_voucher_issue_batch_guard", "guard_guest_voucher_issue_batch", []string{"business_id", "id", "device_id", "request_hash", "plan_label", "price_mmk", "minutes", "data_mb", "total_count", "lease_token", "lease_until", "created_at", "updated_at"}},
+		{"guest_voucher_issue_items", "guest_voucher_issue_item_guard", "guard_guest_voucher_issue_item", []string{"business_id", "batch_id", "voucher_id", "position", "install_state", "verified_at", "updated_at"}},
 		{"guest_access_recovery", "guest_access_recovery_guard", "guard_guest_access_recovery", []string{"voucher_id", "business_id", "device_id", "secret_hash", "current_mac", "pending_mac", "state", "transfer_id", "completed_transfer_id", "used_bytes", "transfer_count", "window_started_at", "updated_at"}},
 	} {
 		var ready bool

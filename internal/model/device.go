@@ -9,6 +9,7 @@ type Device struct {
 	DeviceID        string            `json:"device_id"`
 	BusinessID      string            `json:"business_id"`
 	ParentGatewayID *string           `json:"parent_gateway_id,omitempty"`
+	SiteID          *string           `json:"site_id,omitempty"`
 	HardwareName    string            `json:"hardware_name"`
 	DeviceModel     *string           `json:"device_model,omitempty"`
 	DeploymentLayer string            `json:"deployment_layer"`
@@ -31,6 +32,8 @@ type PeerKey struct {
 }
 
 type Voucher struct {
+	IssueBatchID    string            `json:"issue_batch_id,omitempty"`
+	InstallState    string            `json:"install_state,omitempty"`
 	ID              string            `json:"id"`
 	BusinessID      string            `json:"business_id"`
 	DeviceID        *string           `json:"device_id,omitempty"`

@@ -9,7 +9,7 @@
   <link rel="manifest" href="/site.webmanifest?v=20260930-3">
   <meta name="theme-color" content="#051f20">
   <meta name="robots" content="noindex">
-  <script src="/assets/js/theme.js"></script>
+  <script src="/assets/js/theme.js?v=20261023-1"></script>
   <link rel="stylesheet" href="/assets/css/styles.css">
   <!-- Live-preview surfaces (guest-portal frame + voucher sheet). Scoped to their
        own classes and kept inline deliberately: Cloudflare serves /assets/* as
@@ -214,6 +214,7 @@
   <link rel="stylesheet" href="/assets/css/redesign.css">
   <link rel="stylesheet" href="/assets/css/media-appearance.css?v=5">
   <link rel="stylesheet" href="/assets/css/layout.css?v=20261001-1">
+  <link rel="stylesheet" href="/assets/css/jade-glass.css?v=20261023-1">
 </head>
 <body class="page-app">
 <div class="lg-orb lg-orb-a"></div>
@@ -2995,7 +2996,7 @@ function sheetTile(lay, dens, v) {
 
 function voucherPrintSelection(vouchers, size, page, status) {
   const count = Math.max(1, Math.min(100, Math.trunc(Number(size)) || 100));
-  const eligible = (vouchers || []).filter(v => v && v.code &&
+  const eligible = (vouchers || []).filter(v => v && v.code && guestVoucherPrintable(v) &&
     (status === "all" || (status === "available" ? ["active", "unused"].includes(v.status) : v.status === status)));
   const pages = Math.max(1, Math.ceil(eligible.length / count));
   const current = Math.max(1, Math.min(pages, Math.trunc(Number(page)) || 1));
@@ -3084,6 +3085,8 @@ function wirePrintPreview(main, vouchers, canEdit, issuedVouchers = []) {
 /** Prints real voucher codes only — never samples, never invented codes. More
  *  codes than one page paginates into as many sheets as it takes. */
 function printSheet(lay, mode, vouchers) {
+  vouchers = (vouchers || []).filter(guestVoucherPrintable);
+  if (!vouchers.length) return;
   const cols = mode === "a4" ? lay.a4_columns : lay.thermal_columns;
   const rows = mode === "a4" ? lay.a4_rows_per_page : lay.thermal_rows_per_strip;
   const dens = sheetDensity(mode, rows);
@@ -3118,24 +3121,52 @@ function printSheet(lay, mode, vouchers) {
 // Restructured so the reseller and print-layout panels ALWAYS render. The old
 // version returned early whenever a tenant had no vouchers, which would have
 // hidden both new panels from exactly the tenants most likely to need them.
+function guestVoucherPrintable(voucher) {
+  return voucher && ((!voucher.issue_batch_id && !voucher.install_state) || voucher.install_state === "verified");
+}
+
+function guestVoucherRequestStorageKey() {
+  const business = ME?.business?.business_id || ME?.user?.business_id || ME?.user?.user_id || ME?.user?.email || "session";
+  return "mm_guest_voucher_pending:" + business;
+}
+
+function pendingGuestVoucherRequest() {
+  try {
+    const value = JSON.parse(sessionStorage.getItem(guestVoucherRequestStorageKey()) || "null");
+    return value && /^[a-f0-9-]{36}$/i.test(value.batch_id || "") ? value : null;
+  } catch (_) { return null; }
+}
+
+function retainGuestVoucherRequest(body) {
+  sessionStorage.setItem(guestVoucherRequestStorageKey(), JSON.stringify(body));
+}
+
+function clearGuestVoucherRequest(batchID) {
+  if (pendingGuestVoucherRequest()?.batch_id === batchID) sessionStorage.removeItem(guestVoucherRequestStorageKey());
+}
+
 async function renderVouchers(main, issuedBatch = null) {
   const canEdit = SITE_EDITOR_ROLES.indexOf((ME && ME.user && ME.user.user_role) || "") >= 0;
   const content = main.querySelector("#content");
 
-  const [vRes, rRes, lRes, guestVoucherConfig, gatewayRes] = await Promise.all([
+  const [vRes, rRes, lRes, guestVoucherConfig, gatewayRes, batchRes] = await Promise.all([
     MM.get("/vouchers").catch(() => null),
     MM.get("/voucher-resellers").catch(() => null),
     MM.get("/voucher-print-layout").catch(() => null),
     canEdit ? MM.get("/guest-vouchers/config").catch(e => ({failed:true, status:e.status})) : null,
     canEdit ? MM.get("/routers").catch(() => null) : null,
+    canEdit ? MM.get("/guest-vouchers/batches").catch(() => null) : null,
   ]);
 
   const guestGateways = asArray(gatewayRes && gatewayRes.routers).filter(d => d.deployment_layer === "MAIN_GATEWAY");
-  const guestIssuanceEnabled = canEdit && guestVoucherConfig && guestVoucherConfig.enabled === true;
+  if (!content?.isConnected) return;
+  const guestIssuanceEnabled = canEdit && guestVoucherConfig && guestVoucherConfig.enabled === true && guestVoucherConfig.batch_recovery_enabled === true;
+  const pendingRequest = canEdit ? pendingGuestVoucherRequest() : null;
+  const batches = asArray(batchRes && batchRes.batches);
 
   const list = vRes ? asArray(vRes.vouchers) : [];
   const refreshed = new Map(list.map(v=>[v.id || v.code,v]));
-  const issuedVouchers = asArray(issuedBatch && issuedBatch.vouchers).map(v=>{
+  const issuedVouchers = asArray(issuedBatch && issuedBatch.vouchers).filter(guestVoucherPrintable).map(v=>{
     const current = refreshed.get(v.id || v.code);
     return {...v, ...(current ? {status:current.status, first_seen_at:current.first_seen_at, expires_at:current.expires_at} : {}), data_mb:issuedBatch.data_mb};
   });
@@ -3144,7 +3175,7 @@ async function renderVouchers(main, issuedBatch = null) {
       <td class="mono">${esc(v.code)}</td>
       <td>${v.plan_key ? esc(v.plan_key) : "—"}</td>
       <td class="num">${esc(v.price_mmk ?? v.amount ?? 0)}</td>
-      <td>${businessStatusBadge(v.status, "voucher")}</td>
+      <td>${guestVoucherPrintable(v) ? businessStatusBadge(v.status, "voucher") : `<span class="status warn">Router installation unconfirmed</span>`}</td>
       <td>${ts(v.created_at)}</td>
     </tr>`).join("");
 
@@ -3166,6 +3197,12 @@ async function renderVouchers(main, issuedBatch = null) {
 
   content.innerHTML = `
     ${issuedVouchers.length ? `<div class="panel"><div class="panel-body" id="gv-batch-result" role="status"><strong>Created ${issuedVouchers.length} guest internet codes.</strong><p>This batch is selected in the print preview below. Use Next for further selections of up to 100 codes. Reloading or leaving this page returns to the full inventory.</p></div></div>` : ""}
+    ${guestIssuanceEnabled && (pendingRequest || batches.length || issuedBatch?.state && issuedBatch.state !== "ready") ? `<div class="panel"><div class="panel-head"><h2 class="panel-title">Voucher batches needing attention</h2></div><div class="panel-body">
+      <p>These batches keep their original codes. Resume installation to verify them before printing; retrying does not issue replacement codes.</p>
+      ${pendingRequest ? `<p>Your browser retained a batch after an incomplete or uncertain request.</p><button class="btn btn-sm" type="button" id="gv-resume-request">Resume saved batch</button>` : ""}
+      ${batches.map(batch => `<p><strong>Batch of ${esc(batch.total_count)} codes</strong> · ${esc(guestGateways.find(gateway => gateway.device_id === batch.device_id)?.hardware_name || "Saved gateway")} · ${esc(({pending:"Waiting for installation",unknown:"Installation unconfirmed",installing:"Verification in progress"})[batch.state] || "Needs verification")} · ${esc(batch.verified_count)} / ${esc(batch.total_count)} verified <button class="btn btn-sm" type="button" data-gv-batch-retry="${esc(batch.batch_id)}">Check and resume</button></p>`).join("")}
+      <p id="gv-recovery-message" role="status">${issuedBatch?.state && issuedBatch.state !== "ready" ? "Installation is not yet verified. This batch is not ready to print." : ""}</p>
+    </div></div>` : ""}
     ${guestIssuanceEnabled ? `<div class="panel"><div class="panel-head"><h2 class="panel-title">Create guest internet vouchers</h2></div><div class="panel-body">
       <p class="muted small">Time begins when the guest first uses the code. Reconnecting does not replenish data or restart validity. These codes do not activate a business subscription.</p>
       <form id="guest-voucher-form" class="record-form-grid">
@@ -3174,9 +3211,9 @@ async function renderVouchers(main, issuedBatch = null) {
         <div class="field"><label for="gv-minutes">Elapsed validity (minutes)</label><input class="input" id="gv-minutes" type="number" min="1" max="525600" value="1440" required></div>
         <div class="field"><label for="gv-data">Total upload + download (MB)</label><input class="input" id="gv-data" type="number" min="1" max="1048576" value="1024" required></div>
         <div class="field"><label for="gv-price">Price (MMK)</label><input class="input" id="gv-price" type="number" min="0" max="1000000000" value="1000" required></div>
-        <div class="field"><label for="gv-count">Number of codes</label><input class="input" id="gv-count" type="number" min="1" max="1000" value="10" required></div>
+        <div class="field"><label for="gv-count">Number of codes</label><input class="input" id="gv-count" type="number" min="1" max="200" value="10" required></div>
         <div class="workspace-actions"><button class="btn btn-primary" id="gv-create" type="submit">Create codes</button><span class="muted small" id="gv-message" role="status"></span></div>
-      </form></div></div>` : `<div class="panel"><div class="panel-head"><h2 class="panel-title">Guest voucher creation unavailable</h2></div><div class="panel-body"><p class="muted small" role="status">${esc(guestVoucherCapabilityMessage(guestVoucherConfig, canEdit))}</p></div></div>`}
+      </form></div></div>` : `<div class="panel"><div class="panel-head"><h2 class="panel-title">Guest voucher creation unavailable</h2></div><div class="panel-body"><p class="muted small" role="status">${esc(canEdit && guestVoucherConfig?.enabled === true && guestVoucherConfig.batch_recovery_enabled !== true ? "Voucher creation is temporarily unavailable. Your administrator needs to complete the service update before creating new batches." : guestVoucherCapabilityMessage(guestVoucherConfig, canEdit))}</p></div></div>`}
     <div class="panel"><div class="panel-head"><h2 class="panel-title">Vouchers</h2>${guestIssuanceEnabled && guestGateways.length ? `<button class="btn btn-sm" id="gv-sync" type="button">Sync router accounting</button><span class="muted small" id="gv-sync-message" role="status"></span>` : ""}</div>
       <div class="panel-body">
         ${!vRes ? `<p class="muted small" role="alert">Could not load vouchers. Reload this page to retry; this is not an empty voucher list.</p>` : list.length ? `<table>
@@ -3253,6 +3290,12 @@ async function renderVouchers(main, issuedBatch = null) {
     <div id="vr-alert"></div>`;
 
   const guestVoucherForm = document.getElementById("guest-voucher-form");
+  if (guestVoucherForm && pendingRequest) {
+    for (const [id,key] of [["gv-gateway","device_id"],["gv-label","plan_label"],["gv-minutes","duration_minutes"],["gv-data","data_mb"],["gv-price","price_mmk"],["gv-count","count"]]) {
+      const field = guestVoucherForm.querySelector("#"+id);
+      if (field) field.value = String(pendingRequest[key]);
+    }
+  }
   if (guestVoucherForm) guestVoucherForm.addEventListener("submit", async event => {
     event.preventDefault();
     if (!guestVoucherForm.reportValidity()) return;
@@ -3260,19 +3303,60 @@ async function renderVouchers(main, issuedBatch = null) {
     if (button.disabled) return;
     const value = id => document.getElementById(id).value;
     const body = { device_id: value("gv-gateway"), plan_label: value("gv-label").trim(), duration_minutes: Number(value("gv-minutes")), data_mb: Number(value("gv-data")), price_mmk: Number(value("gv-price")), count: Number(value("gv-count")) };
-    button.disabled = true; message.textContent = "Creating codes…";
-    let created = false;
+    const saved = pendingGuestVoucherRequest();
+    if (saved && Object.keys(body).some(key => saved[key] !== body[key])) {
+      message.textContent = "Resume the saved batch before changing its settings or creating another batch.";
+      return;
+    }
+    let refreshed = false, readyResult = false, requestSent = false;
+    button.disabled = true;
     try {
+      body.batch_id = saved?.batch_id || crypto.randomUUID();
+      // Persist the identity BEFORE the first request. A lost response or page
+      // refresh reuses these exact parameters and never creates new codes.
+      retainGuestVoucherRequest(body);
+      message.textContent = "Installing and verifying codes on the gateway…";
+      requestSent = true;
       const response = await MM.post("/guest-vouchers", body);
-      created = true;
-      if (guestVoucherForm.isConnected !== false) await renderVouchers(main, response);
+      if (response.batch_id !== body.batch_id) throw Error("The batch identity could not be confirmed. Retry the saved batch.");
+      readyResult = response.state === "ready";
+      if (readyResult) clearGuestVoucherRequest(body.batch_id);
+      refreshed = true;
+      if (guestVoucherForm.isConnected) await renderVouchers(main, response);
     } catch (error) {
-      const currentMessage = created ? (document.getElementById("gv-message") || message) : message;
-      const currentButton = created ? (document.getElementById("gv-create") || button) : button;
-      currentMessage.textContent = created ? "Codes were created, but the view could not refresh. Reload the inventory before creating another batch." : (error.message || "Codes could not be created.");
-      currentButton.disabled = created;
+      const currentMessage = refreshed ? (document.getElementById("gv-message") || message) : message;
+      currentMessage.textContent = !requestSent
+        ? "Your browser could not retain the batch identity. No request was sent. " + (error.message || "")
+        : refreshed
+          ? (readyResult ? "Codes were created, but the view could not refresh. Reload the inventory before creating another batch." : "The batch is saved but not ready to print. Reload to resume verification.")
+          : "Batch outcome is unconfirmed. Retry this saved batch to check the same codes. " + (error.message || "");
+      const currentButton = refreshed ? (document.getElementById("gv-create") || button) : button;
+      currentButton.disabled = refreshed;
     }
   });
+
+  async function resumeGuestVoucherBatch(button, path, body, expectedBatchID = body?.batch_id) {
+    const message = document.getElementById("gv-recovery-message");
+    if (button.disabled) return;
+    button.disabled = true;
+    if (message) message.textContent = "Checking the saved batch and verifying its original codes…";
+    try {
+      const response = await MM.post(path, body);
+      if (response.batch_id !== expectedBatchID) throw Error("The original batch could not be confirmed.");
+      if (response.state === "ready") clearGuestVoucherRequest(response.batch_id);
+      if (content.isConnected) await renderVouchers(main, response);
+    } catch (error) {
+      if (message?.isConnected) message.textContent = "The batch is retained for retry. " + (error.message || "Outcome could not be confirmed.");
+      if (button.isConnected) button.disabled = false;
+    }
+  }
+  document.getElementById("gv-resume-request")?.addEventListener("click", event => {
+    const saved = pendingGuestVoucherRequest();
+    if (saved) resumeGuestVoucherBatch(event.currentTarget, "/guest-vouchers", saved);
+  });
+  content.querySelectorAll("[data-gv-batch-retry]").forEach(button => button.addEventListener("click", () => {
+    resumeGuestVoucherBatch(button, "/guest-vouchers/batches/" + encodeURIComponent(button.dataset.gvBatchRetry) + "/retry", {}, button.dataset.gvBatchRetry);
+  }));
 
   // Router -> hub -> app accounting sync: the periodic system worker also does
   // this; this button is the manual, visible check on demand.
@@ -3285,8 +3369,9 @@ async function renderVouchers(main, issuedBatch = null) {
     try {
       const response = await MM.post("/guest-vouchers/sync", { device_id: gateway.value });
       const synced = asArray(response && response.synced).length;
+      const unverified = asArray(response && response.synced).filter(row => row.first_use_status === "unverified").length;
       if (message) message.textContent = synced
-        ? `Router accounting synchronized — ${synced} code(s) updated.`
+        ? (unverified ? `Router accounting read. ${unverified} used code(s) lack original first-use evidence and need review; no fresh validity was granted.` : `Router accounting synchronized — ${synced} code(s) updated.`)
         : ((response && response.router) || "Synchronized.");
       await renderVouchers(main, issuedBatch);
     } catch (error) {
@@ -3588,9 +3673,49 @@ function wirePortalBranding(main, cfg, collect, plansTbl) {
       { key: "preview-hour", label: "1 Hour WiFi", minutes: 60, amount: 1000, data_mb: 1024 },
       { key: "preview-day", label: "Day Pass", minutes: 1440, amount: 3500, data_mb: 5120 },
     ],
+    consent_required: !!cfg?.consent_required, consent_text: cfg?.consent_text || "",
     preview_sample: !hasPlans,
   }; };
+  const routerFrame = main.querySelector("#pb-router-frame");
+  const target = main.querySelector("#pb-preview-target");
+  const routerStatus = main.querySelector("#pb-router-preview-status");
+  let routerPreviewTimer, routerPreviewRevision = 0;
+  const updateRouterPreview = () => {
+    if (!routerFrame || !document.body.contains(routerFrame) || target?.value !== "router") return;
+    const revision = ++routerPreviewRevision;
+    clearTimeout(routerPreviewTimer);
+    routerStatus.textContent = "Preparing router voucher preview…";
+    routerPreviewTimer = setTimeout(async () => {
+      try {
+        const response = await MM.post("/portal/router-preview", draft());
+        if (revision !== routerPreviewRevision || !document.body.contains(routerFrame)) return;
+        if (typeof response.html !== "string") throw Error("Preview is unavailable.");
+        routerFrame.srcdoc = response.html;
+        routerStatus.textContent = "Draft preview only. Review deployment to see this gateway’s saved guest-visible design.";
+      } catch (_) {
+        if (revision === routerPreviewRevision && document.body.contains(routerFrame)) {
+          routerFrame.removeAttribute("srcdoc");
+          routerStatus.textContent = "Router preview could not load. Retry by editing a field or switching the preview destination.";
+        }
+      }
+    }, 200);
+  };
+  if (target) target.addEventListener("change", () => {
+    ++routerPreviewRevision;
+    routerFrame.hidden = target.value !== "router";
+    frame.hidden = target.value === "router";
+    const controls = main.querySelector(".pv-lang-controls");
+    if (controls) controls.hidden = target.value === "router";
+    if (routerStatus) routerStatus.hidden = target.value !== "router";
+    updateRouterPreview();
+  });
+  if (target) {
+    const controls = main.querySelector(".pv-lang-controls");
+    if (controls) controls.hidden = true;
+    updateRouterPreview();
+  }
   const push = () => {
+    updateRouterPreview();
     if (!frame.contentWindow || !document.body.contains(frame)) return;
     frame.contentWindow.postMessage({ type: "mm-portal-preview", config: draft(), lang }, location.origin);
   };
@@ -3850,7 +3975,7 @@ async function renderPortal(main) {
 
   if (SITE_EDITOR_ROLES.includes(ME?.user?.user_role)) {
     html += `<div class="panel" style="margin-top:14px"><div class="panel-head"><h2 class="panel-title">Deploy portal to router</h2></div><div class="panel-body">
-      <p class="muted small">Save your plans and branding above, then install the portal entrypoint on a connected gateway. Once installed, saved branding and plans update the hosted guest portal without another router upload. Deployment replaces the selected HotSpot login page, with a verified backup.</p>
+      <p class="muted small">Save your plans and branding above, then install the portal entrypoint on a connected gateway. The router voucher page works locally. Changes to its saved branding need a reviewed redeployment; hosted payment settings update separately. Deployment replaces the selected HotSpot login page, with a verified backup.</p>
       <div class="form-row"><label for="pd-router">Gateway</label><select id="pd-router"><option value="">Loading gateways…</option></select></div>
       <div class="form-row"><label for="pd-profile">HotSpot profile</label><select id="pd-profile" disabled><option value="">Select a gateway first</option></select></div>
       <p class="muted" id="pd-media-note"></p>
@@ -3902,8 +4027,8 @@ async function renderPortal(main) {
             <button class="btn btn-sm" type="button" id="pb-lang-my" aria-pressed="false">မြန်မာ</button>
             <button class="btn btn-sm" type="button" id="pb-lang-en" aria-pressed="true">English</button>
           </div></div>
-        <div class="pv-stage"><iframe class="pv-phone" id="pb-frame" src="/portal.html?preview=1" title="Guest portal preview"></iframe></div>
-        <p class="muted small pv-hint">Preview exactly what guests will see as you edit. Test clicks stay inside the preview and never create a payment or use a voucher.</p>
+        <label for="pb-preview-target">Preview destination</label><select class="input" id="pb-preview-target"><option value="router">Router voucher page</option><option value="hosted">Hosted payment page</option></select><div class="pv-stage"><iframe class="pv-phone" id="pb-router-frame" sandbox="allow-scripts" title="Router voucher design preview"></iframe><iframe class="pv-phone" id="pb-frame" src="/portal.html?preview=1" title="Hosted payment portal preview" hidden></iframe></div><p id="pb-router-preview-status" class="muted small" role="status"></p>
+        <p class="muted small pv-hint">Choose the offline router voucher page or the hosted payment page. Preview clicks never use a voucher. Save changes first; deployment review shows the selected gateway’s saved guest-visible design.</p>
       </div>
     </div>
   </div></div>`;
@@ -4056,6 +4181,14 @@ async function wirePortalDeployment(main) {
       if (current !== revision) return;
       plan = response.plan;
       review.innerHTML = `<h3 class="small">Review changes for ${esc(plan.profile)}</h3><ol>${plan.steps.map(s => `<li>${esc(s)}</li>`).join("")}</ol><p class="muted small">File: ${esc(plan.file)}. This changes the guest login page, not WAN or management settings. Verify a real guest connection after deployment.</p>`;
+      if (typeof plan.preview_html === "string") {
+        const label = document.createElement("p"); label.className = "muted small";
+        label.textContent = "Saved guest-visible router design to be installed:";
+        const image = document.createElement("iframe"); image.className = "pv-phone";
+        image.title = "Saved router portal deployment preview";
+        image.setAttribute("sandbox", "allow-scripts"); image.srcdoc = plan.preview_html;
+        review.append(label, image);
+      }
       review.hidden = false; apply.hidden = false; apply.disabled = false; status.textContent = "Review ready. No router changes have been made.";
     } catch (e) { status.textContent = errorText(e, "Deployment review failed."); }
     finally { if (current === revision) preview.disabled = !profile.value; }

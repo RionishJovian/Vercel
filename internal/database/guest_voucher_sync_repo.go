@@ -14,7 +14,7 @@ import (
 
 // GetGrantTXN reads one business-scoped guest voucher grant.
 func (GuestVoucherRepository) GetGrantTXN(tx *sql.Tx, businessID, voucherID string) (*model.GuestVoucherGrant, error) {
-	row := tx.QueryRow(`SELECT `+guestVoucherCols+` FROM guest_voucher_grants WHERE business_id=$1 AND voucher_id=$2`, businessID, voucherID)
+	row := tx.QueryRow(`SELECT `+guestVoucherCols+` FROM guest_voucher_grants WHERE business_id=$1 AND voucher_id=$2 FOR UPDATE`, businessID, voucherID)
 	g, err := scanGuestVoucher(row)
 	if err != nil {
 		return nil, err

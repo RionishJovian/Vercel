@@ -211,6 +211,9 @@ func (h *VoucherHandler) ListVouchers(c *gin.Context) {
 		if err != nil {
 			return err
 		}
+		if err := (database.GuestVoucherBatchRepository{}).AnnotateTXN(tx, businessID, vs); err != nil {
+			return err
+		}
 		vouchers = vs
 		return nil
 	})

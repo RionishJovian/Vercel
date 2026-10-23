@@ -12,12 +12,28 @@ type voucherLoginRunner struct {
 	server   string
 	users    map[string]string // name -> value-list detail text
 	active   map[string]string // user -> mac-address
+	guard    *voucherGuardRunner
+	clock    string
 	commands []string
+}
+
+func (r *voucherLoginRunner) guardRunner() *voucherGuardRunner {
+	if r.guard == nil {
+		clock := r.clock
+		if clock == "" {
+			clock = "1792941234"
+		}
+		r.guard = &voucherGuardRunner{clock: clock, scripts: map[string]string{}, schedulers: map[string]string{}, profiles: map[string]string{}}
+	}
+	return r.guard
 }
 
 func (r *voucherLoginRunner) Run(ctx context.Context, command string) (string, error) {
 	r.commands = append(r.commands, command)
 	switch {
+	case command == ":put ([:tonsec [:timestamp]] / 1000000000)" || strings.HasPrefix(command, "/system script ") ||
+		strings.HasPrefix(command, "/system scheduler ") || strings.HasPrefix(command, "/ip hotspot user profile "):
+		return r.guardRunner().Run(ctx, command)
 	case strings.HasPrefix(command, "/ip hotspot print count-only where disabled=no"):
 		return r.servers, nil
 	case strings.HasPrefix(command, "/ip hotspot print value-list detail where disabled=no"):
@@ -73,21 +89,23 @@ func voucherSyncScriptOutput(r *voucherLoginRunner) string {
 		b.WriteString("__MM_VS__" + id + "__start\n")
 		body, ok := r.users[code]
 		if !ok {
-			b.WriteString("absent\n")
+			b.WriteString("absent\n__MM_VS__" + id + "__end\n")
 			continue
 		}
 		disabled := "no"
 		if strings.Contains(body, "disabled: yes") {
 			disabled = "yes"
 		}
+		b.WriteString("comment=mega-magic:vlogin:" + id + "\n")
 		b.WriteString("disabled=" + disabled + "\n")
-		b.WriteString("uptime-used=" + voucherSyncUptime(body) + "\n")
+		b.WriteString("uptime=" + voucherSyncUptime(body) + "\n")
 		b.WriteString("bytes-in=1024\nbytes-out=2048\n")
 		if mac, active := r.active[code]; active {
 			b.WriteString("mac=" + mac + "\n")
 		} else {
 			b.WriteString("mac=none\n")
 		}
+		b.WriteString("__MM_VS__" + id + "__end\n")
 	}
 	return b.String()
 }
@@ -150,6 +168,73 @@ func TestProvisionVoucherLoginsRejectsBadInputAndForeignUsers(t *testing.T) {
 	r.users["ABCD1234"] = "server: other\nprofile: default\ncomment: someone-else\nlimit-uptime: 1m\nlimit-bytes-total: 1\ndisabled: no\n"
 	if err := provisionVoucherLogins(context.Background(), r, voucherTestLogins()); err == nil {
 		t.Error("expected rejection for a foreign user on the code")
+	}
+}
+
+func TestProvisionVoucherLoginsAdoptsStampedUsersAndUsesOwnedProfile(t *testing.T) {
+	r := &voucherLoginRunner{servers: "1", server: "hs1", users: map[string]string{}, active: map[string]string{}}
+	if err := provisionVoucherLogins(context.Background(), r, voucherTestLogins()); err != nil {
+		t.Fatalf("provision failed: %v", err)
+	}
+	for _, l := range voucherTestLogins() {
+		if body := r.users[l.Code]; !strings.Contains(body, "profile: "+voucherGuardProfile) {
+			t.Errorf("user %s not on the versioned owned profile: %q", l.Code, body)
+		}
+	}
+	// A retry after the guard stamped first-use evidence adopts the same
+	// allowance: the anchor is immutable and never reset by provisioning.
+	r.users["ABCD1234"] = "server: hs1\nprofile: " + voucherGuardProfile + "\ncomment: mega-magic:vlogin:11111111-1111-4111-8111-111111111111;ft=1792941234;fu=02:ab:cd:ef:12:34\nlimit-uptime: 3600s\nlimit-bytes-total: 256000000\ndisabled: no\n"
+	if err := provisionVoucherLogins(context.Background(), r, voucherTestLogins()); err != nil {
+		t.Fatalf("stamped retry failed: %v", err)
+	}
+	if !strings.Contains(r.users["ABCD1234"], ";ft=1792941234") {
+		t.Fatal("retry must not touch the persisted first-use anchor")
+	}
+	// An unknown profile on the same allowance is somebody else's user.
+	r.users["ABCD1234"] = "server: hs1\nprofile: someone-else\ncomment: mega-magic:vlogin:11111111-1111-4111-8111-111111111111\nlimit-uptime: 3600s\nlimit-bytes-total: 256000000\ndisabled: no\n"
+	if err := provisionVoucherLogins(context.Background(), r, voucherTestLogins()); err == nil {
+		t.Fatal("expected rejection for a foreign profile on the code")
+	}
+}
+
+func TestVoucherLegacyMigrationRefusesUsedUnanchoredBeforeUserWrite(t *testing.T) {
+	l := voucherTestLogins()[0]
+	body := "server: hs1\nprofile: default\ncomment: " + voucherLoginPrefix + l.VoucherID + "\nlimit-uptime: 3600s\nlimit-bytes-total: 256000000\ndisabled: no\nuptime: 60s\nbytes-in: 100\n"
+	r := &voucherLoginRunner{servers: "1", server: "hs1", users: map[string]string{l.Code: body}, active: map[string]string{}}
+	var writes []string
+	wrapper := runnerFunc(func(ctx context.Context, cmd string) (string, error) {
+		if strings.HasPrefix(cmd, "/ip hotspot user set ") || strings.HasPrefix(cmd, "/ip hotspot user add ") {
+			writes = append(writes, cmd)
+		}
+		return r.Run(ctx, cmd)
+	})
+	err := provisionVoucherLogins(context.Background(), wrapper, []VoucherLogin{l})
+	if err == nil || !strings.Contains(err.Error(), "Manual review required") || len(writes) != 0 || r.users[l.Code] != body {
+		t.Fatalf("used legacy voucher changed before refusal: err=%v writes=%v body=%q", err, writes, r.users[l.Code])
+	}
+}
+
+func TestVoucherLegacyMigrationReadbackRequiresOwnedProfileAndServer(t *testing.T) {
+	l := voucherTestLogins()[0]
+	for _, tc := range []struct {
+		name, profile, server string
+		wantErr               bool
+	}{
+		{"verified", voucherGuardProfile, "hs1", false},
+		{"ignored write", "default", "hs1", true},
+		{"wrong server", voucherGuardProfile, "other", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := runnerFunc(func(_ context.Context, cmd string) (string, error) {
+				if strings.HasPrefix(cmd, "/ip hotspot user set ") {
+					return "", nil
+				}
+				return "name: " + l.Code + "\nserver: " + tc.server + "\nprofile: " + tc.profile + "\ncomment: " + voucherLoginPrefix + l.VoucherID + "\nlimit-uptime: 3600s\nlimit-bytes-total: 256000000\ndisabled: no\n", nil
+			})
+			if err := migrateVoucherLoginProfile(context.Background(), r, l, "hs1"); (err != nil) != tc.wantErr {
+				t.Fatalf("readback err=%v wantErr=%v", err, tc.wantErr)
+			}
+		})
 	}
 }
 

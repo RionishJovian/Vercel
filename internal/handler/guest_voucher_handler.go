@@ -2,7 +2,6 @@ package handler
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"net"
@@ -12,7 +11,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/lib/pq"
 	"mega-magic/internal/auth"
 	"mega-magic/internal/database"
 	"mega-magic/internal/guestaccess"
@@ -42,6 +40,8 @@ type VoucherLoginSpec struct {
 }
 
 // VoucherLoginState is the gateway's own accounting for one issued voucher.
+// FirstUseEpoch/FirstMAC are the router-persisted first-use anchor (epoch
+// seconds and client identity) written once by the shared expiry guard.
 type VoucherLoginState struct {
 	VoucherID     string
 	Exists        bool
@@ -49,6 +49,8 @@ type VoucherLoginState struct {
 	UptimeSeconds int64
 	BytesUsed     int64
 	ActiveMAC     string
+	FirstUseEpoch int64
+	FirstMAC      string
 }
 
 // VoucherLoginProvisioner installs issued codes on the RouterBOARD itself so
@@ -78,6 +80,7 @@ type GuestVoucherHandler struct {
 }
 
 type guestVoucherBatch struct {
+	BatchID  string `json:"batch_id"`
 	DeviceID string `json:"device_id"`
 	Label    string `json:"plan_label"`
 	PriceMMK int    `json:"price_mmk"`
@@ -89,75 +92,13 @@ type guestVoucherBatch struct {
 func (b guestVoucherBatch) valid() bool {
 	return guestVoucherUUID.MatchString(b.DeviceID) && strings.TrimSpace(b.Label) != "" && len(b.Label) <= 100 &&
 		b.PriceMMK >= 0 && b.PriceMMK <= 1000000000 && b.Minutes >= 1 && b.Minutes <= 525600 &&
-		b.DataMB >= 1 && b.DataMB <= 1048576 && b.Count >= 1 && b.Count <= voucherMaxBatch
+		b.DataMB >= 1 && b.DataMB <= 1048576 && b.Count >= 1 && b.Count <= GuestVoucherIssueBatchLimit
 }
 
-// Issue is a separate explicit product. Validity begins at first reservation,
-// never printing time. Both the code and immutable guest allowance commit once.
+// Issue saves a stable, recoverable installation batch before router I/O.
+// Guest validity and revenue are unaffected by issuance or printing.
 func (h *GuestVoucherHandler) Issue(c *gin.Context) {
-	c.Header("Cache-Control", "no-store")
-	var b guestVoucherBatch
-	if c.ShouldBindJSON(&b) != nil || !b.valid() {
-		c.JSON(400, gin.H{"error": "valid gateway, label, time, data and batch count required"})
-		return
-	}
-	biz := auth.GetBusinessID(c)
-	if biz == "" {
-		c.JSON(401, gin.H{"error": "unauthorized"})
-		return
-	}
-	if h.DB == nil || h.Vouchers == nil {
-		c.JSON(503, gin.H{"error": "guest voucher issuance unavailable"})
-		return
-	}
-	var vouchers []*model.Voucher
-	err := runInTenant(c, h.DB, biz, func(tx *sql.Tx) error {
-		dev, e := database.NewDeviceRepository(h.DB).GetDeviceByIDTXN(tx, b.DeviceID)
-		if e != nil {
-			return e
-		}
-		if dev == nil || dev.BusinessID != biz || dev.DeploymentLayer != "MAIN_GATEWAY" {
-			return guestaccess.ErrProvisionDenied
-		}
-		for i := 0; i < b.Count; i++ {
-			v, e := h.Vouchers.createOneVoucher(tx, biz, "guest-internet", strings.TrimSpace(b.Label), b.PriceMMK, &b.Minutes, nil, &b.DeviceID, "unused", nil, time.Now().UTC())
-			if e != nil {
-				return e
-			}
-			if e = (database.GuestVoucherRepository{}).IssueTXN(tx, biz, v.ID, b.DeviceID, b.Minutes, b.DataMB); e != nil {
-				return e
-			}
-			vouchers = append(vouchers, v)
-		}
-		return nil
-	})
-	if err != nil {
-		c.JSON(409, gin.H{"error": "guest vouchers could not be issued for this gateway"})
-		return
-	}
-	// Ground-operation issuance: install every issued code on the RouterBOARD
-	// itself so a guest can validate it locally, without the hosted site or
-	// WAN. A gateway that cannot take the users cannot sell working codes, so
-	// the issued rows are withdrawn again on failure.
-	if h.Provisioner != nil {
-		specs := make([]VoucherLoginSpec, 0, len(vouchers))
-		for _, v := range vouchers {
-			specs = append(specs, VoucherLoginSpec{VoucherID: v.ID, Code: v.Code, Minutes: b.Minutes, DataMB: b.DataMB})
-		}
-		if err := h.Provisioner.ProvisionVoucherLogins(c.Request.Context(), biz, b.DeviceID, specs); err != nil {
-			ids := make([]string, 0, len(vouchers))
-			for _, v := range vouchers {
-				ids = append(ids, v.ID)
-			}
-			if rollback := h.withdrawIssuedVouchers(biz, ids); rollback != nil {
-				c.JSON(http.StatusBadGateway, gin.H{"error": "voucher codes could not be installed on the gateway and the issued records could not be withdrawn: " + rollback.Error()})
-				return
-			}
-			c.JSON(http.StatusBadGateway, gin.H{"error": "voucher codes could not be installed on the gateway: " + err.Error()})
-			return
-		}
-	}
-	c.JSON(201, gin.H{"vouchers": vouchers, "product": "guest-internet", "data_mb": b.DataMB, "validity_starts": "first_use"})
+	h.issueGuestVoucherBatch(c)
 }
 
 // Redeem is device-anchored and never calls the business-pass redemption core.
@@ -227,22 +168,6 @@ func (h *GuestVoucherHandler) Redeem(c *gin.Context) {
 		return
 	}
 	c.JSON(200, gin.H{"product": "guest-internet", "state": g.State, "expires_at": g.ExpiresAt, "data_mb": g.DataMB, "message": "guest internet access verified"})
-}
-
-// withdrawIssuedVouchers removes vouchers (and their grant rows) whose codes
-// could not be installed on the gateway. Grants go first: they reference the
-// voucher rows. A failure here is reported verbatim by the caller.
-func (h *GuestVoucherHandler) withdrawIssuedVouchers(businessID string, voucherIDs []string) error {
-	if h.DB == nil || len(voucherIDs) == 0 {
-		return nil
-	}
-	if _, err := h.DB.Exec(`DELETE FROM guest_voucher_grants WHERE business_id=$1 AND voucher_id = ANY($2::uuid[])`, businessID, pq.Array(voucherIDs)); err != nil {
-		return err
-	}
-	if _, err := h.DB.Exec(`DELETE FROM vouchers WHERE business_id=$1 AND id = ANY($2::uuid[])`, businessID, pq.Array(voucherIDs)); err != nil {
-		return err
-	}
-	return nil
 }
 
 // SyncVoucherLogins is the router -> hub -> app synchronization: it reads each
@@ -317,23 +242,14 @@ func (h *GuestVoucherHandler) syncGatewayVouchers(ctx context.Context, biz, devi
 	if h.DB == nil || h.Vouchers == nil || h.Syncer == nil {
 		return nil, errVoucherLoginUnavailable
 	}
-	list, e := h.Vouchers.voucherRepo.ListVouchersByBusiness(biz)
+	specs, e := h.gatewayVoucherLoginSpecs(ctx, biz, deviceID)
 	if e != nil {
-		return nil, errVoucherRecordsUnavailable
-	}
-	specs := []VoucherLoginSpec{}
-	byVoucher := map[string]*model.Voucher{}
-	for _, v := range list {
-		if v.DeviceID == nil || *v.DeviceID != deviceID || v.DurationMinutes == nil {
-			continue
-		}
-		specs = append(specs, VoucherLoginSpec{VoucherID: v.ID, Code: v.Code, Minutes: *v.DurationMinutes})
-		byVoucher[v.ID] = v
+		return nil, fmt.Errorf("%w: %v", errVoucherRecordsUnavailable, e)
 	}
 	if len(specs) == 0 {
 		return []gin.H{}, nil
 	}
-	states, e := h.Syncer.ReadVoucherLogins(ctx, biz, deviceID, specs)
+	states, e := h.readGatewayVoucherAccounting(ctx, biz, deviceID, specs)
 	if e != nil {
 		return nil, fmt.Errorf("%w: %v", errGatewayAccountingRead, e)
 	}
@@ -345,49 +261,72 @@ func (h *GuestVoucherHandler) syncGatewayVouchers(ctx context.Context, biz, devi
 	defer tx.Rollback()
 	grants := database.GuestVoucherRepository{}
 	err = database.WithTenant(tx, biz, func() error {
-		for _, s := range states {
-			v := byVoucher[s.VoucherID]
-			if v == nil {
-				continue
-			}
+		for _, observation := range states {
 			applied := []string{}
-			usage := s.UptimeSeconds > 0 || s.BytesUsed > 0
-			if usage && v.Status != "used" {
-				if _, e := h.Vouchers.voucherRepo.ClaimVoucherByRouterTXN(tx, biz, v.ID, now); e != nil {
+			firstUseStatus := ""
+			// Missing accounts are unavailable evidence, not proof of expiry.
+			if observation.Exists {
+				// Match hosted redemption's lock order: voucher, then grant.
+				var voucherStatus string
+				if e := tx.QueryRowContext(ctx, `SELECT status FROM vouchers WHERE business_id=$1 AND id=$2 FOR UPDATE`, biz, observation.VoucherID).Scan(&voucherStatus); e != nil {
 					return e
 				}
-				applied = append(applied, "voucher:used")
-			}
-			grant, e := grants.GetGrantTXN(tx, biz, v.ID)
-			if e != nil {
-				return e
-			}
-			if grant != nil {
-				limitSeconds := int64(*v.DurationMinutes) * 60
-				switch {
-				case usage && s.ActiveMAC != "" && grant.State == "unused":
-					if e := grants.SyncClaimTXN(tx, biz, v.ID, s.ActiveMAC, now, *v.DurationMinutes); e != nil {
+				grant, e := grants.GetGrantTXN(tx, biz, observation.VoucherID)
+				if e != nil {
+					return e
+				}
+				if grant == nil || grant.DeviceID != deviceID {
+					return database.ErrGuestVoucherUnavailable
+				}
+				usage := observation.UptimeSeconds > 0 || observation.BytesUsed > 0 || observation.FirstUseEpoch > 0
+				eligible := voucherStatus == "unused" || voucherStatus == "active" || voucherStatus == "used"
+				// The router-persisted anchor is the immutable first-use
+				// fact: it survives short sessions and Hub/app outages, and
+				// validity is counted from it, not from this sync. Counters
+				// alone can mark observed usage, but cannot invent first use.
+				anchor := now
+				if observation.FirstUseEpoch > 0 {
+					anchor = time.Unix(observation.FirstUseEpoch, 0).UTC()
+				}
+				clientMAC := observation.FirstMAC
+
+				routerEvidence := observation.FirstUseEpoch > 0 && observation.FirstMAC != ""
+				if usage && eligible && grant.State == "unused" && !routerEvidence {
+					firstUseStatus = "unverified"
+				}
+				if usage && eligible && voucherStatus != "used" {
+					claimed, e := h.Vouchers.voucherRepo.ClaimVoucherByRouterTXN(tx, biz, observation.VoucherID, anchor)
+					if e != nil {
 						return e
 					}
-					applied = append(applied, "grant:claimed")
-					// Activation anchors the immutable timestamp only while the
-					// allowance is still live; an exhausted or disabled voucher
-					// records its expiry without inventing an activation.
-					if !s.Disabled && s.UptimeSeconds < limitSeconds {
-						if e := grants.SyncActivateTXN(tx, biz, v.ID, now); e != nil {
-							return e
-						}
-						applied = append(applied, "grant:activated")
+					if !claimed {
+						return database.ErrGuestVoucherUnavailable
 					}
-				case grant.State == "active" && (s.Disabled || s.UptimeSeconds >= limitSeconds):
-					if e := grants.SyncExpireTXN(tx, biz, v.ID); e != nil {
+					applied = append(applied, "voucher:used")
+				}
+				exhausted := observation.Disabled || observation.UptimeSeconds >= int64(grant.Minutes)*60 || observation.BytesUsed >= int64(grant.DataMB)*1000000
+				switch {
+				case eligible && usage && routerEvidence && grant.State == "unused":
+					// Router evidence records the historical first use and
+					// its client identity. A live session alone cannot tell
+					// us the original login time after an app/Hub outage.
+					// Never fabricate a MAC or timestamp without either.
+					if e := grants.SyncClaimTXN(tx, biz, observation.VoucherID, clientMAC, anchor, grant.Minutes); e != nil {
+						return e
+					}
+					if e := grants.SyncActivateTXN(tx, biz, observation.VoucherID, anchor); e != nil {
+						return e
+					}
+					applied = append(applied, "grant:claimed", "grant:activated")
+				case grant.State == "active" && (exhausted || !eligible || grant.ExpiresAt != nil && !now.Before(*grant.ExpiresAt)):
+					if e := grants.SyncExpireTXN(tx, biz, observation.VoucherID); e != nil {
 						return e
 					}
 					applied = append(applied, "grant:expired")
 				}
 			}
-			results = append(results, gin.H{"voucher_id": v.ID, "code": v.Code, "exists": s.Exists, "disabled": s.Disabled,
-				"uptime_seconds": s.UptimeSeconds, "bytes_used": s.BytesUsed, "active_mac": s.ActiveMAC, "applied": applied})
+			results = append(results, gin.H{"voucher_id": observation.VoucherID, "exists": observation.Exists, "disabled": observation.Disabled,
+				"uptime_seconds": observation.UptimeSeconds, "bytes_used": observation.BytesUsed, "active_mac": observation.ActiveMAC, "first_use_status": firstUseStatus, "applied": applied})
 		}
 		return nil
 	})
@@ -434,15 +373,17 @@ func (h *GuestVoucherHandler) SyncBusinessVouchers(ctx context.Context, biz stri
 		return 0, err
 	}
 	applied := 0
+	var failures []error
 	for _, id := range gateways {
 		if err := ctx.Err(); err != nil {
 			return applied, err
 		}
 		results, err := h.syncGatewayVouchers(ctx, biz, id, time.Now().UTC())
 		if err != nil {
-			return applied, fmt.Errorf("gateway %s: %w", id, err)
+			failures = append(failures, fmt.Errorf("gateway %s: %w", id, err))
+			continue
 		}
 		applied += len(results)
 	}
-	return applied, nil
+	return applied, errors.Join(failures...)
 }

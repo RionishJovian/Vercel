@@ -682,3 +682,20 @@ func safePortalImageURL(raw string) bool {
 var errBusinessNameRequired = errors.New("business_name is required")
 
 var errPortalAccessMethodRequired = errors.New("at least one portal access method is required")
+
+// RouterPreview renders unsaved branding through the exact router document
+// generator. It does not save settings, issue vouchers or communicate with a router.
+func (h *PortalHandler) RouterPreview(c *gin.Context) {
+	var design routeros.PortalLoginDesign
+	if c.ShouldBindJSON(&design) != nil {
+		c.JSON(400, gin.H{"error": "invalid portal preview"})
+		return
+	}
+	page, err := routeros.RenderPortalLogin(&design, true)
+	if err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	c.Header("Cache-Control", "no-store")
+	c.JSON(200, gin.H{"html": page})
+}

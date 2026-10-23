@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"mega-magic/internal/auth"
@@ -61,7 +62,8 @@ func loginFixture(t *testing.T, db *database.DB) (string, string) {
 }
 
 func callIssue(h *GuestVoucherHandler, biz, device string, count int) *httptest.ResponseRecorder {
-	body := fmt.Sprintf(`{"device_id":%q,"plan_label":"Login plan","price_mmk":1000,"duration_minutes":60,"data_mb":256,"count":%d}`, device, count)
+	batchID := randHex(4) + "-" + randHex(2) + "-" + randHex(2) + "-" + randHex(2) + "-" + randHex(6)
+	body := fmt.Sprintf(`{"batch_id":%q,"device_id":%q,"plan_label":"Login plan","price_mmk":1000,"duration_minutes":60,"data_mb":256,"count":%d}`, batchID, device, count)
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest("POST", "/guest-vouchers", strings.NewReader(body))
@@ -83,6 +85,7 @@ func callSync(h *GuestVoucherHandler, biz, device string) *httptest.ResponseReco
 
 func loginHandler(db *database.DB) *GuestVoucherHandler {
 	return &GuestVoucherHandler{DB: db, Vouchers: NewVoucherHandler(db, database.NewVoucherRepository(db), nil),
+		Provisioner:   &loginProvisionStub{},
 		ResolveDevice: database.NewDeviceRepository(db).GetDeviceByID}
 }
 
@@ -106,14 +109,14 @@ func TestGuestVoucherIssue_provisionsCodesOnTheGateway(t *testing.T) {
 	}
 }
 
-func TestGuestVoucherIssue_withdrawsCodesWhenGatewayProvisioningFails(t *testing.T) {
+func TestGuestVoucherIssue_retainsCodesWhenGatewayProvisioningFails(t *testing.T) {
 	db := harness_testdb(t)
 	biz, device := loginFixture(t, db)
 	h := loginHandler(db)
 	h.Provisioner = &loginProvisionStub{failure: errors.New("gateway unreachable")}
 	w := callIssue(h, biz, device, 3)
-	if w.Code != 502 {
-		t.Fatalf("expected 502, got %d body=%s", w.Code, w.Body.String())
+	if w.Code != 202 {
+		t.Fatalf("expected recoverable 202, got %d body=%s", w.Code, w.Body.String())
 	}
 	var vouchers, grants int
 	if err := db.QueryRow(`SELECT count(*) FROM vouchers WHERE business_id=$1`, biz).Scan(&vouchers); err != nil {
@@ -122,8 +125,8 @@ func TestGuestVoucherIssue_withdrawsCodesWhenGatewayProvisioningFails(t *testing
 	if err := db.QueryRow(`SELECT count(*) FROM guest_voucher_grants WHERE business_id=$1`, biz).Scan(&grants); err != nil {
 		t.Fatal(err)
 	}
-	if vouchers != 0 || grants != 0 {
-		t.Fatalf("issued rows must be withdrawn on provisioning failure, got vouchers=%d grants=%d", vouchers, grants)
+	if vouchers != 3 || grants != 3 {
+		t.Fatalf("uncertain issued rows must remain recoverable, got vouchers=%d grants=%d", vouchers, grants)
 	}
 }
 
@@ -141,7 +144,7 @@ func TestGuestVoucherSync_appliesRouterAccounting(t *testing.T) {
 	// Router-observed usage with a live session: voucher marked used, grant
 	// claimed, activated with an immutable timestamp.
 	h.Syncer = loginSyncStub{states: map[string]VoucherLoginState{voucherID: {
-		VoucherID: voucherID, Exists: true, UptimeSeconds: 300, BytesUsed: 1024, ActiveMAC: "AA:BB:CC:DD:EE:FF",
+		VoucherID: voucherID, Exists: true, UptimeSeconds: 300, BytesUsed: 1024, ActiveMAC: "AA:BB:CC:DD:EE:FF", FirstUseEpoch: time.Now().Add(-5 * time.Minute).Unix(), FirstMAC: "AA:BB:CC:DD:EE:FF",
 	}}}
 	if w := callSync(h, biz, device); w.Code != 200 {
 		t.Fatalf("sync status=%d body=%s", w.Code, w.Body.String())
@@ -233,7 +236,7 @@ func TestGuestVoucherSyncBusiness_appliesEveryGateway(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.Syncer = loginSyncStub{states: map[string]VoucherLoginState{voucherID: {
-		VoucherID: voucherID, Exists: true, UptimeSeconds: 300, BytesUsed: 4096, ActiveMAC: "11:22:33:44:55:66",
+		VoucherID: voucherID, Exists: true, UptimeSeconds: 300, BytesUsed: 4096, ActiveMAC: "12:22:33:44:55:66", FirstUseEpoch: time.Now().Add(-5 * time.Minute).Unix(), FirstMAC: "12:22:33:44:55:66",
 	}}}
 	applied, err = h.SyncBusinessVouchers(context.Background(), biz)
 	if err != nil {
@@ -258,4 +261,126 @@ func TestGuestVoucherSyncBusiness_appliesEveryGateway(t *testing.T) {
 	}
 	_ = deviceB
 	_ = laptop
+}
+
+// The router-persisted first-use anchor is the immutable activation fact: a
+// session that ended before any poll still records activation, its client and
+// its deadline, and validity is counted from the router's first-use time, not
+// from the later sync observation.
+func TestGuestVoucherSync_anchorsFirstUseFromRouterEvidence(t *testing.T) {
+	db := harness_testdb(t)
+	biz, device := loginFixture(t, db)
+	h := loginHandler(db)
+	issue := func() string {
+		if w := callIssue(h, biz, device, 1); w.Code != 201 {
+			t.Fatalf("issue status=%d body=%s", w.Code, w.Body.String())
+		}
+		var id string
+		if err := db.QueryRow(`SELECT id FROM vouchers WHERE business_id=$1 AND id NOT IN (SELECT voucher_id FROM guest_voucher_grants WHERE state<>'unused') ORDER BY created_at DESC LIMIT 1`, biz).Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	// The sync always reports a complete page: every issued voucher on the
+	// gateway, with the observation under test overriding its entry.
+	sync := func(observation VoucherLoginState) *httptest.ResponseRecorder {
+		rows, err := db.Query(`SELECT id::text FROM vouchers WHERE business_id=$1 AND device_id=$2`, biz, device)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+		states := map[string]VoucherLoginState{}
+		for rows.Next() {
+			var id string
+			if err := rows.Scan(&id); err != nil {
+				t.Fatal(err)
+			}
+			states[id] = VoucherLoginState{VoucherID: id, Exists: true}
+		}
+		states[observation.VoucherID] = observation
+		h.Syncer = loginSyncStub{states: states}
+		return callSync(h, biz, device)
+	}
+	shortSession := issue()
+	anchor := time.Now().UTC().Add(-5 * time.Minute).Truncate(time.Second)
+	if w := sync(VoucherLoginState{
+		VoucherID: shortSession, Exists: true, UptimeSeconds: 45, BytesUsed: 2048,
+		FirstUseEpoch: anchor.Unix(), FirstMAC: "AA:BB:CC:DD:EE:FF",
+	}); w.Code != 200 {
+		t.Fatalf("sync status=%d body=%s", w.Code, w.Body.String())
+	}
+	var state, mac string
+	var firstUsed, expires, activated time.Time
+	if err := db.QueryRow(`SELECT state, client_mac::text, first_used_at, expires_at, activated_at FROM guest_voucher_grants WHERE voucher_id=$1`, shortSession).
+		Scan(&state, &mac, &firstUsed, &expires, &activated); err != nil {
+		t.Fatal(err)
+	}
+	if state != "active" || mac != "aa:bb:cc:dd:ee:ff" {
+		t.Fatalf("short session must activate from router evidence, got state=%q mac=%q", state, mac)
+	}
+	if !firstUsed.Equal(anchor) || !expires.Equal(anchor.Add(60*time.Minute)) || !activated.Equal(anchor) {
+		t.Fatalf("validity must anchor at router first use: first=%v expires=%v activated=%v want %v", firstUsed, expires, activated, anchor)
+	}
+	// A use learned about long after the deadline is still a recorded
+	// activation (the value counts once), then reconciles to expired.
+	late := issue()
+	old := time.Now().UTC().Add(-2 * time.Hour).Truncate(time.Second)
+	if w := sync(VoucherLoginState{
+		VoucherID: late, Exists: true, UptimeSeconds: 3600, BytesUsed: 4096,
+		FirstUseEpoch: old.Unix(), FirstMAC: "AA:BB:CC:DD:EE:FF",
+	}); w.Code != 200 {
+		t.Fatalf("late sync status=%d body=%s", w.Code, w.Body.String())
+	}
+	if err := db.QueryRow(`SELECT state, first_used_at, activated_at FROM guest_voucher_grants WHERE voucher_id=$1`, late).
+		Scan(&state, &firstUsed, &activated); err != nil {
+		t.Fatal(err)
+	}
+	if state != "active" || !firstUsed.Equal(old) || !activated.Equal(old) {
+		t.Fatalf("historical first use must record activation, got state=%q first=%v activated=%v", state, firstUsed, activated)
+	}
+	if w := callSync(h, biz, device); w.Code != 200 {
+		t.Fatalf("reconcile sync status=%d body=%s", w.Code, w.Body.String())
+	}
+	if err := db.QueryRow(`SELECT state, activated_at FROM guest_voucher_grants WHERE voucher_id=$1`, late).Scan(&state, &activated); err != nil {
+		t.Fatal(err)
+	}
+	if state != "expired" || !activated.Equal(old) {
+		t.Fatalf("elapsed expiry must reconcile without touching activation: state=%q activated=%v", state, activated)
+	}
+	// Without any client identity nothing is fabricated: the voucher is used,
+	// but the grant stays unclaimed until an identity exists.
+	anonymous := issue()
+	if w := sync(VoucherLoginState{
+		VoucherID: anonymous, Exists: true, UptimeSeconds: 30, BytesUsed: 512,
+		FirstUseEpoch: anchor.Unix(),
+	}); w.Code != 200 {
+		t.Fatalf("anonymous sync status=%d body=%s", w.Code, w.Body.String())
+	}
+	var status string
+	if err := db.QueryRow(`SELECT status FROM vouchers WHERE id=$1`, anonymous).Scan(&status); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT state FROM guest_voucher_grants WHERE voucher_id=$1`, anonymous).Scan(&state); err != nil {
+		t.Fatal(err)
+	}
+	if status != "used" || state != "unused" {
+		t.Fatalf("identity-less evidence must not claim a grant: voucher=%q grant=%q", status, state)
+	}
+	// Counters without an anchor keep the legacy live contract: no live
+	// session, no activation.
+	legacy := issue()
+	if w := sync(VoucherLoginState{
+		VoucherID: legacy, Exists: true, UptimeSeconds: 30, BytesUsed: 512,
+	}); w.Code != 200 {
+		t.Fatalf("legacy sync status=%d body=%s", w.Code, w.Body.String())
+	}
+	if err := db.QueryRow(`SELECT status FROM vouchers WHERE id=$1`, legacy).Scan(&status); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT state FROM guest_voucher_grants WHERE voucher_id=$1`, legacy).Scan(&state); err != nil {
+		t.Fatal(err)
+	}
+	if status != "used" || state != "unused" {
+		t.Fatalf("counter-only observation must not fabricate activation: voucher=%q grant=%q", status, state)
+	}
 }

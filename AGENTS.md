@@ -28,6 +28,12 @@ Guests is an automatically loaded session dashboard across business sites, not r
 
 # Hermes local continuation — 2026-10-21
 
+## Owner-confirmed product direction — 2026-10-22
+
+- Third-party products are API engines behind Mega Magic's own interface, accounts and workflows, analogous to Hermes using OpenRouter. Do not substitute redirects, embedded third-party dashboards, iframes, widgets or separate customer logins. Build our screens over server-side provider integrations; keep service credentials out of customer browsers.
+- The owner rejects the current frontend appearance and requests an Apple Liquid Glass-inspired visual system covering windows/panels, scrollbars, backgrounds, appearance, icons and widgets. Apply this as an existing-app revamp; preserve the approved navigation, tenant isolation and Internet/Jellyfin separation. Establish a visual target before broad UI implementation. A web adaptation must retain readable data surfaces, keyboard/touch access, reduced-effects fallbacks and mobile captive-portal usability.
+- This request currently authorizes planning. Do not treat the catalog shortlist or this design preference as instruction to install every service, replace the stack or deploy a redesign without its implementation and verification steps.
+
 Before continuing this checkout, read `docs/HERMES-BUILD-CONTEXT.md` and
 `docs/HERMES-CONTINUATION-20261021.md`. They record verified local environment,
 source identity, build boundaries and the exact incomplete-commit resume point.
@@ -42,3 +48,11 @@ keep separating it into coherent commits and preserve it. `npm run build`
 checks the separate Sites prototype; validate production `web/app.html` and
 the Go API independently. Older Hermes/Triage live-state notes are dated
 reports, not fresh deployment or customer-router verification.
+
+## Owner-confirmed visual target — 2026-10-23
+
+Jade Glass selected with cool silver surfaces and emerald accents, precision geometric navigation icons and smooth object-free forest-toned background. Avoid scenic photographs, abstract silk, organic pebble icons and everyday brass accents. Preserve production workflows; adapt the existing web app rather than substituting the fixture previews. Day/Night, readable status colours, reduced effects and mobile navigation remain required.
+
+## Owner-selected guest voucher screen — 2026-10-23
+
+For the guest Internet voucher portal, the owner selected the supplied dark emerald liquid-glass phone reference: silver glass card edges, a dimensional glass Wi-Fi mark, luminous green connect button and dark optical-glass wallpaper. This supersedes the earlier plain silver guest-card direction for this screen only. Use the same renderer for owner preview and router deployment; bundle visual assets locally so unauthenticated guests need no external asset access. Preserve real voucher entry, CHAP/PAP, consent, error/retry and first-use behaviour. Do not draw phone bezels or notches inside the guest page.

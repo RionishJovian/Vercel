@@ -2,6 +2,7 @@ package server
 
 import (
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -12,7 +13,7 @@ func TestDB_GuestVoucherSchemaReadiness(t *testing.T) {
 	if guestVoucherSchemaReady(nil) == nil || guestVoucherSchemaReady(db) == nil {
 		t.Fatal("missing guest schema accepted")
 	}
-	for _, path := range []string{"../../migrations/20261001200000_guest_voucher_grants.sql", "../../migrations/20261001210000_guest_access_recovery.sql", "../../migrations/20261002200000_guest_recovery_completion.sql", "../../migrations/20261021090000_guest_voucher_activation.sql"} {
+	for _, path := range []string{"../../migrations/20261001200000_guest_voucher_grants.sql", "../../migrations/20261001210000_guest_access_recovery.sql", "../../migrations/20261002200000_guest_recovery_completion.sql", "../../migrations/20261021090000_guest_voucher_activation.sql", "../../migrations/20261021180000_guest_voucher_issue_batches.sql"} {
 		b, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatal(err)
@@ -26,6 +27,8 @@ func TestDB_GuestVoucherSchemaReadiness(t *testing.T) {
 	}
 	// Each mutation is only in this test's randomly named disposable database.
 	for _, stmt := range []string{
+		`ALTER TABLE guest_voucher_issue_batches NO FORCE ROW LEVEL SECURITY`,
+		`ALTER TABLE guest_voucher_issue_items DISABLE TRIGGER guest_voucher_issue_item_guard`,
 		`ALTER TABLE guest_voucher_grants DROP COLUMN activated_at`,
 		`ALTER TABLE guest_voucher_grants DISABLE TRIGGER guest_voucher_activation_guard`,
 		`ALTER TABLE guest_access_recovery NO FORCE ROW LEVEL SECURITY`,
@@ -49,5 +52,41 @@ func TestDB_GuestVoucherSchemaReadiness(t *testing.T) {
 				t.Fatal("incomplete protections accepted")
 			}
 		})
+	}
+}
+
+func TestDB_GuestVoucherBatchMigrationRollsBackAtomically(t *testing.T) {
+	db := subscriptionHTTPDatabase(t)
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+	base, err := os.ReadFile("../../migrations/20261001200000_guest_voucher_grants.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(string(base)); err != nil {
+		t.Fatal(err)
+	}
+	migration, err := os.ReadFile("../../migrations/20261021180000_guest_voucher_issue_batches.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Put the migration's DDL in a caller-owned transaction, then deliberately
+	// abort it. A failed rollout must leave neither half-created batch tables
+	// nor a half-installed guard. This database is disposable and local only.
+	ddl := strings.ReplaceAll(strings.ReplaceAll(string(migration), "\nBEGIN;", ""), "\nCOMMIT;", "")
+	if _, err := db.Exec("BEGIN;\n" + ddl + "\nSELECT 1/0;"); err == nil {
+		t.Fatal("deliberately failed migration unexpectedly succeeded")
+	}
+	if _, err := db.Exec("ROLLBACK"); err != nil {
+		t.Fatal(err)
+	}
+	var absent bool
+	if err := db.QueryRow(`SELECT to_regclass('public.guest_voucher_issue_batches') IS NULL AND to_regclass('public.guest_voucher_issue_items') IS NULL`).Scan(&absent); err != nil || !absent {
+		t.Fatalf("failed migration left partial schema: absent=%v err=%v", absent, err)
+	}
+	for i := 0; i < 2; i++ {
+		if _, err := db.Exec(string(migration)); err != nil {
+			t.Fatalf("idempotent migration attempt %d: %v", i+1, err)
+		}
 	}
 }

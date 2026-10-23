@@ -75,7 +75,7 @@ func TestGuestVoucherBatchBounds(t *testing.T) {
 	if !b.valid() {
 		t.Fatal("valid batch rejected")
 	}
-	for _, mutate := range []func(*guestVoucherBatch){func(b *guestVoucherBatch) { b.Count = 1001 }, func(b *guestVoucherBatch) { b.Minutes = 0 }, func(b *guestVoucherBatch) { b.DataMB = 0 }, func(b *guestVoucherBatch) { b.PriceMMK = -1 }, func(b *guestVoucherBatch) { b.DeviceID = "other" }} {
+	for _, mutate := range []func(*guestVoucherBatch){func(b *guestVoucherBatch) { b.Count = 201 }, func(b *guestVoucherBatch) { b.Minutes = 0 }, func(b *guestVoucherBatch) { b.DataMB = 0 }, func(b *guestVoucherBatch) { b.PriceMMK = -1 }, func(b *guestVoucherBatch) { b.DeviceID = "other" }} {
 		bad := b
 		mutate(&bad)
 		if bad.valid() {

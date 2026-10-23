@@ -61,9 +61,11 @@ func MediaTarget(rawHost, rawPort string) (host, port string, err error) {
 var portalVersionPattern = regexp.MustCompile(`^[a-f0-9]{16}$`)
 
 type PortalDeployment struct {
-	Profile      string `json:"profile"`
-	Version      string `json:"version"`
-	Confirmation string `json:"confirmation"`
+	// Design is resolved from tenant-scoped saved/published configuration by the handler.
+	Design       *PortalLoginDesign `json:"-"`
+	Profile      string             `json:"profile"`
+	Version      string             `json:"version"`
+	Confirmation string             `json:"confirmation"`
 	// MediaHost is the owner's LAN media server (Jellyfin) that guests on this
 	// HotSpot network must be able to reach. Empty means no media service is
 	// offered and the walled garden stays portal-only. Video bytes travel only on
@@ -72,6 +74,7 @@ type PortalDeployment struct {
 	MediaPort string `json:"media_port"`
 }
 type PortalDeploymentPlan struct {
+	PreviewHTML  string   `json:"preview_html,omitempty"`
 	Profile      string   `json:"profile"`
 	Version      string   `json:"version"`
 	Server       string   `json:"server"`
@@ -98,44 +101,104 @@ func portalLoginHTML() string {
 	return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Connect to WiFi</title>
 <style>
-:root{color-scheme:dark}
-*{box-sizing:border-box}
-body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:#0b0f1a;color:#f6f8ff;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Inter","Segoe UI",sans-serif}
-.card{width:100%;max-width:380px;padding:30px;border-radius:28px;background:linear-gradient(180deg,rgba(255,255,255,.15),rgba(255,255,255,.065));border:1px solid rgba(255,255,255,.22);box-shadow:0 30px 80px -20px rgba(0,0,0,.66),inset 0 1px 0 rgba(255,255,255,.3);-webkit-backdrop-filter:blur(28px) saturate(175%);backdrop-filter:blur(28px) saturate(175%)}
-.k{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:rgba(246,248,255,.65)}
-h1{font-size:24px;margin:10px 0 6px}
-p{color:rgba(246,248,255,.7);line-height:1.6;margin:0 0 22px}
-label{display:block;margin:0 0 8px}
-input{width:100%;padding:13px 16px;border-radius:14px;border:1px solid rgba(255,255,255,.22);background:rgba(0,0,0,.35);color:#f6f8ff;font:inherit;letter-spacing:.08em;text-transform:uppercase}
-input:focus{outline:2px solid rgba(255,255,255,.35)}
-button{width:100%;margin-top:14px;padding:13px 16px;border:0;border-radius:14px;background:#f6f8ff;color:#0b0f1a;font:inherit;font-weight:600}
-.err{margin:0 0 16px;padding:12px 14px;border-radius:14px;background:rgba(255,64,80,.16);border:1px solid rgba(255,64,80,.4);color:#ffb3bb;line-height:1.5}
+:root{color-scheme:dark;--portal-brand:#075044;--portal-tint:#061f26;--portal-on-brand:#fff}
+*{box-sizing:border-box}html{min-height:100%;background:#051b22}
+body{margin:0;min-height:100vh;min-height:100svh;display:flex;align-items:center;justify-content:center;padding:32px 20px;background:#051b22;color:#edf7f5;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Inter","Segoe UI",sans-serif;-webkit-font-smoothing:antialiased;background-position:center;background-size:cover;background-repeat:no-repeat}
+.card{position:relative;width:76%;max-width:340px;padding:34px 25px 32px;text-align:center;border-radius:33px;background:rgba(7,33,37,.46);border:1px solid #efffffb3;box-shadow:0 24px 65px #0008,0 0 0 2px #b3d3d336,inset 0 1px 2px #fff9,inset 2px 0 5px #e3f7ff55,inset -2px -2px 5px #efffde55;-webkit-backdrop-filter:blur(18px) saturate(125%);backdrop-filter:blur(18px) saturate(125%)}
+.card:before{content:"";position:absolute;pointer-events:none;inset:3px;border:1px solid #e0f7f829;border-radius:29px}
+.wifi-mark{display:block;width:98px;height:80px;object-fit:contain;margin:0 auto 10px}
+h1{font-size:28px;line-height:1.2;font-weight:600;letter-spacing:-.035em;margin:0 0 10px;color:#f0f7f5}
+p{color:#d4e3df;font-size:11.5px;line-height:1.6;margin:0 0 22px}
+label{display:block}.field-label{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+input{display:block;width:100%;min-height:46px;padding:12px 14px;border-radius:13px;border:1px solid #dcf4f36b;background:#a1cecc0c;box-shadow:inset 0 1px 2px #ffffff12;color:#f1faf7;font:inherit;font-size:15px;letter-spacing:.1em;text-transform:uppercase}
+input::placeholder{color:#a8cecb;letter-spacing:.28em;opacity:.9}
+input:focus,button:focus-visible{outline:2px solid #bbfbe6;outline-offset:4px}
+button{width:100%;min-height:50px;margin-top:23px;padding:12px 8px;border:1px solid #b4ffe0b3;border-radius:13px;background-color:var(--portal-brand);background-image:linear-gradient(150deg,#c2fff41f,#ffffff00 48%,#001c1a55);box-shadow:0 0 16px #48deb63b,inset 0 1px 3px #cafffca1,inset 0 -2px 4px #cafffb24;color:var(--portal-on-brand);font:inherit;font-size:15px;font-weight:500;cursor:pointer;transition:filter .15s,box-shadow .15s}
+button:hover{filter:brightness(1.12);box-shadow:0 0 22px #48deb659,inset 0 1px 3px #cafffca1}button:disabled{cursor:wait;opacity:.7}
+.brand{display:block;margin:17px 0 -10px;font-size:9px;line-height:1.5;letter-spacing:.12em;color:#c6d8d2;text-transform:uppercase;overflow-wrap:anywhere}
+.err{margin:12px 0;padding:10px 12px;border-radius:11px;background:#431e2de8;border:1px solid #ffbdca66;color:#ffe1e8;font-size:12px;line-height:1.5;text-align:left}
+.consent{display:flex;align-items:flex-start;gap:8px;text-align:left;font-size:11px;line-height:1.5;margin:18px 0 -8px;color:#d4e3df}.consent input{width:17px;min-height:17px;height:17px;padding:0;margin:1px 0;flex-shrink:0;accent-color:var(--portal-brand)}
+details{margin:0 0 17px;font-size:11px;line-height:1.6;color:#d4e3df;text-align:left}details p{white-space:pre-wrap;margin:10px 0}
+@media(max-width:360px){.card{width:100%;padding:28px 24px}h1{font-size:27px}}
+@media(min-width:600px){.card{width:340px;padding:40px 36px}.wifi-mark{width:86px;height:72px}h1{font-size:32px}p{font-size:13px}button{font-size:16px}}
+@media(max-height:560px){body{align-items:flex-start;padding-top:24px}.wifi-mark{height:44px;margin-bottom:12px}.card{padding-top:22px;padding-bottom:22px}}
+@media(prefers-reduced-transparency:reduce){.card{background:#09272e;-webkit-backdrop-filter:none;backdrop-filter:none}}
+@media(prefers-reduced-motion:reduce){button{transition:none}}
 </style></head><body><main class="card">
-<span class="k">WiFi Voucher</span>
-<h1>Connect to WiFi</h1>
-<p>Enter your WiFi voucher code to connect.</p>
+<h1>Wi-Fi Access</h1>
+<p>Enter voucher code to connect</p>
 $(if error)<p class="err">$(error)</p>$(endif)
-<form name="sendin" action="$(link-login-only)" method="post" style="display:none">
+<form id="sendin" name="sendin" action="$(link-login-only)" method="post" hidden>
 <input name="username" autocomplete="off">
 <input name="password" type="hidden">
 <input type="hidden" name="dst" value="$(link-orig)">
 <input type="hidden" name="popup" value="true">
 </form>
-<label class="k" for="voucher">Voucher code</label>
-<input id="voucher" name="voucher" type="text" autocapitalize="characters" autocorrect="off" autocomplete="off" spellcheck="false" autofocus>
-<button type="button" onclick="return doLogin()">Connect</button>
+<form id="voucher-login" action="$(link-login-only)" method="post" onsubmit="return doLogin()" novalidate>
+<label class="field-label" for="voucher">Voucher code</label>
+<input id="voucher" name="voucher" type="text" placeholder="••••••••" autocapitalize="characters" autocorrect="off" autocomplete="off" spellcheck="false" aria-describedby="login-error">
+<p id="login-error" class="err" role="alert" hidden></p>
+<button id="connect" type="submit">Connect to Wi-Fi</button>
+</form>
 </main>
-<script src="$(link-login-only)?only-target=iframe&amp;target=%2Fmd5.js"></script>
+$(if chap-id)<script src="md5.js"></script>$(endif)
 <script>
+var loginPending=false;
+var loginTimer;
+function resetLogin(message){
+  window.clearTimeout(loginTimer);
+  loginPending=false;
+  document.getElementById('voucher').disabled=false;
+  var button=document.getElementById('connect');
+  button.disabled=false;
+  button.textContent='Connect to Wi-Fi';
+  var error=document.getElementById('login-error');
+  error.textContent=message||'';
+  error.hidden=!message;
+}
 function doLogin(){
-  var code=document.getElementById('voucher').value.trim();
-  if(!code){document.getElementById('voucher').focus();return false;}
-  document.sendin.username.value=code;
-  if('$(chap-id)'===''){document.sendin.password.value=code;}
-  else{document.sendin.password.value=hexMD5('$(chap-id)'+hexMD5('$(chap-challenge)')+code);}
-  document.sendin.submit();
+  if(loginPending){return false;}
+  var input=document.getElementById('voucher');
+  var code=input.value.trim().toUpperCase();
+  input.value=code;
+  if(!/^[A-Z0-9][A-Z0-9_-]{3,31}$/.test(code)){
+    resetLogin('Enter the complete voucher code as printed.');
+    input.focus();
+    return false;
+  }
+  var consent=document.getElementById('voucher-consent');
+  if(consent && !consent.checked){resetLogin('Accept the internet access terms before connecting.');return false;}
+  if(document.body && document.body.getAttribute('data-preview')==='true'){resetLogin('Preview only. No voucher was used and no internet access was granted.');return false;}
+  var chapId='$(chap-id)';
+  var password=code;
+  if(chapId!==''){
+    if(typeof hexMD5!=='function'){
+      resetLogin('WiFi login could not load. Reload this page and try again.');
+      return false;
+    }
+    try{password=hexMD5(chapId+code+'$(chap-challenge)');}
+    catch(error){
+      resetLogin('WiFi login could not load. Reload this page and try again.');
+      return false;
+    }
+  }
+  var sendin=document.getElementById('sendin');
+  sendin.elements.username.value=code;
+  sendin.elements.password.value=password;
+  loginPending=true;
+  input.disabled=true;
+  var button=document.getElementById('connect');
+  button.disabled=true;
+  button.textContent='Connecting…';
+  document.getElementById('login-error').hidden=true;
+  loginTimer=window.setTimeout(function(){
+    resetLogin('No login response received. Check your WiFi connection and try again.');
+  },15000);
+  try{sendin.submit();}
+  catch(error){resetLogin('Could not send your code. Check your WiFi connection and try again.');}
   return false;
 }
+window.addEventListener('pageshow',function(){resetLogin();});
 </script>
 </body></html>`
 }
@@ -166,6 +229,7 @@ type portalState struct {
 	mediaHost, mediaPort                    string
 	hasMediaGarden                          bool
 	directory, destination                  string
+	needsCHAP                               bool
 	hasGarden                               bool
 }
 
@@ -203,6 +267,13 @@ func portalPreflight(ctx context.Context, r CommandRunner, businessID, deviceID 
 		return s, fmt.Errorf("invalid HotSpot HTML directory")
 	}
 	s.directory = p["html-directory"]
+	s.needsCHAP = strings.Contains(","+p["login-by"]+",", ",http-chap,")
+	if s.needsCHAP {
+		out, err = r.Run(ctx, "/file print count-only where name="+routerOSQuoted(directory+"/md5.js"))
+		if err != nil || strings.TrimSpace(out) != "1" {
+			return s, fmt.Errorf("HotSpot CHAP helper md5.js not found; restore the profile's local HotSpot files first")
+		}
+	}
 	s.destination = "mm-portal-" + request.Version
 	out, err = r.Run(ctx, "/file print count-only where name=\"flash\"")
 	if err != nil || (strings.TrimSpace(out) != "0" && strings.TrimSpace(out) != "1") {
@@ -238,7 +309,15 @@ func portalPreflight(ctx context.Context, r CommandRunner, businessID, deviceID 
 		return s, fmt.Errorf("login page could not be read safely (maximum 24 KB)")
 	}
 	s.original = strings.TrimSuffix(strings.TrimSuffix(out, "\n"), "\r")
-	s.replacement = portalLoginHTML()
+	var renderErr error
+	s.replacement, renderErr = RenderPortalLogin(request.Design, false)
+	if renderErr != nil {
+		return s, renderErr
+	}
+	s.plan.PreviewHTML, renderErr = RenderPortalLogin(request.Design, true)
+	if renderErr != nil {
+		return s, renderErr
+	}
 	s.garden = "comment=" + routerOSQuoted("mm-portal-"+request.Profile) + " dynamic=no"
 	mediaHost, mediaPort, mediaErr := mediaTarget(request)
 	if mediaErr != nil {
@@ -316,6 +395,12 @@ func (a *DeviceApplier) ApplyPortal(ctx context.Context, businessID, deviceID st
 	}
 	if err != nil || strings.TrimSpace(out) != strings.TrimSpace(s.original) {
 		return result, fmt.Errorf("HotSpot directory copy did not verify; active profile unchanged. RouterOS file copy support is required")
+	}
+	if s.needsCHAP {
+		out, err = r.Run(ctx, "/file print count-only where name="+routerOSQuoted(s.destination+"/md5.js"))
+		if err != nil || strings.TrimSpace(out) != "1" {
+			return result, fmt.Errorf("copied HotSpot CHAP helper md5.js did not verify; active profile unchanged")
+		}
 	}
 	// Keep an original login-page copy in persistent staging as well, because
 	// the old directory can be RAM-backed on devices with a flash disk.

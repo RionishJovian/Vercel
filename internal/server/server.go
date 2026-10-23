@@ -647,10 +647,10 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 			protected.POST("/topology/:deviceId/reboot", auth.RequireMinRole(model.RoleAdmin), topologyHandler.Reboot)
 
 			// VPS: read-only WireGuard peer-provisioning (plan-gated).
-					vpsg := protected.Group("/vps")
-					{
-						handler.RegisterVPSRoutes(vpsg, vpsHandler)
-					}
+			vpsg := protected.Group("/vps")
+			{
+				handler.RegisterVPSRoutes(vpsg, vpsHandler)
+			}
 
 			policies := protected.Group("/alert-policies")
 			{
@@ -788,6 +788,7 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 			portalStaff := protected.Group("/portal")
 			{
 				portalStaff.GET("/config", portalHandler.StaffGetConfig)
+				portalStaff.POST("/router-preview", auth.RequireMinRole(model.RoleAdmin), portalHandler.RouterPreview)
 				portalStaff.PUT("/config", auth.RequireMinRole(model.RoleAdmin), portalHandler.StaffUpdateConfig)
 			}
 

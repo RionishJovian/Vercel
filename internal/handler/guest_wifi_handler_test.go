@@ -105,6 +105,7 @@ func setupHarness(base string) {
 		"20261001210000_guest_access_recovery.sql",
 		"20261002200000_guest_recovery_completion.sql",
 		"20261021090000_guest_voucher_activation.sql",
+		"20261021180000_guest_voucher_issue_batches.sql",
 	} {
 		migration, err := os.ReadFile("../../migrations/" + name)
 		if err != nil {
