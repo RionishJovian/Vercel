@@ -29,3 +29,20 @@ Before rollout, back up Compose/config/current binaries and image IDs, create/va
 Physical RouterBOARD/phone acceptance, local Jellyfin delivery/playback acceptance, paid router/database reconciliation and the remaining site-editor/capacity consolidation are not certified by these tests.
 
 Local evidence: /Users/aces/Documents/Codex/2026-10-21/asd/work/restructure-20261024/.
+
+
+## Verified production receipt
+
+Owner additionally confirmed that monthly/annual passes have the same app features and differ only in validity. Numerical usage caps and enforcement remain a separate pending policy; no restrictions were activated.
+
+API source: 066f46a70c0fee17d2176788ae582702c1990a6b, image tag mega-magic-api:066f46a. Final frontend source: af4282c (including 0e08b05 wording correction), image tag mega-magic-web:af4282c. Independent VPS build matched the Linux binary SHA256 above. All three deployed public web files matched their committed source. Readiness database/NATS/Redis OK; all five existing application containers running.
+
+Backups:
+- /root/mm-rollout-backups/restructure-066f46a-20261023T192510Z — validated DB dump, prior Compose/config/binary/assets and image IDs.
+- /root/mm-rollout-backups/frontend-af4282c-20261023T193205Z — frontend follow-up rollback.
+
+Source/build/deployment receipts and logs: /root/mm-restructure-066f46a/ and its frontend-af4282c/ subfolder.
+
+Production readback: 0 current app passes, 0 pass audit events, 0 media publications after rollout. All three new tables have ENABLE + FORCE RLS. No historical purchase was imported, pass issued/revoked, payment approved, media page published or computer paired. Signed-in current pass/legacy history screen loads; platform account report loads all 13 accounts with per-login recording forms; Jellyfin reports publishing available, connector disabled and paid playback pending acceptance. Publication editor loads a real unpublished state with Publish available, replacing its former 404. Library reads stay disabled when connector readiness is unavailable, verified by an additional DOM regression.
+
+78 critical UI tests pass; explicit media library-selection/disabled-connector regression passes; affected backend race tests pass; go build ./... passes. Physical/router and local playback acceptance remain pending.
