@@ -148,7 +148,11 @@ export function mountAppearance(content, business, user, api, isActive = () => t
   };
   let images = {}, uploadGeneration = 0, selectedLibraries=[];
   const libraryOptions=form.querySelector('[data-media-library-options]'),libraryStatus=form.querySelector('[data-media-library-status]');
+  let connectorReady=false;
+  const libraryButton=form.querySelector('[data-media-libraries]');libraryButton.disabled=true;
+  api?.get('/media/capabilities').then(value=>{if(!active())return;connectorReady=value.connector?.available===true;libraryButton.disabled=!connectorReady;if(!connectorReady)libraryStatus.textContent='The local computer connector is not enabled. Guest-page design can be published separately.';}).catch(()=>{if(active())libraryStatus.textContent='Connector availability could not be confirmed. Library reads are unavailable.';});
   form.querySelector('[data-media-libraries]').onclick=async event=>{
+    if(!connectorReady)return;
     const button=event.currentTarget;button.disabled=true;libraryStatus.textContent='Reading libraries from your media PC…';
     try{const id=crypto.randomUUID();await api.post('/media/jobs',{id,operation:'libraries',payload:{}});
       const deadline=Date.now()+125000;let libraries=null;
@@ -160,7 +164,7 @@ export function mountAppearance(content, business, user, api, isActive = () => t
         input.onchange=()=>{if(input.checked&&selectedLibraries.length>=16){input.checked=false;libraryStatus.textContent='Select at most 16 libraries.';return;}selectedLibraries=input.checked?[...new Set([...selectedLibraries,input.value])]:selectedLibraries.filter(id=>id!==input.value);edited=true;};
       }
       libraryStatus.textContent=libraryOptions.childElementCount?'Select the libraries guests may play, then publish.':'No playable libraries found. Add videos or music in Jellyfin first.';
-    }catch(e){if(active())libraryStatus.textContent=e.message||'Libraries unavailable.';}finally{button.disabled=false;}
+    }catch(e){if(active())libraryStatus.textContent=e.message||'Libraries unavailable.';}finally{button.disabled=!connectorReady;}
   };
   const pendingUploads = new Map();
   const fill = data => {

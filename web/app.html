@@ -451,13 +451,13 @@ function loading() {
 
 async function renderMediaAppearance(main) {
   const content = main.querySelector("#content");
-  const {mountDashboard} = await import("/assets/js/media-dashboard.js?v=9");
+  const {mountDashboard} = await import("/assets/js/media-dashboard.js?v=10");
   if (content?.isConnected) mountDashboard(content, ME?.business, ME?.user, MM);
 }
 
 async function renderJellyfinPortal(main) {
   const content = main.querySelector("#content");
-  const {mountAppearance} = await import("/assets/js/media-appearance.js?v=8");
+  const {mountAppearance} = await import("/assets/js/media-appearance.js?v=9");
   if (content?.isConnected) mountAppearance(content, ME?.business, ME?.user, MM, () => content.isConnected);
 }
 
