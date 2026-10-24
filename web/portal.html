@@ -480,7 +480,7 @@ async function redeemVoucher(cfg) {
     var redeemPath = cfg.guest_voucher_access === true ? "/guest-voucher" : "/redeem";
     var res = await fetch(API + "/portal/" + encodeURIComponent(DEVICE) + redeemPath, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "X-MM-CSRF": "1" },
       body: JSON.stringify(payload)
     });
     var data = await res.json().catch(function () { return {}; });
@@ -521,7 +521,7 @@ async function buy(cfg, key) {
   fd.append("client_mac", clientMac());
   fd.append("consent", String(consent));
   try {
-    var res = await fetch(API + "/portal/" + DEVICE + "/guest-purchase", { method: "POST", body: fd });
+    var res = await fetch(API + "/portal/" + DEVICE + "/guest-purchase", { method: "POST", headers: { "X-MM-CSRF": "1" }, body: fd });
     var d = await res.json();
     if (!res.ok) throw new Error(d.error || ("http-" + res.status));
     renderPay(Object.assign({}, cfg, { guest_grace_data_mb: d.grace_data_mb, guest_grace_minutes: d.grace_minutes }), d.request_id, d.grace_expires_at);
@@ -584,7 +584,7 @@ async function confirm(reqId) {
   if (rf) fd.append("receipt", rf);
   msg.textContent = "…";
   try {
-    var res = await fetch(API + "/portal/guest-purchase/" + reqId + "/receipt", { method: "POST", body: fd });
+    var res = await fetch(API + "/portal/guest-purchase/" + reqId + "/receipt", { method: "POST", headers: { "X-MM-CSRF": "1" }, body: fd });
     var d = await res.json();
     if (!res.ok) throw new Error(d.error || ("http-" + res.status));
     document.getElementById("root").innerHTML =

@@ -1,0 +1,56 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "installCommand": "npm ci --ignore-scripts",
+  "buildCommand": "npm run build",
+  "outputDirectory": "vercel-public",
+  "proxy": {
+    "entrypoint": "proxy.js",
+    "matcher": [
+      "/api/v1",
+      "/api/v1/:path*"
+    ]
+  },
+  "rewrites": [
+    {
+      "source": "/api/v1",
+      "destination": "https://megamagic.tech/api/v1"
+    },
+    {
+      "source": "/api/v1/:path*",
+      "destination": "https://megamagic.tech/api/v1/:path*"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/api/v1/:path*",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "private, no-store"
+        },
+        {
+          "key": "CDN-Cache-Control",
+          "value": "no-store"
+        },
+        {
+          "key": "Vercel-CDN-Cache-Control",
+          "value": "no-store"
+        }
+      ]
+    },
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        }
+      ]
+    }
+  ]
+}

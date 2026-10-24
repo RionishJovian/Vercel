@@ -1,0 +1,11 @@
+.git
+node_modules
+.env
+.env.*
+*.pem
+*.key
+*.dump
+.vercel
+vercel-public
+design-alternatives
+work
