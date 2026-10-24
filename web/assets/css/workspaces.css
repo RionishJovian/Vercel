@@ -1,0 +1,33 @@
+/* Compact workspaces extend the existing Jade Glass tokens. */
+.workspace-nav { display:flex; flex-wrap:wrap; gap:6px; margin:0 0 22px; padding:5px; border:1px solid var(--border,rgba(190,218,220,.18)); border-radius:18px; width:fit-content; max-width:100%; }
+.workspace-nav a { display:block; padding:10px 16px; border-radius:13px; color:var(--foreground-muted); text-decoration:none; font-size:.9rem; font-weight:600; }
+.workspace-nav a[aria-current] { color:var(--foreground); background:rgba(103,210,182,.14); box-shadow:inset 0 0 0 1px rgba(137,220,200,.2); }
+.workspace-nav a:hover { background:rgba(136,195,183,.1); }
+.workspace-nav a:focus-visible, .workspace-help summary:focus-visible { outline:2px solid #59d7b4; outline-offset:3px; }
+.workspace-help { position:relative; align-self:center; flex:0 0 auto; }
+.workspace-help summary { cursor:pointer; padding:8px 14px; border:1px solid var(--border,rgba(190,218,220,.18)); border-radius:20px; font-size:.85rem; }
+.workspace-help[open] { max-width:440px; }
+.workspace-help > div { padding:12px 0 0; font-size:.9rem; }
+.workspace-inline-help { margin:8px 0 16px; font-size:.88rem; }
+.workspace-inline-help summary { cursor:pointer; color:var(--foreground-muted); }
+.revamp-task-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; }
+.revamp-task { display:flex; flex-direction:column; gap:5px; padding:16px; border:1px solid var(--border,rgba(190,218,220,.18)); border-radius:16px; text-decoration:none; }
+.revamp-task span { font-size:.84rem; color:var(--foreground-muted); }
+.hub-management > .network-tasks { grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:8px; }
+.hub-management > .network-tasks .network-task { min-height:52px; padding:13px 16px; }
+.hub-management > .network-tasks .network-task strong { font-size:.9rem; }
+.hub-management > header { margin-bottom:16px; }
+[data-theme="day"] .workspace-nav a, [data-theme="day"] .revamp-task span { color:#385953; }
+[data-theme="day"] .workspace-nav a[aria-current] { color:#143c32; }
+@media(max-width:640px) {
+ .workspace-nav { width:100%; gap:3px; border-radius:15px; }
+ .workspace-nav a { padding:10px 11px; font-size:.82rem; flex:1 0 auto; text-align:center; }
+ .page-head { flex-wrap:wrap; gap:10px; }
+ .workspace-help[open] { flex-basis:100%; }
+ .hub-management > .network-tasks { grid-template-columns:repeat(2,minmax(0,1fr)); }
+ .revamp-task-grid { grid-template-columns:1fr; }
+}
+
+.voucher-nav button { border:0; background:transparent; color:var(--foreground-muted); padding:10px 18px; min-height:42px; border-radius:13px; }
+.voucher-nav button[aria-pressed="true"] { color:var(--foreground); background:var(--primary-soft); box-shadow:inset 0 0 0 1px var(--border); }
+[data-voucher-panel][hidden] { display:none !important; }

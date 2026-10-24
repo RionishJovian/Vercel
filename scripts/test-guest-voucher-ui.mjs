@@ -24,7 +24,7 @@ try {
   context.eval(source.slice(start,end));
   await context.renderVouchers(main);
   const content=main.querySelector('#content');
-  assert(content.textContent.includes('Create guest internet vouchers'));
+  assert(content.textContent.includes('Create a batch'));
   assert(content.innerHTML.includes('value="gateway"')&&!content.innerHTML.includes('value="ap"'));
   assert(content.textContent.includes('1500'));
   const values={'gv-gateway':'gateway','gv-label':' Daily ','gv-minutes':'1440','gv-data':'1024','gv-price':'1000','gv-count':'10'};

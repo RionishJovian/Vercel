@@ -36,11 +36,12 @@
   <script src="/assets/js/api.js" defer></script>
   <script src="/assets/js/account-presence.js?v=20261023-1" defer></script>
   <script src="/assets/js/app.js" defer></script>
+  <script src="/assets/js/workspaces.js?v=20261025-1" defer></script>
   <script src="/assets/js/i18n.js" defer></script>
-  <script src="/assets/js/network-control.js?v=20261024-hub-1" defer></script>
+  <script src="/assets/js/network-control.js?v=20261025-1" defer></script>
   <script src="/assets/js/management-migration.js?v=20261024-1" defer></script>
-  <script src="/assets/js/hub-management.js?v=20261024-2" defer></script>
-  <script src="/assets/js/workflow-revamp.js?v=2" defer></script>
+  <script src="/assets/js/hub-management.js?v=20261025-1" defer></script>
+  <script src="/assets/js/workflow-revamp.js?v=20261025-1" defer></script>
   <link rel="stylesheet" href="/assets/vendor/maplibre/maplibre-gl.css">
   <style>
     /* ════════════════════════════════════════════════════════════════════
@@ -219,6 +220,7 @@
   <link rel="stylesheet" href="/assets/css/media-appearance.css?v=5">
   <link rel="stylesheet" href="/assets/css/layout.css?v=20261024-migration-1">
   <link rel="stylesheet" href="/assets/css/jade-glass.css?v=20261023-4">
+  <link rel="stylesheet" href="/assets/css/workspaces.css?v=20261025-1">
 </head>
 <body class="page-app">
 <div class="lg-orb lg-orb-a"></div>
@@ -242,41 +244,23 @@
     <div class="rail-menu" id="rail-menu">
       <div class="rail-nav-scroll">
       <button class="nav-item" data-view="overview" aria-current="page">Overview</button>
-      <div class="rail-section">Business</div>
-      <button class="nav-item" data-view="revenue">Revenue Dashboard</button>
-      <button class="nav-item" data-view="vouchers">Internet Voucher Dashboard</button>
-      <button class="nav-item" data-view="media">Jellyfin Dashboard</button>
-      <div class="rail-section">Operations</div>
-      <button class="nav-item" data-view="sites">Sites</button>
       <button class="nav-item" data-view="gateways">Magic Hub</button>
-      <button class="nav-item" data-view="routers">Devices</button>
-      <button class="nav-item" data-view="topology">Site Topology</button>
+      <button class="nav-item" data-view="vouchers">Vouchers</button>
       <button class="nav-item" data-view="guests">Guests</button>
-      <button class="nav-item" data-view="fleet">Fleet Health</button>
-      <button class="nav-item" data-view="internet">Internet Setup</button>
-      <div class="rail-section">Guest Portals</div>
-      <button class="nav-item" data-view="portal">Internet Hotspot Portal</button>
-      <button class="nav-item" data-view="jellyfin-portal">Jellyfin Guest Portal</button>
-      <div class="rail-section">Store</div>
-      <button class="nav-item" data-view="store">Store</button>
-      <div class="rail-section">Management</div>
-      <button class="nav-item" data-view="team">Legacy account records</button>
-      <button class="nav-item" data-view="incidents">Incidents</button>
-      <button class="nav-item" data-view="security">Security</button>
-      <button class="nav-item" data-view="backups">Backups</button>
-      <button class="nav-item" data-view="scans">Fleet scans</button>
-      <button class="nav-item" data-view="coins">Magic Coins</button>
-      <button class="nav-item" data-view="unlockkeys">Unlock keys</button>
-      <div class="rail-section">Audit</div>
-      <button class="nav-item" data-view="events">Event log</button>
-      <button class="nav-item" data-view="guide">Product guide</button>
+      <button class="nav-item" data-view="revenue">Revenue</button>
+      <button class="nav-item" data-view="media">Jellyfin</button>
+      <button class="nav-item" data-view="store">My pass</button>
+      <button class="nav-item" data-view="platform" hidden>Platform admin</button>
       <details class="rail-advanced" id="rail-advanced">
-        <summary>Advanced tools</summary>
+        <summary>More tools</summary>
+        <button class="nav-item" data-view="guide">Help &amp; guide</button>
         <button class="nav-item" data-view="templates">RouterOS reference</button>
-        <button class="nav-item" data-view="termlog">Terminal log</button>
+        <button class="nav-item" data-view="termlog">Command history</button>
         <button class="nav-item" data-view="aiusage">AI usage</button>
         <button class="nav-item" data-view="i18n">Translations</button>
-        <button class="nav-item" data-view="platform" hidden>Platform administration</button>
+        <button class="nav-item" data-view="team">Legacy accounts</button>
+        <button class="nav-item" data-view="coins">Magic Coins</button>
+        <button class="nav-item" data-view="unlockkeys">Unlock keys</button>
       </details>
       </div>
       <div class="rail-footer">
@@ -389,7 +373,7 @@ async function loadView(name, main, me) {
   disposeSitePicker?.(); disposeSitePicker = null;
   const v = VIEWS[name] || VIEWS.overview;
   const taskBack = ["network","wan","pppoe","wifi","existing"].includes(name) ? '<p><a href="#internet">Back to Internet Setup</a></p>' : "";
-  main.innerHTML = `<div class="page-head"><div>${taskBack}<h1 class="page-title">${v.title}</h1><p class="page-lead">${v.lead}</p></div>${name === "guide" ? "" : `<button class="btn btn-sm" id="view-guide" type="button">How this works</button>`}</div><div id="content" aria-live="polite">${loading()}</div>`;
+  main.innerHTML = `<div class="page-head"><div><h1 class="page-title">${globalThis.MMWorkspace?.title(name) || v.title}</h1></div>${name === "guide" ? "" : `<details class="workspace-help"><summary>Help</summary><div><p>${v.lead}</p><button class="btn btn-sm" id="view-guide" type="button">Open guide</button></div></details>`}</div>${globalThis.MMWorkspace?.navigation(name, route => canOpenView(route, me)) || taskBack}<div id="content" aria-live="polite">${loading()}</div>`;
   // Route changes must start at the page heading. Safari otherwise preserves
   // the previous document offset, which can leave the new title clipped above
   // the viewport and makes adjacent sections appear to have uneven spacing.
@@ -530,11 +514,10 @@ async function renderOverview(main) {
   document.querySelector("#ov-topo").innerHTML = topologySummary(topo);
   const securityBtn = document.getElementById("overview-security");
   if (securityBtn) securityBtn.addEventListener("click", () => {
-    const nav = document.querySelector('.nav-item[data-view="security"]');
-    if (nav) nav.click();
+    location.hash = "security";
   });
   const setup = document.createElement("section"); setup.className = "panel";
-  setup.innerHTML = `<div class="panel-body"><h2>Your business setup</h2><p>Start with your location, then connect its RouterBOARD. Internet and Jellyfin remain separate business services.</p><div class="revamp-task-grid"><a class="revamp-task" href="#sites"><strong>1 · Add your site</strong><span>Business location and site information.</span></a><a class="revamp-task" href="#gateways"><strong>2 · Connect Magic Hub</strong><span>Assign the site, paste one script and verify management.</span></a><a class="revamp-task" href="#routers"><strong>3 · Discover devices</strong><span>Read the connected RouterBOARD's observations.</span></a><a class="revamp-task" href="#portal"><strong>4 · Internet Hotspot Portal</strong><span>Internet data/time plans, voucher access and guest-page branding.</span></a><a class="revamp-task" href="#jellyfin-portal"><strong>Jellyfin Guest Portal</strong><span>Separate local media guest design.</span></a></div></div>`;
+  setup.innerHTML = `<div class="panel-body"><h2>Quick start</h2><div class="revamp-task-grid"><a class="revamp-task" href="#sites"><strong>Site details</strong><span>Your business location</span></a><a class="revamp-task" href="#gateways"><strong>Connect router</strong><span>One-paste Magic Hub setup</span></a><a class="revamp-task" href="#vouchers"><strong>Issue vouchers</strong><span>Create, assign and print</span></a></div></div>`;
   content.prepend(setup);
   await renderPulse(main);
 }
@@ -833,7 +816,7 @@ async function renderSiteWorkspace(main) {
   if (!content?.isConnected) return;
   disposeSiteMap?.(); disposeSiteMap = null;
   disposeSitePicker?.(); disposeSitePicker = null;
-  content.innerHTML = `<section class="panel"><div class="panel-body"><h2>Start with your business location</h2><p>1 · Add your site information. 2 · Open <a href="#gateways">Magic Hub</a> to assign and connect its RouterBOARD. 3 · Discover devices and configure your business services.</p></div></section>${siteOperationsMap(sites, conns)}${siteGeoPanel(sites)}`;
+  content.innerHTML = `<section class="panel"><div class="panel-body"><h2>Your site</h2><p>Save your location, then <a href="#gateways">connect your router</a>.</p></div></section>${siteOperationsMap(sites, conns)}${siteGeoPanel(sites)}`;
   wireSiteGeo(main, sites, () => renderSiteWorkspace(main));
   content.querySelectorAll("[data-site-select]").forEach(button => button.addEventListener("click", async () => {
     localStorage.setItem("mm_selected_site", button.dataset.siteSelect);
@@ -1590,7 +1573,7 @@ function routerBoardPanel(routers, fleet, capabilityByID = new Map(), hubCapabil
       <footer>${canEdit ? `<button class="btn btn-sm" type="button" data-edit="${esc(router.device_id)}">Edit record</button><button class="btn btn-sm" type="button" data-router-delete="${esc(router.device_id)}">Delete device record</button>` : ""}<button class="btn btn-sm" type="button" data-router-topology="${esc(router.device_id)}">Topology</button>${canEdit ? `<button class="btn btn-sm" type="button" data-reboot="${esc(router.device_id)}"${state !== "up" ? " disabled title=\"No verified reachability\"" : ""}>Reboot</button>` : ""}</footer>
     </article>`;
   }).join("");
-  return `<section class="routerboard-console"><header><div><span class="fleet-kicker">ROUTER MANAGEMENT</span><h2>${routers.length} registered device${routers.length === 1 ? "" : "s"}</h2><p>Registration is not a verified connection. Complete site assignment and Magic Hub setup before managing supported settings.</p></div></header><div class="routerboard-grid mobile-device-list">${cards}</div></section>`;
+  return `<section class="routerboard-console"><header><div><span class="fleet-kicker">ROUTER MANAGEMENT</span><h2>Your router${routers.length === 1 ? "" : "s"}</h2></div></header><div class="routerboard-grid mobile-device-list">${cards}</div></section>`;
 }
 
 async function renderSites(main, workspace = location.hash === "#gateways" ? "gateways" : "routers") {
@@ -1633,11 +1616,11 @@ async function renderSites(main, workspace = location.hash === "#gateways" ? "ga
 
 
   content.innerHTML = `
-    ${gatewayOnly ? '<section class="panel"><div class="panel-body"><h2>Connect your site</h2><p><a href="#sites">1 · Add a site</a> → 2 · Assign and connect its RouterBOARD → 3 · Verify management → <a href="#routers">4 · Discover devices</a></p></div></section>' : ''}
+
     ${routerBoardPanel(routers, fleet, capabilityByID, hubCapability, capabilityStatusByID)}
     ${gatewayOnly ? '<div id="hub-management"></div>' : ""}
     <dialog class="router-capability-dialog" id="router-capability-dialog"><div class="router-capability-shell"><button type="button" class="dialog-close" data-capability-close aria-label="Close">×</button><div id="router-capability-content"></div><div class="dialog-actions"><button type="button" class="btn" data-capability-close>Close</button></div></div></dialog>
-    ${gatewayOnly ? `<details class="panel"><summary>Advanced saved connection records</summary>${connPanel(conns)}</details>` : ""}
+    ${gatewayOnly ? `<details class="panel"><summary>Connection details</summary>${connPanel(conns)}</details>` : ""}
     ${canEdit ? `<div class="workspace-actions"><button class="btn btn-primary" type="button" id="site-add"${gatewayOnly && !sites.length ? ' disabled' : ''}>${gatewayOnly ? "Add site RouterBOARD" : "Add managed device record"}</button>${gatewayOnly && !sites.length ? '<p><a href="#sites">Add a site first to begin onboarding.</a></p>' : ''}</div>` : ""}
     ${gatewayOnly || !capacityLimitsEnabled ? "" : allowancePanel(allowance)}
     ${gatewayOnly || !capacityLimitsEnabled ? "" : requestPanel(requests)}
@@ -1665,8 +1648,7 @@ async function renderSites(main, workspace = location.hash === "#gateways" ? "ga
         </div></div>`}`;
 
   const goView = (name) => {
-    const btn = document.querySelector(`.nav-item[data-view="${name}"]`);
-    if (btn) btn.click();
+    location.hash = name;
   };
   if (gatewayOnly && canEdit) await MMRevamp.bindSites(content, sites, MM, () => renderSites(main, workspace));
   const wzAdd = document.getElementById("wz-add");
@@ -3358,34 +3340,34 @@ async function renderVouchers(main, issuedBatch = null) {
   content.innerHTML = `
     ${issuedVouchers.length ? `<div class="panel"><div class="panel-body" id="gv-batch-result" role="status"><strong>Created ${issuedVouchers.length} guest internet codes.</strong><p>This batch is selected in the print preview below. Use Next for further selections of up to 100 codes. Reloading or leaving this page returns to the full inventory.</p></div></div>` : ""}
     ${guestIssuanceEnabled && (pendingRequest || batches.length || issuedBatch?.state && issuedBatch.state !== "ready") ? `<div class="panel"><div class="panel-head"><h2 class="panel-title">Voucher batches needing attention</h2></div><div class="panel-body">
-      <p>These batches keep their original codes. Resume installation to verify them before printing; retrying does not issue replacement codes.</p>
+      <p>Verify installation before printing. Retry keeps the original codes.</p>
       ${pendingRequest ? `<p>Your browser retained a batch after an incomplete or uncertain request.</p><button class="btn btn-sm" type="button" id="gv-resume-request">Resume saved batch</button>` : ""}
       ${batches.map(batch => `<p><strong>Batch of ${esc(batch.total_count)} codes</strong> · ${esc(guestGateways.find(gateway => gateway.device_id === batch.device_id)?.hardware_name || "Saved gateway")} · ${esc(({pending:"Waiting for installation",unknown:"Installation unconfirmed",installing:"Verification in progress"})[batch.state] || "Needs verification")} · ${esc(batch.verified_count)} / ${esc(batch.total_count)} verified <button class="btn btn-sm" type="button" data-gv-batch-retry="${esc(batch.batch_id)}">Check and resume</button></p>`).join("")}
       <p id="gv-recovery-message" role="status">${issuedBatch?.state && issuedBatch.state !== "ready" ? "Installation is not yet verified. This batch is not ready to print." : ""}</p>
     </div></div>` : ""}
-    ${guestIssuanceEnabled ? `<div class="panel"><div class="panel-head"><h2 class="panel-title">Create guest internet vouchers</h2></div><div class="panel-body">
-      <p class="muted small">Time begins when the guest first uses the code. Reconnecting does not replenish data or restart validity. These codes do not activate a business subscription.</p>
+    ${guestIssuanceEnabled ? `<div class="panel" data-voucher-panel="create"><div class="panel-head"><h2 class="panel-title">Create a batch</h2></div><div class="panel-body">
+      <p class="muted small">Validity starts on first use. Reconnecting keeps the original time and data limits.</p>
       <form id="guest-voucher-form" class="record-form-grid">
         <div class="field"><label for="gv-gateway">Gateway</label><select class="input" id="gv-gateway" required><option value="">Choose a gateway</option>${guestGateways.map(d => `<option value="${esc(d.device_id)}">${esc(d.hardware_name)}</option>`).join("")}</select></div>
         ${assignmentEnabled?`<div class="field"><label for="gv-reseller">Reseller shop</label><select class="input" id="gv-reseller">${shopOptions("")}</select><small>Optional. Stock assignment does not count as a sale.</small></div>`:""}
         <div class="field"><label for="gv-label">Printed plan name</label><input class="input" id="gv-label" maxlength="100" required placeholder="Daily Wi-Fi"></div>
-        <div class="field"><label for="gv-minutes">Elapsed validity (minutes)</label><input class="input" id="gv-minutes" type="number" min="1" max="525600" value="1440" required></div>
-        <div class="field"><label for="gv-data">Total upload + download (MB)</label><input class="input" id="gv-data" type="number" min="1" max="1048576" value="1024" required></div>
+        <div class="field"><label for="gv-minutes">Validity (minutes from first use)</label><input class="input" id="gv-minutes" type="number" min="1" max="525600" value="1440" required></div>
+        <div class="field"><label for="gv-data">Data limit (MB, upload + download)</label><input class="input" id="gv-data" type="number" min="1" max="1048576" value="1024" required></div>
         <div class="field"><label for="gv-price">Price (MMK)</label><input class="input" id="gv-price" type="number" min="0" max="1000000000" value="1000" required></div>
         <div class="field"><label for="gv-count">Number of codes</label><input class="input" id="gv-count" type="number" min="1" max="200" value="10" required></div>
         <div class="workspace-actions"><button class="btn btn-primary" id="gv-create" type="submit">Create codes</button><span class="muted small" id="gv-message" role="status"></span></div>
-      </form></div></div>` : `<div class="panel"><div class="panel-head"><h2 class="panel-title">Guest voucher creation unavailable</h2></div><div class="panel-body"><p class="muted small" role="status">${esc(canEdit && guestVoucherConfig?.enabled === true && guestVoucherConfig.batch_recovery_enabled !== true ? "Voucher creation is temporarily unavailable. Your administrator needs to complete the service update before creating new batches." : guestVoucherCapabilityMessage(guestVoucherConfig, canEdit))}</p></div></div>`}
-    <div class="panel"><div class="panel-head"><h2 class="panel-title">Vouchers</h2>${guestIssuanceEnabled && guestGateways.length ? `<button class="btn btn-sm" id="gv-sync" type="button">Sync router accounting</button><span class="muted small" id="gv-sync-message" role="status"></span>` : ""}</div>
+      </form></div></div>` : `<div class="panel" data-voucher-panel="create"><div class="panel-head"><h2 class="panel-title">Voucher creation unavailable</h2></div><div class="panel-body"><p class="muted small" role="status">${esc(canEdit && guestVoucherConfig?.enabled === true && guestVoucherConfig.batch_recovery_enabled !== true ? "Voucher creation is temporarily unavailable. Your administrator needs to complete the service update before creating new batches." : guestVoucherCapabilityMessage(guestVoucherConfig, canEdit))}</p></div></div>`}
+    <div class="panel" data-voucher-panel="stock"><div class="panel-head"><h2 class="panel-title">Codes</h2>${guestIssuanceEnabled && guestGateways.length ? `<button class="btn btn-sm" id="gv-sync" type="button">Sync router accounting</button><span class="muted small" id="gv-sync-message" role="status"></span>` : ""}</div>
       <div class="panel-body">
         ${!vRes ? `<p class="muted small" role="alert">Could not load vouchers. Reload this page to retry; this is not an empty voucher list.</p>` : list.length ? `<table>
           <thead><tr><th>Code</th><th>Plan</th><th>Amount</th><th>Status</th><th>Created</th></tr></thead>
           <tbody>${vRows}</tbody></table>` : `<p class="muted small">No vouchers yet.</p>`}
       </div></div>
 
-    ${assignmentEnabled?`<section class="panel" aria-label="Batch stock and reseller assignments"><div class="panel-head"><h2 class="panel-title">Batch stock &amp; reseller shops</h2></div><div class="panel-body"><p>Latest 100 batches. Assigning a shop keeps every code, limit and first-use time unchanged. It does not record delivery, payment or activation.</p>${stockRows||"<p>No voucher batches yet.</p>"}</div></section>`:""}
-    <div class="panel"><div class="panel-head"><h2 class="panel-title">Resellers</h2></div>
+    ${assignmentEnabled?`<section class="panel" data-voucher-panel="stock" aria-label="Batch stock and reseller assignments"><div class="panel-head"><h2 class="panel-title">Batch stock &amp; reseller shops</h2></div><div class="panel-body"><p>Latest 100 batches. Shop assignment changes stock ownership only, not sales or activation.</p>${stockRows||"<p>No voucher batches yet.</p>"}</div></section>`:""}
+    <section data-voucher-panel="shops"><div class="panel"><div class="panel-head"><h2 class="panel-title">Reseller shops</h2></div>
       <div class="panel-body">
-        <p class="muted small" id="vr-summary">${rRes ? `${rRes.count} shop(s), ${rRes.active} active. Assign batches to shops below. The shop label appears on printed stock; existing codes never change.` : "Could not load resellers."}</p>
+        <p class="muted small" id="vr-summary">${rRes ? `${rRes.count} shops · ${rRes.active} active` : "Could not load resellers."}</p>
         <table><thead><tr><th>Shop</th><th>Contact</th><th>Location</th><th>Phone</th><th>Prefix</th><th>Status</th><th></th></tr></thead>
         <tbody>${rRows || `<tr><td colspan="7" class="muted small">No resellers yet.</td></tr>`}</tbody></table>
       </div></div>
@@ -3402,7 +3384,8 @@ async function renderVouchers(main, issuedBatch = null) {
           <span id="nr-msg" class="muted small"></span>
         </div></div>` : ""}
 
-    <div class="panel"><div class="panel-head"><h2 class="panel-title">Printed voucher layout</h2></div>
+    </section>
+    <div class="panel" data-voucher-panel="print"><div class="panel-head"><h2 class="panel-title">Print vouchers</h2></div>
       <div class="panel-body">
         <p class="muted small">${laySaved ? "Saved for this business." : "Not saved yet — showing the default layout."}</p>
         <div class="pv-split">
@@ -3534,6 +3517,7 @@ async function renderVouchers(main, issuedBatch = null) {
     }catch(error){if(form.isConnected){status.textContent=error.message||'Assignment not confirmed. Refresh before retrying.';form.dataset.pending='false';button.disabled=false;}}
   }));
   content.querySelectorAll('[data-shop-print]').forEach(button=>button.addEventListener('click',()=>{
+    content.querySelector('[data-voucher-tab="print"]')?.click();
     const filter=document.getElementById('pl-issue-batch'),source=document.getElementById('pl-batch-source');if(!filter)return;
     if(source){source.value='inventory';source.dispatchEvent(new Event('change'));}
     filter.value=button.dataset.shopPrint;filter.dispatchEvent(new Event('change'));filter.scrollIntoView({block:'center',behavior:'smooth'});
@@ -3614,6 +3598,7 @@ async function renderVouchers(main, issuedBatch = null) {
   // needs to see what the layout produces. It reads the form rather than the
   // saved row, so it tracks unsaved edits live.
   wirePrintPreview(main, list, canEdit, issuedVouchers);
+  globalThis.MMWorkspace?.mountVouchers(content, issuedVouchers.length ? "print" : null);
 
   document.querySelectorAll("#content button[data-vrdel]").forEach(b =>
     b.addEventListener("click", async () => {
@@ -5309,7 +5294,7 @@ window.addEventListener("load", async () => {
 
   const markCurrentRoute = (name) => {
     document.querySelectorAll(".nav-item[data-view]").forEach(b => b.removeAttribute("aria-current"));
-    const group = ["network","wan","pppoe","wifi","existing"].includes(name) ? "internet" : name === "managed-devices" ? "routers" : name;
+    const group = globalThis.MMWorkspace?.group(name) || name;
     const btn = document.querySelector(`.nav-item[data-view="${group}"]`);
     if (btn) {
       btn.setAttribute("aria-current", "page");
