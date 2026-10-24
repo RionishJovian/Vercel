@@ -137,6 +137,9 @@ jobs:
             set -e
             cd ${{ env.DEPLOY_PATH }}/deploy
 
+            # Login to GHCR
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
             # Pull new images
             docker compose -f compose.go-restore.yaml pull
 
