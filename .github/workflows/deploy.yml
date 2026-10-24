@@ -137,19 +137,19 @@ jobs:
         run: |
           ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << 'EOF'
             set -e
-            cd ${{ env.DEPLOY_PATH }}
+            cd ${{ env.DEPLOY_PATH }}/deploy
 
             # Pull new images
-            docker compose pull
+            docker compose -f compose.go-restore.yaml pull
 
             # Restart with new images (rolling update via healthchecks)
-            docker compose up -d --remove-orphans
+            docker compose -f compose.go-restore.yaml up -d --remove-orphans
 
             # Clean up old images
             docker image prune -f
 
             echo "Deploy complete. Containers:"
-            docker compose ps
+            docker compose -f compose.go-restore.yaml ps
           EOF
 
       - name: Verify health
