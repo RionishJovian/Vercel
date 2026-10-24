@@ -17,7 +17,7 @@ window.MMHubManagement = (() => {
  function mount(host,routers,canEdit,api=MM) {
   if(!host)return;
   let revision=0;
-  host.innerHTML=`<section class="panel hub-management"><header><p class="network-eyebrow">YOUR ROUTERBOARD, IN MEGA MAGIC</p><h2>Manage your router</h2><p>Choose a task. Your saved Magic Hub connection is reused. A saved record alone does not prove the router is reachable.</p></header><div class="network-tasks" data-hub-sections>${sections.map(([key,title,text])=>`<button type="button" class="network-task" data-hub-section="${key}" aria-pressed="false"><strong>${title}</strong><span>${text}</span></button>`).join('')}</div><div data-hub-workspace aria-live="polite"><p>Select a task to read the router. Opening Magic Hub makes no configuration changes.</p></div></section>`;
+  host.innerHTML=`<section class="panel hub-management"><header><h2>Router settings</h2></header><div class="network-tasks" data-hub-sections>${sections.map(([key,title,text])=>`<button type="button" class="network-task" title="${text}" data-hub-section="${key}" aria-pressed="false"><strong>${title}</strong></button>`).join('')}</div><div data-hub-workspace aria-live="polite"><p>Choose a setting to begin.</p></div></section>`;
   const pane=host.querySelector('[data-hub-workspace]');
   const buttons=[...host.querySelectorAll('[data-hub-section]')];
   const currentRouter=()=>{let saved='';try{saved=sessionStorage.getItem('mm_selected_router')||''}catch(_){}return routers.find(r=>r.device_id===saved)||(routers.length===1?routers[0]:null)};

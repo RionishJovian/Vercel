@@ -60,3 +60,7 @@ For the guest Internet voucher portal, the owner selected the supplied dark emer
 ## Owner-confirmed client model — 2026-10-24
 
 The platform administrator manages client accounts. Each client owns a MikroTik RouterBOARD and uses Mega Magic/Magic Hub for cloud remote management. Each client has one authorized login, one private internal business workspace, one site and one router. Clients do not create staff users or invitations. Preserve existing users/history; do not guess the authorized login in ambiguous legacy workspaces. Keep business_id tenant isolation internally. Individual monthly/annual passes share features; validity differs. A seven-day transition starts once when enforcement deploys, and the platform administrator is exempt. Expiry blocks app management, not already-running guest internet. Old Store purchases do not activate these passes.
+
+## Owner-confirmed simplicity — 2026-10-25
+
+Keep the production Jade Glass theme, with short task labels and minimal descriptions. Group related screens into shared workspaces instead of repeating them in the sidebar. Magic Hub owns site, connection, discovery, network and maintenance; Vouchers owns internet guest-page design; Jellyfin owns its media dashboard and separate media guest page. Preserve old deep links, API authorization, role boundaries, review/apply confirmations and honest unavailable states. Use optional Help for explanations; never hide errors, live status, limits or consequential warnings.

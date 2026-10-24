@@ -21,7 +21,7 @@ assert.match(c.guestVoucherCapabilityMessage(null,false), /requires an owner/);
 assert.ok(!app.includes('TUNNEL ACTIVE'));
 assert.ok(app.includes('MANAGEMENT REACHABLE'));
 assert.ok(!app.includes('<span>Live paths</span>'));
-assert.ok(app.includes('Guest voucher creation unavailable'));
+assert.ok(app.includes('Voucher creation unavailable'));
 assert.ok(app.includes('Could not load vouchers. Reload this page'));
 for (const view of ['wan','pppoe','wifi','existing']) {
   assert.match(app.slice(app.indexOf('const PRODUCT_GUIDE')), new RegExp(`\\["${view}",`));
