@@ -3339,12 +3339,12 @@ async function renderVouchers(main, issuedBatch = null) {
 
   content.innerHTML = `
     ${issuedVouchers.length ? `<div class="panel"><div class="panel-body" id="gv-batch-result" role="status"><strong>Created ${issuedVouchers.length} guest internet codes.</strong><p>This batch is selected in the print preview below. Use Next for further selections of up to 100 codes. Reloading or leaving this page returns to the full inventory.</p></div></div>` : ""}
-    ${guestIssuanceEnabled && (pendingRequest || batches.length || issuedBatch?.state && issuedBatch.state !== "ready") ? `<div class="panel"><div class="panel-head"><h2 class="panel-title">Voucher batches needing attention</h2></div><div class="panel-body">
+    ${guestIssuanceEnabled && (pendingRequest || batches.length || issuedBatch?.state && issuedBatch.state !== "ready") ? `<details class="panel voucher-attention"${pendingRequest || issuedBatch?.state && issuedBatch.state !== "ready" ? " open" : ""}><summary>Installation not verified — review batches</summary><div class="panel-body">
       <p>Verify installation before printing. Retry keeps the original codes.</p>
       ${pendingRequest ? `<p>Your browser retained a batch after an incomplete or uncertain request.</p><button class="btn btn-sm" type="button" id="gv-resume-request">Resume saved batch</button>` : ""}
       ${batches.map(batch => `<p><strong>Batch of ${esc(batch.total_count)} codes</strong> · ${esc(guestGateways.find(gateway => gateway.device_id === batch.device_id)?.hardware_name || "Saved gateway")} · ${esc(({pending:"Waiting for installation",unknown:"Installation unconfirmed",installing:"Verification in progress"})[batch.state] || "Needs verification")} · ${esc(batch.verified_count)} / ${esc(batch.total_count)} verified <button class="btn btn-sm" type="button" data-gv-batch-retry="${esc(batch.batch_id)}">Check and resume</button></p>`).join("")}
       <p id="gv-recovery-message" role="status">${issuedBatch?.state && issuedBatch.state !== "ready" ? "Installation is not yet verified. This batch is not ready to print." : ""}</p>
-    </div></div>` : ""}
+    </div></details>` : ""}
     ${guestIssuanceEnabled ? `<div class="panel" data-voucher-panel="create"><div class="panel-head"><h2 class="panel-title">Create a batch</h2></div><div class="panel-body">
       <p class="muted small">Validity starts on first use. Reconnecting keeps the original time and data limits.</p>
       <form id="guest-voucher-form" class="record-form-grid">

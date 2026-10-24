@@ -35,6 +35,7 @@ window.MMWorkspace = (() => {
   }
   function mountVouchers(host, initial) {
     if (!host?.querySelector('[data-voucher-panel]')) return;
+    host.querySelector('.voucher-nav')?.remove();
     const panels = [...host.querySelectorAll('[data-voucher-panel]')];
     const bar = document.createElement('nav');
     bar.className = 'workspace-nav voucher-nav';
