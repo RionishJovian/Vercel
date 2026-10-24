@@ -37,7 +37,8 @@
   <script src="/assets/js/account-presence.js?v=20261023-1" defer></script>
   <script src="/assets/js/app.js" defer></script>
   <script src="/assets/js/i18n.js" defer></script>
-  <script src="/assets/js/network-control.js?v=20261018-2" defer></script>
+  <script src="/assets/js/network-control.js?v=20261024-hub-1" defer></script>
+  <script src="/assets/js/hub-management.js?v=20261024-1" defer></script>
   <script src="/assets/js/workflow-revamp.js?v=2" defer></script>
   <link rel="stylesheet" href="/assets/vendor/maplibre/maplibre-gl.css">
   <style>
@@ -215,7 +216,7 @@
   </style>
   <link rel="stylesheet" href="/assets/css/redesign.css">
   <link rel="stylesheet" href="/assets/css/media-appearance.css?v=5">
-  <link rel="stylesheet" href="/assets/css/layout.css?v=20261018-2">
+  <link rel="stylesheet" href="/assets/css/layout.css?v=20261024-hub-1">
   <link rel="stylesheet" href="/assets/css/jade-glass.css?v=20261023-4">
 </head>
 <body class="page-app">
@@ -1633,6 +1634,7 @@ async function renderSites(main, workspace = location.hash === "#gateways" ? "ga
   content.innerHTML = `
     ${gatewayOnly ? '<section class="panel"><div class="panel-body"><h2>Connect your site</h2><p><a href="#sites">1 · Add a site</a> → 2 · Assign and connect its RouterBOARD → 3 · Verify management → <a href="#routers">4 · Discover devices</a></p></div></section>' : ''}
     ${routerBoardPanel(routers, fleet, capabilityByID, hubCapability, capabilityStatusByID)}
+    ${gatewayOnly ? '<div id="hub-management"></div>' : ""}
     <dialog class="router-capability-dialog" id="router-capability-dialog"><div class="router-capability-shell"><button type="button" class="dialog-close" data-capability-close aria-label="Close">×</button><div id="router-capability-content"></div><div class="dialog-actions"><button type="button" class="btn" data-capability-close>Close</button></div></div></dialog>
     ${gatewayOnly ? `<details class="panel"><summary>Advanced saved connection records</summary>${connPanel(conns)}</details>` : ""}
     ${canEdit ? `<div class="workspace-actions"><button class="btn btn-primary" type="button" id="site-add"${gatewayOnly && !sites.length ? ' disabled' : ''}>${gatewayOnly ? "Add site RouterBOARD" : "Add managed device record"}</button>${gatewayOnly && !sites.length ? '<p><a href="#sites">Add a site first to begin onboarding.</a></p>' : ''}</div>` : ""}
@@ -1855,6 +1857,7 @@ async function renderSites(main, workspace = location.hash === "#gateways" ? "ga
   routers.forEach(router => { loadRouterCapability(content, router, capabilityByID); });
 
   if (gatewayOnly) {
+    MMHubManagement.mount(content.querySelector("#hub-management"), routers, canEdit, MM);
     wireHubLookup(content); wireConns(main, conns, sites);
     const {mountHubEnrollment}=await import("/assets/js/hub-enrollment.js?v=20261003-simple-management-3");
     if(content.isConnected)mountHubEnrollment(content,{api:MM,escape:esc});

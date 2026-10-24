@@ -101,6 +101,9 @@ func buildNetworkPlan(ctx context.Context, r CommandRunner, request NetworkReque
 		return nil, nil, fmt.Errorf("network settings are required")
 	}
 	allowed := map[string]string{
+		"firewall":        "interface disabled",
+		"shield":          "disabled",
+		"fairshare":       "name target max-limit disabled",
 		"wan":             "mode wan1 wan2 gateway1 gateway2",
 		"pppoe_client":    "name interface user password disabled distance",
 		"pppoe_server":    "name interface gateway_cidr pool_start pool_end dns rate_limit",
@@ -172,6 +175,8 @@ func buildNetworkPlan(ctx context.Context, r CommandRunner, request NetworkReque
 	boolValue := func(value string) bool { return value == "yes" || value == "no" }
 	var err error
 	switch request.Kind {
+	case "firewall", "shield", "fairshare":
+		return buildHubManagementPlan(ctx, r, request)
 	case "wan":
 		if request.ID != "" || (v["mode"] != "balance" && v["mode"] != "failover") || v["wan1"] == v["wan2"] || !networkIPv4(v["gateway1"]) || !networkIPv4(v["gateway2"]) {
 			return nil, nil, fmt.Errorf("choose two distinct active uplinks, their IPv4 ISP gateways and balance or failover mode")
@@ -522,6 +527,15 @@ func buildNetworkPlan(ctx context.Context, r CommandRunner, request NetworkReque
 				if e != nil || n != 1 {
 					return nil, nil, fmt.Errorf("select an existing %s record", field)
 				}
+			}
+		}
+		if request.Kind == "queue" && request.ID != "" {
+			owned, e := networkReadOne(ctx, r, "queues", request.ID, map[string]string{"comment": ""})
+			if e != nil {
+				return nil, nil, e
+			}
+			if strings.HasPrefix(owned["comment"], "mm-fairshare-v1:") {
+				return nil, nil, fmt.Errorf("use Fairshare QoS to edit this owned policy")
 			}
 		}
 		if request.Kind == "queue" {

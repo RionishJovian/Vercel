@@ -157,3 +157,24 @@
   .page-app input:not([type="checkbox"]):not([type="radio"]),
   .page-app select, .page-app textarea { font-size: 16px; }
 }
+
+/* Magic Hub task panel uses the same silver/emerald surfaces as the app. */
+.panel.hub-management { padding:var(--panel-inset,24px); margin-block:24px; min-width:0; }
+.hub-management > header { margin-bottom:24px; max-width:70ch; }
+.hub-management > header h2 { margin:0 0 12px; }
+.hub-management [data-hub-workspace] { margin-top:24px; min-width:0; }
+.hub-management [data-hub-workspace] > div > .network-workspace { margin-block:16px 0; }
+.hub-management [data-health-status] { padding-block:20px; overflow-wrap:anywhere; }
+.hub-management [data-health-status] dl { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:12px 20px; }
+.hub-management [data-health-status] dd { margin:0; font-variant-numeric:tabular-nums; }
+.hub-management [data-health-status] dt { color:var(--ink-soft); }
+@media(max-width:640px) { .hub-management [data-health-status] dl { grid-template-columns:1fr; gap:6px; } .hub-management [data-health-status] dd { margin-bottom:12px; } }
+.hub-management > .network-tasks { grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; }
+.hub-management > .network-tasks .network-task { padding:18px; min-height:116px; }
+.hub-management > .network-tasks .network-task span { font-size:.82rem; }
+@media(max-width:640px) {
+ .hub-management > .network-tasks { grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+ .hub-management > .network-tasks .network-task { min-height:64px; padding:14px; }
+ .hub-management > .network-tasks .network-task strong { font-size:.86rem; }
+ .hub-management > .network-tasks .network-task span { display:none; }
+}
