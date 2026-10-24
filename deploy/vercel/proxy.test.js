@@ -59,11 +59,12 @@ test('malicious forwarded host never establishes same-origin access', async () =
   const headers = prepareUpstreamHeaders(request('PUT', { origin: ORIGIN, 'x-mm-csrf': '1',
     'x-forwarded-host': 'evil.example', 'x-forwarded-proto': 'http',
     forwarded: 'host=evil.example', 'x-original-url': 'https://evil.example',
-    'x-middleware-next': '1' }));
+    'x-middleware-next': '1', 'x-vercel-protection-bypass':'test-only' }));
   assert.equal(headers.get('host'), 'megamagic.tech');
   assert.equal(headers.get('forwarded'), null);
   assert.equal(headers.get('x-forwarded-host'), null);
   assert.equal(headers.get('x-middleware-next'), null);
+  assert.equal(headers.get('x-vercel-protection-bypass'), null);
 });
 
 test('cross-origin GET and preflight fail before credentials can reach upstream', async () => {

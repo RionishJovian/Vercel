@@ -40,7 +40,7 @@ export function prepareUpstreamHeaders(request) {
   const headers = new Headers(request.headers);
   for (const key of [...headers.keys()]) {
     if (key === 'forwarded' || key.startsWith('x-forwarded-') ||
-        key.startsWith('x-original-') || key.startsWith('x-middleware-')) {
+        key.startsWith('x-original-') || key.startsWith('x-middleware-') || key.startsWith('x-vercel-')) {
       headers.delete(key);
     }
   }

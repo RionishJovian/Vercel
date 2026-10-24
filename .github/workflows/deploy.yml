@@ -25,7 +25,7 @@ env:
 
 jobs:
   validate:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     services:
       postgres:
         image: postgres:17-alpine
@@ -38,6 +38,7 @@ jobs:
           --health-cmd pg_isready
           --health-interval 5s --health-timeout 5s --health-retries 20
     env:
+      CHROME_BIN: /usr/bin/google-chrome
       MM_TEST_DB_URL: postgres://postgres:disposable-ci-only@127.0.0.1:5432/postgres?sslmode=disable
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
@@ -58,7 +59,7 @@ jobs:
   build:
     needs: validate
     if: github.event_name == 'workflow_dispatch' && inputs.deploy_vps && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       packages: write
@@ -111,7 +112,7 @@ jobs:
     needs: build
     if: github.event_name == 'workflow_dispatch' && inputs.deploy_vps && github.ref == 'refs/heads/main'
     environment: production
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       packages: read
