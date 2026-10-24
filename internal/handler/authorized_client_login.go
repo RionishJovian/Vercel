@@ -48,6 +48,15 @@ func (h *PlatformHandler) AuthorizeClientLogin(c *gin.Context) {
 		c.Status(503)
 		return
 	}
+	var operatorWorkspace bool
+	if e = tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM users WHERE business_id=$1 AND is_active AND user_role='DEVELOPER')`, biz).Scan(&operatorWorkspace); e != nil {
+		c.Status(503)
+		return
+	}
+	if operatorWorkspace {
+		c.JSON(409, gin.H{"error": "The platform workspace is reserved for platform administrator logins"})
+		return
+	}
 	if role != string(model.RoleOwner) || !active {
 		c.JSON(409, gin.H{"error": "Choose an enabled client owner login; roles are not changed by this operation"})
 		return

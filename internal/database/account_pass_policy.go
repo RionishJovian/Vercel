@@ -36,11 +36,12 @@ func AccountPassBusinessAccess(ctx context.Context, db *DB, businessID string, n
 func AccountPassStatusTXN(tx *sql.Tx, businessID, userID string, enabled, operator bool, now time.Time) (accountpass.Status, error) {
 	var start, end, revoked, transition sql.NullTime
 	var plan, primary sql.NullString
-	err := tx.QueryRow(`SELECT p.plan,p.activated_at,p.expires_at,p.revoked_at,t.expires_at,a.user_id
+	var operatorWorkspace bool
+	err := tx.QueryRow(`SELECT p.plan,p.activated_at,p.expires_at,p.revoked_at,t.expires_at,a.user_id,EXISTS(SELECT 1 FROM users WHERE business_id=$2 AND is_active AND user_role='DEVELOPER')
  FROM (SELECT $1::uuid AS user_id) me
  LEFT JOIN app_account_passes p ON p.user_id=me.user_id AND p.business_id=$2
  LEFT JOIN app_account_pass_transitions t ON t.user_id=me.user_id AND t.business_id=$2
- LEFT JOIN business_app_primary_users a ON a.business_id=$2`, userID, businessID).Scan(&plan, &start, &end, &revoked, &transition, &primary)
+ LEFT JOIN business_app_primary_users a ON a.business_id=$2`, userID, businessID).Scan(&plan, &start, &end, &revoked, &transition, &primary, &operatorWorkspace)
 	if err != nil {
 		return accountpass.Status{}, err
 	}
@@ -51,7 +52,7 @@ func AccountPassStatusTXN(tx *sql.Tx, businessID, userID string, enabled, operat
 		return &v.Time
 	}
 	status := accountpass.Evaluate(now, enabled, operator, pointer(start), pointer(end), pointer(revoked), pointer(transition))
-	status.Authorized = operator || (primary.Valid && primary.String == userID)
+	status.Authorized = operator || (!operatorWorkspace && primary.Valid && primary.String == userID)
 	if enabled && !status.Authorized {
 		status.Access = false
 		status.State = "authorized_login_required"

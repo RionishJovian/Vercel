@@ -20,7 +20,7 @@ func (r *PlatformBusinessRepository) PlatformAccounts(ctx context.Context, limit
  FROM users u JOIN businesses b ON b.business_id=u.business_id ORDER BY b.company_name,u.email,u.user_id LIMIT $1 OFFSET $2
  ) SELECT jsonb_build_object(
  'user_id',u.user_id,'business_id',u.business_id,'email',u.email,'full_name',u.full_name,'user_role',u.user_role,
- 'primary_login_id',primary_login.user_id,'authorized_login',(u.user_role='DEVELOPER' OR primary_login.user_id=u.user_id),
+ 'operator_workspace',EXISTS(SELECT 1 FROM users op WHERE op.business_id=u.business_id AND op.is_active AND op.user_role='DEVELOPER'),'primary_login_id',primary_login.user_id,'authorized_login',(u.user_role='DEVELOPER' OR primary_login.user_id=u.user_id),
  'company_name',u.company_name,'is_active',(u.user_active AND u.business_active),'last_login_at',u.last_login_at,
  'presence',CASE WHEN NOT(u.user_active AND u.business_active) THEN 'offline' WHEN pr.online THEN 'online' WHEN pr.connected THEN 'idle' WHEN pr.last_seen_at IS NULL THEN 'unobserved' ELSE 'offline' END,
  'last_seen_at',pr.last_seen_at,'last_active_at',pr.last_active_at,

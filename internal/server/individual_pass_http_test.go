@@ -42,6 +42,13 @@ func TestIndividualProductionRouteChain(t *testing.T) {
 		return u
 	}
 	owner, dev := makeUser(model.RoleOwner), makeUser(model.RoleDeveloper)
+	legacyOperator := &model.User{BusinessID: dev.BusinessID, Email: "legacy-platform@fixture.test", UserRole: model.RoleOwner, PasswordHash: "fixture"}
+	if e := db.QueryRow(`INSERT INTO users(business_id,email,full_name,password_hash,user_role)VALUES($1,$2,'Legacy platform','fixture','OWNER')RETURNING user_id`, dev.BusinessID, legacyOperator.Email).Scan(&legacyOperator.UserID); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := db.Exec(`INSERT INTO business_app_primary_users(business_id,user_id)VALUES($1,$2)`, dev.BusinessID, legacyOperator.UserID); e != nil {
+		t.Fatal(e)
+	}
 	token := func(u *model.User) string {
 		v, _, e := service.StartSession(u)
 		if e != nil {
@@ -50,6 +57,7 @@ func TestIndividualProductionRouteChain(t *testing.T) {
 		return v
 	}
 	ownerToken, devToken := token(owner), token(dev)
+	legacyOperatorToken := token(legacyOperator)
 	a := handler.NewAuthHandler(database.NewUserRepository(db), service, db)
 	a.IndividualPassesEnabled = true
 	p := handler.NewPlatformHandler(database.NewPlatformBusinessRepository(db), nil, nil, db, service)
@@ -119,6 +127,8 @@ func TestIndividualProductionRouteChain(t *testing.T) {
 		}
 		return w
 	}
+	req("GET", "/api/v1/routers", legacyOperatorToken, "", 402)
+	req("PUT", "/api/v1/platform/accounts/"+legacyOperator.UserID+"/pass", devToken, `{"action":"activate","plan":"monthly","revision":0}`, 409)
 	for _, path := range []string{"/api/v1/routers", "/api/v1/sites", "/api/v1/guest-vouchers/config"} {
 		req("GET", path, ownerToken, "", 402)
 	}

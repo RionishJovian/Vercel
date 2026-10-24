@@ -143,6 +143,15 @@ func (h *PlatformHandler) DecideAccountRenewal(c *gin.Context) {
 				c.JSON(409, gin.H{"error": "Renewal target is not the authorized client login"})
 				return
 			}
+			policy, e := database.AccountPassStatusTXN(tx, biz, user, true, false, now)
+			if e != nil {
+				c.Status(503)
+				return
+			}
+			if !policy.Authorized {
+				c.JSON(409, gin.H{"error": "This login is not an authorized client workspace owner"})
+				return
+			}
 		}
 
 		e = tx.QueryRow(`SELECT revision FROM app_account_passes WHERE user_id=$1 AND business_id=$2 FOR UPDATE`, user, biz).Scan(&revision)

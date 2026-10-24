@@ -66,10 +66,10 @@ ALTER TABLE business_app_primary_events FORCE ROW LEVEL SECURITY;
 -- System audit only; no authenticated mutation privileges.
 -- Existing canonical owner identity is evidence; ambiguous owners are not guessed.
 INSERT INTO business_app_primary_users(business_id,user_id)
- SELECT b.business_id,u.user_id FROM businesses b JOIN users u ON u.business_id=b.business_id AND u.email=b.owner_email AND u.user_role='OWNER';
+ SELECT b.business_id,u.user_id FROM businesses b JOIN users u ON u.business_id=b.business_id AND u.email=b.owner_email AND u.user_role='OWNER' AND NOT EXISTS(SELECT 1 FROM users op WHERE op.business_id=b.business_id AND op.is_active AND op.user_role='DEVELOPER');
 CREATE FUNCTION assign_new_business_primary_login() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$
 BEGIN
- IF NEW.user_role='OWNER' AND EXISTS(SELECT 1 FROM public.businesses b WHERE b.business_id=NEW.business_id AND b.owner_email=NEW.email) THEN
+ IF NEW.user_role='OWNER' AND NOT EXISTS(SELECT 1 FROM public.users WHERE business_id=NEW.business_id AND is_active AND user_role='DEVELOPER') AND EXISTS(SELECT 1 FROM public.businesses b WHERE b.business_id=NEW.business_id AND b.owner_email=NEW.email) THEN
   INSERT INTO public.business_app_primary_users(business_id,user_id) VALUES(NEW.business_id,NEW.user_id) ON CONFLICT(business_id) DO NOTHING;
  END IF;
  RETURN NEW;

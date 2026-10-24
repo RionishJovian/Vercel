@@ -27,7 +27,7 @@ func TestIndividualClientPassWorkflow(t *testing.T) {
 		}
 		return u
 	}
-	primary, secondary, other, dev := makeUser(biz, model.RoleOwner), makeUser(biz, model.RoleAdmin), makeUser(foreign, model.RoleOwner), makeUser(biz, model.RoleDeveloper)
+	primary, secondary, other, dev := makeUser(biz, model.RoleOwner), makeUser(biz, model.RoleAdmin), makeUser(foreign, model.RoleOwner), makeUser(insertBusiness(db), model.RoleDeveloper)
 	if _, e := db.Exec(`INSERT INTO business_app_primary_users(business_id,user_id)VALUES($1,$2)`, foreign, other.UserID); e != nil {
 		t.Fatal(e)
 	}
@@ -121,6 +121,9 @@ func TestIndividualClientPassWorkflow(t *testing.T) {
 		t.Fatal(e)
 	}
 	check(req("POST", "/api/v1/routers", primaryToken, "{}"), 402)
+	if allowed, e := database.AccountPassBusinessAccess(context.Background(), db, biz, time.Now()); e != nil || allowed {
+		t.Fatal("expired client worker access", allowed, e)
+	}
 	check(req("GET", "/api/v1/me/app-pass", primaryToken, ""), 200)
 	check(req("POST", "/api/v1/guest/redeem", "", "{}"), 204)
 	check(req("POST", "/api/v1/routers", devToken, "{}"), 204)

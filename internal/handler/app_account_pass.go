@@ -57,10 +57,19 @@ func (h *PlatformHandler) RecordAccountPass(c *gin.Context) {
 		return
 	}
 
-	if h.IndividualPassesEnabled {
+	if h.IndividualPassesEnabled && in.Action == "activate" {
 		var primary string
 		if e := tx.QueryRow(`SELECT user_id FROM business_app_primary_users WHERE business_id=$1 FOR SHARE`, businessID).Scan(&primary); e != nil || primary != userID {
 			c.JSON(409, gin.H{"error": "Select this business's authorized primary login before activating its pass"})
+			return
+		}
+		status, e := database.AccountPassStatusTXN(tx, businessID, userID, true, false, time.Now().UTC())
+		if e != nil {
+			c.JSON(503, gin.H{"error": "Client login policy unavailable"})
+			return
+		}
+		if !status.Authorized {
+			c.JSON(409, gin.H{"error": "This login is not an authorized client workspace owner"})
 			return
 		}
 	}
