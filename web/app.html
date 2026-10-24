@@ -3126,6 +3126,7 @@ function sheetTile(lay, dens, v) {
     if (v.data_mb > 0) allowance.push(`${v.data_mb} MB`);
     if (allowance.length) bottom.push([allowance.join(" · "), dens.metaFontPx, "color:#556"]);
   }
+  if(v.reseller_shop)bottom.push([`Shop: ${v.reseller_shop}${v.reseller_prefix?" · "+v.reseller_prefix:""}`,dens.metaFontPx,"color:#556"]);
   const price = v.price_mmk ?? v.amount;
   if (lay.show_price && price !== null && price !== undefined && price !== "") bottom.push([`${price} MMK`, dens.metaFontPx, "color:#556"]);
   if (lay.show_expiry && v.expires_at) bottom.push([String(v.expires_at).slice(0,10), dens.metaFontPx, "color:#556"]);
@@ -3166,8 +3167,9 @@ function wirePrintPreview(main, vouchers, canEdit, issuedVouchers = []) {
   const statusInput = main.querySelector("#pl-batch-status");
   const pageInput = main.querySelector("#pl-batch-page");
   const sourceInput = main.querySelector("#pl-batch-source");
+ const issueBatchInput=main.querySelector("#pl-issue-batch");
   let selectedPage = 1;
-  const selection = () => voucherPrintSelection(sourceInput && sourceInput.value === "issued" ? issuedVouchers : vouchers, sizeInput ? sizeInput.value : 100, selectedPage, statusInput ? statusInput.value : "available");
+  const selection = () => voucherPrintSelection((sourceInput && sourceInput.value === "issued" ? issuedVouchers : vouchers).filter(v=>!issueBatchInput?.value||v.issue_batch_id===issueBatchInput.value), sizeInput ? sizeInput.value : 100, selectedPage, statusInput ? statusInput.value : "available");
   let mode = "a4";
   const styleEl = document.createElement("style");
   styleEl.textContent = SHEET_CSS;
@@ -3223,11 +3225,11 @@ function wirePrintPreview(main, vouchers, canEdit, issuedVouchers = []) {
   const pbtn = main.querySelector("#pl-print");
   if (pbtn) pbtn.addEventListener("click", () => {
     const real = selection().vouchers;
-    if (!real.length) { hint.textContent = "Nothing to print yet — create vouchers first."; return; }
+    if (!real.length) { hint.textContent = "No verified codes in this selection. Connect the gateway and verify installation, or select another batch."; return; }
     printSheet(readPrintLayout(), mode, real);
   });
 
-  [sizeInput, statusInput, sourceInput].filter(Boolean).forEach(el => el.addEventListener("change", () => { selectedPage = 1; draw(); }));
+  [sizeInput, statusInput, sourceInput,issueBatchInput].filter(Boolean).forEach(el => el.addEventListener("change", () => { selectedPage = 1; draw(); }));
   if (pageInput) pageInput.addEventListener("change", () => { selectedPage = Number(pageInput.value); draw(); });
   const previous = main.querySelector("#pl-batch-prev"), next = main.querySelector("#pl-batch-next");
   if (previous) previous.addEventListener("click", () => { selectedPage--; draw(); });
@@ -3317,17 +3319,19 @@ async function renderVouchers(main, issuedBatch = null) {
   const guestIssuanceEnabled = canEdit && guestVoucherConfig && guestVoucherConfig.enabled === true && guestVoucherConfig.batch_recovery_enabled === true;
   const pendingRequest = canEdit ? pendingGuestVoucherRequest() : null;
   const batches = asArray(batchRes && batchRes.batches);
+ const stockBatches=asArray(batchRes&&batchRes.stock_batches);
+ const assignmentEnabled=canEdit&&batchRes?.reseller_assignment_enabled===true;
 
   const list = vRes ? asArray(vRes.vouchers) : [];
   const refreshed = new Map(list.map(v=>[v.id || v.code,v]));
   const issuedVouchers = asArray(issuedBatch && issuedBatch.vouchers).filter(guestVoucherPrintable).map(v=>{
     const current = refreshed.get(v.id || v.code);
-    return {...v, ...(current ? {status:current.status, first_seen_at:current.first_seen_at, expires_at:current.expires_at} : {}), data_mb:issuedBatch.data_mb};
+    return {...v, ...(current ? {status:current.status, first_seen_at:current.first_seen_at, expires_at:current.expires_at,reseller_id:current.reseller_id,reseller_shop:current.reseller_shop,reseller_prefix:current.reseller_prefix} : {}), data_mb:issuedBatch.data_mb};
   });
   const vRows = list.slice(0, 50).map(v => `
     <tr>
       <td class="mono">${esc(v.code)}</td>
-      <td>${v.plan_key ? esc(v.plan_key) : "—"}</td>
+      <td>${esc(v.plan_label||v.plan_key||"—")}${v.reseller_shop?`<small class="muted"> · ${esc(v.reseller_shop)} (${esc(v.reseller_prefix||"")})</small>`:""}</td>
       <td class="num">${esc(v.price_mmk ?? v.amount ?? 0)}</td>
       <td>${guestVoucherPrintable(v) ? businessStatusBadge(v.status, "voucher") : `<span class="status warn">Router installation unconfirmed</span>`}</td>
       <td>${ts(v.created_at)}</td>
@@ -3346,6 +3350,8 @@ async function renderVouchers(main, issuedBatch = null) {
         <button class="btn btn-sm" data-vrdel="${esc(r.id)}">Delete</button>` : ""}</td>
     </tr>`).join("");
 
+  const shopOptions = selected => `<option value="">Direct sales / unassigned</option>${resellers.filter(shop=>shop.active||shop.id===selected).map(shop=>`<option value="${esc(shop.id)}"${shop.id===selected?" selected":""}>${esc(shop.shop_name)} · ${esc(shop.code_prefix)}${shop.active?"":" (inactive)"}</option>`).join("")}`;
+  const stockRows=stockBatches.map(batch=>`<form class="panel-body record-form-grid" data-batch-shop="${esc(batch.batch_id)}" data-expected-shop="${esc(batch.reseller_id||"")}"><div><strong>${esc(batch.plan_label||"Voucher batch")}</strong><p>${esc(batch.total_count)} codes · ${esc(batch.installed_count)} installed · ${esc(batch.activated_count)} activated · ${esc(ts(batch.created_at))}</p><small class="mono">${esc(batch.batch_id)}</small></div><div class="field"><label>Assigned reseller shop<select class="input" name="reseller_id" aria-label="Shop for batch ${esc(batch.batch_id)}">${shopOptions(batch.reseller_id||"")}</select></label></div><div class="workspace-actions"><button class="btn" type="submit">Save shop assignment</button><button class="btn" type="button" data-shop-print="${esc(batch.batch_id)}">Select batch for printing</button></div><p role="status"></p></form>`).join("");
   const lay = (lRes && lRes.layout) || {};
   const laySaved = !!(lRes && lRes.saved);
 
@@ -3361,6 +3367,7 @@ async function renderVouchers(main, issuedBatch = null) {
       <p class="muted small">Time begins when the guest first uses the code. Reconnecting does not replenish data or restart validity. These codes do not activate a business subscription.</p>
       <form id="guest-voucher-form" class="record-form-grid">
         <div class="field"><label for="gv-gateway">Gateway</label><select class="input" id="gv-gateway" required><option value="">Choose a gateway</option>${guestGateways.map(d => `<option value="${esc(d.device_id)}">${esc(d.hardware_name)}</option>`).join("")}</select></div>
+        ${assignmentEnabled?`<div class="field"><label for="gv-reseller">Reseller shop</label><select class="input" id="gv-reseller">${shopOptions("")}</select><small>Optional. Stock assignment does not count as a sale.</small></div>`:""}
         <div class="field"><label for="gv-label">Printed plan name</label><input class="input" id="gv-label" maxlength="100" required placeholder="Daily Wi-Fi"></div>
         <div class="field"><label for="gv-minutes">Elapsed validity (minutes)</label><input class="input" id="gv-minutes" type="number" min="1" max="525600" value="1440" required></div>
         <div class="field"><label for="gv-data">Total upload + download (MB)</label><input class="input" id="gv-data" type="number" min="1" max="1048576" value="1024" required></div>
@@ -3375,9 +3382,10 @@ async function renderVouchers(main, issuedBatch = null) {
           <tbody>${vRows}</tbody></table>` : `<p class="muted small">No vouchers yet.</p>`}
       </div></div>
 
+    ${assignmentEnabled?`<section class="panel" aria-label="Batch stock and reseller assignments"><div class="panel-head"><h2 class="panel-title">Batch stock &amp; reseller shops</h2></div><div class="panel-body"><p>Latest 100 batches. Assigning a shop keeps every code, limit and first-use time unchanged. It does not record delivery, payment or activation.</p>${stockRows||"<p>No voucher batches yet.</p>"}</div></section>`:""}
     <div class="panel"><div class="panel-head"><h2 class="panel-title">Resellers</h2></div>
       <div class="panel-body">
-        <p class="muted small" id="vr-summary">${rRes ? `${rRes.count} shop(s), ${rRes.active} active. Each shop's code prefix keeps its vouchers distinguishable.` : "Could not load resellers."}</p>
+        <p class="muted small" id="vr-summary">${rRes ? `${rRes.count} shop(s), ${rRes.active} active. Assign batches to shops below. The shop label appears on printed stock; existing codes never change.` : "Could not load resellers."}</p>
         <table><thead><tr><th>Shop</th><th>Contact</th><th>Location</th><th>Phone</th><th>Prefix</th><th>Status</th><th></th></tr></thead>
         <tbody>${rRows || `<tr><td colspan="7" class="muted small">No resellers yet.</td></tr>`}</tbody></table>
       </div></div>
@@ -3429,6 +3437,7 @@ async function renderVouchers(main, issuedBatch = null) {
                 <button class="btn btn-sm" id="pl-print">Print…</button>
               </div></div>
             ${issuedVouchers.length ? `<div class="field"><label for="pl-batch-source">Codes to print</label><select class="input" id="pl-batch-source"><option value="issued">Newly created batch · ${issuedVouchers.length} codes</option><option value="inventory">Loaded voucher inventory</option></select></div>` : ""}
+            ${assignmentEnabled?`<div class="field"><label for="pl-issue-batch">Voucher batch</label><select class="input" id="pl-issue-batch"><option value="">All loaded batches</option>${stockBatches.map(b=>`<option value="${esc(b.batch_id)}">${esc(b.plan_label)} · ${esc(b.shop_name||"Unassigned")} · ${esc(b.total_count)} codes · ${esc(b.batch_id.slice(0,8))}</option>`).join("")}</select></div>`:""}
             <div class="pl-grid">
               <div class="field"><label for="pl-batch-size">Vouchers per selection (1–100)</label><input class="input" id="pl-batch-size" type="number" min="1" max="100" value="100"></div>
               <div class="field"><label for="pl-batch-status">Print filter</label><select class="input" id="pl-batch-status"><option value="available">Available codes</option><option value="all">All codes</option><option value="used">Used codes</option><option value="expired">Expired codes</option></select></div>
@@ -3445,9 +3454,9 @@ async function renderVouchers(main, issuedBatch = null) {
 
   const guestVoucherForm = document.getElementById("guest-voucher-form");
   if (guestVoucherForm && pendingRequest) {
-    for (const [id,key] of [["gv-gateway","device_id"],["gv-label","plan_label"],["gv-minutes","duration_minutes"],["gv-data","data_mb"],["gv-price","price_mmk"],["gv-count","count"]]) {
+    for (const [id,key] of [["gv-gateway","device_id"],["gv-label","plan_label"],["gv-minutes","duration_minutes"],["gv-data","data_mb"],["gv-price","price_mmk"],["gv-count","count"],["gv-reseller","reseller_id"]]) {
       const field = guestVoucherForm.querySelector("#"+id);
-      if (field) field.value = String(pendingRequest[key]);
+      if (field) field.value = pendingRequest[key] == null ? "" : String(pendingRequest[key]);
     }
   }
   if (guestVoucherForm) guestVoucherForm.addEventListener("submit", async event => {
@@ -3457,6 +3466,8 @@ async function renderVouchers(main, issuedBatch = null) {
     if (button.disabled) return;
     const value = id => document.getElementById(id).value;
     const body = { device_id: value("gv-gateway"), plan_label: value("gv-label").trim(), duration_minutes: Number(value("gv-minutes")), data_mb: Number(value("gv-data")), price_mmk: Number(value("gv-price")), count: Number(value("gv-count")) };
+    const selectedShop=document.getElementById("gv-reseller")?.value||"";
+    if(selectedShop)body.reseller_id=selectedShop;
     const saved = pendingGuestVoucherRequest();
     if (saved && Object.keys(body).some(key => saved[key] !== body[key])) {
       message.textContent = "Resume the saved batch before changing its settings or creating another batch.";
@@ -3510,6 +3521,22 @@ async function renderVouchers(main, issuedBatch = null) {
   });
   content.querySelectorAll("[data-gv-batch-retry]").forEach(button => button.addEventListener("click", () => {
     resumeGuestVoucherBatch(button, "/guest-vouchers/batches/" + encodeURIComponent(button.dataset.gvBatchRetry) + "/retry", {}, button.dataset.gvBatchRetry);
+  }));
+
+  content.querySelectorAll('[data-batch-shop]').forEach(form=>form.addEventListener('submit',async event=>{
+    event.preventDefault();if(form.dataset.pending==='true')return;
+    const button=form.querySelector('button[type="submit"]'),status=form.querySelector('[role="status"]');
+    form.dataset.pending='true';button.disabled=true;status.textContent='Saving shop assignment…';
+    const requested=form.querySelector('[name="reseller_id"]').value;
+    try{const result=await MM.put('/guest-vouchers/batches/'+encodeURIComponent(form.dataset.batchShop)+'/reseller',{reseller_id:requested,expected_reseller_id:form.dataset.expectedShop,confirmed:true});
+      if(result.assignment?.batch_id!==form.dataset.batchShop||result.assignment?.reseller_id!==requested||result.codes_changed!==false)throw Error('Assignment readback did not match. Refresh before retrying.');
+      if(form.isConnected)await renderVouchers(main,issuedBatch);
+    }catch(error){if(form.isConnected){status.textContent=error.message||'Assignment not confirmed. Refresh before retrying.';form.dataset.pending='false';button.disabled=false;}}
+  }));
+  content.querySelectorAll('[data-shop-print]').forEach(button=>button.addEventListener('click',()=>{
+    const filter=document.getElementById('pl-issue-batch'),source=document.getElementById('pl-batch-source');if(!filter)return;
+    if(source){source.value='inventory';source.dispatchEvent(new Event('change'));}
+    filter.value=button.dataset.shopPrint;filter.dispatchEvent(new Event('change'));filter.scrollIntoView({block:'center',behavior:'smooth'});
   }));
 
   // Router -> hub -> app accounting sync: the periodic system worker also does

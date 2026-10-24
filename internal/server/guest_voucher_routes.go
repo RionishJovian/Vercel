@@ -31,6 +31,9 @@ func registerGuestVoucherRoutes(r *gin.Engine, cfg *config.Config, db *database.
 	if e := guestVoucherSchemaReady(db); e != nil {
 		return e
 	}
+	if e := database.CheckGuestBatchResellerSchema(db); e != nil {
+		return e
+	}
 	box, e := secretbox.New(cfg.Provisioner.Applier.CredentialKey)
 	if e != nil {
 		return e
@@ -95,12 +98,13 @@ func registerGuestVoucherEndpoints(r *gin.Engine, service *auth.Service, db *dat
 	owner.GET("/batches", h.ListIssueBatches)
 	owner.GET("/batches/:batchId", h.GetIssueBatch)
 	owner.POST("/batches/:batchId/retry", h.RetryIssueBatch)
+	owner.PUT("/batches/:batchId/reseller", h.BatchReseller)
 	// Router -> hub -> app accounting synchronization for locally validated
 	// voucher codes (ground-operation design).
 	owner.POST("/sync", h.SyncVoucherLogins)
 	owner.GET("/config", func(c *gin.Context) {
 		c.Header("Cache-Control", "no-store")
-		c.JSON(200, gin.H{"enabled": true, "validity_starts": "first_use", "batch_recovery_enabled": true, "batch_id_required": true, "max_batch_size": handler.GuestVoucherIssueBatchLimit})
+		c.JSON(200, gin.H{"enabled": true, "validity_starts": "first_use", "batch_recovery_enabled": true, "batch_id_required": true, "reseller_assignment_enabled": true, "max_batch_size": handler.GuestVoucherIssueBatchLimit})
 	})
 	public := r.Group("/api/v1/portal", auth.CookieOrigin(), auth.BoundedPortalRateLimit(), boundedPortalBody())
 	public.POST("/:deviceId/guest-voucher", h.Redeem)

@@ -37,6 +37,7 @@ func (h *GuestVoucherHandler) issueGuestVoucherBatch(c *gin.Context) {
 	}
 	b.Label = strings.TrimSpace(b.Label)
 	b.DeviceID = strings.ToLower(b.DeviceID)
+	b.ResellerID = strings.ToLower(b.ResellerID)
 	id := strings.ToLower(strings.TrimSpace(b.BatchID))
 	key := strings.ToLower(strings.TrimSpace(c.GetHeader("Idempotency-Key")))
 	if id == "" {
@@ -60,7 +61,8 @@ func (h *GuestVoucherHandler) issueGuestVoucherBatch(c *gin.Context) {
 	parameters, _ := json.Marshal(struct {
 		DeviceID, Label                  string
 		PriceMMK, Minutes, DataMB, Count int
-	}{b.DeviceID, b.Label, b.PriceMMK, b.Minutes, b.DataMB, b.Count})
+		ResellerID                       string `json:",omitempty"`
+	}{b.DeviceID, b.Label, b.PriceMMK, b.Minutes, b.DataMB, b.Count, b.ResellerID})
 	sum := sha256.Sum256(parameters)
 	batch := database.GuestVoucherIssueBatch{ID: id, BusinessID: biz, DeviceID: b.DeviceID,
 		RequestHash: hex.EncodeToString(sum[:]), Label: b.Label, PriceMMK: b.PriceMMK,
@@ -83,6 +85,11 @@ func (h *GuestVoucherHandler) issueGuestVoucherBatch(c *gin.Context) {
 		}
 		if !created {
 			return nil
+		}
+		if b.ResellerID != "" {
+			if _, err := database.AssignGuestBatchResellerTXN(tx, biz, id, b.ResellerID, "", auth.GetUserID(c)); err != nil {
+				return err
+			}
 		}
 		for i := 0; i < b.Count; i++ {
 			v, err := h.Vouchers.createOneVoucher(tx, biz, "guest-internet", b.Label, b.PriceMMK,
@@ -236,16 +243,21 @@ func (h *GuestVoucherHandler) ListIssueBatches(c *gin.Context) {
 		return
 	}
 	var batches []database.GuestVoucherIssueSummary
+	var stock []database.GuestBatchStock
 	err := runInTenant(c, h.DB, biz, func(tx *sql.Tx) error {
 		var err error
 		batches, err = (database.GuestVoucherBatchRepository{}).ListIncompleteTXN(tx, biz)
+		if err != nil {
+			return err
+		}
+		stock, err = database.ListGuestBatchStockTXN(tx, biz)
 		return err
 	})
 	if err != nil {
 		c.JSON(503, gin.H{"error": "voucher batch records unavailable"})
 		return
 	}
-	c.JSON(200, gin.H{"batches": batches})
+	c.JSON(200, gin.H{"batches": batches, "stock_batches": stock, "reseller_assignment_enabled": true, "limit": 100})
 }
 
 func (h *GuestVoucherHandler) respondGuestVoucherBatch(c *gin.Context, biz, id string, readyStatus int) {

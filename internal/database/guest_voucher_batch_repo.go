@@ -104,6 +104,21 @@ func (GuestVoucherBatchRepository) ItemsTXN(tx *sql.Tx, businessID, batchID stri
 		v.IssueBatchID, v.InstallState = batchID, states[i]
 		items = append(items, GuestVoucherIssueItem{Voucher: v, InstallState: states[i]})
 	}
+	var exists bool
+	if e := tx.QueryRow(`SELECT to_regclass('public.guest_voucher_batch_resellers') IS NOT NULL`).Scan(&exists); e != nil {
+		return nil, e
+	}
+	if exists {
+		assignment, e := GetGuestBatchResellerTXN(tx, businessID, batchID)
+		if e != nil {
+			return nil, e
+		}
+		for _, item := range items {
+			item.Voucher.ResellerID = assignment.ResellerID
+			item.Voucher.ResellerShop = assignment.ShopName
+			item.Voucher.ResellerPrefix = assignment.CodePrefix
+		}
+	}
 	return items, nil
 }
 
@@ -174,7 +189,15 @@ func (GuestVoucherBatchRepository) AnnotateTXN(tx *sql.Tx, businessID string, vo
 	if err := tx.QueryRow(`SELECT to_regclass('public.guest_voucher_issue_items') IS NOT NULL`).Scan(&exists); err != nil || !exists {
 		return err
 	}
-	rows, err := tx.Query(`SELECT voucher_id,batch_id,install_state FROM guest_voucher_issue_items WHERE business_id=$1`, businessID)
+	var resellerSchema bool
+	if err := tx.QueryRow(`SELECT to_regclass('public.guest_voucher_batch_resellers') IS NOT NULL`).Scan(&resellerSchema); err != nil {
+		return err
+	}
+	query := `SELECT voucher_id,batch_id,install_state,'','','' FROM guest_voucher_issue_items WHERE business_id=$1`
+	if resellerSchema {
+		query = `SELECT i.voucher_id,i.batch_id,i.install_state,COALESCE(a.reseller_id::text,''),COALESCE(a.shop_name,''),COALESCE(a.code_prefix,'') FROM guest_voucher_issue_items i LEFT JOIN guest_voucher_batch_resellers a ON a.business_id=i.business_id AND a.batch_id=i.batch_id WHERE i.business_id=$1`
+	}
+	rows, err := tx.Query(query, businessID)
 	if err != nil {
 		return err
 	}
@@ -184,12 +207,13 @@ func (GuestVoucherBatchRepository) AnnotateTXN(tx *sql.Tx, businessID string, vo
 		byID[v.ID] = v
 	}
 	for rows.Next() {
-		var id, batch, state string
-		if err := rows.Scan(&id, &batch, &state); err != nil {
+		var id, batch, state, reseller, shop, prefix string
+		if err := rows.Scan(&id, &batch, &state, &reseller, &shop, &prefix); err != nil {
 			return err
 		}
 		if v := byID[id]; v != nil {
 			v.IssueBatchID, v.InstallState = batch, state
+			v.ResellerID, v.ResellerShop, v.ResellerPrefix = reseller, shop, prefix
 		}
 	}
 	return rows.Err()

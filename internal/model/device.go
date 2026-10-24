@@ -32,6 +32,9 @@ type PeerKey struct {
 }
 
 type Voucher struct {
+	ResellerID      string            `json:"reseller_id,omitempty"`
+	ResellerShop    string            `json:"reseller_shop,omitempty"`
+	ResellerPrefix  string            `json:"reseller_prefix,omitempty"`
 	IssueBatchID    string            `json:"issue_batch_id,omitempty"`
 	InstallState    string            `json:"install_state,omitempty"`
 	ID              string            `json:"id"`

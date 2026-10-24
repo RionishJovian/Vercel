@@ -80,17 +80,18 @@ type GuestVoucherHandler struct {
 }
 
 type guestVoucherBatch struct {
-	BatchID  string `json:"batch_id"`
-	DeviceID string `json:"device_id"`
-	Label    string `json:"plan_label"`
-	PriceMMK int    `json:"price_mmk"`
-	Minutes  int    `json:"duration_minutes"`
-	DataMB   int    `json:"data_mb"`
-	Count    int    `json:"count"`
+	ResellerID string `json:"reseller_id,omitempty"`
+	BatchID    string `json:"batch_id"`
+	DeviceID   string `json:"device_id"`
+	Label      string `json:"plan_label"`
+	PriceMMK   int    `json:"price_mmk"`
+	Minutes    int    `json:"duration_minutes"`
+	DataMB     int    `json:"data_mb"`
+	Count      int    `json:"count"`
 }
 
 func (b guestVoucherBatch) valid() bool {
-	return guestVoucherUUID.MatchString(b.DeviceID) && strings.TrimSpace(b.Label) != "" && len(b.Label) <= 100 &&
+	return (b.ResellerID == "" || guestVoucherUUID.MatchString(b.ResellerID)) && guestVoucherUUID.MatchString(b.DeviceID) && strings.TrimSpace(b.Label) != "" && len(b.Label) <= 100 &&
 		b.PriceMMK >= 0 && b.PriceMMK <= 1000000000 && b.Minutes >= 1 && b.Minutes <= 525600 &&
 		b.DataMB >= 1 && b.DataMB <= 1048576 && b.Count >= 1 && b.Count <= GuestVoucherIssueBatchLimit
 }

@@ -175,6 +175,8 @@ func (h *VoucherResellerHandler) DeleteReseller(c *gin.Context) {
 
 func (h *VoucherResellerHandler) respondResellerErr(c *gin.Context, err error) {
 	switch {
+	case errors.Is(err, database.ErrResellerAssigned):
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 	case errors.Is(err, database.ErrResellerNotFound):
 		c.JSON(http.StatusNotFound, gin.H{"error": "reseller not found"})
 	case errors.Is(err, database.ErrResellerPrefixInUse):

@@ -108,13 +108,14 @@ func setupHarness(base string) {
 		"20261024020000_guest_purchase_terms.sql",
 		"20261024030000_app_account_passes.sql",
 		"20261024040000_individual_pass_rollout.sql",
- "20261024070000_management_address_migration.sql",
+		"20261024070000_management_address_migration.sql",
 		"20260926_rls_backfill.sql",
 		"20261001200000_guest_voucher_grants.sql",
 		"20261001210000_guest_access_recovery.sql",
 		"20261002200000_guest_recovery_completion.sql",
 		"20261021090000_guest_voucher_activation.sql",
 		"20261021180000_guest_voucher_issue_batches.sql",
+		"20261024170000_guest_voucher_resellers.sql",
 	} {
 		migration, err := os.ReadFile("../../migrations/" + name)
 		if err != nil {

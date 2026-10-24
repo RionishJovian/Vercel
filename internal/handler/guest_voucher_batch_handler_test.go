@@ -157,7 +157,7 @@ func TestGuestVoucherIssueBatchRecoversPartialRemoteWriteWithoutDuplicates(t *te
 		t.Fatalf("retry created duplicates: rows=%d calls=%d", rows, p.calls)
 	}
 	list = batchTestCall(h, "GET", biz, id, "", h.ListIssueBatches)
-	if strings.Contains(list.Body.String(), id) {
+	if strings.Contains(string(batchTestJSON(t, list)["batches"]), id) {
 		t.Fatalf("ready batch still shown as incomplete: %s", list.Body.String())
 	}
 }
