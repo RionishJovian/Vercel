@@ -133,7 +133,7 @@ jobs:
 
       - name: Deploy to VPS
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << 'EOF'
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/megamagic-app ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << 'EOF'
             set -e
             cd ${{ env.DEPLOY_PATH }}/deploy
 
