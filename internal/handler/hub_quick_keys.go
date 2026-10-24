@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"errors"
 	"time"
 
@@ -20,6 +21,12 @@ type quickEnrollmentKey struct {
 // an error. Retrying must reuse the matching private half, never rotate a peer.
 // Restart/expiry still requires explicit recovery of an existing enrollment.
 func (h *VPSHandler) quickEnrollmentKeys(businessID, deviceID string, create bool) (quickEnrollmentKey, error) {
+	if h.durableQuickKeys != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		private, public, e := h.durableQuickKeys(ctx, businessID, deviceID, create)
+		return quickEnrollmentKey{private: private, public: public}, e
+	}
 	h.quickKeysMu.Lock()
 	defer h.quickKeysMu.Unlock()
 	now := time.Now()
@@ -48,4 +55,12 @@ func (h *VPSHandler) quickEnrollmentKeys(businessID, deviceID string, create boo
 	}
 	h.quickKeys[id] = key
 	return key, nil
+}
+
+// ConfigureDurableQuickKeys supplies encrypted restart-safe installation state.
+func (h *VPSHandler) ConfigureDurableQuickKeys(f func(context.Context, string, string, bool) (string, string, error)) {
+	h.durableQuickKeys = f
+}
+func (h *VPSHandler) ConfigureAutomaticPreflight(f func(context.Context, string, string) error) {
+	h.automaticPreflight = f
 }

@@ -169,6 +169,12 @@ func (h *VPSHandler) QuickEnrollGateway(c *gin.Context) {
 		c.JSON(404, gin.H{"error": "gateway not found in your tenant"})
 		return
 	}
+	if h.automaticPreflight != nil {
+		if e := h.automaticPreflight(c.Request.Context(), biz, device.DeviceID); e != nil {
+			c.JSON(503, gin.H{"error": "One-paste preparation is unavailable on this server. No new Hub allocation was requested.", "code": "hub_management_preflight_failed"})
+			return
+		}
+	}
 	identity := hub.Identity{TenantID: biz, RouterID: device.DeviceID, RequestedBy: user}
 	var peer hub.Peer
 	var script string
@@ -184,7 +190,11 @@ func (h *VPSHandler) QuickEnrollGateway(c *gin.Context) {
 			c.JSON(502, gin.H{"error": "Magic Hub identity mismatch"})
 			return
 		}
-		key, _ := h.quickEnrollmentKeys(biz, device.DeviceID, false)
+		key, keyErr := h.quickEnrollmentKeys(biz, device.DeviceID, false)
+		if keyErr != nil {
+			c.JSON(503, gin.H{"error": "Pending installation could not be read safely; enrollment preserved"})
+			return
+		}
 		if key.public != "" && key.public == peer.RouterPublicKey {
 			script, err = hub.BuildQuickConnectScript(device.DeviceID, peer, key.private)
 		} else {

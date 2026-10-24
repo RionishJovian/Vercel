@@ -8,10 +8,12 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/hex"
+	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"strings"
 	"sync"
 	"time"
@@ -32,19 +34,51 @@ type pendingManagement struct {
 // Pending keys live for 30 minutes in memory, never in plaintext database rows.
 // A restart requires another setup script. Verified keys use the existing
 // encrypted credential store and pinned transport, including after restarts.
-func configureAutomaticHubManagement(h *handler.VPSHandler, source *database.DeviceCredentialSource, cidrs []string, interfaceName string) {
+type automaticManagementOptions struct {
+	sourceCIDR string
+	store      *database.PendingEnrollmentStore
+}
+
+func configuredManagementSource(interfaceName, explicit string) (string, error) {
+	if explicit != "" {
+		p, e := netip.ParsePrefix(explicit)
+		if e != nil || !p.Addr().Is4() || !p.Addr().IsPrivate() || p.Bits() != 32 {
+			return "", errors.New("management source must be one private IPv4 /32")
+		}
+		return p.String(), nil
+	}
+	iface, e := net.InterfaceByName(interfaceName)
+	if e != nil {
+		return "", errors.New("management tunnel interface unavailable")
+	}
+	addrs, e := iface.Addrs()
+	if e != nil {
+		return "", e
+	}
+	return managementSourceCIDR(addrs)
+}
+func configureAutomaticHubManagement(h *handler.VPSHandler, source *database.DeviceCredentialSource, cidrs []string, interfaceName string, options ...automaticManagementOptions) {
+	var option automaticManagementOptions
+	if len(options) > 0 {
+		option = options[0]
+	}
+	h.ConfigureAutomaticPreflight(func(ctx context.Context, biz, id string) error {
+		if _, e := configuredManagementSource(interfaceName, option.sourceCIDR); e != nil {
+			return e
+		}
+		previous, e := source.TargetForDevice(ctx, biz, id)
+		if e != nil && !errors.Is(e, routeros.ErrNoTarget) {
+			return e
+		}
+		if previous != nil {
+			return errors.New("management already configured; use existing connection")
+		}
+		return nil
+	})
 	var mu sync.Mutex
 	pending := make(map[string]pendingManagement)
 	h.ConfigureAutomaticManagement(func(ctx context.Context, biz, id, routerKey, tunnelScript string) (string, error) {
-		iface, err := net.InterfaceByName(interfaceName)
-		if err != nil {
-			return "", errors.New("management tunnel interface unavailable")
-		}
-		addresses, err := iface.Addrs()
-		if err != nil {
-			return "", err
-		}
-		sourceCIDR, err := managementSourceCIDR(addresses)
+		sourceCIDR, err := configuredManagementSource(interfaceName, option.sourceCIDR)
 		if err != nil {
 			return "", err
 		}
@@ -72,22 +106,32 @@ func configureAutomaticHubManagement(h *handler.VPSHandler, source *database.Dev
 		if len(pending) >= 256 {
 			return "", errors.New("too many pending enrollments")
 		}
-		private, err := rsa.GenerateKey(rand.Reader, 2048)
-		if err != nil {
-			return "", err
+		var p pendingManagement
+		if option.store != nil {
+			raw, e := option.store.GetOrCreate(ctx, biz, id, "management", func() (string, error) {
+				v, e := newPendingManagement(biz, id, routerKey, tunnelScript, sourceCIDR)
+				if e != nil {
+					return "", e
+				}
+				return encodePendingManagement(v)
+			}, 30*time.Minute)
+			if e != nil {
+				return "", e
+			}
+			p, e = decodePendingManagement(raw)
+			if e != nil {
+				return "", e
+			}
+			if p.routerKey != routerKey || p.sourceCIDR != sourceCIDR {
+				return "", errors.New("pending management identity changed")
+			}
+		} else {
+			var e error
+			p, e = newPendingManagement(biz, id, routerKey, tunnelScript, sourceCIDR)
+			if e != nil {
+				return "", e
+			}
 		}
-		pub, err := ssh.NewPublicKey(&private.PublicKey)
-		if err != nil {
-			return "", err
-		}
-		proof := make([]byte, 32)
-		if _, err := rand.Read(proof); err != nil {
-			return "", err
-		}
-		hash := sha256.Sum256([]byte(biz + "/" + id))
-		p := pendingManagement{private: string(pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(private)})), public: strings.TrimSpace(string(ssh.MarshalAuthorizedKey(pub))), proof: hex.EncodeToString(proof), user: fmt.Sprintf("mm-%x", hash[:6]), routerKey: routerKey, expires: time.Now().Add(30 * time.Minute)}
-		p.tunnelScript = tunnelScript
-		p.sourceCIDR = sourceCIDR
 		script, err := automaticEnrollmentScript(id, p)
 		if err != nil {
 			return "", err
@@ -119,9 +163,25 @@ func configureAutomaticHubManagement(h *handler.VPSHandler, source *database.Dev
 				return err
 			}
 			_, err = routeros.NewSSHTransport(cfg).Run(ctx, "/system resource print")
+			if err == nil && option.store != nil {
+				return option.store.Delete(ctx, biz, id)
+			}
 			return err
 		}
 		p, ok := pending[key]
+		if option.store != nil {
+			raw, e := option.store.GetOrCreate(ctx, biz, id, "management", nil, 0)
+			if e != nil {
+				return e
+			}
+			if raw != "" {
+				p, e = decodePendingManagement(raw)
+				if e != nil {
+					return e
+				}
+				ok = true
+			}
+		}
 		if !ok || time.Now().After(p.expires) || p.routerKey != routerKey {
 			return errors.New("pending enrollment unavailable")
 		}
@@ -139,6 +199,11 @@ func configureAutomaticHubManagement(h *handler.VPSHandler, source *database.Dev
 		}
 		if err := source.SetDeviceCredentials(ctx, biz, id, address, p.user, "key", p.private, 22, fingerprint); err != nil {
 			return err
+		}
+		if option.store != nil {
+			if e := option.store.Delete(ctx, biz, id); e != nil {
+				return e
+			}
 		}
 		delete(pending, key)
 		return nil
@@ -306,4 +371,41 @@ func (b *boundedEnrollmentOutput) Write(p []byte) (int, error) {
 		return 0, errors.New("enrollment response too large")
 	}
 	return b.buffer.Write(p)
+}
+
+func newPendingManagement(biz, id, routerKey, tunnelScript, sourceCIDR string) (pendingManagement, error) {
+	private, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return pendingManagement{}, err
+	}
+	pub, err := ssh.NewPublicKey(&private.PublicKey)
+	if err != nil {
+		return pendingManagement{}, err
+	}
+	proof := make([]byte, 32)
+	if _, err := rand.Read(proof); err != nil {
+		return pendingManagement{}, err
+	}
+	hash := sha256.Sum256([]byte(biz + "/" + id))
+	p := pendingManagement{private: string(pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(private)})), public: strings.TrimSpace(string(ssh.MarshalAuthorizedKey(pub))), proof: hex.EncodeToString(proof), user: fmt.Sprintf("mm-%x", hash[:6]), routerKey: routerKey, expires: time.Now().Add(30 * time.Minute)}
+	p.tunnelScript = tunnelScript
+	p.sourceCIDR = sourceCIDR
+	return p, nil
+}
+
+type storedPendingManagement struct {
+	Private, Public, Proof, User, RouterKey, TunnelScript, SourceCIDR string
+	Expires                                                           time.Time
+}
+
+func encodePendingManagement(p pendingManagement) (string, error) {
+	b, e := json.Marshal(storedPendingManagement{p.private, p.public, p.proof, p.user, p.routerKey, p.tunnelScript, p.sourceCIDR, p.expires})
+	return string(b), e
+}
+func decodePendingManagement(raw string) (pendingManagement, error) {
+	var s storedPendingManagement
+	if json.Unmarshal([]byte(raw), &s) != nil || s.Private == "" || s.Proof == "" || s.TunnelScript == "" {
+		return pendingManagement{}, errors.New("invalid pending management envelope")
+	}
+	return pendingManagement{s.Private, s.Public, s.Proof, s.User, s.RouterKey, s.TunnelScript, s.SourceCIDR, s.Expires}, nil
 }

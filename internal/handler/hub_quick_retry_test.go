@@ -263,3 +263,15 @@ func TestQuickEnrollmentKeyCacheIsTenantBounded(t *testing.T) {
 		t.Fatal("expired attempts did not release capacity")
 	}
 }
+
+func TestQuickEnrollmentPreflightPreventsPeerReservation(t *testing.T) {
+	s := &retryEnrollmentHub{peers: map[string]hub.Peer{}}
+	h := quickRetryHandler(s)
+	h.ConfigureAutomaticPreflight(func(context.Context, string, string) error { return errors.New("missing deployment source") })
+	if w := requestQuickEnrollment(h, "tenant"); w.Code != 503 {
+		t.Fatalf("status %d", w.Code)
+	}
+	if len(s.keys) != 0 || len(s.peers) != 0 || len(h.quickKeys) != 0 {
+		t.Fatal("failed preflight allocated installation state")
+	}
+}

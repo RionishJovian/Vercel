@@ -1860,7 +1860,7 @@ async function renderSites(main, workspace = location.hash === "#gateways" ? "ga
   if (gatewayOnly) {
     MMHubManagement.mount(content.querySelector("#hub-management"), routers, canEdit, MM);
     wireHubLookup(content); wireConns(main, conns, sites);
-    const {mountHubEnrollment}=await import("/assets/js/hub-enrollment.js?v=20261003-simple-management-3");
+    const {mountHubEnrollment}=await import("/assets/js/hub-enrollment.js?v=20261024-restart-safe-1");
     if(content.isConnected)mountHubEnrollment(content,{api:MM,escape:esc});
   }
   else if (capacityLimitsEnabled) wireAllowance(main, allowance, requests, allowanceKinds);

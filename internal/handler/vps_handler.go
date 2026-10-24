@@ -22,22 +22,24 @@ import (
 // gated (an ACTIVE Webfig pass — the same condition the quota sweep enforces)
 // and tenant-bound. No live-router writes; relay/apply stays behind the applier gate.
 type VPSHandler struct {
-	SubscriptionOnly bool
-	db               *database.DB
-	deviceRepo       *database.DeviceRepository
-	quotaRepo        *database.BusinessMeteredQuotaRepository
-	monitoring       *monitoring.MonitoringService
-	wg               config.WireGuardConfig
-	endpointHost     string
-	liveHub          hubInspector
-	enrollmentHub    hubEnroller
-	liveDevice       func(*gin.Context, string, string) (*model.Device, error)
-	livePlan         func(string) bool
-	managementAuth   func(context.Context, string, string, string, string, string, int, string) error
-	automaticPrepare func(context.Context, string, string, string, string) (string, error)
-	automaticVerify  func(context.Context, string, string, string, string) error
-	quickKeysMu      sync.Mutex
-	quickKeys        map[string]quickEnrollmentKey
+	SubscriptionOnly   bool
+	db                 *database.DB
+	deviceRepo         *database.DeviceRepository
+	quotaRepo          *database.BusinessMeteredQuotaRepository
+	monitoring         *monitoring.MonitoringService
+	wg                 config.WireGuardConfig
+	endpointHost       string
+	liveHub            hubInspector
+	enrollmentHub      hubEnroller
+	liveDevice         func(*gin.Context, string, string) (*model.Device, error)
+	livePlan           func(string) bool
+	managementAuth     func(context.Context, string, string, string, string, string, int, string) error
+	automaticPreflight func(context.Context, string, string) error
+	durableQuickKeys   func(context.Context, string, string, bool) (string, string, error)
+	automaticPrepare   func(context.Context, string, string, string, string) (string, error)
+	automaticVerify    func(context.Context, string, string, string, string) error
+	quickKeysMu        sync.Mutex
+	quickKeys          map[string]quickEnrollmentKey
 }
 
 func NewVPSHandler(db *database.DB, deviceRepo *database.DeviceRepository, quotaRepo *database.BusinessMeteredQuotaRepository, mon *monitoring.MonitoringService, wg config.WireGuardConfig, endpointHost string) *VPSHandler {

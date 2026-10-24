@@ -152,12 +152,13 @@ type NATSConfig struct {
 }
 
 type WireGuardConfig struct {
-	Interface        string        `mapstructure:"interface"`
-	ListenPort       int           `mapstructure:"listen_port"`
-	PeerKeepalive    time.Duration `mapstructure:"peer_keepalive"`
-	AllowedIPs       []string      `mapstructure:"allowed_ips"`
-	ManagementVLAN   int           `mapstructure:"management_vlan"`
-	ManagementSubnet string        `mapstructure:"management_subnet"`
+	ManagementSourceCIDR string        `mapstructure:"management_source_cidr"`
+	Interface            string        `mapstructure:"interface"`
+	ListenPort           int           `mapstructure:"listen_port"`
+	PeerKeepalive        time.Duration `mapstructure:"peer_keepalive"`
+	AllowedIPs           []string      `mapstructure:"allowed_ips"`
+	ManagementVLAN       int           `mapstructure:"management_vlan"`
+	ManagementSubnet     string        `mapstructure:"management_subnet"`
 }
 
 // VPSConfig configures the read-only peer-provisioning surface. EndpointHost is
