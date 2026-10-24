@@ -8,16 +8,16 @@
   <link rel="apple-touch-icon" sizes="180x180" href="/assets/images/mikromagic-touch-green-v2-180.png?v=20260930-3">
   <link rel="manifest" href="/site.webmanifest?v=20260930-3">
   <meta name="theme-color" content="#051f20">
-  <meta name="description" content="Mega Magic pricing: one pass for the console, capacity by tier. Monthly or annual, billed in MMK. Manage up to 10, 100 or unlimited MikroTik routers.">
+  <meta name="description" content="Mega Magic monthly and annual cloud-management passes. One authorized client login with a private workspace.">
   <meta name="robots" content="index">
   <link rel="canonical" href="https://mikromagic.com/pricing.html">
   <meta property="og:title" content="Pricing — Mega Magic">
-  <meta property="og:description" content="One pass for the console, capacity by tier. Monthly or annual, billed in MMK.">
+  <meta property="og:description" content="Monthly or annual cloud-management passes, billed in MMK.">
   <meta property="og:url" content="https://mikromagic.com/pricing.html">
   <meta property="og:type" content="website">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Pricing — Mega Magic">
-  <meta name="twitter:description" content="One pass for the console, capacity by tier. Monthly or annual, billed in MMK.">
+  <meta name="twitter:description" content="Monthly or annual cloud-management passes, billed in MMK.">
   <script src="/assets/js/theme.js"></script>
   <style>
     /* ════════════════════════════════════════════════════════════════════
@@ -191,9 +191,9 @@
   <div class="page">
     <section class="hero">
       <span class="eyebrow">Pricing</span>
-      <h1>One pass for the console.<br><span class="accent">Capacity by tier.</span></h1>
+      <h1>One pass for the console.<br><span class="accent">Your private workspace.</span></h1>
       <p class="sub">You pay for your own fleet, never per guest and never per voucher. One monthly or
-        annual pass runs the whole console; how many routers you manage is set by your capacity tier.</p>
+        annual pass gives your client login access to the same app features.</p>
 
       <!-- Rendered only when the API reports a promo that is genuinely cheaper
            than the standard price. It is empty today. -->
@@ -211,8 +211,8 @@
         <p class="unit">per month</p>
         <ul>
           <li>Full console access</li>
-          <li>Month to month — cancel any time</li>
-          <li>Capacity set by your tier (below)</li>
+          <li>One calendar month from approval</li>
+          <li>Includes the workspace allowance below</li>
         </ul>
       </article>
 
@@ -228,24 +228,22 @@
         <div class="save" id="annual-save" hidden></div>
         <ul>
           <li>Everything in the monthly pass</li>
-          <li>One payment covers twelve months</li>
-          <li>Capacity set by your tier (below)</li>
+          <li>One calendar year from approval</li>
+          <li>Includes the workspace allowance below</li>
         </ul>
       </article>
     </section>
 
     <section class="section">
-      <h2>Device capacity by tier</h2>
+      <h2>Included workspace allowance</h2>
       <div class="rule"></div>
-      <p class="lede">Your tier sets how many routers one account can manage. It is assigned to your
-        account — most operators start on Small WISP.</p>
+      <p class="lede">The app reports the current allowance below. Monthly and annual passes share features; validity differs.</p>
       <table>
         <thead>
-          <tr><th>Tier</th><th>Routers you can manage</th></tr>
+          <tr><th>Allowance</th><th>Included</th></tr>
         </thead>
         <tbody id="tier-rows">
-          <tr><td>Small WISP</td><td class="num dash">—</td></tr>
-          <tr><td>Enterprise ISP</td><td class="num dash">—</td></tr>
+          <tr><td>Loading current allowance</td><td class="num dash">—</td></tr>
         </tbody>
       </table>
     </section>
@@ -263,7 +261,7 @@
     <footer>
       <div id="source-line">Current prices are loading.</div>
       <div>All prices in Myanmar Kyat (MMK). The annual pass is a single payment covering twelve months.</div>
-      <div>Capacity is per account, not per router added.</div>
+      <div>Each client uses one authorized login in a private workspace. Guest internet vouchers are separate from the app pass.</div>
     </footer>
   </div>
 </div>
@@ -309,7 +307,10 @@
       box.hidden = false;
     }
 
-    if (Array.isArray(d.tiers) && d.tiers.length) {
+    if(d.account_policy && d.account_policy.mode === "individual_pass") {
+      document.getElementById("tier-rows").innerHTML='<tr><td>Authorized client login</td><td>1</td></tr><tr><td>Site / RouterBOARD per workspace</td><td>1 / 1</td></tr><tr><td>Voucher issuance, AI and Jellyfin</td><td>No app usage quota</td></tr>';
+      notice("Pass validity starts at platform approval. Provider availability and supported router capabilities still apply.",false);
+    } else if (Array.isArray(d.tiers) && d.tiers.length) {
       var tbody = document.getElementById("tier-rows");
       tbody.innerHTML = "";
       d.tiers.forEach(function (t) {

@@ -56,3 +56,7 @@ Jade Glass selected with cool silver surfaces and emerald accents, precision geo
 ## Owner-selected guest voucher screen — 2026-10-23
 
 For the guest Internet voucher portal, the owner selected the supplied dark emerald liquid-glass phone reference: silver glass card edges, a dimensional glass Wi-Fi mark, luminous green connect button and dark optical-glass wallpaper. This supersedes the earlier plain silver guest-card direction for this screen only. Use the same renderer for owner preview and router deployment; bundle visual assets locally so unauthenticated guests need no external asset access. Preserve real voucher entry, CHAP/PAP, consent, error/retry and first-use behaviour. Do not draw phone bezels or notches inside the guest page.
+
+## Owner-confirmed client model — 2026-10-24
+
+The platform administrator manages client accounts. Each client owns a MikroTik RouterBOARD and uses Mega Magic/Magic Hub for cloud remote management. Each client has one authorized login, one private internal business workspace, one site and one router. Clients do not create staff users or invitations. Preserve existing users/history; do not guess the authorized login in ambiguous legacy workspaces. Keep business_id tenant isolation internally. Individual monthly/annual passes share features; validity differs. A seven-day transition starts once when enforcement deploys, and the platform administrator is exempt. Expiry blocks app management, not already-running guest internet. Old Store purchases do not activate these passes.

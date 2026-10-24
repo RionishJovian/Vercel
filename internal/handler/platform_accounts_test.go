@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/gin-gonic/gin"
+	"mega-magic/internal/accountpass"
 	"mega-magic/internal/auth"
 	"mega-magic/internal/database"
 	"mega-magic/internal/model"
@@ -216,8 +217,13 @@ func TestPlatformAccountsAndSessionPresence(t *testing.T) {
 			t.Fatalf("old Store imported as current pass: %v", p)
 		}
 		body := func(revision int, revoked bool) string {
-			return fmt.Sprintf(`{"plan":"annual","activated_at":%q,"expires_at":%q,"revision":%d,"revoked":%t}`, approved.Format(time.RFC3339), expiry.Format(time.RFC3339), revision, revoked)
+			action := "activate"
+			if revoked {
+				action = "revoke"
+			}
+			return fmt.Sprintf(`{"plan":"annual","action":%q,"revision":%d}`, action, revision)
 		}
+
 		endpoint := "/api/v1/platform/accounts/" + owner.UserID + "/pass"
 		if w := request("PUT", endpoint, ownerToken, body(0, false)); w.Code != 403 {
 			t.Fatalf("owner self grant: %d", w.Code)
@@ -229,10 +235,17 @@ func TestPlatformAccountsAndSessionPresence(t *testing.T) {
 			t.Fatalf("stale update: %d", w.Code)
 		}
 		p := find(owner.UserID)["pass"].(map[string]any)
-		if p["scope"] != "account" || p["authority"] != "app_account_passes" || p["kind"] != "annual" || p["state"] != "active" || !accountTime(p["activated_at"]).Equal(approved) || !accountTime(p["expires_at"]).Equal(expiry) {
+		if p["scope"] != "account" || p["authority"] != "app_account_passes" || p["kind"] != "annual" || p["state"] != "active" || accountTime(p["activated_at"]) == nil || accountTime(p["expires_at"]) == nil {
 			t.Fatal(p)
 		}
-		if w := request("GET", "/api/v1/me/app-pass", ownerToken, ""); w.Code != 200 || !strings.Contains(w.Body.String(), `"kind": "annual"`) {
+		start := accountTime(p["activated_at"])
+		end, _ := accountpass.CalendarExpiry(*start, "annual")
+		if !accountTime(p["expires_at"]).Equal(end) || time.Since(*start) > time.Minute {
+			t.Fatal("activation not anchored to actual approval", p)
+		}
+		w := request("GET", "/api/v1/me/app-pass", ownerToken, "")
+		var ownPass map[string]any
+		if err := json.Unmarshal(w.Body.Bytes(), &ownPass); err != nil || w.Code != 200 || ownPass["kind"] != "annual" {
 			t.Fatalf("own app pass: %d %s", w.Code, w.Body)
 		}
 		if w := request("GET", "/api/v1/me/app-pass", viewerToken, ""); w.Code != 200 || strings.Contains(w.Body.String(), `annual`) {

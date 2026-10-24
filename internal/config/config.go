@@ -79,6 +79,7 @@ type GuestWifiConfig struct {
 // the plan -> duration source (plan.<planKey>.duration_minutes); a plan with no
 // duration FAILS CLOSED at request time.
 type BillingConfig struct {
+	IndividualPassesEnabled  bool                  `mapstructure:"individual_passes_enabled"`
 	SubscriptionOnly         bool                  `mapstructure:"subscription_only"`
 	ExistingAccountPolicy    string                `mapstructure:"existing_account_policy"`
 	ReceiptDir               string                `mapstructure:"receipt_dir"`
@@ -361,6 +362,9 @@ const (
 // convenient local defaults, while production refuses to boot in a state that
 // can silently bypass tenant isolation or reuse repository-known secrets.
 func (cfg *Config) Validate() error {
+	if cfg.Billing.SubscriptionOnly && cfg.Billing.IndividualPassesEnabled {
+		return fmt.Errorf("legacy business subscriptions and individual account passes cannot both be enabled")
+	}
 	if cfg.Billing.SubscriptionOnly && cfg.Billing.ExistingAccountPolicy != "require_payment" {
 		return fmt.Errorf("billing.existing_account_policy must be require_payment when subscription_only is enabled; existing accounts receive the one-time transition trial, not indefinite free access")
 	}

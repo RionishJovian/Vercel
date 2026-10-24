@@ -30,11 +30,11 @@ test('presence starts once, observes idle and visibility, and sends no user/sess
 test('revoked presence stops sending rather than looping unauthorized requests',async()=>{
  const f=presenceFixture(()=>{throw {status:401};});f.client.start();await tick();f.interval();await tick();assert.equal(f.calls.length,1);
 });
-test('pass recording uses explicit UTC terms and blocks duplicate submits',async()=>{
+test('pass activation delegates the clock to the server and blocks duplicate submits',async()=>{
  const row={...account,user_id:'account-id',pass:{kind:'none',scope:'account',state:'no_pass'}};
  const f=fixture(async()=>({accounts:[row],total:1,limit:50,as_of:'now'})),writes=[];
  f.context.MM.put=async(path,body)=>{writes.push({path,body:JSON.parse(JSON.stringify(body))});return {recorded:true};};
  await f.context.loadPlatformAccounts(f.panel);
- const form=f.panel.querySelector('[data-record-pass]');form.elements.activation.value='2026-10-24T01:00';form.elements.expiry.value='2026-11-24T01:00';form.requestSubmit();form.dispatchEvent(new f.dom.window.Event('submit',{cancelable:true}));await tick();
- assert.equal(writes.length,1);assert.equal(writes[0].path,'/platform/accounts/account-id/pass');assert.equal(writes[0].body.activated_at,'2026-10-24T01:00:00.000Z');assert.equal(writes[0].body.expires_at,'2026-11-24T01:00:00.000Z');assert.equal(writes[0].body.revision,0);
+ const form=f.panel.querySelector('[data-record-pass]');form.requestSubmit();form.dispatchEvent(new f.dom.window.Event('submit',{cancelable:true}));await tick();
+ assert.equal(writes.length,1);assert.equal(writes[0].path,'/platform/accounts/account-id/pass');assert.equal(writes[0].body.action,'activate');assert.equal(writes[0].body.activated_at,undefined);assert.equal(writes[0].body.expires_at,undefined);assert.equal(writes[0].body.revision,0);
 });

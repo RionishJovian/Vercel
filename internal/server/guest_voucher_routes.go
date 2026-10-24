@@ -52,7 +52,7 @@ func registerGuestVoucherRoutes(r *gin.Engine, cfg *config.Config, db *database.
 		Provisioner: voucherLoginTransport{applier: applier},
 		Syncer:      voucherLoginTransport{applier: applier},
 	}
-	registerGuestVoucherEndpoints(r, service, db, h, handler.SubscriptionAccess(db, cfg.Billing.SubscriptionOnly, cfg.Billing.ExistingAccountPolicy))
+	registerGuestVoucherEndpoints(r, service, db, h, handler.SubscriptionAccess(db, cfg.Billing.SubscriptionOnly, cfg.Billing.ExistingAccountPolicy), handler.IndividualPassAccess(db, cfg.Billing.IndividualPassesEnabled))
 	return nil
 }
 

@@ -20,6 +20,7 @@ func (r *PlatformBusinessRepository) PlatformAccounts(ctx context.Context, limit
  FROM users u JOIN businesses b ON b.business_id=u.business_id ORDER BY b.company_name,u.email,u.user_id LIMIT $1 OFFSET $2
  ) SELECT jsonb_build_object(
  'user_id',u.user_id,'business_id',u.business_id,'email',u.email,'full_name',u.full_name,'user_role',u.user_role,
+ 'primary_login_id',primary_login.user_id,'authorized_login',(u.user_role='DEVELOPER' OR primary_login.user_id=u.user_id),
  'company_name',u.company_name,'is_active',(u.user_active AND u.business_active),'last_login_at',u.last_login_at,
  'presence',CASE WHEN NOT(u.user_active AND u.business_active) THEN 'offline' WHEN pr.online THEN 'online' WHEN pr.connected THEN 'idle' WHEN pr.last_seen_at IS NULL THEN 'unobserved' ELSE 'offline' END,
  'last_seen_at',pr.last_seen_at,'last_active_at',pr.last_active_at,
@@ -35,6 +36,7 @@ func (r *PlatformBusinessRepository) PlatformAccounts(ctx context.Context, limit
  'magic_dude_key',EXISTS(SELECT 1 FROM unlock_key_activations k WHERE k.user_id=u.user_id AND k.business_id=u.business_id AND k.key_kind='magic_dude' AND k.consumed_at IS NULL AND k.expires_at>$4)
  )
  FROM page u
+ LEFT JOIN business_app_primary_users primary_login ON primary_login.business_id=u.business_id
  LEFT JOIN account_entitlements e ON e.user_id=u.user_id AND e.business_id=u.business_id
  LEFT JOIN app_account_passes cp ON cp.user_id=u.user_id AND cp.business_id=u.business_id
  LEFT JOIN business_metered_quotas q ON q.business_id=u.business_id

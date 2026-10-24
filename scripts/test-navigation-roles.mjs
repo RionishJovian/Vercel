@@ -9,7 +9,7 @@ for (const role of ["OWNER","ADMIN","VIEWER","DEVELOPER"]) {
   const me = {user:{user_role:role}};
   assert.equal(context.canOpenView("platform",me), role === "DEVELOPER");
   assert.equal(context.canOpenView("i18n",me), role === "DEVELOPER");
-  assert.equal(context.canOpenView("team",me), role !== "VIEWER");
+  assert.equal(context.canOpenView("team",me), role === "DEVELOPER");
   assert.equal(context.canOpenView("media",me), role !== "VIEWER");
   for (const view of ["gateways","routers","sites","security","backups"]) assert.equal(context.canOpenView(view,me),true);
 }

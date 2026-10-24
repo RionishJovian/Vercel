@@ -2,8 +2,9 @@ package handler
 
 import (
 	"database/sql"
-	"encoding/json"
 	"errors"
+	"mega-magic/internal/accountpass"
+	"mega-magic/internal/database"
 	"net/http"
 	"time"
 
@@ -15,8 +16,8 @@ import (
 
 var appPassUUID = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
-// RecordAccountPass is a platform-only record of explicit per-login terms.
-// It never approves a payment, imports Store history or changes runtime gates.
+// RecordAccountPass activates server-timed individual access or revokes it.
+// Operator approval does not assert payment settlement or import Store history.
 func (h *PlatformHandler) RecordAccountPass(c *gin.Context) {
 	if auth.GetUserRole(c) != string(model.RoleDeveloper) {
 		c.JSON(403, gin.H{"error": "developer access required"})
@@ -27,18 +28,18 @@ func (h *PlatformHandler) RecordAccountPass(c *gin.Context) {
 		c.JSON(400, gin.H{"error": "valid account ID required"})
 		return
 	}
+
 	var in struct {
-		Plan        string    `json:"plan"`
-		ActivatedAt time.Time `json:"activated_at"`
-		ExpiresAt   time.Time `json:"expires_at"`
-		Revoked     bool      `json:"revoked"`
-		Revision    int64     `json:"revision"`
+		Plan     string `json:"plan"`
+		Action   string `json:"action"`
+		Revision int64  `json:"revision"`
 	}
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 4096)
-	if c.ShouldBindJSON(&in) != nil || (in.Plan != "monthly" && in.Plan != "annual") || in.ActivatedAt.IsZero() || !in.ExpiresAt.After(in.ActivatedAt) || in.Revision < 0 {
-		c.JSON(400, gin.H{"error": "plan, explicit activation/expiry dates and expected revision required"})
+	if c.ShouldBindJSON(&in) != nil || (in.Action != "activate" && in.Action != "revoke") || (in.Action == "activate" && in.Plan != "monthly" && in.Plan != "annual") || in.Revision < 0 {
+		c.JSON(400, gin.H{"error": "activation/revocation action, plan and expected revision required"})
 		return
 	}
+
 	tx, err := h.db.BeginTx(c.Request.Context(), nil)
 	if err != nil {
 		c.JSON(503, gin.H{"error": "pass recording unavailable"})
@@ -46,7 +47,7 @@ func (h *PlatformHandler) RecordAccountPass(c *gin.Context) {
 	}
 	defer tx.Rollback()
 	var businessID string
-	err = tx.QueryRowContext(c.Request.Context(), `SELECT business_id FROM users WHERE user_id=$1 FOR SHARE`, userID).Scan(&businessID)
+	err = tx.QueryRowContext(c.Request.Context(), `SELECT business_id FROM users WHERE user_id=$1 FOR UPDATE`, userID).Scan(&businessID)
 	if errors.Is(err, sql.ErrNoRows) {
 		c.JSON(404, gin.H{"error": "account not found"})
 		return
@@ -55,49 +56,50 @@ func (h *PlatformHandler) RecordAccountPass(c *gin.Context) {
 		c.JSON(503, gin.H{"error": "account lookup unavailable"})
 		return
 	}
-	var revoked any
-	if in.Revoked {
-		revoked = time.Now().UTC()
+
+	if h.IndividualPassesEnabled {
+		var primary string
+		if e := tx.QueryRow(`SELECT user_id FROM business_app_primary_users WHERE business_id=$1 FOR SHARE`, businessID).Scan(&primary); e != nil || primary != userID {
+			c.JSON(409, gin.H{"error": "Select this business's authorized primary login before activating its pass"})
+			return
+		}
 	}
+	now := time.Now().UTC()
 	var revision int64
-	err = tx.QueryRowContext(c.Request.Context(), `INSERT INTO app_account_passes(user_id,business_id,plan,activated_at,expires_at,revoked_at,recorded_by)
- SELECT $1,$2,$3,$4,$5,$6,$7 WHERE $8=0 OR EXISTS(SELECT 1 FROM app_account_passes WHERE user_id=$1 AND revision=$8)
- ON CONFLICT(user_id) DO UPDATE SET plan=excluded.plan,activated_at=excluded.activated_at,expires_at=excluded.expires_at,revoked_at=excluded.revoked_at,recorded_by=excluded.recorded_by,updated_at=now(),revision=app_account_passes.revision+1
- WHERE app_account_passes.revision=$8 AND app_account_passes.business_id=excluded.business_id RETURNING revision`, userID, businessID, in.Plan, in.ActivatedAt, in.ExpiresAt, revoked, auth.GetUserID(c), in.Revision).Scan(&revision)
-	if errors.Is(err, sql.ErrNoRows) {
-		c.JSON(409, gin.H{"error": "pass changed; refresh before recording"})
+	if in.Action == "activate" {
+		revision, err = database.ActivateAccountPassTXN(tx, userID, businessID, auth.GetUserID(c), in.Plan, in.Revision, now)
+	} else {
+		revision, err = database.RevokeAccountPassTXN(tx, userID, businessID, auth.GetUserID(c), in.Revision, now)
+	}
+	if errors.Is(err, database.ErrAccountPassRevision) {
+		c.JSON(409, gin.H{"error": err.Error()})
 		return
 	}
 	if err != nil {
-		c.JSON(503, gin.H{"error": "pass was not recorded"})
+		c.JSON(503, gin.H{"error": "pass decision was not recorded"})
 		return
 	}
-	details, _ := json.Marshal(in)
-	if _, err = tx.ExecContext(c.Request.Context(), `INSERT INTO app_account_pass_events(user_id,business_id,actor_id,revision,details) VALUES($1,$2,$3,$4,$5)`, userID, businessID, auth.GetUserID(c), revision, details); err != nil {
-		c.JSON(503, gin.H{"error": "pass audit was not recorded"})
-		return
-	}
+
 	if err = tx.Commit(); err != nil {
 		c.JSON(503, gin.H{"error": "recording was not confirmed; refresh before retrying"})
 		return
 	}
 	c.Header("Cache-Control", "no-store")
-	c.JSON(200, gin.H{"recorded": true, "revision": revision, "scope": "account", "runtime_access_changed": false})
+	c.JSON(200, gin.H{"recorded": true, "revision": revision, "scope": "account", "runtime_access_changed": h.IndividualPassesEnabled})
 }
 
 // AppPass reads only the authenticated login; business staff never inherit it.
 func (h *AuthHandler) AppPass(c *gin.Context) {
-	var raw []byte
+	var status accountpass.Status
 	err := runInTenant(c, h.db, auth.GetBusinessID(c), func(tx *sql.Tx) error {
-		return tx.QueryRowContext(c.Request.Context(), `SELECT jsonb_build_object('scope','account','authority','app_account_passes','enforced',false,
-   'kind',COALESCE(p.plan,'none'),'activated_at',p.activated_at,'expires_at',p.expires_at,'revoked_at',p.revoked_at,
-   'state',CASE WHEN p.user_id IS NULL THEN 'no_pass' WHEN p.revoked_at IS NOT NULL THEN 'revoked' WHEN p.expires_at<=now() THEN 'expired' WHEN p.activated_at>now() THEN 'scheduled' ELSE 'active' END)
-   FROM (SELECT $1::uuid AS user_id) me LEFT JOIN app_account_passes p ON p.user_id=me.user_id AND p.business_id=$2`, auth.GetUserID(c), auth.GetBusinessID(c)).Scan(&raw)
+		var err error
+		status, err = database.AccountPassStatusTXN(tx, auth.GetBusinessID(c), auth.GetUserID(c), h.IndividualPassesEnabled, auth.GetUserRole(c) == string(model.RoleDeveloper), time.Now().UTC())
+		return err
 	})
 	if err != nil {
 		c.JSON(503, gin.H{"error": "individual app pass unavailable"})
 		return
 	}
 	c.Header("Cache-Control", "no-store")
-	c.Data(200, "application/json", raw)
+	c.JSON(200, status)
 }

@@ -22,13 +22,14 @@ import (
 // MUST be gated by RequireRole(RoleDeveloper) at the router — the strongest
 // gate; no customer role (OWNER, ADMIN, …) can reach it. See server.go.
 type PlatformHandler struct {
-	SubscriptionOnly      bool
-	ExistingAccountPolicy string
-	businessRepo          *database.PlatformBusinessRepository
-	incidentRepo          *database.PlatformIncidentRepository
-	pricingRepo           *database.PricingRepository
-	db                    *database.DB
-	authService           *auth.Service
+	IndividualPassesEnabled bool
+	SubscriptionOnly        bool
+	ExistingAccountPolicy   string
+	businessRepo            *database.PlatformBusinessRepository
+	incidentRepo            *database.PlatformIncidentRepository
+	pricingRepo             *database.PricingRepository
+	db                      *database.DB
+	authService             *auth.Service
 }
 
 func NewPlatformHandler(
@@ -184,6 +185,14 @@ func (h *PlatformHandler) CreateBusiness(c *gin.Context) {
 	if !validTiers[tier] {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid access_tier"})
 		return
+	}
+
+	if h.IndividualPassesEnabled {
+		if tier != "SMALL_WISP" || body.DeviceQuotaLimit > 1 {
+			c.JSON(400, gin.H{"error": "Client workspaces include one router and one site; legacy capacity tiers are not current app plans"})
+			return
+		}
+		body.DeviceQuotaLimit = 1
 	}
 
 	hash, err := h.authService.HashPassword(body.OwnerPassword)

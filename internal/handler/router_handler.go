@@ -223,6 +223,9 @@ func (h *RouterHandler) CreateRouter(c *gin.Context) {
 			c.JSON(http.StatusConflict, gin.H{"error": "capacity exceeded", "reason": "request additional capacity before adding this device"})
 			return
 		}
+		if respondAppCapacity(c, err) {
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to register router"})
 		return
 	}

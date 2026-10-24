@@ -258,7 +258,7 @@
       <div class="rail-section">Store</div>
       <button class="nav-item" data-view="store">Store</button>
       <div class="rail-section">Management</div>
-      <button class="nav-item" data-view="team">Staff &amp; Permissions</button>
+      <button class="nav-item" data-view="team">Legacy account records</button>
       <button class="nav-item" data-view="incidents">Incidents</button>
       <button class="nav-item" data-view="security">Security</button>
       <button class="nav-item" data-view="backups">Backups</button>
@@ -353,7 +353,7 @@ const VIEWS = {
   unlockkeys:{ title: "Unlock keys", lead: "See which additional product capabilities your business has activated." },
   portal:   { title: "Internet Hotspot Portal", lead: "Sell internet data and time through voucher codes or mobile payment. Jellyfin is configured separately." },
   media:    { title: "Jellyfin Dashboard", lead: "Manage your local media computer, Jellyfin libraries and media-business activity." },
-  team:     { title: "Team", lead: "Invite staff and choose what each person is allowed to manage." },
+  team:     { title: "Legacy account records", lead: "Platform-only compatibility tools. Each client uses one authorized login." },
   platform: { title: "Platform", lead: "Manage customer businesses, service health, and platform-wide incidents." },
   profile:  { title: "Your profile", lead: "Manage your photo, language, password, and Telegram approvals." },
   guide:    { title: "Product guide", lead: "Learn what each workspace does and how to complete common tasks." },
@@ -362,9 +362,9 @@ const VIEWS = {
 let ME = null;
 function canOpenView(name, me = ME) {
   const role = me?.user?.user_role;
-  if (me?.subscription?.mode === "subscription_only" && ["coins", "unlockkeys"].includes(name)) return false;
+  if (["subscription_only","individual_pass"].includes(me?.subscription?.mode) && ["coins", "unlockkeys"].includes(name)) return false;
   if (["platform", "i18n"].includes(name)) return role === "DEVELOPER";
-  if(name === "team") return ["OWNER","DEVELOPER"].includes(role);
+  if(name === "team") return role === "DEVELOPER";
   if (["templates", "termlog", "aiusage", "media", "jellyfin-portal"].includes(name)) return ["OWNER", "ADMIN", "DEVELOPER"].includes(role);
   return true;
 }
@@ -438,7 +438,7 @@ async function loadView(name, main, me) {
     content.innerHTML = `<div class="panel"><div class="empty error-empty" role="alert">
       <div class="empty-title">Couldn’t load ${esc(v.title.toLowerCase())}</div>
       <p>${esc(errorText(err, "The server did not return this view."))}</p>
-      ${err.status === 402 && err.data?.code === "subscription_required" ? `<a class="btn btn-primary" href="/app.html#store">Choose monthly or annual access</a>` : ""}
+      ${err.status === 402 && ["subscription_required","account_pass_required"].includes(err.data?.code) ? `<a class="btn btn-primary" href="/app.html#store">View pass and request renewal</a>` : ""}
       <button class="btn" id="view-retry" type="button">Try again</button>
     </div></div>`;
     content.querySelector("#view-retry").addEventListener("click", () => loadView(name, main, me));
@@ -1475,7 +1475,7 @@ function wireHubLookup(content) {
     } catch (error) {
       if (!status.isConnected) return;
       const code = error.data?.code;
-      status.textContent = code === "subscription_required" ? "Your trial or subscription has ended. Open Store to renew monthly or annual access."
+      status.textContent = ["subscription_required","account_pass_required"].includes(code) ? "Your trial or subscription has ended. Open Store to renew monthly or annual access."
         : code === "plan_required" ? "Magic Hub access is unavailable under the current account policy. Contact support."
         : code === "hub_lookup_disabled" ? "Magic Hub lookup is not enabled for this app."
         : error.status === 404 ? "No verified Magic Hub enrollment was found for this gateway. Open Connect Magic Hub to complete setup."
@@ -3720,12 +3720,29 @@ async function renderStore(main) {
   try{runtime=await MM.get("/subscription");}catch(e){content.innerHTML='<section class="panel"><div class="panel-body" role="alert">Store compatibility status is unavailable. No checkout is offered.</div></section>';return;}
   // Keep the existing enforced legacy recovery route working during migration.
   if(runtime.mode==="subscription_only")return renderLegacyStoreCheckout(main);
+  if(runtime.mode==="individual_pass")return renderIndividualPass(main,runtime);
   let pass=null;
   try{const result=await MM.get("/me/app-pass");if(result.scope!=="account"||result.authority!=="app_account_passes"||!["none","monthly","annual"].includes(result.kind))throw Error("Invalid pass response");pass=result;}catch(_){}
-  const passPanel=pass?`<section class="panel"><div class="panel-body"><h2>Your individual app pass</h2><p>${esc(({monthly:"Monthly",annual:"Annual",none:"No current pass recorded"})[pass.kind]||"Unavailable")} · ${esc(({no_pass:"Not issued",active:"Active",scheduled:"Starts later",expired:"Expired",revoked:"Revoked"})[pass.state]||"Unavailable")}</p><p>Activation: ${pass.activated_at?esc(ts(pass.activated_at)):"Not recorded"} · Expiry: ${pass.expires_at?esc(ts(pass.expires_at)):"Not recorded"}</p><p class="muted">This pass belongs to this login. Existing access rules remain in effect during the subscription rollout. It is separate from guest WiFi vouchers and old Store history.</p></div></section>`:'<section class="panel"><div class="panel-body" role="alert">Your individual app pass could not be loaded.</div></section>';
+  const passPanel=pass?`<section class="panel"><div class="panel-body"><h2>Your individual app pass</h2><p>${esc(({monthly:"Monthly",annual:"Annual",none:"No current pass recorded"})[pass.kind]||"Unavailable")} · ${esc(({no_pass:"Not issued",pass_required:"Activation required",transition:"Seven-day transition",platform_exempt:"Platform administrator exempt",authorized_login_required:"Authorized login review required",active:"Active",scheduled:"Starts later",expired:"Expired",revoked:"Revoked"})[pass.state]||"Unavailable")}</p><p>Activation: ${pass.activated_at?esc(ts(pass.activated_at)):"Not recorded"} · Expiry: ${pass.expires_at?esc(ts(pass.expires_at)):"Not recorded"}</p><p class="muted">This pass belongs to this login. Existing access rules remain in effect during the subscription rollout. It is separate from guest WiFi vouchers and old Store history.</p></div></section>`:'<section class="panel"><div class="panel-body" role="alert">Your individual app pass could not be loaded.</div></section>';
   let purchases=null;
   try{const result=await MM.get("/store/purchases");if(!Array.isArray(result.purchases))throw Error("Invalid history response");purchases=result.purchases;}catch(_){}
   content.innerHTML=`${passPanel}<section class="panel"><div class="panel-body"><h2>Legacy Store history</h2><p>These records belong to the earlier Store. They do not issue or activate the current app's individual monthly/annual passes. Existing records and compatibility access are preserved.</p><p>Current account passes are recorded separately by the platform operator. New subscription checkout is not available here.</p>${purchases===null?'<p role="alert">Store history could not be loaded. No empty history is inferred.</p>':purchases.length?`<div class="tablewrap"><table><thead><tr><th>Recorded</th><th>Legacy item</th><th>Amount</th><th>Status</th></tr></thead><tbody>${purchases.map(item=>`<tr><td>${esc(ts(item.created_at))}</td><td>${esc(item.service_label||item.service_key||"Legacy service")}</td><td>${storePrice(item.price_mmk)}</td><td>${requestStatusBadge(item.status||"unknown")}</td></tr>`).join("")}</tbody></table></div>`:'<p>No legacy Store purchases recorded.</p>'}</div></section>`;
+}
+
+async function renderIndividualPass(main, pass) {
+  const content=main.querySelector("#content");
+  const labels={active:"Active",transition:"Seven-day transition",expired:"Expired",revoked:"Revoked",pass_required:"Activation required",authorized_login_required:"Authorized login review required",platform_exempt:"Platform administrator exempt"};
+  let requests=null;
+  try { const r=await MM.get("/me/app-pass/renewals");if(Array.isArray(r.requests))requests=r.requests; }catch(_){}
+  const pending=requests?.find(r=>r.status==="pending");
+  content.innerHTML=`<section class="panel"><div class="panel-body"><h2>Your app pass</h2><p>${esc(labels[pass.state]||"Unavailable")}</p><p>Activation: ${pass.activated_at?esc(ts(pass.activated_at)):"Not activated"}<br>Expiry: ${pass.expires_at?esc(ts(pass.expires_at)):"Not recorded"}${pass.transition_expires_at?`<br>Transition ends: ${esc(ts(pass.transition_expires_at))}`:""}</p><p>${pass.capacity_exempt?"Your platform administrator account is exempt from pass and workspace limits.":"One authorized login for your private workspace, one business site and one RouterBOARD."} Monthly and annual passes include the same features. Voucher, AI and Jellyfin usage has no app subscription quota; service availability and supported device capabilities still apply.</p><p>Expiry blocks app management. Existing guest internet sessions continue under the router's voucher limits.</p>${pass.state==="platform_exempt"?"":`<form id="account-renewal-form"><h3>Request activation or renewal</h3><p>This sends a request to the platform administrator. It does not charge money or confirm payment. Approval starts a new calendar month or year.</p><label>Plan<select class="input" name="plan"><option value="monthly">Monthly</option><option value="annual">Annual</option></select></label><button class="btn btn-primary" type="submit"${requests===null||pending||pass.authorized_login===false?" disabled":""}>Send request</button><p role="status">${requests===null?"Renewal history unavailable. Reload before submitting.":pending?"A renewal request is already awaiting review.":pass.authorized_login===false?"Contact the platform administrator to review the authorized login.":""}</p></form>`}</div></section><section class="panel"><div class="panel-body"><h2>Your renewal requests</h2>${requests===null?'<p role="alert">Could not load renewal requests.</p>':requests.length?requests.map(r=>`<p>${esc(ts(r.created_at))} · ${esc(r.plan)} · ${esc(r.status)}</p>`).join(""):'<p>No renewal requests.</p>'}</div></section>`;
+  const form=content.querySelector("#account-renewal-form");
+  form?.addEventListener("submit",async e=>{
+    e.preventDefault();const button=form.querySelector("button"),status=form.querySelector('[role="status"]');
+    if(button.disabled)return;button.disabled=true;status.textContent="Sending…";
+    try { await MM.post("/me/app-pass/renewals",{plan:form.elements.plan.value});await renderIndividualPass(main,pass); }
+    catch(err){status.textContent=apiErrorText(err,"Request not confirmed. Reload before retrying.");}
+  });
 }
 
 async function renderLegacyStoreCheckout(main) {
@@ -3759,7 +3776,7 @@ async function renderLegacyStoreCheckout(main) {
   const historyRows = purchases.slice(0, 8).map(item => `<tr><td>${esc(ts(item.created_at))}</td><td>${esc(item.service_label || item.service_key || "service")}</td><td class="num">${storePrice(item.price_mmk)}</td><td>${requestStatusBadge(item.status || "pending")}</td></tr>`).join("");
   const content = main.querySelector("#content");
   content.innerHTML = `<section class="store-hero">
-      <div><span class="fleet-kicker">MEGA MAGIC SERVICES</span><h2>Choose what your business needs.</h2><p>${subscriptionOnly ? "Choose monthly or annual access, submit your bank reference, and follow approval here. Guest internet and media purchases are separate." : "Buy a plan or additional capability, submit your bank reference, and follow its approval and activation status here."}</p></div>
+      <div><span class="fleet-kicker">MEGA MAGIC SERVICES</span><h2>Choose what your business needs.</h2><p>${subscriptionOnly ? "View pass and request renewal, submit your bank reference, and follow approval here. Guest internet and media purchases are separate." : "Buy a plan or additional capability, submit your bank reference, and follow its approval and activation status here."}</p></div>
       ${subscriptionOnly ? "" : `<div class="store-wallet"><span>Your Magic Coins</span><strong>${coinAmt(wallet && wallet.balance)}</strong><small>${keys.filter(key => key.status === "active").length} active unlock key${keys.filter(key => key.status === "active").length === 1 ? "" : "s"}</small></div>`}
     </section>
     ${subscriptionNotice ? `<div class="alert" role="status" id="store-subscription-status">${esc(subscriptionNotice)}</div>` : ""}
@@ -4528,7 +4545,7 @@ async function renderTeam(main) {
     team = r.team || [];
   } catch (e) {
     if (e.status === 403) {
-      content.innerHTML = `<div class="panel"><div class="panel-body"><div class="empty"><div class="empty-title">Owner access required</div>Only the business owner can manage team roles.</div></div></div>`;
+      content.innerHTML = `<div class="panel"><div class="panel-body"><div class="empty"><div class="empty-title">Platform administrator access required</div>Only the platform administrator can manage account records.</div></div></div>`;
       return;
     }
     throw e;
@@ -4700,6 +4717,25 @@ function bizName(bizs, id) {
   return b ? b.company_name : (id || "—");
 }
 
+async function loadPlatformRenewals(panel) {
+  if(!panel?.isConnected)return;
+  const request=(panel._renewalRequest||0)+1;panel._renewalRequest=request;
+  try {
+    const data=await MM.get("/platform/account-renewals");
+    if(!Array.isArray(data.requests))throw Error("Invalid renewal response");
+    if(!panel.isConnected||panel._renewalRequest!==request)return;
+    panel.innerHTML=`<h2>Client activation &amp; renewal requests</h2><p>Up to 100 pending requests, oldest first. Approval starts the selected calendar month or year immediately. Verify any payment separately before approving.</p><button class="btn" type="button" data-renewal-refresh>Refresh requests</button>${data.requests.length?data.requests.map(r=>`<form data-renewal-id="${esc(r.id)}" class="panel-body"><strong>${esc(r.email)}</strong><p>${esc(r.plan)} · Requested ${esc(ts(r.created_at))}</p><label><input type="checkbox" name="confirmed" required> I have reviewed this client's request and intend to record this decision.</label><button class="btn btn-primary" type="submit" data-decision="approve">Approve and activate</button><button class="btn" type="submit" data-decision="reject">Reject request</button><p role="status"></p></form>`).join(""):'<p>No pending requests.</p>'}`;
+    panel.querySelector('[data-renewal-refresh]').addEventListener('click',()=>void loadPlatformRenewals(panel));
+    panel.querySelectorAll('[data-renewal-id]').forEach(form=>form.addEventListener('submit',async e=>{
+      e.preventDefault();const button=e.submitter,status=form.querySelector('[role="status"]');
+      if(form.dataset.pending==="true"||!button||!form.reportValidity())return;
+      form.dataset.pending="true";form.querySelectorAll('button').forEach(b=>b.disabled=true);status.textContent="Recording decision…";
+      try { await MM.post(`/platform/account-renewals/${encodeURIComponent(form.dataset.renewalId)}/decision`,{approve:button.dataset.decision==="approve"});await loadPlatformRenewals(panel); }
+      catch(err){status.textContent=apiErrorText(err,"Decision not confirmed. Refresh requests before retrying.");}
+    }));
+  }catch(_){if(panel.isConnected&&panel._renewalRequest===request){panel.innerHTML='<p role="alert">Renewal requests are unavailable. No empty inbox is inferred.</p><button class="btn" data-renewal-refresh>Retry</button>';panel.querySelector('button').addEventListener('click',()=>void loadPlatformRenewals(panel));}}
+}
+
 async function renderPlatform(main) {
   const content = main.querySelector("#content");
   let businesses = [], incidents = [], counts = {}, pricing = null, pricingPublished = false;
@@ -4732,7 +4768,8 @@ async function renderPlatform(main) {
       <div class="stat"><div class="stat-label">Resolved</div><div class="stat-value">${counts.resolved ?? 0}</div></div>
     </div>
     <hr class="rule">
-    <section class="panel" id="platform-accounts"><div class="panel-head"><div><h2 class="panel-title">Accounts, passes &amp; usage</h2><p class="muted small">Individual logins, paid app passes and shared business limits. Account access is separate from observed app presence.</p></div></div><div class="panel-body"><div data-account-results>${loading()}</div></div></section>
+    <section class="panel" id="platform-accounts"><div class="panel-head"><div><h2 class="panel-title">Accounts, passes &amp; usage</h2><p class="muted small">One authorized login, one site and one router for each client workspace. Monthly and annual passes share features; account access is separate from observed app presence.</p></div></div><div class="panel-body"><div data-account-results>${loading()}</div></div></section>
+    <section class="panel"><div class="panel-body" id="platform-renewals">Loading renewal requests…</div></section>
     ${platformPricingForm(pricing, pricingPublished)}
 
     ${platformCreateForm()}
@@ -4742,18 +4779,19 @@ async function renderPlatform(main) {
       <div class="panel-body">${platformIncidentTable(incidents, businesses)}</div></div>`;
   await wirePlatformAdmin(content, main);
   void loadPlatformAccounts(content.querySelector("#platform-accounts"), 0);
+  void loadPlatformRenewals(content.querySelector("#platform-renewals"));
 }
 
 /* ---------- Platform admin (Stage: tenant management) ---------- */
 function platformCreateForm() {
-  return `<div class="panel" style="margin-top:18px"><div class="panel-head"><h2 class="panel-title">Create tenant</h2></div>
+  return `<div class="panel" style="margin-top:18px"><div class="panel-head"><h2 class="panel-title">Create client account</h2></div>
     <div class="panel-body">
       <div class="field"><label>Company name *</label><input class="input" id="pt-company"></div>
       <div class="field"><label>Owner email *</label><input class="input" id="pt-email" type="email"></div>
       <div class="field"><label>Owner password * (8+ chars)</label><input class="input" id="pt-pass" type="password"></div>
-      <div class="field"><label>Access tier</label><select class="input" id="pt-tier"><option>SMALL_WISP</option><option>ENTERPRISE_ISP</option><option>GLOBAL_ADMIN</option></select></div>
-      <div class="field"><label>Device quota limit (optional)</label><input class="input" id="pt-quota" inputmode="numeric"></div>
-      <button class="btn btn-primary" id="pt-create">Create tenant</button>
+      <input type="hidden" id="pt-tier" value="SMALL_WISP"><p>One authorized login, one site and one RouterBOARD. The app pass is approved separately.</p>
+      <input type="hidden" id="pt-quota" value="1">
+      <button class="btn btn-primary" id="pt-create">Create client account</button>
       <span id="pt-msg" class="muted small"></span>
     </div></div>`;
 }
@@ -4867,20 +4905,22 @@ function platformAccountTable(accounts) {
   if (!accounts.length) return '<p class="muted">No accounts on this page.</p>';
   return `<table class="platform-accounts-table"><thead><tr><th>Account</th><th>App presence</th><th>Monthly / annual pass</th><th>Activation &amp; expiry</th><th>Usage &amp; limits</th></tr></thead><tbody>${accounts.map(account=>{
     const p=account.pass||{},l=account.limits||{},ai=account.ai_usage_30d||{},permissions=account.permissions||{},subscription=account.subscription||{};
-    const features={magic_hub:"Magic Hub provisioning",router_management:"Device record management",voucher_issuance:"Internet voucher issuance",staff_management:"Staff management",jellyfin_management:"Jellyfin management",magic_dude:"Magic Dude"};
+    const capacity=value=>subscription.capacity_exempt?"Unlimited":number(value);
+    const features={magic_hub:"Magic Hub provisioning",router_management:"Device record management",voucher_issuance:"Internet voucher issuance",staff_management:"Platform account administration",jellyfin_management:"Jellyfin management",magic_dude:"Magic Dude"};
     return `<tr><td><strong>${esc(account.email)}</strong><div class="muted small">${esc(account.full_name||"")} · ${esc(account.user_role)}</div><div class="muted small">${esc(account.company_name)}</div><span class="status ${account.is_active?"ok":"bad"}">${account.is_active?"Account enabled":"Account disabled"}</span></td>
       <td><span class="status ${account.presence==="online"?"ok":account.presence==="idle"?"warn":"unknown"}">${esc(title[account.presence]||"Unavailable")}</span><div class="small muted">Last heartbeat: ${date(account.last_seen_at)}</div><div class="small muted">Last activity: ${date(account.last_active_at)}</div><div class="small muted">Last login: ${date(account.last_login_at)}</div></td>
-      <td><strong>${esc(({monthly:"Monthly",annual:"Annual",trial:"Trial",spark:"Spark / free",none:"No recorded pass"})[p.kind]||p.kind||"Unavailable")}</strong><div>${esc(({no_pass:"Not issued",active:"Active",scheduled:"Starts later",expired:"Expired",revoked:"Revoked"})[p.state]||"Unavailable")}</div><div class="small muted">Scope: ${esc(p.scope||"Unavailable")}</div><div class="small muted">Access rollout: existing access preserved</div></td>
-      <td><div>Activated: ${date(p.activated_at)}</div><div>Expires: ${date(p.expires_at)}</div>${!p.activated_at?'<div class="small muted">No current app pass has been recorded. Old Store transactions are not imported.</div>':""}</td>
-      <td><div class="small">Routers ${number(l.router_count)} / ${number(l.router_limit)} · Sites ${number(l.site_count)} / ${number(l.site_limit)}</div><details data-account-id="${esc(account.user_id)}"><summary>View account limits</summary><div class="platform-account-details"><strong>Existing business capacity</strong><p>Individual feature limits are not configured. These business counters are not individual subscription allowances.</p>
-       <p>Devices: ${number(l.device_count)} / base quota ${number(l.device_quota_limit)} · extra slots ${number(l.extra_slots)}</p>
-       <p>Routers: ${number(l.router_count)} / ${number(l.router_limit)} · Sites: ${number(l.site_count)} / ${number(l.site_limit)} · Controllers: ${number(l.controller_count)} / ${number(l.controller_limit)}</p>
+      <td><strong>${esc(({monthly:"Monthly",annual:"Annual",trial:"Trial",spark:"Spark / free",none:"No recorded pass"})[p.kind]||p.kind||"Unavailable")}</strong><div>${esc(({no_pass:"Not issued",pass_required:"Activation required",transition:"Seven-day transition",platform_exempt:"Platform administrator exempt",authorized_login_required:"Authorized login review required",active:"Active",scheduled:"Starts later",expired:"Expired",revoked:"Revoked"})[p.state]||"Unavailable")}</div><div class="small muted">Scope: ${esc(p.scope||"Unavailable")}</div><div class="small muted">${subscription.enforced?"Individual pass enforcement active":"Access rollout: existing access preserved"}</div></td>
+      <td><div>Activated: ${date(p.activated_at)}</div><div>Expires: ${date(p.expires_at)}</div>${p.transition_expires_at?`<div>Transition ends: ${date(p.transition_expires_at)}</div>`:""}${!p.activated_at?'<div class="small muted">No current app pass has been recorded. Old Store transactions are not imported.</div>':""}</td>
+      <td><div class="small">Routers ${number(l.router_count)} / ${capacity(l.router_limit)} · Sites ${number(l.site_count)} / ${capacity(l.site_limit)}</div><details data-account-id="${esc(account.user_id)}"><summary>View account limits</summary><div class="platform-account-details"><strong>${subscription.enforced?"Client workspace allowance":"Existing business capacity"}</strong>${subscription.enforced?'<p>One authorized client login, one site and one RouterBOARD per workspace. Voucher issuance, AI and Jellyfin have no app usage quota. Provider availability and router capabilities still apply.</p>':'<p>Individual feature limits are not configured. These business counters are not individual subscription allowances.</p>'}
+       ${subscription.enforced?'<details><summary>Legacy capacity records</summary>':""}<p>Devices: ${number(l.device_count)} / base quota ${number(l.device_quota_limit)} · extra slots ${number(l.extra_slots)}</p>
+       <p>Routers: ${number(l.router_count)} / ${capacity(l.router_limit)} · Sites: ${number(l.site_count)} / ${capacity(l.site_limit)} · Controllers: ${number(l.controller_count)} / ${number(l.controller_limit)}</p>
        <p>${l.legacy_capacity_enforced===false?"Legacy capacity counters are not enforced in subscription-only mode.":"Business quotas are shared across its accounts; they are not per-user allowances."}</p>
        <p>Legacy Hub/WebFig pass expires: ${date(l.hub_pass_expires_at)}</p><p>Business AI token balance: ${number(l.ai_token_balance)}</p><p>This account, last 30 days: ${number(ai.calls)} AI calls · ${number(ai.tokens)} tokens recorded.</p>
-       <strong>Current role / compatibility eligibility</strong>${Object.entries(features).map(([key,label])=>`<div>${esc(label)}: ${permissions[key]===true?"Permitted":permissions[key]===false?"Restricted":"Unavailable"}</div>`).join("")}
+       ${subscription.enforced?"</details>":""}<strong>Current role / compatibility eligibility</strong>${Object.entries(features).map(([key,label])=>`<div>${esc(label)}: ${permissions[key]===true?"Permitted":permissions[key]===false?"Restricted":"Unavailable"}</div>`).join("")}
        <p>Permissions do not prove deployment readiness or router connectivity. Subscription, platform feature switches and endpoint-specific checks still apply.</p>
        <p>Old account tier: ${esc(account.legacy?.account_tier||"Not recorded")} (historical compatibility data).</p>
-       <form data-record-pass="${esc(account.user_id)}" data-revision="${Number(p.revision||0)}"><h3>Record individual app pass</h3><p>This records explicit terms for this login only. It does not verify a payment or change current access enforcement.</p><label>Plan<select class="input" name="plan"><option value="monthly"${p.kind==="monthly"?" selected":""}>Monthly</option><option value="annual"${p.kind==="annual"?" selected":""}>Annual</option></select></label><label>Activation (UTC)<input class="input" type="datetime-local" name="activation" required value="${p.activated_at?esc(new Date(p.activated_at).toISOString().slice(0,16)):""}"></label><label>Expiry (UTC)<input class="input" type="datetime-local" name="expiry" required value="${p.expires_at?esc(new Date(p.expires_at).toISOString().slice(0,16)):""}"></label><label><input type="checkbox" name="revoked"${p.revoked_at?" checked":""}> Revoke this recorded pass</label><button class="btn" type="submit">Save pass record</button><p role="status"></p></form>
+       <p>Authorized client login: ${account.user_role==="DEVELOPER"?"Platform administrator exempt":account.authorized_login===true?"This login":account.primary_login_id?"Another login in this workspace":"Needs platform review"}</p>${account.user_role==="OWNER"&&account.authorized_login!==true?`<form data-authorize-client="${esc(account.user_id)}" data-expected-primary="${esc(account.primary_login_id||"")}"><h3>Choose this workspace's authorized login</h3><p>Existing records stay intact. Only this login will manage the workspace under the individual-pass policy.</p><label>Review reason<input class="input" name="reason" required minlength="5" maxlength="500"></label><label><input type="checkbox" name="confirmed" required> I reviewed this client identity and workspace.</label><button class="btn" type="submit">Set authorized login</button><p role="status"></p></form>`:""}
+       <form data-record-pass="${esc(account.user_id)}" data-revision="${Number(p.revision||0)}"><h3>Record individual app pass</h3><p>Approval activates this login’s calendar pass. This does not verify bank settlement.</p><label>Plan<select class="input" name="plan"><option value="monthly"${p.kind==="monthly"?" selected":""}>Monthly</option><option value="annual"${p.kind==="annual"?" selected":""}>Annual</option></select></label><p>Activation starts when approved. Monthly lasts one calendar month; annual lasts one calendar year. Revocation preserves the recorded dates.</p><button class="btn" type="submit" data-pass-action="activate"${account.user_role==="DEVELOPER"||(subscription.enforced&&p.authorized_login===false)?" disabled":""}>Approve and activate</button><button class="btn" type="submit" data-pass-action="revoke"${!p.revision||p.revoked_at?" disabled":""}>Revoke pass</button><p role="status"></p></form>
       </div></details></td></tr>`;
   }).join("")}</tbody></table>`;
 }
@@ -4898,11 +4938,16 @@ async function loadPlatformAccounts(panel, offset = 0) {
     if (!panel.isConnected || panel._accountRequest !== request) return;
     results.innerHTML = `<p class="muted small">Observed ${esc(ts(data.as_of))}. Refreshes every 30 seconds while this page is visible. Online: app visible within 90 seconds, activity within 5 minutes and a recent heartbeat. Idle: recent heartbeat without active visible use. Offline: no recent valid-session heartbeat. Not observed: no heartbeat recorded yet. Suspended accounts stay separate.</p>
       <div class="platform-account-controls"><span>${data.total?offset+1:0}–${Math.min(offset+data.accounts.length,data.total)} of ${esc(data.total)} accounts</span><button class="btn btn-sm" data-accounts-prev ${offset===0?"disabled":""}>Previous</button><button class="btn btn-sm" data-accounts-next ${offset+data.limit>=data.total?"disabled":""}>Next</button><button class="btn btn-sm" data-accounts-refresh>Refresh presence</button></div>${platformAccountTable(data.accounts)}`;
+    panel.querySelectorAll("[data-authorize-client]").forEach(form=>form.addEventListener("submit",async event=>{
+      event.preventDefault();const button=form.querySelector("button"),status=form.querySelector('[role="status"]');if(button.disabled||!form.reportValidity())return;button.disabled=true;status.textContent="Saving selection…";
+      try { await MM.put(`/platform/accounts/${encodeURIComponent(form.dataset.authorizeClient)}/authorized-login`,{expected_primary_user_id:form.dataset.expectedPrimary,reason:form.elements.reason.value.trim()});await loadPlatformAccounts(panel,offset); }
+      catch(e){status.textContent=apiErrorText(e,"Selection not confirmed. Refresh accounts before retrying.");}
+    }));
     panel.querySelectorAll("[data-record-pass]").forEach(form=>form.addEventListener("submit",async event=>{
-      event.preventDefault();const button=form.querySelector("button"),status=form.querySelector('[role="status"]');if(button.disabled||!form.reportValidity())return;
+      event.preventDefault();const button=event.submitter||form.querySelector("button"),status=form.querySelector('[role="status"]');if(form.dataset.pending==="true"||button.disabled||!form.reportValidity())return;form.dataset.pending="true";
       button.disabled=true;status.textContent="Saving…";
-      try { await MM.put(`/platform/accounts/${encodeURIComponent(form.dataset.recordPass)}/pass`,{plan:form.elements.plan.value,activated_at:new Date(form.elements.activation.value+"Z").toISOString(),expires_at:new Date(form.elements.expiry.value+"Z").toISOString(),revoked:form.elements.revoked.checked,revision:Number(form.dataset.revision)});await loadPlatformAccounts(panel,offset); }
-      catch(e){status.textContent=apiErrorText(e,"Pass recording was not confirmed. Refresh before retrying.");button.disabled=false;}
+      try { await MM.put(`/platform/accounts/${encodeURIComponent(form.dataset.recordPass)}/pass`,{plan:form.elements.plan.value,action:button.dataset.passAction||"activate",revision:Number(form.dataset.revision)});await loadPlatformAccounts(panel,offset); }
+      catch(e){status.textContent=apiErrorText(e,"Pass decision was not confirmed. Refresh before retrying.");button.disabled=false;form.dataset.pending="false";}
     }));
     panel.querySelectorAll("details[data-account-id]").forEach(item=>{
       item.open = expanded.has(item.dataset.accountId);
@@ -4910,7 +4955,7 @@ async function loadPlatformAccounts(panel, offset = 0) {
     });
     const refreshWhenVisible = () => {
       if (!panel.isConnected) return;
-      if (document.visibilityState === "visible") void loadPlatformAccounts(panel, offset);
+      if (document.visibilityState === "visible" && !panel.querySelector("form:focus-within,form[data-pending=\"true\"]")) void loadPlatformAccounts(panel, offset);
       else panel._accountTimer = setTimeout(refreshWhenVisible, 30000);
     };
     panel._accountTimer = setTimeout(refreshWhenVisible, 30000);
@@ -5003,7 +5048,7 @@ async function renderProfile(main) {
       </div>
     </section>
     <div class="profile-grid">
-      <section class="panel"><div class="panel-head"><div><h2 class="panel-title">Personal details</h2><p class="muted small">Shown to your team inside this business.</p></div></div><form class="panel-body form-grid" id="profile-form">
+      <section class="panel"><div class="panel-head"><div><h2 class="panel-title">Personal details</h2><p class="muted small">Your client account details.</p></div></div><form class="panel-body form-grid" id="profile-form">
         <div class="field"><label for="profile-name">Display name</label><input class="input" id="profile-name" maxlength="255" value="${esc(profile.full_name)}" required></div>
         <div class="field"><label for="profile-email">Sign-in email</label><input class="input" id="profile-email" value="${esc(profile.email)}" disabled><p class="muted small">Ask an administrator if you need to change the email used to sign in.</p></div>
         <div class="field"><label for="profile-language">Interface language</label><select class="input" id="profile-language"><option value="en">English</option><option value="my">မြန်မာ</option><option value="zh">中文</option></select><p class="muted small">Saved per account. Localized surfaces use this preference; untranslated operational labels remain English.</p></div>

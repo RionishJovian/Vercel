@@ -17,12 +17,13 @@ import (
 )
 
 type StoreHandler struct {
-	SubscriptionOnly bool
-	db               *database.DB
-	purchases        *database.StorePurchaseRepository
-	pricing          *database.PricingRepository
-	messenger        telegram.Messenger
-	operatorChat     string
+	IndividualPassesEnabled bool
+	SubscriptionOnly        bool
+	db                      *database.DB
+	purchases               *database.StorePurchaseRepository
+	pricing                 *database.PricingRepository
+	messenger               telegram.Messenger
+	operatorChat            string
 }
 
 func NewStoreHandler(db *database.DB, purchases *database.StorePurchaseRepository, pricing *database.PricingRepository, messenger telegram.Messenger, operatorChat string) *StoreHandler {
@@ -38,6 +39,10 @@ type createStorePurchaseRequest struct {
 }
 
 func (h *StoreHandler) Create(c *gin.Context) {
+	if h.IndividualPassesEnabled {
+		c.JSON(409, gin.H{"error": "Legacy Store checkout is retired. Request your individual app pass instead.", "code": "legacy_checkout_retired"})
+		return
+	}
 	var in createStorePurchaseRequest
 	if err := c.ShouldBindJSON(&in); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid checkout request"})
@@ -93,6 +98,10 @@ func (h *StoreHandler) List(c *gin.Context) {
 }
 
 func (h *StoreHandler) CheckoutOptions(c *gin.Context) {
+	if h.IndividualPassesEnabled {
+		c.JSON(200, gin.H{"retired": true, "bank_accounts": []any{}, "approval": "Individual app passes require explicit platform approval"})
+		return
+	}
 	accounts, err := h.purchases.ListEnabledBankAccounts()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "checkout options unavailable"})
@@ -194,6 +203,9 @@ func (h *StoreHandler) DecidePurchaseRequest(businessID, requestID string, appro
 }
 
 func (h *StoreHandler) decidePurchaseTXN(tx *sql.Tx, businessID, requestID, actor string, approve bool, reason string) (*model.StorePurchase, error) {
+	if h.IndividualPassesEnabled {
+		return nil, &httpError{status: 409, msg: "Legacy Store decisions are retired; historical purchases do not activate individual passes"}
+	}
 	if h.SubscriptionOnly {
 		return h.purchases.DecideSubscriptionTXN(tx, businessID, requestID, actor, approve, reason, time.Now().UTC())
 	}
