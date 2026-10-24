@@ -316,11 +316,13 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		cfg.VPS.EndpointHost,
 	)
 
+	var managementHubClient *hub.Client
 	if cfg.VPS.HubLookupEnabled {
 		client, err := hub.New(hub.Options{URL: cfg.VPS.HubURL, KeyID: cfg.VPS.HubKeyID, SigningKey: cfg.VPS.HubSigningKey})
 		if err != nil {
 			return nil, fmt.Errorf("invalid Magic Hub lookup configuration")
 		}
+		managementHubClient = client
 		vpsHandler.ConfigureHubLookup(client)
 		if cfg.VPS.HubEnrollmentEnabled {
 			vpsHandler.ConfigureHubEnrollment(client)
@@ -353,6 +355,9 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	}
 
 	securityHandler := handler.NewSecurityHandler(db, database.NewDeviceRepository(db))
+	if err := configureManagementMoves(securityHandler, db, cfg, managementHubClient); err != nil {
+		return nil, err
+	}
 	backupHandler := handler.NewBackupHandler(db, database.NewDeviceRepository(db))
 	teamHandler := handler.NewTeamHandler(db, database.NewUserRepository(db), authService)
 	pulseHandler := handler.NewPulseHandler(db, database.NewDeviceRepository(db), database.NewIncidentRepository(db))
@@ -622,6 +627,7 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 			{
 				routers.GET("", routerHandler.ListRouters)
 				routers.GET("/:id/capabilities", securityHandler.RouterCapabilities)
+				handler.RegisterManagementMigrationRoutes(routers, securityHandler)
 				routers.GET("/:id/quick-config", securityHandler.ReadQuickConfig)
 				routers.GET("/:id/network/:action", auth.RequireMinRole(model.RoleAdmin), securityHandler.NetworkControl)
 				routers.POST("/:id/network/:action", auth.RequireMinRole(model.RoleAdmin), securityHandler.NetworkControl)

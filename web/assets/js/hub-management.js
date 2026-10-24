@@ -11,6 +11,7 @@ window.MMHubManagement = (() => {
   ['qos','Fairshare QoS','Shared capacity and client speed limits.'],
   ['wifi','Wi-Fi networks','SSID, password and country for onboard radios.'],
   ['pppoe','Subscriber service','Subscriber logins, plans and PPPoE service.'],
+  ['migration','Management address','Move the Hub address with verification and recovery.'],
   ['maintenance','Maintenance','Backups, restore, events and safe reboot access.']
  ];
  function mount(host,routers,canEdit,api=MM) {
@@ -25,11 +26,12 @@ window.MMHubManagement = (() => {
   async function choose(section){
    // Existing network editor locks its controls during an apply. Do not discard
    // that editor from an outer category click while the request is in flight.
-   if(pane.querySelector('[data-router]:disabled'))return;
+   if(pane.querySelector('[data-router]:disabled,[data-move-router]:disabled'))return;
    const stamp=++revision;
    buttons.forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.hubSection===section)));
    const r=currentRouter();if(r)remember(r);
    pane.replaceChildren();
+   if(section==='migration'){const editor=document.createElement('div');pane.appendChild(editor);await MMManagementMigration.mount(editor,routers,canEdit,api);return}
    if(section==='maintenance'){
     pane.innerHTML=`<h3>Recovery & maintenance</h3><p>Create and inspect recovery points before making major changes. Restore and reboot require explicit confirmation and the existing server checks.</p><div class="workspace-actions">${link('backups','Backups & restore')}${link('events','Events')}${link('fleet','Fleet health')}</div><p>Reboot is available on the router card above when its connection is verified. RouterOS updates are not automated in this release.</p>`;return;
    }
@@ -68,6 +70,7 @@ window.MMHubManagement = (() => {
    }
   }
   buttons.forEach(b=>b.onclick=()=>choose(b.dataset.hubSection));
+  try{const requested=sessionStorage.getItem('mm_hub_task');sessionStorage.removeItem('mm_hub_task');if(sections.some(s=>s[0]===requested))choose(requested)}catch(_){}
  }
  return {mount};
 })();

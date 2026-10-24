@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/lib/pq"
 
 	"mega-magic/internal/auth"
 	"mega-magic/internal/database"
@@ -262,6 +263,16 @@ func (h *RouterHandler) UpdateRouter(c *gin.Context) {
 			return &httpError{status: http.StatusBadRequest, msg: err.Error()}
 		}
 
+		if existing.Transport == "tunnel" && existing.ManagementIP != nil && req.Transport != nil && *req.Transport != "tunnel" {
+			return &httpError{status: http.StatusConflict, msg: "Disconnect the saved Hub connection before changing its transport"}
+		}
+		if req.ManagementIP != nil && existing.Transport == "tunnel" && existing.ManagementIP != nil {
+			next := parseIP(req.ManagementIP)
+			if next == nil || !(*next).Equal(*existing.ManagementIP) {
+				return &httpError{status: http.StatusConflict, msg: "Use the guided management-address migration in Magic Hub; editing a saved record cannot move a live tunnel"}
+			}
+		}
+
 		// Validate only the fields being updated (nil = untouched).
 		if req.DeploymentLayer != nil && !validDeploymentLayers[*req.DeploymentLayer] {
 			return &httpError{status: http.StatusBadRequest, msg: "invalid deployment_layer: expected MAIN_GATEWAY, DOWNSTREAM_SWITCH, ACCESS_POINT or CONTROLLER"}
@@ -297,6 +308,7 @@ func (h *RouterHandler) UpdateRouter(c *gin.Context) {
 		if req.MACAddress != nil {
 			existing.MACAddress = parseMAC(req.MACAddress)
 		}
+
 		if req.ManagementIP != nil {
 			existing.ManagementIP = parseIP(req.ManagementIP)
 		}
@@ -337,6 +349,10 @@ func (h *RouterHandler) DeleteRouter(c *gin.Context) {
 		}
 
 		if err := h.deviceRepo.DeleteDeviceTXN(tx, deviceID); err != nil {
+			var pending *pq.Error
+			if errors.As(err, &pending) && pending.Code == "55000" && pending.Message == "management_migration_pending" {
+				return &httpError{status: http.StatusConflict, msg: "Recover or cancel this router's management migration before deleting its record"}
+			}
 			return &httpError{status: http.StatusInternalServerError, msg: "failed to delete router"}
 		}
 		return nil

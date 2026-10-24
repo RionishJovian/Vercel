@@ -14,7 +14,7 @@ function fixture(){
  return {w,host,requests,api,routers,inventory};
 }
 test('Hub categories render immediately without requesting or changing router state',()=>{
- const {host,requests}=fixture();assert.equal(host.querySelectorAll('[data-hub-section]').length,9);assert.equal(requests.length,0);
+ const {host,requests}=fixture();assert.equal(host.querySelectorAll('[data-hub-section]').length,10);assert.equal(requests.length,0);
 });
 test('Protection is a typed reviewed operation and bypass creation is not offered',async()=>{
  const {host,requests}=fixture();await host.querySelector('[data-hub-section="protection"]').onclick();

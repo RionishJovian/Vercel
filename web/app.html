@@ -38,7 +38,8 @@
   <script src="/assets/js/app.js" defer></script>
   <script src="/assets/js/i18n.js" defer></script>
   <script src="/assets/js/network-control.js?v=20261024-hub-1" defer></script>
-  <script src="/assets/js/hub-management.js?v=20261024-1" defer></script>
+  <script src="/assets/js/management-migration.js?v=20261024-1" defer></script>
+  <script src="/assets/js/hub-management.js?v=20261024-2" defer></script>
   <script src="/assets/js/workflow-revamp.js?v=2" defer></script>
   <link rel="stylesheet" href="/assets/vendor/maplibre/maplibre-gl.css">
   <style>
@@ -216,7 +217,7 @@
   </style>
   <link rel="stylesheet" href="/assets/css/redesign.css">
   <link rel="stylesheet" href="/assets/css/media-appearance.css?v=5">
-  <link rel="stylesheet" href="/assets/css/layout.css?v=20261024-hub-1">
+  <link rel="stylesheet" href="/assets/css/layout.css?v=20261024-migration-1">
   <link rel="stylesheet" href="/assets/css/jade-glass.css?v=20261023-4">
 </head>
 <body class="page-app">
@@ -1988,11 +1989,15 @@ function openEditRouter(main, r) {
         <div class="field"><label>Hardware name *</label><input class="input" id="er-name" value="${esc(r.hardware_name || "")}"></div>
         <div class="field"><label>Model</label><input class="input" id="er-model" value="${esc(r.device_model || "")}"></div>
         <div class="field"><label>Deployment layer</label><select class="input" id="er-layer">${layers.map(l => `<option value="${l}"${l === r.deployment_layer ? " selected" : ""}>${l}</option>`).join("")}</select></div>
-        <div class="field"><label>Management IP</label><input class="input" id="er-ip" value="${esc(r.management_ip || "")}"></div>
+        <div class="field"><label>Management IP</label><input class="input" id="er-ip" value="${esc(r.management_ip || "")}"${r.transport === "tunnel" ? " readonly" : ""}>${r.transport === "tunnel" ? '<p>Use the guided migration to change a Hub address safely.</p><button class="btn" type="button" data-open-management-migration>Move management address in Magic Hub</button>' : ""}</div>
         <button class="btn btn-primary" id="er-save">Save</button>
         <button class="btn" id="er-cancel">Cancel</button>
         <span id="er-msg" class="muted small"></span>
       </div></div>`;
+  content.querySelector('[data-open-management-migration]')?.addEventListener('click',async()=>{
+    try {sessionStorage.setItem('mm_selected_router',r.device_id);sessionStorage.setItem('mm_hub_task','migration')}catch(_){}
+    if(location.hash === '#gateways')await renderSites(main,'gateways');else location.hash='gateways';
+  });
   document.getElementById("er-cancel").addEventListener("click", () => renderSites(main));
   document.getElementById("er-save").addEventListener("click", async () => {
     const body = {

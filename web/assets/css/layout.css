@@ -178,3 +178,10 @@
  .hub-management > .network-tasks .network-task strong { font-size:.86rem; }
  .hub-management > .network-tasks .network-task span { display:none; }
 }
+.hub-management [data-move-editor] dl { display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px 20px;margin-block:24px; }
+.hub-management [data-move-editor] dd { margin:0;overflow-wrap:anywhere;font-variant-numeric:tabular-nums; }
+.hub-management [data-move-editor] dt { color:var(--ink-soft); }
+.hub-management [data-move-editor] .btn { margin:8px 8px 0 0; }
+@media(max-width:640px){.hub-management [data-move-editor] dl {grid-template-columns:1fr;gap:6px}.hub-management [data-move-editor] dd {margin-bottom:12px}}
+
+.hub-management [data-move-editor] > label {display:flex;align-items:flex-start;gap:10px;margin-block:20px 10px;}
