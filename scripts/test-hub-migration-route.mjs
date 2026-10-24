@@ -21,6 +21,7 @@ async function request(action,{tenant='tenant',scope='peers:migrate',body,method
  const headers=unsigned?{}:{'x-mm-key-id':'fixture','x-mm-timestamp':stamp,'x-mm-request-id':id,'x-mm-scope':scope,'x-mm-tenant-id':tenant,'x-mm-router-id':'router','x-mm-requested-by':'owner','x-mm-signature':createHmac('sha256',Buffer.from(signing,'hex')).update(canonical).digest('base64url')};
  let status,result;await module.namespace.handle({method,url:prefix+route,headers,on(event,cb){if(event==='data')cb(Buffer.from(payload));if(event==='end')cb();return this}},{writeHead:code=>status=code,end:raw=>result=JSON.parse(raw)});return {status,result};
 }
+const lookup=await request(null,{path:'/v1/peers/by-router/router',method:'GET',scope:'peers:inspect'});assert.equal(lookup.status,200);assert.equal(lookup.result.enrollmentVersion,1,'readonly peer metadata must preserve the enrollment protocol version');
 const before=store;assert.equal((await request('candidate',{unsigned:true})).status,401);assert.equal((await request('candidate',{scope:'peers:create'})).status,401);assert.equal((await request('candidate',{tenant:'foreign'})).status,404);assert.equal(sets,0);assert.equal(store,before);
 const candidate=await request('candidate',{prefix:'/internal/provisioner'});assert.equal(candidate.status,200);assert.equal(candidate.result.newAddress,'10.77.0.3/32');assert.equal(store,before);assert.equal(sets,0);
 const body={operationId:'11111111-1111-4111-8111-111111111111',oldAddress:'10.77.0.2/32',newAddress:'10.77.0.3/32',routerPublicKey:key};

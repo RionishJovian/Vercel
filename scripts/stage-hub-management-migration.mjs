@@ -8,6 +8,7 @@ replace('import { enrollCreateOnly, reserveTunnelAddresses } from "./hub-enrollm
 replace('.map((p) => String(p.tunnelAddress || p.address || "").split("/")[0]),','.flatMap(p => migrationAddresses(p).map(raw => String(raw).split("/")[0])),');
 replace('const ip = String(peer.tunnelAddress || "").split("/")[0];','const ips = migrationAddresses(peer).join(",");');
 replace('"allowed-ips", `${ip}/32`','"allowed-ips", ips');
+replace('    state: p.state,','    state: p.state,\n    enrollmentVersion: 1,');
 replace('match[0][3] === p.tunnelAddress','match[0][3].split(",").sort().join(",") === migrationAddresses(p).sort().join(",")');
 replace('  const byRouter = /^\\/v1\\/peers\\/by-router\\/([^/]+)$/.exec(pathName);','  const migrationRoute = /^\\/v1\\/peers\\/by-router\\/([^/]+)\\/management-migration\\/(candidate|inspect|stage|commit|finalize|abort)$/.exec(pathName);\n  const byRouter = /^\\/v1\\/peers\\/by-router\\/([^/]+)$/.exec(pathName);');
 replace('if (!(byRouter || peerDisable || peerOne))','if (!(byRouter || peerDisable || peerOne || migrationRoute))');
