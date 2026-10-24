@@ -2,7 +2,7 @@ name: Validate and release Mega Magic
 
 on:
   push:
-    branches: [main, 'fix/**']
+    branches: [main]
   pull_request:
   workflow_dispatch:
     inputs:

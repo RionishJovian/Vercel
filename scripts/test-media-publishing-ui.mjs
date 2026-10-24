@@ -100,5 +100,5 @@ try{
  assert.deepEqual(errors,[]);console.log('Media publishing/receipt browser checks passed: bank details, publish/reload/conflict, guest checkout/upload/approval/reload, delivery failure, cookie isolation, CSP, unpublish Cancel/Confirm.');
 }finally{
  ws?.close();if(browser&&browser.exitCode===null){const ended=new Promise(r=>browser.once('exit',r));browser.kill('SIGTERM');const escalate=setTimeout(()=>browser.kill('SIGKILL'),2000);await ended;clearTimeout(escalate);}
- await new Promise(r=>server.close(r));if(profile)await rm(profile,{recursive:true,force:true});
+ await new Promise(r=>server.close(r));if(profile)await rm(profile,{recursive:true,force:true,maxRetries:10,retryDelay:100});
 }
