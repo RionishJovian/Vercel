@@ -4773,8 +4773,8 @@ async function renderPlatform(main) {
     ${platformPricingForm(pricing, pricingPublished)}
 
     ${platformCreateForm()}
-    <div class="panel"><div class="panel-head"><h2 class="panel-title">Businesses</h2></div>
-      <div class="panel-body">${platformBusinessTable(businesses, ME && ME.business ? ME.business.business_id : null)}</div></div>
+    <div class="panel"><div class="panel-head"><h2 class="panel-title">Workspace records</h2></div>
+      <div class="panel-body"><p class="muted">The tier and quota fields below are legacy records. Current individual-pass allowances are shown in Accounts, passes &amp; usage above.</p>${platformBusinessTable(businesses, ME && ME.business ? ME.business.business_id : null)}</div></div>
     <div class="panel" style="margin-top:14px"><div class="panel-head"><h2 class="panel-title">Open incidents</h2></div>
       <div class="panel-body">${platformIncidentTable(incidents, businesses)}</div></div>`;
   await wirePlatformAdmin(content, main);
@@ -4990,7 +4990,7 @@ function platformBusinessTable(bizs, selfBusinessID) {
         <button class="btn btn-sm" data-state="${esc(b.business_id)}">View state</button>
       </td>
     </tr>`; }).join("");
-  return `<table><thead><tr><th>Company</th><th>Owner</th><th>Tier</th><th>Device limit</th><th>Status</th><th>Created</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+  return `<table><thead><tr><th>Company</th><th>Owner</th><th>Legacy tier</th><th>Legacy device quota</th><th>Status</th><th>Created</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 function platformIncidentTable(list, bizs) {
