@@ -80,7 +80,7 @@ try{
  pass.state='paid';await evaluate(`document.querySelector('#media-order-refresh').click()`);await wait(()=>evaluate(`document.querySelector('#media-order-status').textContent.includes('Approved.')`),'approval status');
  await navigate('/media.html?id='+id);await wait(()=>evaluate(`document.querySelector('#media-order-status')?.textContent.includes('Approved.')`),'guest order survives reload');
  assert.equal(checkouts,1,'reload does not create another order');assert.equal(publicCookies,0,'checkout and upload omit staff cookies');
- const shot=await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});await writeFile('/private/tmp/mm-media-checkout-synthetic.png',Buffer.from(shot.data,'base64'));
+ const shot=await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});await writeFile(join(tmpdir(),'mm-media-checkout-synthetic.png'),Buffer.from(shot.data,'base64'));
  await navigate('/harness');await wait(()=>evaluate(`!!document.querySelector('[data-media-unpublish]')&&!document.querySelector('[data-media-unpublish]').disabled`),'unpublish ready');
  const cancelled=await evaluate(`window.__mmConfirmResult=false;document.querySelector('[data-media-unpublish]').click();({confirms:window.__mmConfirms,deleteRequests:window.__mmDeleteRequests,disabled:document.querySelector('[data-media-unpublish]').disabled})`);
  assert.equal(cancelled.confirms.length,1,'Cancel consults exactly one confirm');
