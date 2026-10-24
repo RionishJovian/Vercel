@@ -1,160 +1,150 @@
-name: Deploy to Production
+name: Validate and release Mega Magic
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'fix/**']
+  pull_request:
   workflow_dispatch:
+    inputs:
+      deploy_vps:
+        description: 'Release this main commit to the existing production VPS'
+        type: boolean
+        default: false
+        required: true
+
+permissions:
+  contents: read
+concurrency:
+  group: mega-magic-${{ github.ref }}
+  cancel-in-progress: false
 
 env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME_API: ${{ github.repository }}/mega-magic-api
-  IMAGE_NAME_WEB: ${{ github.repository }}/mega-magic-web
-  VPS_HOST: megamagic.tech
+  VPS_HOST: 156.67.216.128
   VPS_USER: root
   DEPLOY_PATH: /opt/mega-magic-go-restored-20261018T100554Z
-  COMPOSE_PROJECT: mega-magic-go-restored
 
 jobs:
-  build-api:
+  validate:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: disposable-ci-only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd 'pg_isready -U postgres'
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      MM_TEST_DB_URL: postgres://postgres:disposable-ci-only@127.0.0.1:5432/postgres?sslmode=disable
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run test:deployment && npm run test:vercel && npm run build && npm run test:critical-ui
+      - run: go test -race ./internal/... && go build ./...
+      - run: bash -n deploy/deploy-vps.sh
+
+  build:
+    needs: validate
+    if: github.event_name == 'workflow_dispatch' && inputs.deploy_vps && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
     outputs:
-      image-tag: ${{ steps.meta.outputs.tags }}
-      digest: ${{ steps.build.outputs.digest }}
+      api: ${{ steps.images.outputs.api }}@${{ steps.api.outputs.digest }}
+      web: ${{ steps.images.outputs.web }}@${{ steps.web.outputs.digest }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
-          go-version: '1.26'
-
-      - name: Build binary
-        run: |
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags='-s -w' -o mega-magic ./cmd/server
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags='-s -w' -o config-check ./cmd/config-check
-
-      - name: Create restore-bin
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version-file: go.mod
+      - name: Build runtime binaries
         run: |
           mkdir -p restore-bin
-          mv mega-magic config-check restore-bin/
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -buildvcs=false -o restore-bin/mega-magic ./cmd/server
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -buildvcs=false -o restore-bin/config-check ./cmd/config-check
+      - id: images
+        run: |
+          repo=${GITHUB_REPOSITORY,,}
+          echo "api=ghcr.io/$repo/mega-magic-api" >> "$GITHUB_OUTPUT"
+          echo "web=ghcr.io/$repo/mega-magic-web" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
         with:
-          registry: ${{ env.REGISTRY }}
+          registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_API }}
-          tags: |
-            type=ref,event=branch
-            type=sha,prefix=
-            type=raw,value=latest,enable={{is_default_branch}}
-
-      - name: Build and push API image
-        id: build
-        uses: docker/build-push-action@v5
+      - id: api
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25
         with:
           context: .
-          file: ./deploy/Dockerfile.go-restore
+          file: deploy/Dockerfile.go-restore
+          platforms: linux/amd64
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          tags: ${{ steps.images.outputs.api }}:${{ github.sha }}
+          labels: org.opencontainers.image.revision=${{ github.sha }}
+      - id: web
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25
+        with:
+          context: .
+          file: Dockerfile.web.prod
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.images.outputs.web }}:${{ github.sha }}
+          labels: org.opencontainers.image.revision=${{ github.sha }}
 
-  build-web:
+  deploy-vps:
+    needs: build
+    if: github.event_name == 'workflow_dispatch' && inputs.deploy_vps && github.ref == 'refs/heads/main'
+    environment: production
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
-    outputs:
-      image-tag: ${{ steps.meta.outputs.tags }}
+      packages: read
+    env:
+      API_IMAGE: ${{ needs.build.outputs.api }}
+      WEB_IMAGE: ${{ needs.build.outputs.web }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_WEB }}
-          tags: |
-            type=ref,event=branch
-            type=sha,prefix=
-            type=raw,value=latest,enable={{is_default_branch}}
-
-      - name: Build and push Web image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Dockerfile.web.prod
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-  deploy:
-    needs: [build-api, build-web]
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install SSH key
+          persist-credentials: false
+      - name: Install explicit identity and pinned host
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
         run: |
+          umask 077
           mkdir -p ~/.ssh
-          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/megamagic-app
-          chmod 600 ~/.ssh/megamagic-app
-          ssh-keyscan -H ${{ env.VPS_HOST }} >> ~/.ssh/known_hosts
-
-      - name: Deploy to VPS
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/megamagic-app
+          ssh-keygen -y -f ~/.ssh/megamagic-app >/dev/null
+          test -s deploy/vps-known-hosts
+      - name: Transfer verified release metadata and deployment script
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << 'EOF'
-            set -e
-            cd ${{ env.DEPLOY_PATH }}/deploy
-
-            # Login to GHCR
-            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-
-            # Pull new images
-            docker compose -f compose.go-restore.yaml pull
-
-            # Restart with new images (rolling update via healthchecks)
-            docker compose -f compose.go-restore.yaml up -d --remove-orphans
-
-            # Clean up old images
-            docker image prune -f
-
-            echo "Deploy complete. Containers:"
-            docker compose -f compose.go-restore.yaml ps
-          EOF
-
-      - name: Verify health
+          python3 - <<'PY'
+          import os,json
+          json.dump({'api':os.environ['API_IMAGE'],'web':os.environ['WEB_IMAGE'],'sha':os.environ['GITHUB_SHA']},open('release.json','w'))
+          PY
+          release_dir="/root/mm-ci-releases/$GITHUB_SHA"
+          ssh -i ~/.ssh/megamagic-app -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=deploy/vps-known-hosts "$VPS_USER@$VPS_HOST" "mkdir -p '$release_dir' && chmod 700 '$release_dir'"
+          scp -i ~/.ssh/megamagic-app -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=deploy/vps-known-hosts release.json deploy/deploy-vps.sh "$VPS_USER@$VPS_HOST:$release_dir/"
+      - name: Release with backup, real readiness and automatic rollback
+        env:
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REGISTRY_USER: ${{ github.actor }}
         run: |
-          sleep 10
-          curl -sf https://megamagic.tech/healthz || exit 1
-          echo "Health check passed"
+          printf '%s\n' "$REGISTRY_TOKEN" | ssh -i ~/.ssh/megamagic-app -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=deploy/vps-known-hosts "$VPS_USER@$VPS_HOST" "bash '/root/mm-ci-releases/$GITHUB_SHA/deploy-vps.sh' '/root/mm-ci-releases/$GITHUB_SHA' '$REGISTRY_USER'"
+      - name: Remove temporary runner identity
+        if: always()
+        run: rm -f ~/.ssh/megamagic-app release.json

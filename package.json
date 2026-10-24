@@ -5,20 +5,29 @@
   "type": "module",
   "scripts": {
     "dev": "node scripts/dev.mjs",
-    "build": "vite build && node scripts/prepare-sites-build.mjs",
+    "build": "node scripts/prepare-vercel-build.mjs",
     "preview": "vite preview",
     "test:sites": "node --test tests/sites-worker.test.mjs",
     "test:critical-ui": "node --experimental-vm-modules --test scripts/test-*-ui.mjs scripts/test-workspace-consistency.mjs scripts/test-audit-fixes.mjs scripts/test-network-workspaces.mjs scripts/test-network-layout.mjs",
-    "test:api": "python3 -m unittest discover -s tests -p 'test_*.py' -v"
+    "test:api": "python3 -m unittest discover -s tests -p 'test_*.py' -v",
+    "build:sites": "vite build && node scripts/prepare-sites-build.mjs",
+    "test:vercel": "node --test deploy/vercel/proxy.test.js",
+    "test:deployment": "node --test scripts/test-deployment-config.mjs"
   },
   "dependencies": {
     "@phosphor-icons/react": "^2.1.10",
     "@vitejs/plugin-react": "5.0.4",
     "react": "19.2.0",
     "react-dom": "19.2.0",
-    "vite": "6.4.4"
+    "vite": "6.4.4",
+    "@vercel/functions": "3.10.3"
   },
   "devDependencies": {
     "jsdom": "^30.1.3"
+  },
+  "overrides": {
+    "@vercel/cli-config": {
+      "zod": "4.6.7"
+    }
   }
 }
