@@ -11,6 +11,8 @@ func TestCalendarTerms(t *testing.T) {
 		{"2028-01-31T07:30:00Z", "monthly", "2028-02-29T07:30:00Z"},
 		{"2028-02-29T01:00:00Z", "annual", "2029-02-28T01:00:00Z"},
 		{"2026-12-31T18:00:00Z", "monthly", "2027-01-31T18:00:00Z"},
+		// UTC and Yangon fall on different dates at this month-end boundary.
+		{"2026-01-30T18:30:00Z", "monthly", "2026-02-27T18:30:00Z"},
 	} {
 		a, _ := time.Parse(time.RFC3339, tc.start)
 		got, e := CalendarExpiry(a, tc.plan)

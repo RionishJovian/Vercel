@@ -4,6 +4,8 @@ package accountpass
 import (
 	"errors"
 	"time"
+	// Keep calendar approval available in minimal production containers.
+	_ "time/tzdata"
 )
 
 // CalendarExpiry preserves the approval's local clock time and clamps month-end
