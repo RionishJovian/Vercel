@@ -64,3 +64,7 @@ The platform administrator manages client accounts. Each client owns a MikroTik 
 ## Owner-confirmed simplicity — 2026-10-25
 
 Keep the production Jade Glass theme, with short task labels and minimal descriptions. Group related screens into shared workspaces instead of repeating them in the sidebar. Magic Hub owns site, connection, discovery, network and maintenance; Vouchers owns internet guest-page design; Jellyfin owns its media dashboard and separate media guest page. Preserve old deep links, API authorization, role boundaries, review/apply confirmations and honest unavailable states. Use optional Help for explanations; never hide errors, live status, limits or consequential warnings.
+
+## Verified release recovery — 2026-10-25
+
+GitHub main was accidentally force-replaced by an October 7 source history and the running web container was overwritten without updating its image identity. This removed the Vercel web build/proxy/CI, reverted the simplified app and introduced CSS expecting light/dark while theme.js emits day/night. Recover from the verified production line, not the old /Users/aces/123 checkout. Never force-push or replace main with another repository history. Preserve new work on a branch and merge reviewed changes normally. Use this repository's web frontend; keep src/Sites separate. Do not edit running-container files directly or trust an image tag as proof of served content. Compare served hashes against the release source and keep rollback copies. New versions are required when restoring previously overwritten cached assets.
