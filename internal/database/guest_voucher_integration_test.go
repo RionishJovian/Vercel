@@ -24,6 +24,7 @@ func TestDB_GuestVoucherDurableClaim(t *testing.T) {
 	if _, err = db.Exec(string(migration)); err != nil {
 		t.Fatal(err)
 	}
+	applyVoucherActivationMigration(t, db)
 	biz := insertBusiness(t, db)
 	other := insertBusiness(t, db)
 	device := insertDeviceRow(t, db, biz, nil, "voucher test", "MAIN_GATEWAY")

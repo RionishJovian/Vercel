@@ -74,7 +74,7 @@ export function mountHubEnrollment(root, {api, escape:esc}) {
           <p>Finish connection verifies the tunnel and router before enabling management. Keep this script private.</p>`;
       } catch(error) {
         if(!container.isConnected)return;
-        status.textContent=error.data?.code==='hub_router_key_unavailable'?'This gateway already has a reserved tunnel key, but its original installation script is no longer available. The existing connection was preserved; no replacement key was installed.':
+        status.textContent=error.data?.code==='hub_management_preflight_failed'?'One-paste setup is not ready on this server. Contact platform support; no new tunnel was allocated.':error.data?.code==='hub_router_key_unavailable'?'This gateway already has a reserved tunnel key, but its original installation script is no longer available. The existing connection was preserved; no replacement key was installed.':
           error.status===503?'Enrollment preparation is unavailable. No connection was confirmed; your gateway record is preserved.':
           error.status===403?'Your account needs gateway-management permission and an active plan.':
           'One-paste enrollment was not confirmed. Retry once; no router changes were made.';

@@ -29,7 +29,7 @@ func Evaluate(now time.Time, trial, paid *time.Time, existingPolicy string) Stat
 // paths prevent a similarly named feature route from bypassing subscription checks.
 func RecoveryRoute(path string) bool {
 	switch path {
-	case "/api/v1/me", "/api/v1/me/profile", "/api/v1/me/password", "/api/v1/subscription",
+	case "/api/v1/me/presence", "/api/v1/me", "/api/v1/me/profile", "/api/v1/me/password", "/api/v1/subscription",
 		"/api/v1/store/purchases", "/api/v1/store/purchases/:purchaseId/approve", "/api/v1/store/purchases/:purchaseId/reject",
 		"/api/v1/store/checkout-options", "/api/v1/pricing":
 		return true

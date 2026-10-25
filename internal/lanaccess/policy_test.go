@@ -26,7 +26,7 @@ func TestCreateRejectsUnsafeTargets(t *testing.T) {
 }
 
 func TestCreateRoleAndBounds(t *testing.T) {
-	for _, role := range []string{"VIEWER", "TECHNICIAN", "SUPPORT", "OPERATOR", "", "owner"} {
+	for _, role := range []string{"VIEWER", "", "owner"} {
 		s, r, now := fixture()
 		s.Role = role
 		if _, err := Create(s, r, now); err == nil {

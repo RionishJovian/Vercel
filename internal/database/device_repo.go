@@ -3,6 +3,7 @@ package database
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"mega-magic/internal/model"
@@ -406,4 +407,63 @@ func (r *DeviceRepository) DeleteDeviceTXN(tx *sql.Tx, deviceID string) error {
 		return fmt.Errorf("device not found")
 	}
 	return nil
+}
+
+// DiscoveryLabel represents a saved friendly name and type for a discovered device.
+type DiscoveryLabel struct {
+	MACAddress string    `json:"mac"`
+	Name       string    `json:"name"`
+	Kind       string    `json:"kind"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
+}
+
+// GetDiscoveryLabels retrieves all saved discovery labels for a device.
+func (r *DeviceRepository) GetDiscoveryLabelsTXN(tx *sql.Tx, businessID, deviceID string) ([]*DiscoveryLabel, error) {
+	query := `
+		SELECT mac_address, name, kind, created_at, updated_at
+		FROM device_discovery_labels
+		WHERE business_id = $1 AND device_id = $2
+		ORDER BY created_at DESC`
+
+	rows, err := tx.Query(query, businessID, deviceID)
+	if err != nil {
+		return nil, fmt.Errorf("get discovery labels: %w", err)
+	}
+	defer rows.Close()
+
+	labels := []*DiscoveryLabel{}
+	for rows.Next() {
+		l := &DiscoveryLabel{}
+		if err := rows.Scan(&l.MACAddress, &l.Name, &l.Kind, &l.CreatedAt, &l.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("scan discovery label: %w", err)
+		}
+		l.MACAddress = strings.ToUpper(l.MACAddress)
+		labels = append(labels, l)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate discovery labels: %w", err)
+	}
+	return labels, nil
+}
+
+// UpsertDiscoveryLabel creates or updates a discovery label for a device.
+func (r *DeviceRepository) UpsertDiscoveryLabelTXN(tx *sql.Tx, businessID, deviceID, macAddress, name, kind string) (*DiscoveryLabel, error) {
+	query := `
+		INSERT INTO device_discovery_labels (business_id, device_id, mac_address, name, kind, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+		ON CONFLICT (business_id, device_id, mac_address) DO UPDATE SET
+			name = EXCLUDED.name,
+			kind = EXCLUDED.kind,
+			updated_at = NOW()
+		RETURNING mac_address, name, kind, created_at, updated_at`
+
+	l := &DiscoveryLabel{}
+	err := tx.QueryRow(query, businessID, deviceID, macAddress, name, kind).Scan(
+		&l.MACAddress, &l.Name, &l.Kind, &l.CreatedAt, &l.UpdatedAt,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("upsert discovery label: %w", err)
+	}
+	return l, nil
 }

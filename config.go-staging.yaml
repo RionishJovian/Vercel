@@ -1,0 +1,22 @@
+environment: development
+server:
+  host: "0.0.0.0"
+  port: 8080
+database:
+  host: db
+  port: 5432
+  user: mega_magic
+  password: staging-only-change-me
+  name: mega_magic
+  sslmode: disable
+redis:
+  host: redis
+  port: 6379
+nats:
+  url: nats://nats:4222
+wireguard:
+  interface: wg0
+  listen_port: 13231
+security:
+  jwt_secret: staging-jwt-secret-replace-before-production
+  aes_gcm_key: staging-aes-key-replace-before-production

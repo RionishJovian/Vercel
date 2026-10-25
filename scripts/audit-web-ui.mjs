@@ -13,7 +13,14 @@ const escapeRE = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 for (const file of htmlFiles) {
   const fullPath = path.join(webRoot, file);
   const source = fs.readFileSync(fullPath, "utf8");
-  const behaviorSource = source + (file === "app.html" ? fs.readFileSync(path.join(webRoot, "assets/js/site-map.js"), "utf8") : "");
+  const localScriptSources = [...source.matchAll(/<script[^>]*\bsrc="(\/[^"?#]+)(?:[?#][^"]*)?"[^>]*>/gi)]
+    .map((match) => path.join(webRoot, match[1]))
+    .filter((scriptPath) => fs.existsSync(scriptPath))
+    .map((scriptPath) => fs.readFileSync(scriptPath, "utf8"));
+  const dynamicBehaviorSources = file === "app.html"
+    ? [fs.readFileSync(path.join(webRoot, "assets/js/site-map.js"), "utf8")]
+    : [];
+  const behaviorSource = [source, ...localScriptSources, ...dynamicBehaviorSources].join("\n");
 
   for (const match of source.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)) {
     try {

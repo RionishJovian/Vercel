@@ -36,6 +36,8 @@ type PortalHandler struct {
 	db                  *database.DB
 	deviceRepo          *database.DeviceRepository
 	configRepo          *database.PortalConfigRepository
+	siteRepo            *database.SiteRepository
+	sitePortalRepo      *database.SitePortalRepository
 	sessionRepo         *database.PortalSessionRepository
 	voucherRepo         *database.VoucherRepository
 	quotaRepo           *database.BusinessMeteredQuotaRepository
@@ -55,11 +57,166 @@ func NewPortalHandler(
 		db:                  db,
 		deviceRepo:          deviceRepo,
 		configRepo:          configRepo,
+		siteRepo:            database.NewSiteRepository(db),
+		sitePortalRepo:      database.NewSitePortalRepository(),
 		sessionRepo:         sessionRepo,
 		voucherRepo:         voucherRepo,
 		quotaRepo:           quotaRepo,
 		notifyGuestRedeemed: notifyGuestRedeemed,
 	}
+}
+
+// SiteGetConfig returns the site-specific draft and published portal state.
+// This is the new site-scoped API; /portal/config remains available as the
+// legacy business fallback while existing clients migrate.
+func (h *PortalHandler) SiteGetConfig(c *gin.Context) {
+	businessID := auth.GetBusinessID(c)
+	if businessID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	siteID := c.Param("id")
+	var portal *model.SitePortal
+	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
+		if _, err := h.siteRepo.GetSiteTXN(tx, businessID, siteID); err != nil {
+			return err
+		}
+		var err error
+		portal, err = h.sitePortalRepo.GetBySiteTXN(tx, businessID, siteID)
+		return err
+	})
+	if errors.Is(err, database.ErrSiteNotFound) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "site not found"})
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
+		return
+	}
+	if portal == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "site portal not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"portal": portal})
+}
+
+// SiteUpdateConfig saves a complete site-specific draft. Publishing is a
+// separate explicit action so owners can review changes before guests see them.
+func (h *PortalHandler) SiteUpdateConfig(c *gin.Context) {
+	businessID := auth.GetBusinessID(c)
+	if businessID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	var cfg model.PortalConfig
+	if err := c.ShouldBindJSON(&cfg); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	cfg.BusinessID = businessID
+	if err := validateSitePortalConfig(&cfg); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	siteID := c.Param("id")
+	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
+		if _, err := h.siteRepo.GetSiteTXN(tx, businessID, siteID); err != nil {
+			return err
+		}
+		return h.sitePortalRepo.UpsertDraftTXN(tx, &model.SitePortal{
+			SiteID: siteID, BusinessID: businessID, DraftConfig: &cfg,
+		})
+	})
+	if errors.Is(err, database.ErrSiteNotFound) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "site not found"})
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "site portal draft saved"})
+}
+
+// validateSitePortalConfig applies the same fail-closed rules as the legacy
+// business portal editor before a site draft can become guest-visible.
+func validateSitePortalConfig(cfg *model.PortalConfig) error {
+	cfg.BusinessName = strings.TrimSpace(cfg.BusinessName)
+	if cfg.BusinessName == "" {
+		return errBusinessNameRequired
+	}
+	if cfg.WelcomeText == "" {
+		cfg.WelcomeText = "Enter your voucher code to connect."
+	}
+	if cfg.TermsText == "" {
+		cfg.TermsText = "By connecting you agree to our terms."
+	}
+	if cfg.PrimaryHex == "" {
+		cfg.PrimaryHex = "#ffb547"
+	}
+	if cfg.GlassTintHex == "" {
+		cfg.GlassTintHex = "#7ad0ff"
+	}
+	if !model.IsHexColor(cfg.PrimaryHex) || !model.IsHexColor(cfg.GlassTintHex) {
+		return errors.New("portal colours must be hex colours like #ffb547")
+	}
+	if cfg.GuestGraceMinutes == 0 {
+		cfg.GuestGraceMinutes = 10
+	}
+	if cfg.GuestGraceDataMB == 0 {
+		cfg.GuestGraceDataMB = 50
+	}
+	if cfg.GuestGraceMinutes < 1 || cfg.GuestGraceMinutes > 1440 {
+		return errors.New("grace time must be between 1 and 1440 minutes")
+	}
+	if cfg.GuestGraceDataMB < 1 || cfg.GuestGraceDataMB > 10240 {
+		return errors.New("grace data must be between 1 and 10240 MB")
+	}
+	if !cfg.VoucherLoginEnabled && !cfg.MobilePaymentEnabled {
+		return errPortalAccessMethodRequired
+	}
+	if cfg.MMQRURL != "" && !safePortalImageURL(cfg.MMQRURL) {
+		return errors.New("QR image must be an HTTPS URL or a same-origin path")
+	}
+	if cfg.MediaHost != "" {
+		if _, _, err := routeros.MediaTarget(cfg.MediaHost, cfg.MediaPort); err != nil {
+			return err
+		}
+	}
+	for _, p := range cfg.GuestPlans {
+		if strings.TrimSpace(p.Key) == "" || strings.TrimSpace(p.Label) == "" {
+			return errors.New("each guest plan needs a key and a label")
+		}
+		if p.Minutes < 0 || p.Amount < 0 || p.DataMB < 0 {
+			return errors.New("guest plan minutes, price and data must be >= 0")
+		}
+	}
+	return nil
+}
+
+// SitePublishConfig makes the reviewed draft the guest-visible revision.
+func (h *PortalHandler) SitePublishConfig(c *gin.Context) {
+	businessID := auth.GetBusinessID(c)
+	if businessID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	siteID := c.Param("id")
+	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
+		if _, err := h.siteRepo.GetSiteTXN(tx, businessID, siteID); err != nil {
+			return err
+		}
+		return h.sitePortalRepo.PublishTXN(tx, businessID, siteID)
+	})
+	if errors.Is(err, database.ErrSiteNotFound) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "site not found"})
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusConflict, gin.H{"error": "site portal draft not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "site portal published"})
 }
 
 // withTenantTx is used by the STAFF (owner-authenticated) endpoints.
@@ -74,6 +231,13 @@ func (h *PortalHandler) withTenantTx(c *gin.Context, businessID string, fn func(
 // read BEFORE any tenant context exists. Returns (nil, nil) when unknown.
 func (h *PortalHandler) businessForDevice(deviceID string) (*model.Device, error) {
 	return h.deviceRepo.GetDeviceByID(deviceID)
+}
+
+// portalConfigForDeviceTXN prefers the published site configuration when the
+// device is assigned to a site, and falls back to the legacy business config
+// for older devices or sites that have not published a draft yet.
+func (h *PortalHandler) portalConfigForDeviceTXN(tx *sql.Tx, businessID, deviceID string) (*model.PortalConfig, error) {
+	return h.configRepo.GetByDeviceTXN(tx, businessID, deviceID)
 }
 
 // --- public (anonymous) -----------------------------------------------------
@@ -93,7 +257,7 @@ func (h *PortalHandler) PublicConfig(c *gin.Context) {
 
 	var cfg *model.PortalConfig
 	err = withDeviceTenant(h.db, dev.BusinessID, func(tx *sql.Tx) error {
-		pc, e := h.configRepo.GetByBusinessTXN(tx, dev.BusinessID)
+		pc, e := h.portalConfigForDeviceTXN(tx, dev.BusinessID, deviceID)
 		if e != nil {
 			return e
 		}
@@ -155,7 +319,7 @@ func (h *PortalHandler) PublicRedeem(c *gin.Context) {
 		applied gin.H
 	)
 	err = database.WithTenant(tx, dev.BusinessID, func() error {
-		cfg, e := h.configRepo.GetByBusinessTXN(tx, dev.BusinessID)
+		cfg, e := h.portalConfigForDeviceTXN(tx, dev.BusinessID, deviceID)
 		if e != nil {
 			return e
 		}
@@ -249,7 +413,17 @@ func (h *PortalHandler) PublicStatus(c *gin.Context) {
 
 	var businessName string
 	err = withDeviceTenant(h.db, sess.BusinessID, func(tx *sql.Tx) error {
-		cfg, e := h.configRepo.GetByBusinessTXN(tx, sess.BusinessID)
+		var deviceID string
+		if sess.DeviceID != nil {
+			deviceID = *sess.DeviceID
+		}
+		var cfg *model.PortalConfig
+		var e error
+		if deviceID != "" {
+			cfg, e = h.portalConfigForDeviceTXN(tx, sess.BusinessID, deviceID)
+		} else {
+			cfg, e = h.configRepo.GetByBusinessTXN(tx, sess.BusinessID)
+		}
 		if e != nil {
 			return e
 		}
@@ -508,3 +682,20 @@ func safePortalImageURL(raw string) bool {
 var errBusinessNameRequired = errors.New("business_name is required")
 
 var errPortalAccessMethodRequired = errors.New("at least one portal access method is required")
+
+// RouterPreview renders unsaved branding through the exact router document
+// generator. It does not save settings, issue vouchers or communicate with a router.
+func (h *PortalHandler) RouterPreview(c *gin.Context) {
+	var design routeros.PortalLoginDesign
+	if c.ShouldBindJSON(&design) != nil {
+		c.JSON(400, gin.H{"error": "invalid portal preview"})
+		return
+	}
+	page, err := routeros.RenderPortalLogin(&design, true)
+	if err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	c.Header("Cache-Control", "no-store")
+	c.JSON(200, gin.H{"html": page})
+}

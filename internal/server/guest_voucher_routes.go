@@ -31,6 +31,9 @@ func registerGuestVoucherRoutes(r *gin.Engine, cfg *config.Config, db *database.
 	if e := guestVoucherSchemaReady(db); e != nil {
 		return e
 	}
+	if e := database.CheckGuestBatchResellerSchema(db); e != nil {
+		return e
+	}
 	box, e := secretbox.New(cfg.Provisioner.Applier.CredentialKey)
 	if e != nil {
 		return e
@@ -43,40 +46,65 @@ func registerGuestVoucherRoutes(r *gin.Engine, cfg *config.Config, db *database.
 	applier := routeros.NewDeviceApplier(source, a.Timeout, nil, a.Interface, a.ListenPortRotateTo, a.ResetHold).WithControlConfig(a.PingTarget, a.TDown)
 	recovery := database.GuestRecoveryRepository{DB: db}
 	h := &handler.GuestVoucherHandler{DB: db, Vouchers: vouchers, ResolveDevice: database.NewDeviceRepository(db).GetDeviceByID,
-		Redeemer: guestaccess.ProvisionService{Store: database.GuestProvisionRepository{DB: db}, Router: routeros.GuestProvisionAdapter{Applier: applier}, Credentials: recovery},
-		Resumer:  guestaccess.ResumeService{Store: recovery, Router: applier},
-		PortalConfig: func(ctx context.Context, biz string) (pc *model.PortalConfig, e error) {
-			tx, e := db.BeginTx(ctx, nil)
-			if e != nil {
-				return nil, e
-			}
-			defer tx.Rollback()
-			e = database.WithTenant(tx, biz, func() error {
-				var active bool
-				if e := tx.QueryRowContext(ctx, `SELECT is_active FROM businesses WHERE business_id=$1`, biz).Scan(&active); e != nil {
-					return e
-				}
-				if !active {
-					return guestaccess.ErrProvisionDenied
-				}
-				var err error
-				pc, err = database.NewPortalConfigRepository(db).GetByBusinessTXN(tx, biz)
-				return err
-			})
-			return pc, e
-		},
+		Redeemer:     guestaccess.ProvisionService{Store: database.GuestProvisionRepository{DB: db}, Router: routeros.GuestProvisionAdapter{Applier: applier}, Credentials: recovery},
+		Resumer:      guestaccess.ResumeService{Store: recovery, Router: applier},
+		PortalConfig: handler.GuestPortalConfigResolver(db),
+		// Ground-operation voucher login: the RouterBOARD validates issued
+		// codes locally; the app installs them at issue time and
+		// synchronizes their live accounting back through the hub.
+		Provisioner: voucherLoginTransport{applier: applier},
+		Syncer:      voucherLoginTransport{applier: applier},
 	}
-	registerGuestVoucherEndpoints(r, service, db, h, handler.SubscriptionAccess(db, cfg.Billing.SubscriptionOnly, cfg.Billing.ExistingAccountPolicy))
+	registerGuestVoucherEndpoints(r, service, db, h, handler.SubscriptionAccess(db, cfg.Billing.SubscriptionOnly, cfg.Billing.ExistingAccountPolicy), handler.IndividualPassAccess(db, cfg.Billing.IndividualPassesEnabled))
 	return nil
+}
+
+// voucherLoginTransport adapts the live RouterOS applier to the handler's
+// voucher-login interfaces (router -> hub -> app transport stays the hub).
+type voucherLoginTransport struct {
+	applier *routeros.DeviceApplier
+}
+
+func (t voucherLoginTransport) ProvisionVoucherLogins(ctx context.Context, businessID, deviceID string, logins []handler.VoucherLoginSpec) error {
+	out := make([]routeros.VoucherLogin, 0, len(logins))
+	for _, l := range logins {
+		out = append(out, routeros.VoucherLogin{VoucherID: l.VoucherID, Code: l.Code, Minutes: l.Minutes, DataMB: l.DataMB})
+	}
+	return t.applier.ProvisionVoucherLogins(ctx, businessID, deviceID, out)
+}
+
+func (t voucherLoginTransport) ReadVoucherLogins(ctx context.Context, businessID, deviceID string, refs []handler.VoucherLoginSpec) ([]handler.VoucherLoginState, error) {
+	out := make([]routeros.VoucherLogin, 0, len(refs))
+	for _, l := range refs {
+		out = append(out, routeros.VoucherLogin{VoucherID: l.VoucherID, Code: l.Code})
+	}
+	states, err := t.applier.ReadVoucherLogins(ctx, businessID, deviceID, out)
+	if err != nil {
+		return nil, err
+	}
+	adapted := make([]handler.VoucherLoginState, 0, len(states))
+	for _, s := range states {
+		adapted = append(adapted, handler.VoucherLoginState{VoucherID: s.VoucherID, Exists: s.Exists, Disabled: s.Disabled,
+			UptimeSeconds: s.UptimeSeconds, BytesUsed: s.BytesUsed, ActiveMAC: s.ActiveMAC,
+			FirstUseEpoch: s.FirstUseEpoch, FirstMAC: s.FirstMAC})
+	}
+	return adapted, nil
 }
 
 func registerGuestVoucherEndpoints(r *gin.Engine, service *auth.Service, db *database.DB, h *handler.GuestVoucherHandler, access ...gin.HandlerFunc) {
 	owner := r.Group("/api/v1/guest-vouchers", auth.CookieOrigin(), auth.Middleware(service), auth.RequireActiveTenant(db), auth.RequireMinRole(model.RoleAdmin))
 	owner.Use(access...)
 	owner.POST("", h.Issue)
+	owner.GET("/batches", h.ListIssueBatches)
+	owner.GET("/batches/:batchId", h.GetIssueBatch)
+	owner.POST("/batches/:batchId/retry", h.RetryIssueBatch)
+	owner.PUT("/batches/:batchId/reseller", h.BatchReseller)
+	// Router -> hub -> app accounting synchronization for locally validated
+	// voucher codes (ground-operation design).
+	owner.POST("/sync", h.SyncVoucherLogins)
 	owner.GET("/config", func(c *gin.Context) {
 		c.Header("Cache-Control", "no-store")
-		c.JSON(200, gin.H{"enabled": true, "validity_starts": "first_use"})
+		c.JSON(200, gin.H{"enabled": true, "validity_starts": "first_use", "batch_recovery_enabled": true, "batch_id_required": true, "reseller_assignment_enabled": true, "max_batch_size": handler.GuestVoucherIssueBatchLimit})
 	})
 	public := r.Group("/api/v1/portal", auth.CookieOrigin(), auth.BoundedPortalRateLimit(), boundedPortalBody())
 	public.POST("/:deviceId/guest-voucher", h.Redeem)
@@ -101,6 +129,9 @@ func guestVoucherSchemaReady(db *database.DB) error {
 		columns                  []string
 	}{
 		{"guest_voucher_grants", "guest_voucher_snapshot_guard", "guard_guest_voucher_snapshot", []string{"voucher_id", "business_id", "device_id", "minutes", "data_mb", "state", "client_mac", "first_used_at", "expires_at", "lease_token", "lease_until", "updated_at"}},
+		{"guest_voucher_grants", "guest_voucher_activation_guard", "guard_guest_voucher_activation", []string{"activated_at"}},
+		{"guest_voucher_issue_batches", "guest_voucher_issue_batch_guard", "guard_guest_voucher_issue_batch", []string{"business_id", "id", "device_id", "request_hash", "plan_label", "price_mmk", "minutes", "data_mb", "total_count", "lease_token", "lease_until", "created_at", "updated_at"}},
+		{"guest_voucher_issue_items", "guest_voucher_issue_item_guard", "guard_guest_voucher_issue_item", []string{"business_id", "batch_id", "voucher_id", "position", "install_state", "verified_at", "updated_at"}},
 		{"guest_access_recovery", "guest_access_recovery_guard", "guard_guest_access_recovery", []string{"voucher_id", "business_id", "device_id", "secret_hash", "current_mac", "pending_mac", "state", "transfer_id", "completed_transfer_id", "used_bytes", "transfer_count", "window_started_at", "updated_at"}},
 	} {
 		var ready bool

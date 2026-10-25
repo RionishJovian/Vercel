@@ -20,12 +20,18 @@ import (
 // /version. No tenant row and no secret is exposed: four prices, a promo window,
 // and the per-tier device quotas.
 type PricingHandler struct {
-	repo *database.PricingRepository
+	repo                    *database.PricingRepository
+	IndividualPassesEnabled bool
 }
 
 // NewPricingHandler wires the pricing repository.
 func NewPricingHandler(db *database.DB) *PricingHandler {
 	return &PricingHandler{repo: database.NewPricingRepository(db)}
+}
+
+func (h *PricingHandler) WithIndividualPasses(enabled bool) *PricingHandler {
+	h.IndividualPassesEnabled = enabled
+	return h
 }
 
 // Get returns the published prices, the DERIVED promo state, and the tier table.
@@ -48,13 +54,20 @@ func (h *PricingHandler) Get(c *gin.Context) {
 
 	live, reason := promo.PromoLiveAt(now)
 
+	tiers := tierList()
+	policy := gin.H{"mode": "legacy"}
+	if h.IndividualPassesEnabled {
+		tiers = []gin.H{}
+		policy = gin.H{"mode": "individual_pass", "authorized_logins": 1, "routers": 1, "sites": 1, "capacity_scope": "business", "activation": "operator_approval", "validity": "calendar_month_or_year", "same_features": true, "unlimited_vouchers": true, "unlimited_ai": true, "unlimited_jellyfin": true}
+	}
 	c.JSON(http.StatusOK, gin.H{
-		"currency":     "MMK",
-		"timezone":     model.AppTimezone.String(),
-		"generated_at": now.Format(time.RFC3339),
-		"plans":        plansView(promo),
-		"promo":        promoView(promo, live, reason),
-		"tiers":        tierList(),
+		"account_policy": policy,
+		"currency":       "MMK",
+		"timezone":       model.AppTimezone.String(),
+		"generated_at":   now.Format(time.RFC3339),
+		"plans":          plansView(promo),
+		"promo":          promoView(promo, live, reason),
+		"tiers":          tiers,
 	})
 }
 

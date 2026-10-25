@@ -9,6 +9,7 @@ import (
 )
 
 // ErrResellerNotFound is returned when a reseller id is not in the caller's business.
+var ErrResellerAssigned = errors.New("reseller has assigned voucher batches; reassign or unassign them before deletion")
 var ErrResellerNotFound = errors.New("voucher reseller not found")
 
 // ErrResellerPrefixInUse is returned when a prefix is already claimed in this
@@ -173,6 +174,9 @@ func (r *VoucherResellerRepository) UpdateResellerTXN(tx *sql.Tx, businessID, id
 func (r *VoucherResellerRepository) DeleteResellerTXN(tx *sql.Tx, businessID, id string) error {
 	res, err := tx.Exec(`DELETE FROM voucher_resellers WHERE id = $1 AND business_id = $2`, id, businessID)
 	if err != nil {
+		if isForeignKeyViolation(err) {
+			return ErrResellerAssigned
+		}
 		return fmt.Errorf("delete reseller: %w", err)
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
@@ -259,4 +263,10 @@ func (r *VoucherResellerRepository) UpsertPrintLayoutTXN(tx *sql.Tx, businessID 
 		return nil, fmt.Errorf("upsert print layout: %w", err)
 	}
 	return r.GetPrintLayoutTXN(tx, businessID)
+}
+
+func isForeignKeyViolation(err error) bool {
+	type sqlState interface{ SQLState() string }
+	var state sqlState
+	return errors.As(err, &state) && state.SQLState() == "23503"
 }

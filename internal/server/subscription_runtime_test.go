@@ -20,3 +20,19 @@ func TestSubscriptionSwitchesConfiguredTogether(t *testing.T) {
 		}
 	}
 }
+
+func TestIndividualPassReplacesLegacyFeatureGates(t *testing.T) {
+	a, r, s, store, tops, v, ai := &handler.AuthHandler{}, &handler.RouterHandler{}, &handler.SiteHandler{}, &handler.StoreHandler{}, &handler.TopologyHandler{}, &handler.VPSHandler{}, &handler.MagicDudeHandler{}
+	configureSubscriptionHandlers(config.BillingConfig{IndividualPassesEnabled: true}, a, r, s, store, tops, v, ai)
+	if !a.IndividualPassesEnabled || a.SubscriptionOnly || store.SubscriptionOnly {
+		t.Fatal("individual policy enabled legacy business billing")
+	}
+	if !store.IndividualPassesEnabled {
+		t.Fatal("new mode still accepts legacy checkout")
+	}
+	for _, bypass := range []bool{r.SubscriptionOnly, s.SubscriptionOnly, tops.SubscriptionOnly, v.SubscriptionOnly, ai.SubscriptionOnly} {
+		if !bypass {
+			t.Fatal("old feature quota still gates a paid individual pass")
+		}
+	}
+}

@@ -39,6 +39,7 @@ func TestDB_GuestProvisionOrchestration(t *testing.T) {
 	if _, e = db.Exec(string(migration)); e != nil {
 		t.Fatal(e)
 	}
+	applyVoucherActivationMigration(t, db)
 	biz := insertBusiness(t, db)
 	device := insertDeviceRow(t, db, biz, nil, "provision test", "MAIN_GATEWAY")
 	for _, failure := range []bool{false, true} {

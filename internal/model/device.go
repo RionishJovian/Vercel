@@ -9,6 +9,7 @@ type Device struct {
 	DeviceID        string            `json:"device_id"`
 	BusinessID      string            `json:"business_id"`
 	ParentGatewayID *string           `json:"parent_gateway_id,omitempty"`
+	SiteID          *string           `json:"site_id,omitempty"`
 	HardwareName    string            `json:"hardware_name"`
 	DeviceModel     *string           `json:"device_model,omitempty"`
 	DeploymentLayer string            `json:"deployment_layer"`
@@ -31,6 +32,11 @@ type PeerKey struct {
 }
 
 type Voucher struct {
+	ResellerID      string            `json:"reseller_id,omitempty"`
+	ResellerShop    string            `json:"reseller_shop,omitempty"`
+	ResellerPrefix  string            `json:"reseller_prefix,omitempty"`
+	IssueBatchID    string            `json:"issue_batch_id,omitempty"`
+	InstallState    string            `json:"install_state,omitempty"`
 	ID              string            `json:"id"`
 	BusinessID      string            `json:"business_id"`
 	DeviceID        *string           `json:"device_id,omitempty"`
@@ -249,14 +255,15 @@ type BusinessTelegramBot struct {
 // GuestPurchaseRequest is an owner-approved online-banking wifi submit from a
 // guest on the captive portal. pending -> approved|rejected, exactly once.
 type GuestPurchaseRequest struct {
-	ID         string  `json:"id"`
-	BusinessID string  `json:"business_id"`
-	DeviceID   *string `json:"device_id,omitempty"`
-	ClientMAC  string  `json:"client_mac"`
-	ClientIP   *net.IP `json:"client_ip,omitempty"`
-	PlanKey    string  `json:"plan_key"`
-	Amount     int     `json:"amount"`
-	DataMB     int     `json:"data_mb,omitempty"`
+	PurchasedMinutes *int    `json:"purchased_minutes,omitempty"`
+	ID               string  `json:"id"`
+	BusinessID       string  `json:"business_id"`
+	DeviceID         *string `json:"device_id,omitempty"`
+	ClientMAC        string  `json:"client_mac"`
+	ClientIP         *net.IP `json:"client_ip,omitempty"`
+	PlanKey          string  `json:"plan_key"`
+	Amount           int     `json:"amount"`
+	DataMB           int     `json:"data_mb,omitempty"`
 	// MMQR flow: the payer's phone number and last 6 digits of the bank/MMQR
 	// transaction number, submitted after paying so the owner can verify.
 	PaidPhone      string     `json:"paid_phone,omitempty"`

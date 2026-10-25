@@ -54,6 +54,25 @@ func (h *SecurityHandler) NetworkControl(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 100*time.Second)
 	defer cancel()
 	switch c.Param("action") {
+	case "overview":
+		if c.Request.Method != http.MethodGet {
+			c.Status(http.StatusMethodNotAllowed)
+			return
+		}
+		reader, ok := controller.(interface {
+			ReadRouterOverview(context.Context, string, string) (routeros.NetworkInventory, error)
+		})
+		if !ok {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Router overview is unavailable"})
+			return
+		}
+		inventory, err := reader.ReadRouterOverview(ctx, b, d)
+		if err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": "Could not read router health safely"})
+			return
+		}
+		inventory.WriteEnabled = enabled
+		c.JSON(http.StatusOK, gin.H{"inventory": inventory})
 	case "inventory":
 		if c.Request.Method != http.MethodGet {
 			c.Status(http.StatusMethodNotAllowed)

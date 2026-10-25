@@ -77,7 +77,11 @@ func (r *portalRunner) Run(_ context.Context, cmd string) (string, error) {
 			return "", nil
 		}
 		r.files[q[1][1]] = "directory"
-		r.files[q[1][1]+"/login.html"] = r.files[q[0][1]+"/login.html"]
+		for name, contents := range r.files {
+			if strings.HasPrefix(name, q[0][1]+"/") {
+				r.files[q[1][1]+strings.TrimPrefix(name, q[0][1])] = contents
+			}
+		}
 		return "", nil
 	case strings.HasPrefix(cmd, "/file set"):
 		v := q[1][1]
@@ -107,7 +111,7 @@ func (r *portalRunner) Run(_ context.Context, cmd string) (string, error) {
 	return "", errors.New("unexpected command")
 }
 func newPortalRunner() *portalRunner {
-	return &portalRunner{directory: "hotspot", files: map[string]string{"hotspot/login.html": "<html>Original</html>"}}
+	return &portalRunner{directory: "hotspot", files: map[string]string{"hotspot/login.html": "<html>Original</html>", "hotspot/md5.js": "function hexMD5(input) { /* RouterOS helper */ }"}}
 }
 func portalHasWrites(commands []string) bool {
 	for _, c := range commands {
@@ -169,7 +173,11 @@ func TestPortalDeploymentPreviewAndApply(t *testing.T) {
 	if err != nil || !result.Verified || !strings.HasPrefix(result.Backup, "flash/mm-portal-") || r.files[result.Backup] != "<html>Original</html>" {
 		t.Fatalf("%+v %v", result, err)
 	}
-	if !strings.HasPrefix(r.directory, "flash/mm-portal-") || r.files["hotspot/login.html"] != "<html>Original</html>" || r.files[result.Plan.File] != portalLoginHTML("device") {
+	expected, renderErr := RenderPortalLogin(nil, false)
+	if renderErr != nil {
+		t.Fatal(renderErr)
+	}
+	if !strings.HasPrefix(r.directory, "flash/mm-portal-") || r.files["hotspot/login.html"] != "<html>Original</html>" || r.files[result.Plan.File] != expected {
 		t.Fatal("isolation or persistent staging failed")
 	}
 }

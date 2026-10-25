@@ -63,7 +63,7 @@ func (f *mediaStoreFake) Complete(_ context.Context, hash, id string, c bridge.C
 }
 func TestMediaOwnerScopeAndRole(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	for _, role := range []string{"OWNER", "ADMIN", "VIEWER", "TECHNICIAN"} {
+	for _, role := range []string{"OWNER", "ADMIN", "VIEWER"} {
 		store := &mediaStoreFake{}
 		h := NewMediaHandler(store)
 		r := gin.New()

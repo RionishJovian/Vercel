@@ -6,10 +6,10 @@ const {JSDOM}=createRequire(import.meta.url)('jsdom');
 const dom=new JSDOM('<main></main>',{url:'https://fixture.test/app.html',runScripts:'outside-only'}),w=dom.window;
 const source=fs.readFileSync('web/assets/js/media-appearance.js','utf8').replace(/^export /gm,'');
 w.eval(source+'\nglobalThis.mountAppearance=mountAppearance;');
-const library='1'.repeat(32);let published=null,writes=0;
+const library='1'.repeat(32);let published=null,writes=0,libraryRequests=0;
 const api={
- get:async path=>path==='/media/publication'?{publication:published,paid_access_ready:true}:{state:'succeeded',result:{libraries:[{Name:'<img src=x> Fixture videos',ItemId:library,CollectionType:'homevideos'},{Name:'Private books',ItemId:'2'.repeat(32),CollectionType:'books'}]}},
- post:async(path,body)=>{assert.equal(path,'/media/jobs');assert.equal(body.operation,'libraries');return {};},
+ get:async path=>path==='/media/capabilities'?{connector:{available:true}}:path==='/media/publication'?{publication:published,paid_access_ready:true}:{state:'succeeded',result:{libraries:[{Name:'<img src=x> Fixture videos',ItemId:library,CollectionType:'homevideos'},{Name:'Private books',ItemId:'2'.repeat(32),CollectionType:'books'}]}},
+ post:async(path,body)=>{libraryRequests++;assert.equal(path,'/media/jobs');assert.equal(body.operation,'libraries');return {};},
  put:async(path,design)=>{writes++;published={design,revision:writes,public_id:'a'.repeat(64)};return {publication:published,paid_access_ready:true};},
 };
 w.mountAppearance(w.document.querySelector('main'),{company_name:'Fixture cinema',business_id:'fixture'},{email:'fixture@test'},api);
@@ -22,4 +22,5 @@ w.document.querySelector('form').dispatchEvent(new w.Event('submit',{bubbles:tru
 assert.deepEqual(Array.from(published.design.libraries),[library]);assert.equal(writes,1);
 w.document.querySelector('[data-media-reload]').click();await settle();assert.equal(checkbox.checked,true,'Selected libraries survive reload');
 assert.ok(w.document.querySelector('#media-design-status').textContent.includes('Paid playback checks'));
+w.mountAppearance(w.document.querySelector('main'),{company_name:'Fixture cinema'},{}, {...api,get:async path=>path==='/media/capabilities'?{connector:{available:false}}:api.get(path)});await settle();const held=w.document.querySelector('[data-media-libraries]');assert.equal(held.disabled,true);held.click();await settle();assert.equal(libraryRequests,1,'Disabled connector must not enqueue jobs');
 dom.window.close();console.log('Owner library DOM checks passed: explicit selection, safe names, publish and reload.');

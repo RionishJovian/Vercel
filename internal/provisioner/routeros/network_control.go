@@ -22,6 +22,7 @@ type NetworkObject struct {
 	Values map[string]string `json:"values"`
 }
 type NetworkInventory struct {
+	Health           map[string]string          `json:"health,omitempty"`
 	WriteEnabled     bool                       `json:"write_enabled"`
 	WiFiWriteEnabled bool                       `json:"wifi_write_enabled"`
 	Interfaces       []GatewayInterface         `json:"interfaces"`
@@ -51,6 +52,9 @@ type networkMenu struct {
 }
 
 var networkMenus = map[string]networkMenu{
+	"filters":           {"/ip firewall filter", []string{"chain", "action", "connection-state", "in-interface", "comment", "disabled", "dynamic"}},
+	"bindings":          {"/ip hotspot ip-binding", []string{"mac-address", "address", "server", "type", "comment", "disabled"}},
+	"queue_types":       {"/queue type", []string{"name", "kind", "pcq-rate", "pcq-classifier"}},
 	"addresses":         {"/ip address", []string{"address", "interface", "comment", "disabled", "dynamic"}},
 	"pools":             {"/ip pool", []string{"name", "ranges"}},
 	"dhcp":              {"/ip dhcp-server", []string{"name", "interface", "address-pool", "lease-time", "disabled"}},
@@ -64,7 +68,7 @@ var networkMenus = map[string]networkMenu{
 	"ppp_profiles":      {"/ppp profile", []string{"name", "local-address", "remote-address", "dns-server", "rate-limit", "only-one"}},
 	"pppoe_servers":     {"/interface pppoe-server server", []string{"service-name", "interface", "default-profile", "authentication", "one-session-per-host", "disabled"}},
 	"subscribers":       {"/ppp secret", []string{"name", "password", "service", "profile", "disabled"}},
-	"queues":            {"/queue simple", []string{"name", "target", "max-limit", "disabled"}},
+	"queues":            {"/queue simple", []string{"name", "target", "max-limit", "queue", "parent", "comment", "disabled"}},
 	"wifi":              {"/interface wifi", []string{"name", "configuration.ssid", "configuration.country", "configuration.mode", "security.authentication-types", "security.passphrase", "disabled"}},
 	"wireless":          {"/interface wireless", []string{"name", "ssid", "country", "mode", "security-profile", "disabled"}},
 	"wireless_security": {"/interface wireless security-profiles", []string{"name", "mode", "authentication-types", "wpa2-pre-shared-key"}},
@@ -78,7 +82,11 @@ func networkSecret(field string) bool {
 	return field == "password" || field == "security.passphrase" || field == "wpa2-pre-shared-key"
 }
 func networkReadCommand(menu networkMenu) string {
-	command := `:foreach id in=[` + menu.path + ` find] do={ :put ("id: " . $id);`
+	filter := ""
+	if menu.path == "/queue type" {
+		filter = " where kind=pcq"
+	}
+	command := `:foreach id in=[` + menu.path + ` find` + filter + `] do={ :put ("id: " . $id);`
 	for _, field := range menu.fields {
 		command += ` :put (` + routerOSQuoted(field+": ") + ` . [:tostr [` + menu.path + ` get $id ` + field + `]]);`
 	}
@@ -151,7 +159,9 @@ func networkReadOne(ctx context.Context, r CommandRunner, key, id string, fields
 	menu := networkMenus[key]
 	menu.fields = networkSortedKeys(fields)
 	command := networkReadCommand(menu)
-	command = strings.Replace(command, menu.path+" find]", menu.path+" find where .id="+id+"]", 1)
+	start := strings.Index(command, " find")
+	end := strings.Index(command, "] do={")
+	command = command[:start] + " find where .id=" + id + command[end:]
 	text, err := r.Run(ctx, command)
 	if err != nil {
 		return nil, fmt.Errorf("could not read selected %s fields safely", key)
@@ -250,7 +260,7 @@ func (a *DeviceApplier) ReadNetwork(ctx context.Context, businessID, deviceID st
 	if err != nil {
 		return NetworkInventory{}, err
 	}
-	result := NetworkInventory{Interfaces: interfaces, Objects: map[string][]NetworkObject{}, Available: map[string]bool{}}
+	result := NetworkInventory{Health: readHubHealth(ctx, r), Interfaces: interfaces, Objects: map[string][]NetworkObject{}, Available: map[string]bool{}}
 	for key := range networkMenus {
 		if key == "ssh_sessions" || key == "wg_peers" {
 			continue
@@ -278,6 +288,8 @@ func (a *DeviceApplier) ReadNetwork(ctx context.Context, businessID, deviceID st
 type networkStep struct {
 	Key, ID, SelectorField, SelectorValue, Label string
 	Values, Before                               map[string]string
+	First                                        bool
+	EmptyTable                                   bool
 }
 type networkApproval struct {
 	Business, Device, RequestHash, StateHash string
@@ -322,7 +334,20 @@ func (a *DeviceApplier) PreviewNetwork(ctx context.Context, businessID, deviceID
 	networkApprovals.entries[token] = networkApproval{businessID, deviceID, networkHash(request), networkHash(steps), expiry}
 	labels := []string{}
 	for _, step := range steps {
-		labels = append(labels, step.Label)
+		details := []string{}
+		for _, field := range networkSortedKeys(step.Values) {
+			if networkSecret(field) {
+				details = append(details, field+": (value hidden)")
+				continue
+			}
+			value := step.Values[field]
+			if old, exists := step.Before[field]; exists {
+				details = append(details, field+": "+old+" → "+value)
+			} else {
+				details = append(details, field+": "+value)
+			}
+		}
+		labels = append(labels, step.Label+" — "+strings.Join(details, "; "))
 	}
 	return NetworkReview{token, labels, warnings, expiry}, nil
 }
@@ -340,6 +365,7 @@ func networkStepID(ctx context.Context, r CommandRunner, s networkStep) (string,
 	}
 	return id, nil
 }
+
 // clearNATTracking drops the connection-tracking table after a NAT change.
 // RouterOS matches NAT on the first packet only and remembers the result, so a
 // modified masquerade rule does not affect already-tracked connections: the
@@ -367,6 +393,9 @@ func networkWriteCommand(s networkStep, restore bool) string {
 	}
 	for _, field := range networkSortedKeys(values) {
 		cmd += " " + field + "=" + routerOSQuoted(values[field])
+	}
+	if s.First && !s.EmptyTable && s.ID == "" && !restore {
+		cmd += " place-before=0"
 	}
 	return cmd
 }
@@ -404,6 +433,12 @@ func networkVerify(ctx context.Context, r CommandRunner, s networkStep, restore 
 	for field, value := range want {
 		if !networkEqual(field, actual[field], value) {
 			return fmt.Errorf("%s readback mismatch at %s", s.Key, field)
+		}
+	}
+	if s.First && !restore {
+		first, e := r.Run(ctx, `:put [:pick [`+networkMenus[s.Key].path+` find] 0]`)
+		if e != nil || strings.TrimSpace(first) != id {
+			return fmt.Errorf("protection rule order not verified")
 		}
 	}
 	return nil

@@ -2,10 +2,12 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"mega-magic/internal/config"
 	"mega-magic/internal/database"
 	"mega-magic/internal/handler"
+	"mega-magic/internal/hub"
 	"mega-magic/internal/provisioner/routeros"
 	"mega-magic/internal/secretbox"
 	"strings"
@@ -23,8 +25,39 @@ func configureHubManagement(h *handler.VPSHandler, db *database.DB, cfg *config.
 	if err != nil {
 		return errors.New("management credential encryption unavailable")
 	}
+	if cfg.WireGuard.ManagementSourceCIDR != "" {
+		if _, err := configuredManagementSource(cfg.WireGuard.Interface, cfg.WireGuard.ManagementSourceCIDR); err != nil {
+			return err
+		}
+	}
 	source := database.NewDeviceCredentialSource(db, box)
-	configureAutomaticHubManagement(h, source, cfg.Provisioner.AllowedTargetCIDRs, cfg.WireGuard.Interface)
+	pending := &database.PendingEnrollmentStore{DB: db, Box: box}
+	if err := pending.Check(); err != nil {
+		return err
+	}
+	h.ConfigureDurableQuickKeys(func(ctx context.Context, biz, id string, create bool) (string, string, error) {
+		var generate func() (string, error)
+		if create {
+			generate = func() (string, error) {
+				private, public, e := hub.GenerateRouterKeypair()
+				if e != nil {
+					return "", e
+				}
+				b, e := json.Marshal([]string{private, public})
+				return string(b), e
+			}
+		}
+		raw, e := pending.GetOrCreate(ctx, biz, id, "router_key", generate, 24*time.Hour)
+		if e != nil || raw == "" {
+			return "", "", e
+		}
+		var keys []string
+		if json.Unmarshal([]byte(raw), &keys) != nil || len(keys) != 2 {
+			return "", "", errors.New("invalid pending key envelope")
+		}
+		return keys[0], keys[1], nil
+	})
+	configureAutomaticHubManagement(h, source, cfg.Provisioner.AllowedTargetCIDRs, cfg.WireGuard.Interface, automaticManagementOptions{sourceCIDR: cfg.WireGuard.ManagementSourceCIDR, store: pending})
 	// Validate the outbound allowlist once before registering the route callback.
 	if _, err := routeros.NewCIDRTargetSource(enrollmentTarget{}, cfg.Provisioner.AllowedTargetCIDRs); err != nil {
 		return err

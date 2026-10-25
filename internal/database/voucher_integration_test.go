@@ -108,6 +108,15 @@ func setupHarness(base string) {
 		harnessFatal = fmt.Errorf("load schema into %s: %w", harnessName, err)
 		return
 	}
+	migration, err := os.ReadFile("../../migrations/20261024020000_guest_purchase_terms.sql")
+	if err != nil {
+		harnessFatal = err
+		return
+	}
+	if _, err := db.Exec(string(migration)); err != nil {
+		harnessFatal = err
+		return
+	}
 }
 
 func teardownHarness() {

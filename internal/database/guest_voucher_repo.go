@@ -159,7 +159,7 @@ func (GuestVoucherRepository) FinalizeTXN(tx *sql.Tx, businessID, voucherID, lea
 	if err != nil {
 		return false, err
 	}
-	result, err := tx.Exec(`UPDATE guest_voucher_grants g SET state='active',lease_token=NULL,lease_until=NULL,updated_at=clock_timestamp()
+	result, err := tx.Exec(`UPDATE guest_voucher_grants g SET state='active',activated_at=COALESCE(g.activated_at,clock_timestamp()),lease_token=NULL,lease_until=NULL,updated_at=clock_timestamp()
  FROM vouchers v WHERE g.voucher_id=$1 AND g.business_id=$2 AND g.lease_token=$3
  AND g.state='provisioning' AND g.expires_at>clock_timestamp() AND g.lease_until>clock_timestamp()
  AND v.id=g.voucher_id AND v.business_id=g.business_id AND v.status='used'`, voucherID, businessID, leaseToken)

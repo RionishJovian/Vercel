@@ -79,7 +79,7 @@ func TestGuestRecoveryHTTPBoundary(t *testing.T) {
 					id = voucherID
 				}
 				return &model.Device{DeviceID: id, BusinessID: "server-tenant", DeploymentLayer: "MAIN_GATEWAY"}, nil
-			}, PortalConfig: func(context.Context, string) (*model.PortalConfig, error) {
+			}, PortalConfig: func(context.Context, string, string) (*model.PortalConfig, error) {
 				return &model.PortalConfig{VoucherLoginEnabled: !tc.disabled, ConsentRequired: true}, nil
 			}}
 			r := gin.New()

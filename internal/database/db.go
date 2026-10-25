@@ -3,6 +3,7 @@ package database
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	_ "github.com/lib/pq"
@@ -19,7 +20,7 @@ type DB struct {
 func New(cfg config.DatabaseConfig) (*DB, error) {
 	dsn := fmt.Sprintf(
 		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
-		cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.Name, cfg.SSLMode,
+		quoteConnectionValue(cfg.Host), cfg.Port, quoteConnectionValue(cfg.User), quoteConnectionValue(cfg.Password), quoteConnectionValue(cfg.Name), quoteConnectionValue(cfg.SSLMode),
 	)
 
 	db, err := sql.Open("postgres", dsn)
@@ -36,6 +37,13 @@ func New(cfg config.DatabaseConfig) (*DB, error) {
 	}
 
 	return &DB{db}, nil
+}
+
+// lib/pq keyword values must be quoted, including empty passwords. Otherwise an
+// empty value consumes the following keyword, and spaces or quotes can alter
+// how the remainder of the connection settings are interpreted.
+func quoteConnectionValue(value string) string {
+	return "'" + strings.NewReplacer(`\`, `\\`, `'`, `\'`).Replace(value) + "'"
 }
 
 // SetTenantContext sets the current_business_id session variable for RLS

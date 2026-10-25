@@ -71,13 +71,14 @@ func (h *SecurityHandler) ConfigureWebFig(c *gin.Context) {
 // the code held on the day it was written. The stored value is still returned as
 // `posture_stored` so drift between the two is visible rather than hidden.
 type SecurityHandler struct {
-	db           *database.DB
-	deviceRepo   *database.DeviceRepository
-	apply        *provisioner.ApplyService
-	prober       provisioner.Prober
-	capabilities routerCapabilityProbe
-	quickConfig  routerQuickConfigurator
-	trustedCIDRs []string
+	db              *database.DB
+	deviceRepo      *database.DeviceRepository
+	apply           *provisioner.ApplyService
+	prober          provisioner.Prober
+	capabilities    routerCapabilityProbe
+	quickConfig     routerQuickConfigurator
+	managementMoves managementMigrationController
+	trustedCIDRs    []string
 }
 
 func NewSecurityHandler(db *database.DB, deviceRepo *database.DeviceRepository) *SecurityHandler {

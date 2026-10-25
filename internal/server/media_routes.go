@@ -41,17 +41,6 @@ func registerMediaRoutes(r *gin.Engine, service *auth.Service, db *database.DB, 
 	owner.DELETE("/connection", h.Revoke)
 	owner.POST("/jobs", h.Enqueue)
 	owner.GET("/jobs/:id", h.Job)
-	// Additive rollout: an unmigrated server keeps the existing connector usable,
-	// but cannot report a successful publication.
-	var publishingReady bool
-	if e := db.QueryRow(`SELECT EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relname='magic_media_publications' AND c.relrowsecurity AND c.relforcerowsecurity)`).Scan(&publishingReady); e != nil {
-		return e
-	}
-	publishing := &handler.MediaPublicationHandler{Store: bridge.NewPostgres(db), Ready: publishingReady}
-	owner.GET("/publication", publishing.Get)
-	owner.PUT("/publication", publishing.Publish)
-	owner.DELETE("/publication", publishing.Unpublish)
-	r.GET("/api/v1/media-guest/:id", auth.BoundedAuthRateLimit(), publishing.Public)
 	// The guest catalogue itself is registered on the portal group in server.go,
 	// alongside the other anonymous guest routes, so it inherits the portal rate
 	// limit and the cookie-origin check. Expose the pieces it needs here.
@@ -102,7 +91,6 @@ func registerMediaRoutes(r *gin.Engine, service *auth.Service, db *database.DB, 
 		},
 	}
 	// The ledger flag alone cannot advertise playable LAN media.
-	publishing.PurchasesEnabled = false
 	playback := handler.NewMediaPlaybackHandler(bridge.NewPostgres(db), salesReady)
 	// Catalog reachability is not proof of LAN playback. Do not solicit a bank
 	// transfer until the owner-PC local delivery path has passed acceptance.
