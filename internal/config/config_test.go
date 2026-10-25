@@ -66,17 +66,17 @@ func TestLoad_provisionerApplierDefaultsOff(t *testing.T) {
 	}
 }
 
-// TestLoad_vpsConfigParses proves the real config.yaml's vps section loads.
+// TestLoad_vpsConfigParses proves the committed example config's vps section loads.
 func TestLoad_vpsConfigParses(t *testing.T) {
 	t.Setenv("ENVIRONMENT", "development")
-	cfg, err := Load("../../config.yaml")
+	cfg, err := Load("../../config.yaml.example")
 	if err != nil {
 		t.Fatalf("Load config.yaml: %v", err)
 	}
 	if cfg.VPS.EndpointHost != "" {
 		t.Fatalf("vps.endpoint_host should default empty, got %q", cfg.VPS.EndpointHost)
 	}
-	if cfg.WireGuard.Interface != "wg-magichub" || cfg.WireGuard.ListenPort != 13231 {
+	if cfg.WireGuard.Interface != "wg0" || cfg.WireGuard.ListenPort != 13231 {
 		t.Fatalf("wireguard config not loaded: %+v", cfg.WireGuard)
 	}
 }
@@ -86,7 +86,7 @@ func TestLoad_vpsConfigParses(t *testing.T) {
 // inert until explicitly enabled.
 func TestLoad_billingTelegramDefaultsOff(t *testing.T) {
 	t.Setenv("ENVIRONMENT", "development")
-	cfg, err := Load("../../config.yaml")
+	cfg, err := Load("../../config.yaml.example")
 	if err != nil {
 		t.Fatalf("Load config.yaml: %v", err)
 	}

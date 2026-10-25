@@ -81,6 +81,22 @@ func TestService_healthyPublishesNothing(t *testing.T) {
 	}
 }
 
+func TestIndividualPassAIUnlimitedButExpiryGated(t *testing.T) {
+	bus, meter, client := &fakeBus{}, &fakeMeter{spent: false}, &stubClient{finding: &Finding{Rule: "latency_spike", Severity: "critical"}}
+	svc := NewWithMeter(bus, meter, client, Config{UnlimitedUsage: true}, zap.NewNop().Sugar())
+	allowed := false
+	svc.WithBusinessAccess(func(context.Context, string) (bool, error) { return allowed, nil })
+	svc.process(context.Background(), sample("expired"))
+	if client.calls != 0 || len(meter.spends) != 0 || len(bus.published) != 0 {
+		t.Fatal("expired pass consumed AI")
+	}
+	allowed = true
+	svc.process(context.Background(), sample("active"))
+	if client.calls != 1 || len(meter.spends) != 0 || len(bus.published) != 1 {
+		t.Fatal("active individual pass hit legacy AI quota")
+	}
+}
+
 func TestService_criticalPublishesAndSpendsExactlyCost(t *testing.T) {
 	bus := &fakeBus{}
 	meter := &fakeMeter{spent: true}

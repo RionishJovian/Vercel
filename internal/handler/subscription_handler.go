@@ -47,6 +47,10 @@ func subscriptionAccess(enabled bool, load func(*gin.Context) (subscription.Stat
 }
 
 func SubscriptionStatus(c *gin.Context) {
+	if value, ok := c.Get("individual_pass_status"); ok {
+		c.JSON(http.StatusOK, value)
+		return
+	}
 	if value, ok := c.Get("subscription_status"); ok {
 		c.JSON(http.StatusOK, value)
 		return

@@ -54,6 +54,7 @@ func Middleware(authService *Service) gin.HandlerFunc {
 		}
 
 		// Set tenant context in request context
+		c.Set("auth_session_id", claims.SessionID)
 		c.Set(ContextKeyUserID, claims.UserID)
 		c.Set(ContextKeyBusinessID, claims.BusinessID)
 		c.Set(ContextKeyUserEmail, claims.Email)
@@ -90,6 +91,7 @@ func OptionalMiddleware(authService *Service) gin.HandlerFunc {
 			return
 		}
 
+		c.Set("auth_session_id", claims.SessionID)
 		c.Set(ContextKeyUserID, claims.UserID)
 		c.Set(ContextKeyBusinessID, claims.BusinessID)
 		c.Set(ContextKeyUserEmail, claims.Email)

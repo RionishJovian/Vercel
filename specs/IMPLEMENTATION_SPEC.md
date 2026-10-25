@@ -52,7 +52,7 @@ CREATE TABLE users (
   full_name text,
   email text,
   password_hash text,
-  user_role text CHECK (user_role IN ('OWNER','ADMIN','OPERATOR','TECHNICIAN','VIEWER','SUPPORT')),
+  user_role text CHECK (user_role IN ('OWNER','ADMIN','VIEWER','DEVELOPER')),
   created_at timestamptz DEFAULT now()
 );
 

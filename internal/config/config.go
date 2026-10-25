@@ -36,6 +36,7 @@ type Config struct {
 
 // Pilot integration is disabled until its migration and acceptance checks pass.
 type MediaConfig struct {
+	PublishingEnabled bool `mapstructure:"publishing_enabled"`
 	ConnectorEnabled  bool `mapstructure:"connector_enabled"`
 	PaidAccessEnabled bool `mapstructure:"paid_access_enabled"`
 }
@@ -78,6 +79,7 @@ type GuestWifiConfig struct {
 // the plan -> duration source (plan.<planKey>.duration_minutes); a plan with no
 // duration FAILS CLOSED at request time.
 type BillingConfig struct {
+	IndividualPassesEnabled  bool                  `mapstructure:"individual_passes_enabled"`
 	SubscriptionOnly         bool                  `mapstructure:"subscription_only"`
 	ExistingAccountPolicy    string                `mapstructure:"existing_account_policy"`
 	ReceiptDir               string                `mapstructure:"receipt_dir"`
@@ -150,12 +152,13 @@ type NATSConfig struct {
 }
 
 type WireGuardConfig struct {
-	Interface        string        `mapstructure:"interface"`
-	ListenPort       int           `mapstructure:"listen_port"`
-	PeerKeepalive    time.Duration `mapstructure:"peer_keepalive"`
-	AllowedIPs       []string      `mapstructure:"allowed_ips"`
-	ManagementVLAN   int           `mapstructure:"management_vlan"`
-	ManagementSubnet string        `mapstructure:"management_subnet"`
+	ManagementSourceCIDR string        `mapstructure:"management_source_cidr"`
+	Interface            string        `mapstructure:"interface"`
+	ListenPort           int           `mapstructure:"listen_port"`
+	PeerKeepalive        time.Duration `mapstructure:"peer_keepalive"`
+	AllowedIPs           []string      `mapstructure:"allowed_ips"`
+	ManagementVLAN       int           `mapstructure:"management_vlan"`
+	ManagementSubnet     string        `mapstructure:"management_subnet"`
 }
 
 // VPSConfig configures the read-only peer-provisioning surface. EndpointHost is
@@ -234,7 +237,8 @@ type RecoveryConfig struct {
 
 // ProvisionerConfig configures the real provisioner apply path.
 type ProvisionerConfig struct {
-	Applier ApplierConfig `mapstructure:"applier"`
+	InventoryEnabled bool          `mapstructure:"inventory_enabled"`
+	Applier          ApplierConfig `mapstructure:"applier"`
 
 	// AllowedTargetCIDRs bounds every database-resolved SSH connection (read
 	// and write) to explicit management networks. Empty is safe only while both
@@ -359,6 +363,9 @@ const (
 // convenient local defaults, while production refuses to boot in a state that
 // can silently bypass tenant isolation or reuse repository-known secrets.
 func (cfg *Config) Validate() error {
+	if cfg.Billing.SubscriptionOnly && cfg.Billing.IndividualPassesEnabled {
+		return fmt.Errorf("legacy business subscriptions and individual account passes cannot both be enabled")
+	}
 	if cfg.Billing.SubscriptionOnly && cfg.Billing.ExistingAccountPolicy != "require_payment" {
 		return fmt.Errorf("billing.existing_account_policy must be require_payment when subscription_only is enabled; existing accounts receive the one-time transition trial, not indefinite free access")
 	}
@@ -384,7 +391,7 @@ func (cfg *Config) Validate() error {
 			problems = append(problems, "vps Hub lookup requires a valid HTTPS endpoint, key identifier and 32-byte hex signing key")
 		}
 	}
-	routerAccess := cfg.Provisioner.Applier.Enabled || cfg.Provisioner.PostureCapture.Enabled
+	routerAccess := cfg.Provisioner.Applier.Enabled || cfg.Provisioner.PostureCapture.Enabled || cfg.Provisioner.InventoryEnabled
 	if routerAccess {
 		if len(cfg.Provisioner.AllowedTargetCIDRs) == 0 {
 			problems = append(problems, "provisioner.allowed_target_cidrs is required when router access is enabled")

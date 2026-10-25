@@ -1,0 +1,26 @@
+# Production template. Deployments must render this with unique secrets; do
+# not commit a populated copy. The database volume may be reused only after a
+# verified backup and migration rehearsal.
+environment: production
+server:
+  host: "0.0.0.0"
+  port: 8080
+database:
+  host: db
+  port: 5432
+  user: mega_magic
+  password: REPLACE_WITH_RANDOM_SECRET
+  name: mega_magic
+  sslmode: disable
+  rls_enforce: true
+redis:
+  host: redis
+  port: 6379
+nats:
+  url: nats://nats:4222
+wireguard:
+  interface: wg0
+  listen_port: 13231
+security:
+  jwt_secret: REPLACE_WITH_RANDOM_SECRET_32_BYTES_MINIMUM
+  aes_gcm_key: REPLACE_WITH_RANDOM_SECRET_32_BYTES_MINIMUM

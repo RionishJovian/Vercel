@@ -125,15 +125,15 @@ export function mountAppearance(content, business, user, api, isActive = () => t
       <h2>Featured preview artwork</h2><p class="muted small">These four samples show your design, not playable movies. This does not change movie metadata or artwork in Jellyfin.</p>
       ${posterNames.map((_,i)=>`<details class="media-tile-editor"><summary>Preview card ${i+1}</summary><label>Sample title<input class="input" name="poster-${i}-title" maxlength="80"></label><label>Preview picture<input type="file" accept="image/jpeg,image/png,image/webp" data-media-image="poster-${i}"></label><button type="button" class="btn btn-sm" data-media-clear="poster-${i}">Remove picture</button></details>`).join("")}
       <h2>Guest libraries</h2><p class="muted small">Choose only libraries you are authorized to share. Files stay on your PC. Keep Jellyfin and the connector running for guest playback.</p><button type="button" class="btn" data-media-libraries>Load libraries from my PC</button><div data-media-library-options></div><p role="status" data-media-library-status></p>
-      <h2>Media pass</h2><p class="muted small">Guests pay by bank / MMQR. Your Telegram approval unlocks playback; the timer starts when the first stream is available. Publishing alone does not activate purchases.</p>
+      <details data-media-sales><summary>Media sales design settings · not active</summary><p class="muted small">These are future display settings. Paid access and playback remain unavailable until local delivery passes acceptance. Publishing a design does not collect payments or grant playback.</p>
       <label>Price (MMK)<input class="input" name="price" type="number" min="1" max="1000000" step="1" required></label>
       <label>Duration (hours)<input class="input" name="duration" type="number" min="1" max="720" step="1" required></label>
-      <h2>Bank / MMQR payment details</h2><p class="muted small">Guests transfer to your account and attach a receipt. Your own Telegram bot delivers it for your approval or rejection. No payment gateway is required.</p>
+      <h2>Bank / MMQR payment details</h2><p class="muted small">Guests transfer to your account and attach a receipt. Your own Telegram bot delivers it for your approval or rejection. Saving receiving details does not activate checkout.</p>
       <label>Bank name<input class="input" name="bank_name" maxlength="100"></label>
       <label>Bank account number<input class="input" name="bank_account" maxlength="100"></label>
       <label>Account holder name<input class="input" name="bank_holder" maxlength="160"></label>
       <label>Your MMQR image<input type="file" accept="image/jpeg,image/png" data-media-image="mmqr"></label><button type="button" class="btn btn-sm" data-media-clear="mmqr">Remove MMQR image</button>
-      <div class="media-design-actions"><button type="submit" class="btn btn-primary" disabled>Publish guest page</button><button type="button" class="btn" data-media-reset>Reset design</button></div>
+      </details><div class="media-design-actions"><button type="submit" class="btn btn-primary" disabled>Publish guest page</button><button type="button" class="btn" data-media-reset>Reset design</button></div>
       <p class="muted small">Publishing replaces the hosted design for your business. The preview uses sample artwork; the public page does not show sample movies.</p><p role="status" id="media-design-status"></p>
     </div></form><section class="panel media-preview-panel"><div class="panel-head"><h2 class="panel-title">Guest preview</h2><div class="media-design-actions"><button class="btn btn-sm" type="button" aria-pressed="true" data-media-width="desktop">Desktop</button><button class="btn btn-sm" type="button" aria-pressed="false" data-media-width="mobile">Mobile</button></div></div><div class="media-preview-wrap"><iframe title="Magic Media guest appearance preview" sandbox="" id="media-guest-preview"></iframe></div></section></div>`;
   const form = content.querySelector("#media-design-form"), frame = content.querySelector("iframe"), status = content.querySelector("#media-design-status"), publication = content.querySelector('#media-publication');
@@ -148,7 +148,11 @@ export function mountAppearance(content, business, user, api, isActive = () => t
   };
   let images = {}, uploadGeneration = 0, selectedLibraries=[];
   const libraryOptions=form.querySelector('[data-media-library-options]'),libraryStatus=form.querySelector('[data-media-library-status]');
+  let connectorReady=false;
+  const libraryButton=form.querySelector('[data-media-libraries]');libraryButton.disabled=true;
+  api?.get('/media/capabilities').then(value=>{if(!active())return;connectorReady=value.connector?.available===true;libraryButton.disabled=!connectorReady;if(!connectorReady)libraryStatus.textContent='The local computer connector is not enabled. Guest-page design can be published separately.';}).catch(()=>{if(active())libraryStatus.textContent='Connector availability could not be confirmed. Library reads are unavailable.';});
   form.querySelector('[data-media-libraries]').onclick=async event=>{
+    if(!connectorReady)return;
     const button=event.currentTarget;button.disabled=true;libraryStatus.textContent='Reading libraries from your media PC…';
     try{const id=crypto.randomUUID();await api.post('/media/jobs',{id,operation:'libraries',payload:{}});
       const deadline=Date.now()+125000;let libraries=null;
@@ -160,7 +164,7 @@ export function mountAppearance(content, business, user, api, isActive = () => t
         input.onchange=()=>{if(input.checked&&selectedLibraries.length>=16){input.checked=false;libraryStatus.textContent='Select at most 16 libraries.';return;}selectedLibraries=input.checked?[...new Set([...selectedLibraries,input.value])]:selectedLibraries.filter(id=>id!==input.value);edited=true;};
       }
       libraryStatus.textContent=libraryOptions.childElementCount?'Select the libraries guests may play, then publish.':'No playable libraries found. Add videos or music in Jellyfin first.';
-    }catch(e){if(active())libraryStatus.textContent=e.message||'Libraries unavailable.';}finally{button.disabled=false;}
+    }catch(e){if(active())libraryStatus.textContent=e.message||'Libraries unavailable.';}finally{button.disabled=!connectorReady;}
   };
   const pendingUploads = new Map();
   const fill = data => {
@@ -205,7 +209,7 @@ export function mountAppearance(content, business, user, api, isActive = () => t
     if(explicit && edited && !confirm('Discard your unsaved edits and reload the published design?'))return;
     busy=true;controls();
     try {const response=await api.get('/media/publication');if(!active())return;paidAccessReady=response.paid_access_ready===true;const p=response.publication;revision=p?.revision||0;loaded=true;showPublication(p);if(explicit||!edited){fill(p?normalize(p.design):draft);preview();edited=false;}}
-    catch(e){if(active()){loaded=false;publication.textContent=e.message||'Published design could not be loaded.';}}
+    catch(e){if(active()){loaded=false;publication.textContent=e.status===404||e.status===503?'Publishing is unavailable on this server. Your local preview is still editable; no design has been published.':(e.message||'Published design could not be loaded.');}}
     finally{busy=false;if(active())controls();}
   };
   form.addEventListener("submit", async event => {

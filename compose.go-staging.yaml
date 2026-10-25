@@ -1,0 +1,60 @@
+name: mega-magic-go-staging
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: mega_magic
+      POSTGRES_PASSWORD: staging-only-change-me
+      POSTGRES_DB: mega_magic
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
+      - ./migrations/20261016150000_business_memberships_invitations.sql:/docker-entrypoint-initdb.d/10-memberships.sql:ro
+      - ./migrations/20261016170000_site_portals.sql:/docker-entrypoint-initdb.d/20-site-portals.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mega_magic -d mega_magic"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes: [redis_data:/data]
+
+  nats:
+    image: nats:2-alpine
+    command: ["-js", "-m", "8222", "-sd", "/data"]
+    volumes: [nats_data:/data]
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    depends_on:
+      db: {condition: service_healthy}
+      redis: {condition: service_started}
+      nats: {condition: service_started}
+    ports:
+      - "127.0.0.1:18080:8080"
+    volumes:
+      - ./config.go-staging.yaml:/app/config.yaml:ro
+      - app_data:/app/data
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web.prod
+    depends_on:
+      api: {condition: service_started}
+    ports:
+      - "127.0.0.1:18081:80"
+    restart: unless-stopped
+
+volumes:
+  db_data:
+  redis_data:
+  nats_data:
+  app_data:

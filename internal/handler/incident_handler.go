@@ -44,6 +44,9 @@ func (h *IncidentHandler) withTenantTx(c *gin.Context, businessID string, fn fun
 // respondErr renders an error produced inside a tenant tx, honouring a carried
 // httpError (exact status + message) and falling back to 500 otherwise.
 func respondErr(c *gin.Context, err error) {
+	if respondAppCapacity(c, err) {
+		return
+	}
 	var he *httpError
 	if errors.As(err, &he) {
 		c.JSON(he.status, gin.H{"error": he.msg})

@@ -169,6 +169,12 @@ func (h *VPSHandler) QuickEnrollGateway(c *gin.Context) {
 		c.JSON(404, gin.H{"error": "gateway not found in your tenant"})
 		return
 	}
+	if h.automaticPreflight != nil {
+		if e := h.automaticPreflight(c.Request.Context(), biz, device.DeviceID); e != nil {
+			c.JSON(503, gin.H{"error": "One-paste preparation is unavailable on this server. No new Hub allocation was requested.", "code": "hub_management_preflight_failed"})
+			return
+		}
+	}
 	identity := hub.Identity{TenantID: biz, RouterID: device.DeviceID, RequestedBy: user}
 	var peer hub.Peer
 	var script string
@@ -180,24 +186,38 @@ func (h *VPSHandler) QuickEnrollGateway(c *gin.Context) {
 		}
 	}
 	if peer.PeerID != "" {
-		scripts, buildErr := hub.BuildRouterScripts(device.DeviceID, peer)
-		if buildErr != nil {
+		if peer.TenantID != biz || peer.RouterID != device.DeviceID {
+			c.JSON(502, gin.H{"error": "Magic Hub identity mismatch"})
+			return
+		}
+		key, keyErr := h.quickEnrollmentKeys(biz, device.DeviceID, false)
+		if keyErr != nil {
+			c.JSON(503, gin.H{"error": "Pending installation could not be read safely; enrollment preserved"})
+			return
+		}
+		if key.public != "" && key.public == peer.RouterPublicKey {
+			script, err = hub.BuildQuickConnectScript(device.DeviceID, peer, key.private)
+		} else {
+			var scripts hub.RouterScripts
+			scripts, err = hub.BuildRouterScripts(device.DeviceID, peer)
+			script = scripts.Setup
+		}
+		if err != nil {
 			c.JSON(409, gin.H{"error": "existing enrollment requires repair"})
 			return
 		}
-		script = scripts.Setup
 	} else {
-		privateKey, publicKey, err := hub.GenerateRouterKeypair()
+		key, err := h.quickEnrollmentKeys(biz, device.DeviceID, true)
 		if err != nil {
-			c.JSON(500, gin.H{"error": "could not generate router keypair"})
+			c.JSON(503, gin.H{"error": "router key preparation temporarily unavailable"})
 			return
 		}
-		peer, err = h.enrollmentHub.EnrollPeer(c.Request.Context(), identity, publicKey, body.Port)
-		if err != nil || peer.TenantID != biz || peer.RouterID != device.DeviceID || peer.RouterPublicKey != publicKey || peer.EnrollmentVersion != 1 || peer.State != "active" {
+		peer, err = h.enrollmentHub.EnrollPeer(c.Request.Context(), identity, key.public, body.Port)
+		if err != nil || peer.TenantID != biz || peer.RouterID != device.DeviceID || peer.RouterPublicKey != key.public || peer.EnrollmentVersion != 1 || peer.State != "active" {
 			c.JSON(502, gin.H{"error": "enrollment not confirmed; retry the one-paste action"})
 			return
 		}
-		script, err = hub.BuildQuickConnectScript(device.DeviceID, peer, privateKey)
+		script, err = hub.BuildQuickConnectScript(device.DeviceID, peer, key.private)
 		if err != nil {
 			c.JSON(502, gin.H{"error": "Hub allocation lacks safe script configuration"})
 			return

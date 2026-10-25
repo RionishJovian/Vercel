@@ -92,7 +92,7 @@ func (h *GuestVoucherHandler) paidGuestRequest(c *gin.Context, available bool) (
 		c.JSON(404, gin.H{"error": "gateway unavailable"})
 		return guestaccess.RecoveryRequest{}, false
 	}
-	pc, err := h.PortalConfig(c.Request.Context(), dev.BusinessID)
+	pc, err := h.PortalConfig(c.Request.Context(), dev.BusinessID, dev.DeviceID)
 	if err != nil {
 		c.JSON(503, gin.H{"error": "portal configuration unavailable"})
 		return guestaccess.RecoveryRequest{}, false

@@ -1,0 +1,70 @@
+environment: "test"
+server:
+  host: "0.0.0.0"
+  port: 8080
+  read_timeout: 30s
+  write_timeout: 30s
+database:
+  host: "localhost"
+  port: 5432
+  user: ""
+  password: ""
+  name: "mega_magic_test"
+  sslmode: "disable"
+  max_open_conns: 10
+  max_idle_conns: 5
+  conn_max_lifetime: 5m
+redis:
+  enabled: false
+nats:
+  enabled: false
+wireguard:
+  enabled: false
+vps:
+  enabled: false
+telemetry:
+  enabled: false
+quotas:
+  enabled: false
+security:
+  jwt_secret: "test-secret-key-for-testing-only"
+  jwt_issuer: "mega-magic-test"
+  access_token_ttl: 15m
+  refresh_token_ttl: 168h
+  bcrypt_cost: 10
+  allowed_origins: ["http://localhost:3000"]
+  session_cookie_name: "mm_session"
+  csrf_cookie_name: "mm_csrf"
+logging:
+  level: "debug"
+  format: "json"
+features:
+  subscription_only: true
+  existing_account_policy: "grandfather"
+  provisioner:
+    inventory_enabled: false
+  media:
+    connector_enabled: false
+    paid_access_enabled: false
+monitoring:
+  enabled: false
+recovery:
+  enabled: false
+provisioner:
+  inventory_enabled: false
+billing:
+  subscription_only: true
+  existing_account_policy: "grandfather"
+  receipt_dir: "/tmp/test_receipts"
+  quota_enforcement_interval: 5m
+  plans: {}
+  telegram:
+    enabled: false
+ai:
+  enabled: false
+  mode: "fallback"
+guest_wifi:
+  enabled: false
+  voucher_access_enabled: true
+  bridge_scan_interval: 1m
+  receipt_dir: "/tmp/test_receipts"

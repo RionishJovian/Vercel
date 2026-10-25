@@ -42,7 +42,7 @@ CREATE TABLE users (
     email text NOT NULL UNIQUE,
     password_hash text NOT NULL,
     user_role text NOT NULL DEFAULT 'VIEWER'
-        CHECK (user_role IN ('OWNER', 'ADMIN', 'OPERATOR', 'TECHNICIAN', 'VIEWER', 'SUPPORT', 'DEVELOPER')),
+        CHECK (user_role IN ('OWNER', 'ADMIN', 'VIEWER', 'DEVELOPER')),
     is_active boolean NOT NULL DEFAULT true,
     last_login_at timestamptz,
     created_at timestamptz NOT NULL DEFAULT now(),
@@ -191,6 +191,8 @@ CREATE TABLE portal_configs (
     bank_account text,
     bank_holder text,
     mmqr_url text,                -- owner's MMQR payment QR image (Myanmar QR)
+    media_host text,
+    media_port text NOT NULL DEFAULT '8096',
     -- Guest wifi (Option C): the free online-payment window (minutes) and the
     -- data plans the owner sets on the portal (JSON: [{key,label,minutes,amount}]).
     guest_grace_minutes integer NOT NULL DEFAULT 10,
@@ -200,6 +202,20 @@ CREATE TABLE portal_configs (
     mobile_payment_enabled boolean NOT NULL DEFAULT true,
     CONSTRAINT portal_configs_access_method_check
         CHECK (voucher_login_enabled OR mobile_payment_enabled),
+    CONSTRAINT portal_configs_media_port_check
+        CHECK (media_port ~ '^[0-9]{1,5}$' AND media_port::integer BETWEEN 1 AND 65535),
+    CONSTRAINT portal_configs_media_host_check
+        CHECK (media_host IS NULL OR (
+            media_host ~ '^([0-9]{1,3}\.){3}[0-9]{1,3}$'
+            AND split_part(media_host, '.', 1)::integer BETWEEN 1 AND 255
+            AND split_part(media_host, '.', 2)::integer BETWEEN 0 AND 255
+            AND split_part(media_host, '.', 3)::integer BETWEEN 0 AND 255
+            AND split_part(media_host, '.', 4)::integer BETWEEN 1 AND 254
+            AND split_part(media_host, '.', 1)::integer < 224
+            AND (split_part(media_host, '.', 1)::integer = 10
+                OR (split_part(media_host, '.', 1)::integer = 192 AND split_part(media_host, '.', 2)::integer = 168)
+                OR (split_part(media_host, '.', 1)::integer = 172 AND split_part(media_host, '.', 2)::integer BETWEEN 16 AND 31))
+        )),
     updated_at timestamptz NOT NULL DEFAULT now()
 );
 
@@ -878,7 +894,7 @@ CREATE TABLE IF NOT EXISTS operator_feature_grants (
 );
 
 CREATE TABLE IF NOT EXISTS operator_feature_role_defaults (
-    role text NOT NULL CHECK (role IN ('OWNER','ADMIN','OPERATOR','TECHNICIAN','VIEWER','SUPPORT','DEVELOPER')),
+    role text NOT NULL CHECK (role IN ('OWNER','ADMIN','VIEWER','DEVELOPER')),
     feature text NOT NULL CHECK (feature IN (
         'vouchers','portal_deploy','cash_sales','bank_edit','router_config',
         'reboot','alerts','syslog_ai','poe','telegram')),
@@ -893,7 +909,7 @@ CREATE TABLE IF NOT EXISTS operator_feature_role_defaults (
 );
 
 CREATE TABLE IF NOT EXISTS portal_mode_role_defaults (
-    role text NOT NULL CHECK (role IN ('OWNER','ADMIN','OPERATOR','TECHNICIAN','VIEWER','SUPPORT','DEVELOPER')),
+    role text NOT NULL CHECK (role IN ('OWNER','ADMIN','VIEWER','DEVELOPER')),
     mode text NOT NULL CHECK (mode IN ('hybrid_light','commerce')),
     legacy_role text NOT NULL,               -- see note above
     updated_by uuid REFERENCES users(user_id) ON DELETE SET NULL,
@@ -1516,3 +1532,10 @@ REVOKE ALL ON FUNCTION public.revoke_suspended_business_sessions() FROM PUBLIC;
 DROP TRIGGER IF EXISTS revoke_suspended_business_sessions ON public.businesses;
 CREATE TRIGGER revoke_suspended_business_sessions AFTER UPDATE ON public.businesses
 FOR EACH ROW EXECUTE FUNCTION public.revoke_suspended_business_sessions();
+
+-- Presence contains only server observation times, never input content or tokens.
+BEGIN;
+ALTER TABLE public.auth_sessions ADD COLUMN IF NOT EXISTS last_seen_at timestamptz;
+ALTER TABLE public.auth_sessions ADD COLUMN IF NOT EXISTS last_active_at timestamptz;
+ALTER TABLE public.auth_sessions ADD COLUMN IF NOT EXISTS last_visible_at timestamptz;
+COMMIT;

@@ -15,7 +15,7 @@ import (
 
 func TestDB_GuestAccessRecovery(t *testing.T) {
 	db := requireHarness(t)
-	for _, path := range []string{"20261001200000_guest_voucher_grants.sql", "20261001210000_guest_access_recovery.sql", "20261002200000_guest_recovery_completion.sql"} {
+	for _, path := range []string{"20261001200000_guest_voucher_grants.sql", "20261001210000_guest_access_recovery.sql", "20261002200000_guest_recovery_completion.sql", "20261021090000_guest_voucher_activation.sql"} {
 		b, err := os.ReadFile("../../migrations/" + path)
 		if err != nil {
 			t.Fatal(err)

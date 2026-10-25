@@ -138,7 +138,9 @@ func (s *Service) ValidateToken(tokenString string) (*model.TokenClaims, error) 
 			return nil, err
 		}
 	}
+	sid, _ := claims["sid"].(string)
 	return &model.TokenClaims{
+		SessionID:  sid,
 		UserID:     sub,
 		BusinessID: businessID,
 		Email:      email,

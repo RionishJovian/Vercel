@@ -47,3 +47,7 @@ scripts/migration/csv-out/
 # PHASE 2 section extracted from init.sql on every apply_ported_schema.sh run —
 # generated, so never tracked (the canonical source is database/init.sql).
 scripts/migration/.ported.sql
+
+# Generated production frontend build
+vercel-public/
+.vercel/

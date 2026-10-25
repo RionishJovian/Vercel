@@ -69,7 +69,7 @@ func TestGuestResumeHTTPBoundary(t *testing.T) {
 					id = voucher
 				}
 				return &model.Device{DeviceID: id, BusinessID: "server-tenant", DeploymentLayer: "MAIN_GATEWAY"}, nil
-			}, PortalConfig: func(context.Context, string) (*model.PortalConfig, error) {
+			}, PortalConfig: func(context.Context, string, string) (*model.PortalConfig, error) {
 				return &model.PortalConfig{VoucherLoginEnabled: !tc.disabled, ConsentRequired: true}, nil
 			}}
 			if tc.unwired {

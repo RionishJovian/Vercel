@@ -1,8 +1,10 @@
 -- Phase 2 · Bucket B — account entitlements + feature grants + role defaults.
 --
 -- `role` values are translated from the old app_role vocabulary onto the new one
--- (client -> OWNER, agent -> OPERATOR, site_manager -> OPERATOR); the original is
--- kept in `legacy_role` so nothing is lost in the collapse.
+-- (client -> OWNER, agent -> ADMIN, site_manager -> ADMIN); the original is
+-- kept in `legacy_role` so nothing is lost in the collapse. OPERATOR was
+-- consolidated into ADMIN, so the schema's role CHECK constraints only accept
+-- OWNER/ADMIN/VIEWER/DEVELOPER.
 -- Rows whose user/business did not migrate are excluded (FK integrity).
 
 -- 1) Account entitlements (one row per user)
@@ -35,9 +37,9 @@ ON CONFLICT (user_id, feature) DO NOTHING;
 -- 3) Role defaults (platform-wide, keyed by role+feature)
 INSERT INTO operator_feature_role_defaults (role, feature, legacy_role, updated_by, updated_at)
 SELECT CASE d.legacy_role WHEN 'client' THEN 'OWNER'
-                          WHEN 'agent'  THEN 'OPERATOR'
-                          WHEN 'site_manager' THEN 'OPERATOR'
-                          ELSE 'OPERATOR' END,
+                          WHEN 'agent'  THEN 'ADMIN'
+                          WHEN 'site_manager' THEN 'ADMIN'
+                          ELSE 'ADMIN' END,
        d.feature, d.legacy_role,
        CASE WHEN d.updated_by <> '' AND EXISTS (SELECT 1 FROM users x WHERE x.user_id = d.updated_by::uuid)
             THEN d.updated_by::uuid ELSE NULL END,
@@ -51,9 +53,9 @@ ON CONFLICT (legacy_role, feature) DO NOTHING;
 -- 4) Portal mode role defaults
 INSERT INTO portal_mode_role_defaults (role, mode, legacy_role, updated_by, updated_at)
 SELECT CASE m.legacy_role WHEN 'client' THEN 'OWNER'
-                          WHEN 'agent'  THEN 'OPERATOR'
-                          WHEN 'site_manager' THEN 'OPERATOR'
-                          ELSE 'OPERATOR' END,
+                          WHEN 'agent'  THEN 'ADMIN'
+                          WHEN 'site_manager' THEN 'ADMIN'
+                          ELSE 'ADMIN' END,
        m.mode, m.legacy_role,
        CASE WHEN m.updated_by <> '' AND EXISTS (SELECT 1 FROM users x WHERE x.user_id = m.updated_by::uuid)
             THEN m.updated_by::uuid ELSE NULL END,

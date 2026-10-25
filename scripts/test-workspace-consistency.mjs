@@ -26,6 +26,6 @@ for(const type of ['checkbox','radio']){
 assert.equal(getComputedStyle(document.querySelector('[hidden]')).display,'none','Shared rules cannot reveal an apply control');
 assert.doesNotMatch(html,/max-width:1100px; margin-inline:auto/,'Remove the old centered network layer');
 assert.equal((css.match(/\.panel\.network-workspace \{/g)||[]).length,2,'One network contract plus its mobile rule');
-assert.match(deploy,/vlayout=\$\(md5sum/,'Version the shared layout on deployment');
-assert.ok(deploy.includes('/assets/css/layout'));
+assert.match(deploy,/grep -rhoE '\/assets\/\(css\|js\)\//,'Discover every referenced shared asset for deployment versioning');
+assert.ok(html.includes('/assets/css/layout.css?v='));
 console.log('Workspace consistency passed: shared controls, native-select normalization, safe checkbox sizing, hidden actions, single network layer and cache versioning.');

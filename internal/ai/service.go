@@ -32,6 +32,7 @@ type Config struct {
 	Mode            string // "auto" | "fallback" | "ollama" | "openrouter"
 	OllamaURL       string
 	CostPerAnalysis int
+	UnlimitedUsage  bool // Individual app pass replaces the legacy token balance.
 	// OpenRouter fields are only used when Mode == "openrouter".
 	OpenRouterURL    string
 	OpenRouterAPIKey string
@@ -82,6 +83,7 @@ type Service struct {
 	client    ModelClient
 	cfg       Config
 	logger    *zap.SugaredLogger
+	access    func(context.Context, string) (bool, error)
 
 	mu   sync.Mutex
 	seen map[string]struct{} // dedupe: business|device|rule while unresolved
@@ -133,6 +135,13 @@ func (s *Service) WithNotifier(n IncidentNotifier) *Service {
 	return s
 }
 
+// WithBusinessAccess checks the client pass before making a provider request.
+// Ordinary telemetry ingestion and router voucher enforcement are unaffected.
+func (s *Service) WithBusinessAccess(check func(context.Context, string) (bool, error)) *Service {
+	s.access = check
+	return s
+}
+
 // Start subscribes the telemetry handler. Gated: when ai.enabled is false it does
 // nothing and returns nil (the service is constructed but inert).
 func (s *Service) Start() error {
@@ -162,6 +171,16 @@ func (s *Service) handle(msg *nats.Msg) {
 // process runs one sample through: analyze -> (healthy? clear) -> dedupe ->
 // meter (spend) -> publish -> open incident. Never panics; failures are logged.
 func (s *Service) process(ctx context.Context, sample model.TelemetrySample) {
+	if s.access != nil {
+		allowed, err := s.access(ctx, sample.BusinessID)
+		if err != nil {
+			s.logger.Warnf("ai: account access unavailable for %s: %v", sample.BusinessID, err)
+			return
+		}
+		if !allowed {
+			return
+		}
+	}
 	finding, err := s.client.Analyze(ctx, sample)
 	if err != nil {
 		// Fail closed: an analysis error is not a finding and costs nothing.
@@ -179,14 +198,16 @@ func (s *Service) process(ctx context.Context, sample model.TelemetrySample) {
 	}
 
 	// Meter first, spend last: the token is spent only once we have a finding.
-	spent, err := s.meter.Spend(ctx, sample.BusinessID, s.cfg.CostPerAnalysis)
-	if err != nil {
-		s.logger.Warnf("ai: meter spend for %s: %v", sample.BusinessID, err)
-		return
-	}
-	if !spent {
-		s.logger.Infof("ai quota exhausted for business %s, skipping analysis", sample.BusinessID)
-		return
+	if !s.cfg.UnlimitedUsage {
+		spent, err := s.meter.Spend(ctx, sample.BusinessID, s.cfg.CostPerAnalysis)
+		if err != nil {
+			s.logger.Warnf("ai: meter spend for %s: %v", sample.BusinessID, err)
+			return
+		}
+		if !spent {
+			s.logger.Infof("ai quota exhausted for business %s, skipping analysis", sample.BusinessID)
+			return
+		}
 	}
 
 	// Publish a self-describing envelope (finding + device/subject context) so the

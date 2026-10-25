@@ -36,6 +36,15 @@
     building: '<rect width="16" height="20" x="4" y="2" rx="2"/><path d="M9 22v-4h6v4M8 6h.01M16 6h.01M8 10h.01M16 10h.01M8 14h.01M16 14h.01"/>',
     logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>'
   };
+  var appPaths = {
+ dashboard:'<path fill="currentColor" stroke="none" d="M3 3h5v18H3l-1-1V4Zm7 0h10l2 2v5H10Zm0 9h5v9h-5Zm7 0h5v7l-2 2h-3Z"/>',
+ ticket:'<path fill="currentColor" stroke="none" fill-rule="evenodd" d="M3 5h6v2h1V5h10l2 2v3a2 2 0 0 0 0 4v3l-2 2H10v-2H9v2H3l-1-2v-3a2 2 0 0 0 0-4V7Zm6 4v2h1V9Zm0 4v2h1v-2Z"/>',
+ router:'<path d="M5 10V3m14 7V3"/><path fill="currentColor" stroke="none" d="m3 11-1 2v6l2 2h16l2-2v-6l-1-2Z"/><path stroke="var(--background)" d="M6 16h4m5 0h.01m3 0h.01"/>',
+ network:'<path d="M12 8v5M5 16v-3h14v3"/><path fill="currentColor" stroke="none" d="m10 2-1 1v4l1 1h4l1-1V3l-1-1ZM3 16l-1 1v4l1 1h4l1-1v-4l-1-1Zm14 0-1 1v4l1 1h4l1-1v-4l-1-1Z"/>',
+ wifi:'<path d="M3 8c5-4 13-4 18 0M6 12c3-3 9-3 12 0m-9 4c2-2 4-2 6 0"/><path fill="currentColor" stroke="none" d="m12 18 2 2-2 2-2-2Z"/>',
+ template:'<path d="m4 3-1 1v16l1 1h16l1-1V4l-1-1ZM3 9h18M9 9v12"/>',
+ shield:'<path fill="currentColor" fill-opacity=".15" d="m12 2 8 3v9l-3 5-5 3-5-3-3-5V5Z"/><path d="m12 2 8 3v9l-3 5-5 3-5-3-3-5V5Zm-4 10 3 3 5-6"/>'
+};
   var viewIcons = {
     gateways: "router", network: "network", wan: "activity", pppoe: "users", wifi: "wifi", existing: "template", media: "template",
     overview: "dashboard", fleet: "activity", topology: "network", incidents: "alert", sites: "building", routers: "router",
@@ -46,7 +55,7 @@
   };
 
   function icon(name, size) {
-    var body = paths[name] || paths.dashboard;
+    var body = (document.body && document.body.classList.contains("page-app") && appPaths[name]) || paths[name] || paths.dashboard;
     var px = Number(size) || 20;
     return '<svg class="mm-icon" aria-hidden="true" width="' + px + '" height="' + px + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + body + '</svg>';
   }

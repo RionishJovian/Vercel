@@ -20,6 +20,7 @@ const (
 
 // AuthHandler handles authentication endpoints
 type AuthHandler struct {
+	IndividualPassesEnabled    bool
 	SubscriptionOnly           bool
 	SubscriptionExistingPolicy string
 	userRepo                   *database.UserRepository
@@ -71,13 +72,17 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	}
 
 	// Create business
+	quota := 10
+	if h.IndividualPassesEnabled {
+		quota = 1
+	}
 	var business model.Business
 	err = tx.QueryRow(`
-		INSERT INTO businesses (company_name, owner_email, access_tier)
-		VALUES ($1, $2, 'SMALL_WISP')
+		INSERT INTO businesses (company_name, owner_email, access_tier,device_quota_limit)
+		VALUES ($1, $2, 'SMALL_WISP',$3)
 		RETURNING business_id, company_name, owner_email, access_tier,
 		          is_active, device_quota_limit, created_at, updated_at`,
-		req.CompanyName, req.Email,
+		req.CompanyName, req.Email, quota,
 	).Scan(
 		&business.BusinessID, &business.CompanyName, &business.OwnerEmail,
 		&business.AccessTier, &business.IsActive, &business.DeviceQuotaLimit,

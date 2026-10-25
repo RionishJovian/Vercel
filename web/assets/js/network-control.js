@@ -3,6 +3,11 @@
 window.MMNetwork = (() => {
  const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const schema={
+  firewall:{title:'Invalid-traffic protection',menu:'filters',create:true,fields:[['interface','Router port to protect','interface'],['disabled','Protection rule','state']]},
+  shield:{title:'Portal bypass shield',menu:'bindings',fields:[['disabled','Selected bypass','select',[['yes','Disable this exemption; require portal login']]]]},
+  fairshare:{title:'Fairshare QoS',menu:'queues',create:true,fields:[['name','Policy name'],['target','Customer subnet (e.g. 192.168.50.0/24)'],['max-limit','Total upload / download capacity (e.g. 10M/50M)'],['disabled','Fair sharing','state']]},
+  addresses:{title:'Router IP addresses',menu:'addresses',readOnly:true,fields:[]},
+  routes:{title:'Routing table',menu:'routes',readOnly:true,fields:[]},
   wan:{title:'Internet uplinks',menu:null,fields:[['mode','Routing mode','select',[['failover','Primary + backup'],['balance','Share connections across both uplinks']]],['wan1','Primary ISP port','interface'],['gateway1','Primary ISP gateway'],['wan2','Second ISP port','interface'],['gateway2','Second ISP gateway']]},
   pppoe_client:{title:'PPPoE internet uplink',menu:'pppoe_clients',create:true,fields:[['name','Uplink name'],['interface','ISP-facing port','interface'],['user','ISP username'],['password','ISP password','password'],['distance','Route priority (lower is preferred)','number'],['disabled','Service state','state']]},
   pppoe_server:{title:'PPPoE subscriber service',menu:null,fields:[['name','Service name'],['interface','Unused subscriber-facing port','interface'],['gateway_cidr','Subscriber gateway / prefix'],['pool_start','First subscriber address'],['pool_end','Last subscriber address'],['dns','Subscriber DNS'],['rate_limit','Upload / download speed (e.g. 10M/20M)']]},
@@ -19,9 +24,9 @@ window.MMNetwork = (() => {
   lease:{title:'Static DHCP reservations',menu:'leases',create:true,fields:[['address','Reserved client address'],['mac-address','Client MAC address'],['server','DHCP service','record','dhcp'],['disabled','Reservation state','state']]},
   queue:{title:'Customer bandwidth limits',menu:'queues',create:true,fields:[['name','Limit name'],['target','Client address / prefix'],['max-limit','Upload / download speed (e.g. 10M/20M)'],['disabled','Limit state','state']]}
  };
- const choices={wan:['wan','pppoe_client'],pppoe:['pppoe_server','pppoe_service','subscriber','ppp_profile'],wifi:['wifi','wireless'],existing:['dhcp','pool','dhcp_network','hotspot','hotspot_profile','lease','queue']};
- const descriptions={wan:'Keep a backup ISP ready or distribute connections across two ISPs.',pppoe_client:'Connect an ISP that gave you a PPPoE username and password.',pppoe_server:'Set up internet service for your wired subscribers.',pppoe_service:'Change the plan or state of an existing subscriber service.',subscriber:'Create or manage a customer login.',ppp_profile:'Set address allocation and speeds for a subscriber plan.',wifi:'Change the name and password of an onboard Wi-Fi network.',wireless:'Manage radios using the older RouterOS wireless driver.',dhcp:'Manage automatic client address assignment.',pool:'Adjust the addresses available to clients.',dhcp_network:'Set the gateway and DNS supplied to LAN clients.',hotspot:'Manage an existing guest internet service.',hotspot_profile:'Configure how guests sign in to a Hotspot.',lease:'Reserve an address for a specific client.',queue:'Set a client upload and download limit.'};
- const workspaces={wan:['Internet connections','Choose how your business connects to the internet.'],pppoe:['Customer internet','Manage subscriber services, customer logins and speed plans.'],wifi:['Wi-Fi networks','Manage the radios on the selected device. Remote access points need their own connected device.'],existing:['LAN and Hotspot','Manage the services already running on your customer network.']};
+ const choices={protection:['firewall','shield'],qos:['fairshare','queue'],ip:['addresses','routes','dhcp','pool','dhcp_network','lease'],wan:['wan','pppoe_client'],pppoe:['pppoe_server','pppoe_service','subscriber','ppp_profile'],wifi:['wifi','wireless'],existing:['dhcp','pool','dhcp_network','hotspot','hotspot_profile','lease','queue']};
+ const descriptions={firewall:'Drop invalid IPv4 connections to the router on one selected port. This switch changes only the Mega Magic protection rule; all other firewall rules stay in place.',shield:'Review HotSpot IP-binding exemptions. Disable one unwanted bypass after review; managed grace access is protected. This does not claim to prevent every bypass method.',fairshare:'Share total upload/download bandwidth between client IP addresses using PCQ. Active FastTrack and overlapping queues must be reviewed first.',addresses:'Inspect assigned router addresses. Use Create customer network for a new LAN; existing management addresses are protected from casual edits.',routes:'Inspect routes and priorities. Use Internet connections for reviewed dual-uplink changes.',wan:'Keep a backup ISP ready or distribute connections across two ISPs.',pppoe_client:'Connect an ISP that gave you a PPPoE username and password.',pppoe_server:'Set up internet service for your wired subscribers.',pppoe_service:'Change the plan or state of an existing subscriber service.',subscriber:'Create or manage a customer login.',ppp_profile:'Set address allocation and speeds for a subscriber plan.',wifi:'Change the name and password of an onboard Wi-Fi network.',wireless:'Manage radios using the older RouterOS wireless driver.',dhcp:'Manage automatic client address assignment.',pool:'Adjust the addresses available to clients.',dhcp_network:'Set the gateway and DNS supplied to LAN clients.',hotspot:'Manage an existing guest internet service.',hotspot_profile:'Configure how guests sign in to a Hotspot.',lease:'Reserve an address for a specific client.',queue:'Set a client upload and download limit.'};
+ const workspaces={protection:['Protection','Manage router protection and review portal exemptions.'],qos:['Fairshare QoS','Control customer bandwidth and fair sharing.'],ip:['IP and DHCP','Inspect IP addresses and routes; manage client address allocation.'],wan:['Internet connections','Choose how your business connects to the internet.'],pppoe:['Customer internet','Manage subscriber services, customer logins and speed plans.'],wifi:['Wi-Fi networks','Manage the radios on the selected device. Remote access points need their own connected device.'],existing:['LAN and Hotspot','Manage the services already running on your customer network.']};
  const objects=(inventory,key)=>(inventory.objects?.[key]||[]);
  const label=o=>o.values.name||o.values['service-name']||o.values.address||o.id;
  const secretField=key=>/password|passphrase|pre-shared-key|private-key|secret/i.test(key);
@@ -38,9 +43,9 @@ window.MMNetwork = (() => {
  async function mount(host,workspace,routers,canEdit,api=MM){
   let revision=0,inventory=null,defaults={},review=null,pending=null,applying=false;
   const kinds=choices[workspace];
-  host.innerHTML=`<section class="panel network-workspace" aria-label="${esc(workspaces[workspace][0])} controls"><header><p class="network-eyebrow">START WITH YOUR DEVICE</p><p>${esc(workspaces[workspace][1])}</p></header><ol class="network-steps" aria-label="Change workflow"><li>1 · Choose device</li><li>2 · Configure</li><li>3 · Review and apply</li></ol>
-   <label>Managed device<select class="input" data-router><option value="">Choose a connected device</option>${routers.map(r=>`<option value="${esc(r.device_id)}">${esc(r.hardware_name)}</option>`).join('')}</select></label>
-   <div data-editor aria-live="polite">${routers.length?'Choose a device to read its current settings.':'Connect a device from Gateways first.'}</div></section>`;
+  host.innerHTML=`<section class="panel network-workspace" aria-label="${esc(workspaces[workspace][0])} controls"><header><details class="workspace-inline-help"><summary>About these settings</summary><p>${esc(workspaces[workspace][1])} Changes require review and confirmation.</p></details></header>
+   <label>Working router<select class="input" data-router><option value="">Select a router to view</option>${routers.map(r=>`<option value="${esc(r.device_id)}">${esc(r.hardware_name)}</option>`).join('')}</select></label>
+   <div data-editor aria-live="polite">${routers.length?'Select a working router once; it is remembered across network pages.':'No router is registered for this business. Initial onboarding belongs in Magic Hub.'}</div></section>`;
   const select=host.querySelector('[data-router]'),editor=host.querySelector('[data-editor]');
   const current=()=>host.isConnected&&select.value;
   const error=e=>(e.data&&e.data.error)||e.message||'Request failed';
@@ -73,11 +78,16 @@ window.MMNetwork = (() => {
    editor.querySelectorAll('[data-task]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.task===kind)));
    const actual=currentSettings(inventory,kind,s);
    const blocked=message=>{pane.innerHTML=actual+`<p class="network-note">${esc(message)}</p>`};
+   if(s.readOnly){blocked(descriptions[kind]);return}
    if(!canEdit){blocked('An owner or administrator must change network settings.');return}
    if(inventory.write_enabled!==true){blocked('Router changes are not enabled in this release. Nothing was applied.');return}
    if((kind==='wifi'||kind==='wireless')&&inventory.wifi_write_enabled!==true){blocked('Wi-Fi editing is not enabled yet. Current radio settings are shown above.');return}
    if(s.menu&&!inventory.available?.[s.menu]){blocked('This RouterOS menu could not be read safely or is not supported on this device. No changes are offered.');return}
    let list=s.menu?objects(inventory,s.menu):[];
+   if(kind==='firewall')list=list.filter(o=>o.values.comment?.startsWith('mm-protection-invalid-'));
+   if(kind==='shield')list=list.filter(o=>o.values.type==='bypassed'&&!['yes','true'].includes(o.values.disabled)&&!/^mm-/i.test(o.values.comment||''));
+   if(kind==='fairshare')list=list.filter(o=>o.values.comment?.startsWith('mm-fairshare-v1:'));
+   if(kind==='queue')list=list.filter(o=>!o.values.comment?.startsWith('mm-fairshare-v1:'));
    if(kind==='lease')list=list.filter(o=>!['yes','true'].includes(o.values.dynamic));
    pane.innerHTML=actual+`<header><p class="network-eyebrow">CONFIGURE</p><h3>${esc(s.title)}</h3><p>${esc(descriptions[kind])}</p></header>`+(s.menu?`<label>Choose a record<select class="input" data-record>${s.create?'<option value="">Create new</option>':''}${list.map(o=>`<option value="${esc(o.id)}">${esc(label(o))}</option>`).join('')}</select></label>`:'')+'<div data-fields></div>';
    if(s.menu&&!s.create&&!list.length){pane.innerHTML+='<p>No existing records. Use Network setup for a customer LAN / Hotspot, or create a PPPoE subscriber service.</p>';return}
@@ -86,6 +96,9 @@ window.MMNetwork = (() => {
     ++revision;review=null;pending=null;
     const selected=list.find(o=>o.id===record?.value),v={...(selected?.values||{})};
     if(!selected){Object.assign(v,{name:kind==='pppoe_server'?'subscribers':'customer',distance:'2',disabled:'no',dns:'1.1.1.1,8.8.8.8',rate_limit:'10M/20M',mode:'failover',gateway_cidr:defaults.gateway_cidr||'',pool_start:defaults.pool_start||'',pool_end:defaults.pool_end||''})}
+    if(kind==='firewall')v.interface=v['in-interface']||'';
+    if(kind==='shield')v.disabled='yes';
+    if(kind==='fairshare')v.name=selected?(v.name||'').replace(/^mm-fair-/,''):'guests';
     if(kind==='wifi'){v.ssid=v['configuration.ssid'];v.country=v['configuration.country']}
     const eligible=(inventory.interfaces||[]).filter(i=>['ether','bridge','vlan','bond','pppoe-out'].includes(i.type));
     const input=f=>{
@@ -96,7 +109,7 @@ window.MMNetwork = (() => {
      if(type==='select')options=arg;
      if(type==='interface')options=[['','Choose an actual port'],...eligible.map(i=>[i.name,`${i.name}${i.running?' · running':''}`])];
      if(type==='record')options=[['','Choose an existing record'],...objects(inventory,arg).map(o=>[o.values.name,o.values.name])];
-     const control=options?`<select class="input" name="${key}" required>${options.map(([id,t])=>`<option value="${esc(id)}"${String(value)===id?' selected':''}>${esc(t)}</option>`).join('')}</select>`:`<input class="input" name="${key}" type="${type==='password'?'password':type==='number'?'number':'text'}" value="${type==='password'?'':esc(value)}" required ${type==='password'?'autocomplete="new-password"': ''} maxlength="128">`;
+     const control=options?`<select class="input" name="${key}" required>${options.map(([id,t])=>`<option value="${esc(id)}"${String(value)===id?' selected':''}>${esc(t)}</option>`).join('')}</select>`:`<input class="input" name="${key}" type="${type==='password'?'password':type==='number'?'number':'text'}" value="${type==='password'?'':esc(value)}" required ${type==='password'?'autocomplete="new-password"': ''} ${selected&&kind==='fairshare'&&['name','target'].includes(key)?'readonly':''} maxlength="128">`;
      return `<label>${esc(text)}${control}</label>`;
     };
     const groups=kind==='wan'?[['Connection strategy',s.fields.slice(0,1)],['Primary internet connection',s.fields.slice(1,3)],['Backup / second internet connection',s.fields.slice(3)]]:kind==='pppoe_server'?[['Service and port',s.fields.slice(0,2)],['Subscriber addresses',s.fields.slice(2,5)],['DNS and speed',s.fields.slice(5)]]:[[selected?'Edit current settings':'New service settings',s.fields]];
@@ -132,7 +145,10 @@ window.MMNetwork = (() => {
     };
    }
   }
-  select.onchange=reload;
+  select.onchange=()=>{if(select.value)sessionStorage.setItem('mm_selected_router',select.value);return reload()};
+  const requested=typeof sessionStorage==='undefined'?'':sessionStorage.getItem('mm_selected_router');
+  const target=routers.find(r=>r.device_id===requested)||(routers.length===1?routers[0]:null);
+  if(target){select.value=target.device_id;sessionStorage.setItem('mm_selected_router',target.device_id);await reload()}
  }
  return {mount};
 })();

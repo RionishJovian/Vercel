@@ -3,10 +3,13 @@ package handler
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"mega-magic/internal/auth"
+	"mega-magic/internal/database"
+	"mega-magic/internal/model"
 	"mega-magic/internal/provisioner/routeros"
 )
 
@@ -40,6 +43,12 @@ func (h *SecurityHandler) PortalDeployment(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid portal deployment"})
 		return
 	}
+	design, err := h.savedRouterPortalDesign(c, businessID, deviceID)
+	if err != nil {
+		c.JSON(http.StatusConflict, gin.H{"error": "save or publish this gateway site’s voucher portal before deployment"})
+		return
+	}
+	request.Design = design
 	if c.Param("action") == "preview" {
 		plan, err := deployer.PreviewPortal(c.Request.Context(), businessID, deviceID, request)
 		if err != nil {
@@ -66,4 +75,22 @@ func (h *SecurityHandler) PortalDeployment(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"result": result})
+}
+
+// Always resolve the saved guest-visible policy under the same tenant as the
+// selected gateway. Browser branding cannot override another site's publication.
+func (h *SecurityHandler) savedRouterPortalDesign(c *gin.Context, businessID, deviceID string) (*routeros.PortalLoginDesign, error) {
+	var cfg *model.PortalConfig
+	err := runInTenant(c, h.db, businessID, func(tx *sql.Tx) error {
+		var err error
+		cfg, err = database.NewPortalConfigRepository(h.db).GetByDeviceTXN(tx, businessID, deviceID)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	if cfg == nil || !cfg.VoucherLoginEnabled {
+		return nil, fmt.Errorf("saved voucher portal unavailable")
+	}
+	return routeros.RouterPortalDesign(cfg), nil
 }

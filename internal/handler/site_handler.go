@@ -84,6 +84,9 @@ func (h *SiteHandler) CreateSite(c *gin.Context) {
 			c.JSON(http.StatusConflict, gin.H{"error": "capacity exceeded", "reason": "request additional site capacity before adding a site"})
 			return
 		}
+		if respondAppCapacity(c, err) {
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}

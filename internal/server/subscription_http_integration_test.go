@@ -158,6 +158,18 @@ func TestDB_SubscriptionAuthenticatedHTTP(t *testing.T) {
 	if err = json.Unmarshal(w.Body.Bytes(), &created); err != nil || created.Purchase.ID == "" {
 		t.Fatal("invalid purchase response")
 	}
+	// Customer owners must not approve their own platform purchase.
+	request("POST", "/api/v1/store/purchases/"+created.Purchase.ID+"/approve", nil, 403)
+	var pending string
+	if e := db.QueryRow(`SELECT status FROM service_purchases WHERE id=$1`, created.Purchase.ID).Scan(&pending); e != nil || pending != "pending" {
+		t.Fatal("denied approval mutated purchase")
+	}
+	// An independently authorized platform operator decides within the target scope.
+	if _, e := db.Exec(`UPDATE users SET user_role='DEVELOPER' WHERE user_id=$1`, registered.User.UserID); e != nil {
+		t.Fatal(e)
+	}
+	w = request("POST", "/api/v1/auth/login", gin.H{"email": email, "password": "disposable-test-password"}, 200)
+	cookies = w.Result().Cookies()
 	request("POST", "/api/v1/store/purchases/"+created.Purchase.ID+"/approve", nil, 200)
 	request("POST", "/api/v1/store/purchases/"+created.Purchase.ID+"/approve", nil, 409)
 	w = request("GET", "/api/v1/subscription", nil, 200)
@@ -168,6 +180,11 @@ func TestDB_SubscriptionAuthenticatedHTTP(t *testing.T) {
 	if err = json.Unmarshal(w.Body.Bytes(), &status); err != nil || status.State != "paid" || !status.Access {
 		t.Fatal("approved subscription did not restore access")
 	}
+	if _, e := db.Exec(`UPDATE users SET user_role='OWNER' WHERE user_id=$1`, registered.User.UserID); e != nil {
+		t.Fatal(e)
+	}
+	w = request("POST", "/api/v1/auth/login", gin.H{"email": email, "password": "disposable-test-password"}, 200)
+	cookies = w.Result().Cookies()
 	request("GET", "/api/v1/routers", nil, 200)
 	// Browser write guards still apply with a valid, paid session.
 	req := httptest.NewRequest("POST", "https://subscription.example.test/api/v1/store/purchases/"+created.Purchase.ID+"/approve", nil)
@@ -187,7 +204,21 @@ func TestDB_SubscriptionAuthenticatedHTTP(t *testing.T) {
 	w = request("POST", "/api/v1/auth/login", gin.H{"email": email, "password": "disposable-test-password"}, 200)
 	cookies = w.Result().Cookies()
 	request("POST", "/api/v1/store/purchases/"+created.Purchase.ID+"/approve", nil, 403)
-	if _, err = db.Exec(`UPDATE users SET user_role='OWNER' WHERE user_id=$1`, registered.User.UserID); err != nil {
+	var before, after int
+	if e := db.QueryRow(`SELECT count(*) FROM alert_policies`).Scan(&before); e != nil {
+		t.Fatal(e)
+	}
+	for _, method := range []string{"POST", "PUT", "DELETE"} {
+		path := "/api/v1/alert-policies"
+		if method != "POST" {
+			path += "/11111111-1111-4111-8111-111111111111"
+		}
+		request(method, path, gin.H{"enabled": false}, 403)
+	}
+	if e := db.QueryRow(`SELECT count(*) FROM alert_policies`).Scan(&after); e != nil || before != after {
+		t.Fatal("viewer mutated alert policies")
+	}
+	if _, err = db.Exec(`UPDATE users SET user_role='OWNER'  WHERE user_id=$1`, registered.User.UserID); err != nil {
 		t.Fatal(err)
 	}
 	w = request("POST", "/api/v1/auth/login", gin.H{"email": email, "password": "disposable-test-password"}, 200)
@@ -195,7 +226,7 @@ func TestDB_SubscriptionAuthenticatedHTTP(t *testing.T) {
 	ownerCookies := cookies
 	w = request("POST", "/api/v1/auth/register", gin.H{"company_name": "Other disposable tenant", "full_name": "Other owner", "email": "other-" + email, "password": "disposable-test-password"}, 201)
 	cookies = w.Result().Cookies()
-	request("POST", "/api/v1/store/purchases/"+created.Purchase.ID+"/approve", nil, 404)
+	request("POST", "/api/v1/store/purchases/"+created.Purchase.ID+"/approve", nil, 403)
 	cookies = ownerCookies
 	// Suspension still overrides paid status and old valid session cookies.
 	if _, err = db.Exec(`UPDATE businesses SET is_active=false WHERE business_id=$1`, biz); err != nil {

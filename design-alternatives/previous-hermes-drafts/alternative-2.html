@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mega Magic - Alternative 2</title>
+  <style>
+    /* Apple-inspired design system with glass effect */
+    :root {
+      --background: #000000;
+      --surface: rgba(30, 30, 30, 0.6);
+      --surface-solid: #1e1e1e;
+      --text-primary: #ffffff;
+      --text-secondary: #cccccc;
+      --text-tertiary: #aaaaaa;
+      --accent: #0a84ff;
+      --accent-hover: #409cff;
+      --success: #30d158;
+      --warning: #ff9f0a;
+      --danger: #ff453a;
+      --border: rgba(255, 255, 255, 0.1);
+      --radius: 16px;
+      --radius-full: 9999px;
+      --glass-effect: blur(20px) saturate(180%);
+      --font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: var(--font-family);
+      background: var(--background);
+      color: var(--text-primary);
+      line-height: 1.5;
+      min-height: 100vh;
+      padding: 20px;
+      background-image: 
+        radial-gradient(circle at 10% 20%, rgba(10, 132, 255, 0.1) 0%, transparent 20%),
+        radial-gradient(circle at 90% 80%, rgba(48, 209, 88, 0.1) 0%, transparent 20%);
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    /* Header */
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 20px 0;
+      margin-bottom: 30px;
+    }
+
+    .logo {
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: -1px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .logo-mark {
+      width: 36px;
+      height: 36px;
+      background: linear-gradient(135deg, var(--accent), #5e5ce6);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 18px;
+    }
+
+    .site-context {
+      background: var(--surface);
+      backdrop-filter: var(--glass-effect);
+      padding: 8px 20px;
+      border-radius: var(--radius-full);
+      font-size: 14px;
+      border: 1px solid var(--border);
+    }
+
+    /* Navigation */
+    .nav {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 30px;
+      flex-wrap: wrap;
+    }
+
+    .nav-group {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .nav-item {
+      background: var(--surface);
+      backdrop-filter: var(--glass-effect);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      padding: 10px 20px;
+      border-radius: var(--radius-full);
+      font-size: 15px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      font-weight: 500;
+    }
+
+    .nav-item:hover {
+      background: rgba(255, 255, 255, 0.1);
+      transform: translateY(-2px);
+    }
+
+    .nav-item.active {
+      background: var(--accent);
+      color: white;
+      border-color: var(--accent);
+    }
+
+    /* Dashboard Grid */
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 24px;
+      margin-bottom: 30px;
+    }
+
+    .card {
+      background: var(--surface);
+      backdrop-filter: var(--glass-effect);
+      border-radius: var(--radius);
+      padding: 28px;
+      border: 1px solid var(--border);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+      transition: all 0.3s ease;
+    }
+
+    .card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 15px 40px rgba(0, 0, 0, 0.4);
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+    }
+
+    .card-title {
+      font-size: 20px;
+      font-weight: 600;
+    }
+
+    .card-actions {
+      display: flex;
+      gap: 12px;
+    }
+
+    .btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-primary);
+      padding: 8px 18px;
+      border-radius: var(--radius-full);
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      font-weight: 500;
+    }
+
+    .btn:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: var(--accent-hover);
+      border-color: var(--accent-hover);
+    }
+
+    /* Stats */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 20px;
+      margin-bottom: 30px;
+    }
+
+    .stat-card {
+      background: var(--surface);
+      backdrop-filter: var(--glass-effect);
+      border-radius: var(--radius);
+      padding: 24px;
+      text-align: center;
+      border: 1px solid var(--border);
+    }
+
+    .stat-value {
+      font-size: 36px;
+      font-weight: 700;
+      margin: 12px 0;
+      background: linear-gradient(90deg, var(--accent), #5e5ce6);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+
+    .stat-label {
+      font-size: 14px;
+      color: var(--text-tertiary);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      font-weight: 600;
+    }
+
+    .stat-success { color: var(--success); }
+    .stat-warning { color: var(--warning); }
+    .stat-danger { color: var(--danger); }
+
+    /* Table */
+    .table-container {
+      background: var(--surface);
+      backdrop-filter: var(--glass-effect);
+      border-radius: var(--radius);
+      padding: 24px;
+      margin-bottom: 30px;
+      border: 1px solid var(--border);
+      overflow: hidden;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th {
+      text-align: left;
+      padding: 14px 18px;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-tertiary);
+      border-bottom: 1px solid var(--border);
+      font-weight: 600;
+    }
+
+    td {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    .status-pill {
+      display: inline-block;
+      padding: 6px 14px;
+      border-radius: var(--radius-full);
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    .status-active {
+      background: rgba(48, 209, 88, 0.2);
+      color: var(--success);
+    }
+
+    .status-pending {
+      background: rgba(255, 159, 10, 0.2);
+      color: var(--warning);
+    }
+
+    .status-expired {
+      background: rgba(255, 69, 58, 0.2);
+      color: var(--danger);
+    }
+
+    /* Form */
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 24px;
+      margin-bottom: 30px;
+    }
+
+    .form-group {
+      margin-bottom: 24px;
+    }
+
+    .form-group label {
+      display: block;
+      margin-bottom: 10px;
+      font-size: 15px;
+      font-weight: 500;
+    }
+
+    .form-control {
+      width: 100%;
+      padding: 14px 18px;
+      background: var(--surface-solid);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text-primary);
+      font-size: 16px;
+    }
+
+    .form-control:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.3);
+    }
+
+    /* Footer */
+    .footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 24px 0;
+      border-top: 1px solid var(--border);
+      margin-top: 30px;
+      font-size: 15px;
+      color: var(--text-tertiary);
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+      
+      .nav {
+        flex-direction: column;
+      }
+      
+      .nav-group {
+        flex-direction: column;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="logo">
+        <div class="logo-mark">M</div>
+        Mega Magic
+      </div>
+      <div class="site-context">Yangon Central • 12 devices online</div>
+    </div>
+
+    <div class="nav">
+      <div class="nav-group">
+        <button class="nav-item active">Overview</button>
+        <button class="nav-item">Business</button>
+        <button class="nav-item">Operations</button>
+        <button class="nav-item">Guest Portals</button>
+      </div>
+      <div class="nav-group">
+        <button class="nav-item">Store</button>
+        <button class="nav-item">Management</button>
+      </div>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-label">Online Devices</div>
+        <div class="stat-value">42</div>
+        <div class="stat-label">+5 from yesterday</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Active Vouchers</div>
+        <div class="stat-value">18</div>
+        <div class="stat-label">2 expiring soon</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Revenue Today</div>
+        <div class="stat-value">$1,248</div>
+        <div class="stat-label">+$242 from yesterday</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Network Health</div>
+        <div class="stat-value">98%</div>
+        <div class="stat-label">Excellent</div>
+      </div>
+    </div>
+
+    <div class="dashboard-grid">
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">Recent Activity</h2>
+          <div class="card-actions">
+            <button class="btn">View All</button>
+          </div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Device</th>
+              <th>Status</th>
+              <th>Time</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Router-01</td>
+              <td><span class="status-pill status-active">Connected</span></td>
+              <td>2 min ago</td>
+            </tr>
+            <tr>
+              <td>Voucher-ABC123</td>
+              <td><span class="status-pill status-active">Activated</span></td>
+              <td>5 min ago</td>
+            </tr>
+            <tr>
+              <td>AP-WiFi-02</td>
+              <td><span class="status-pill status-pending">Reconnecting</span></td>
+              <td>12 min ago</td>
+            </tr>
+            <tr>
+              <td>Voucher-XYZ789</td>
+              <td><span class="status-pill status-expired">Expired</span></td>
+              <td>18 min ago</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">Quick Actions</h2>
+        </div>
+        <div style="display: grid; gap: 18px;">
+          <button class="btn btn-primary" style="width: 100%; padding: 14px; font-size: 16px;">Create New Voucher Batch</button>
+          <button class="btn" style="width: 100%; padding: 14px; font-size: 16px;">Add New Device</button>
+          <button class="btn" style="width: 100%; padding: 14px; font-size: 16px;">Run Network Scan</button>
+          <button class="btn" style="width: 100%; padding: 14px; font-size: 16px;">Generate Revenue Report</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h2 class="card-title">Create Voucher Batch</h2>
+      </div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label for="batch-name">Batch Name</label>
+          <input type="text" id="batch-name" class="form-control" placeholder="Enter batch name">
+        </div>
+        <div class="form-group">
+          <label for="voucher-count">Number of Vouchers</label>
+          <input type="number" id="voucher-count" class="form-control" value="10">
+        </div>
+        <div class="form-group">
+          <label for="validity">Validity Period</label>
+          <select id="validity" class="form-control">
+            <option>1 Hour</option>
+            <option>1 Day</option>
+            <option selected>1 Week</option>
+            <option>1 Month</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="data-limit">Data Limit (MB)</label>
+          <input type="number" id="data-limit" class="form-control" placeholder="Unlimited">
+        </div>
+      </div>
+      <div style="display: flex; justify-content: flex-end; gap: 12px;">
+        <button class="btn">Cancel</button>
+        <button class="btn btn-primary">Create Batch</button>
+      </div>
+    </div>
+
+    <div class="footer">
+      <div>Mega Magic v2.1.0</div>
+      <div>Last updated: Just now</div>
+    </div>
+  </div>
+</body>
+</html>
