@@ -1,4 +1,7 @@
+import security-headers.caddy
+
 :80 {
+    import mm_security_headers
     encode gzip
     root * /srv
     handle /api/* {

@@ -76,6 +76,12 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		return nil, fmt.Errorf("database connection: %w", err)
 	}
 	sugar.Info("Database connected")
+	if cfg.Environment == "production" || cfg.Environment == "prod" {
+		if err := database.CheckRuntimePrivileges(db); err != nil {
+			_ = db.Close()
+			return nil, err
+		}
+	}
 
 	natsRepo := database.NewNATSSubjectRepository(db)
 	messagingClient, err := messaging.NewClient(cfg.NATS, natsRepo)

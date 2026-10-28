@@ -141,7 +141,14 @@ func guestVoucherSchemaReady(db *database.DB) error {
  WHERE t.tgrelid=c.oid AND t.tgname=$2 AND NOT t.tgisinternal AND t.tgenabled IN ('O','A') AND t.tgtype=19 AND f.proname=$3 AND fn.nspname='public')
  AND EXISTS(SELECT 1 FROM pg_policy p WHERE p.polrelid=c.oid AND p.polname=$1||'_tenant' AND p.polcmd='*'
  AND p.polqual IS NOT NULL AND p.polwithcheck IS NOT NULL AND p.polroles=ARRAY[(SELECT oid FROM pg_roles WHERE rolname='authenticated')])
- AND (SELECT count(*) FROM pg_policy p WHERE p.polrelid=c.oid)=1
+ AND (SELECT count(*) FROM pg_policy p WHERE p.polrelid=c.oid AND p.polname<>'mm_runtime_service')=1
+ AND NOT EXISTS(SELECT 1 FROM pg_policy p WHERE p.polrelid=c.oid AND p.polname='mm_runtime_service'
+ AND NOT COALESCE(p.polcmd='*' AND p.polpermissive
+ AND p.polroles=ARRAY[(SELECT oid FROM pg_roles WHERE rolname='mega_magic_runtime'
+ AND NOT(rolsuper OR rolbypassrls OR rolcreatedb OR rolcreaterole OR rolreplication OR rolinherit))]
+ AND pg_get_expr(p.polqual,p.polrelid)='true' AND pg_get_expr(p.polwithcheck,p.polrelid)='true'
+ AND NOT pg_has_role((SELECT oid FROM pg_roles WHERE rolname='authenticated'),
+ (SELECT oid FROM pg_roles WHERE rolname='mega_magic_runtime'),'MEMBER'),false))
  AND has_table_privilege('authenticated',c.oid,'SELECT')
  AND has_table_privilege('authenticated',c.oid,'INSERT')
  AND has_table_privilege('authenticated',c.oid,'UPDATE'))`, spec.table, spec.trigger, spec.function).Scan(&ready)
