@@ -1,3 +1,17 @@
+# Default app workspace — owner decision 2026-10-28
+
+The owner requested consolidation into one current local workspace and removal of the older app workspaces. This section supersedes conflicting repository names, source paths, continuation instructions and historical defaults below.
+
+- Default local workspace: `/Users/aces/GitHub/Mega-Magic`.
+- Default GitHub repository: `https://github.com/RionishJovian/Vercel.git`; default branch: `main`.
+- Current app: Go API (`cmd/server`, `internal`, `pkg`) and production frontend (`web`). `src`, Python backend and Sites files are retained historical/prototype material.
+- Read `.repo-identity.json` and `docs/WORKSPACE-CONSOLIDATION-20261028.md` before implementation. The consolidated source combines Vercel main `14b20de6`, the October 28 local feature changes, and the October 28 release frontend. Use this folder for future work; do not restore an old folder based on its name or historical instructions.
+- Telemetry uses the existing Admin role and EnableLive read interface. Preserve tenant checks, voucher batch recovery/printing guards, account pass checks, typed router operations and explicit write gates.
+- `.local/` contains private local recovery records and is excluded from Git and frontend packaging. Do not publish it or treat it as active app source.
+- Consolidation is a local source change. It does not deploy code, migrate a database, modify a router, or certify current live/physical readings. Historical deployment records are dated evidence.
+
+# Historical instructions retained for provenance
+
 # Prototype Instructions
 
 Run the local server yourself and open the preview in the browser available to this environment. Do not give the user server-start instructions when you can run it.

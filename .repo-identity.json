@@ -1,0 +1,17 @@
+{
+  "repository": "https://github.com/RionishJovian/Vercel.git",
+  "local_checkout": "/Users/aces/GitHub/Mega-Magic",
+  "default_branch": "main",
+  "application": "Existing Mega Magic Go API and web application",
+  "api_entry": "cmd/server",
+  "frontend": "web/",
+  "consolidated_on": "2026-10-28",
+  "committed_baseline": "14b20de6e0a2bb8def27a912ccda5bf63107163d",
+  "source_inputs": [
+    "Vercel main recovered source",
+    "GitHub/Mega-Magic local changes through 2026-10-28",
+    "October 28 telemetry and device-workspace release frontend"
+  ],
+  "local_private_records": ".local/",
+  "consolidation_is_deployment": false
+}

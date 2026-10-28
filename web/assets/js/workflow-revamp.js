@@ -56,11 +56,21 @@ window.MMRevamp = (() => {
     const gateways=list(routers).filter(r=>r.deployment_layer==='MAIN_GATEWAY');
     let stopped=false,reading=false,busy=false,sources=[];
     const siteNames=new Map(list(sites).map(s=>[s.site_id,s.name]));
-    host.innerHTML=`<section class="panel"><div class="panel-body"><h2>Connected Hotspot guests</h2><p>View current sessions and usage.</p><div class="revamp-task-grid"><label>Site<select class="input" data-guest-site><option value="">All sites</option>${[...new Set(gateways.map(g=>g.site_id||''))].map(id=>`<option value="${esc(id||'unassigned')}">${esc(siteNames.get(id)||'Unassigned site')}</option>`).join('')}</select></label><label>Find a guest<input class="input" type="search" data-guest-search placeholder="Name, IP or MAC address"></label></div><button class="btn" data-refresh type="button">Refresh guests</button><p data-guest-status role="status"></p><div data-guest-summary class="revamp-task-grid"></div><div data-guest-results></div><details class="workspace-inline-help"><summary>About guest sessions</summary><p>Sessions show Hotspot logins, not every Wi-Fi device. Disconnect ends the session; it does not block future access.</p></details><a href="#vouchers">Internet vouchers and plans</a></div></section>`;
-    const site=host.querySelector('[data-guest-site]'),search=host.querySelector('[data-guest-search]'),refresh=host.querySelector('[data-refresh]'),status=host.querySelector('[data-guest-status]'),summary=host.querySelector('[data-guest-summary]'),results=host.querySelector('[data-guest-results]');
+    host.innerHTML=`<section class="panel"><div class="panel-body"><h2>Connected Hotspot guests</h2><p>View current sessions and usage.</p><div class="revamp-task-grid"><label>Site<select class="input" data-guest-site><option value="">All sites</option>${[...new Set(gateways.map(g=>g.site_id||''))].map(id=>`<option value="${esc(id||'unassigned')}">${esc(siteNames.get(id)||'Unassigned site')}</option>`).join('')}</select></label><label>RouterBOARD<select class="input" data-guest-device><option value="">All gateways at this site</option></select></label><label>Find a guest<input class="input" type="search" data-guest-search placeholder="Name, IP or MAC address"></label></div><button class="btn" data-refresh type="button">Refresh guests</button><p data-guest-status role="status"></p><div data-guest-summary class="revamp-task-grid"></div><div data-guest-results></div><details class="workspace-inline-help"><summary>About guest sessions</summary><p>Sessions show Hotspot logins, not every Wi-Fi device. Disconnect ends the session; it does not block future access.</p></details><a href="#vouchers">Internet vouchers and plans</a></div></section>`;
+    const site=host.querySelector('[data-guest-site]'),device=host.querySelector('[data-guest-device]'),search=host.querySelector('[data-guest-search]'),refresh=host.querySelector('[data-refresh]'),status=host.querySelector('[data-guest-status]'),summary=host.querySelector('[data-guest-summary]'),results=host.querySelector('[data-guest-results]');
+    const remembered=gateways.find(g=>g.device_id===sessionStorage.getItem('mm_selected_router'));
+    if(remembered)site.value=remembered.site_id||'unassigned';
+    function deviceOptions(selected='') {
+      const choices=gateways.filter(g=>!site.value||(g.site_id||'unassigned')===site.value);
+      device.innerHTML='<option value="">All gateways at this site</option>'+choices.map(g=>`<option value="${esc(g.device_id)}">${esc(g.hardware_name)}</option>`).join('');
+      if(choices.some(g=>g.device_id===selected))device.value=selected;
+    }
+    deviceOptions(remembered?.device_id);
+    const back=document.createElement('a');back.href='#internet';back.className='btn';back.textContent='Back to device workspace';host.querySelector('[data-refresh]').before(back);
     const alive=()=>!stopped&&host.isConnected;
     function draw(){
-      const scoped=sources.filter(s=>!site.value||(s.gateway.site_id||'unassigned')===site.value),available=scoped.filter(s=>s.ok);
+      device.disabled=busy||reading;
+      const scoped=sources.filter(s=>(!site.value||(s.gateway.site_id||'unassigned')===site.value)&&(!device.value||s.gateway.device_id===device.value)),available=scoped.filter(s=>s.ok);
       const sessions=available.flatMap(s=>s.sessions.map(session=>({source:s,session})));
       summary.innerHTML=`<div class="revamp-task"><strong>${available.length?sessions.length:'—'}</strong><span>${available.length<scoped.length?'Reported active sessions · incomplete coverage':'Active Hotspot sessions'}</span></div><div class="revamp-task"><strong>${available.length} / ${scoped.length}</strong><span>Gateway session sources available</span></div>`;
       const needle=search.value.trim().toLowerCase(),shown=sessions.filter(({session})=>Object.values(session.values||{}).some(v=>String(v).toLowerCase().includes(needle)));
@@ -84,9 +94,10 @@ window.MMRevamp = (() => {
       const next=new Array(gateways.length);let cursor=0;
       async function worker(){while(cursor<gateways.length&&alive()){const index=cursor++,gateway=gateways[index];try{const {inventory}=await api.get(`/routers/${encodeURIComponent(gateway.device_id)}/observations`);if(inventory?.available?.hotspot_sessions!==true)throw Error('Unavailable');next[index]={gateway,ok:true,sessions:list(inventory.objects?.hotspot_sessions),writable:inventory.write_enabled===true,readAt:new Date().toLocaleTimeString()}}catch(_){next[index]={gateway,ok:false,sessions:[]}}}}
       try{await Promise.all(Array.from({length:Math.min(4,gateways.length)},worker));if(alive()){sources=next;draw();status.textContent=gateways.length?'Latest session read completed. Refresh to check for changes.':'No guest session sources are registered for this business.'}}
-      finally{reading=false;if(alive())refresh.disabled=false}
+      finally{reading=false;if(alive()){refresh.disabled=false;device.disabled=busy}}
     }
-    site.addEventListener('change',draw);search.addEventListener('input',draw);refresh.addEventListener('click',reload);
+    site.addEventListener('change',()=>{deviceOptions(device.value);if(!device.value)sessionStorage.removeItem('mm_selected_router');if(site.value)sessionStorage.setItem('mm_selected_site',site.value);draw()});
+    device.addEventListener('change',()=>{if(device.value)sessionStorage.setItem('mm_selected_router',device.value);else sessionStorage.removeItem('mm_selected_router');draw()});search.addEventListener('input',draw);refresh.addEventListener('click',reload);
     await reload();
     return ()=>{stopped=true};
   }

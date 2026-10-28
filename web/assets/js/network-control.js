@@ -40,11 +40,12 @@ window.MMNetwork = (() => {
   }).join('');
   return sections?`<div data-current-settings><h3>Current router settings</h3><p>Read from the selected device. Refresh status to read again.</p>${sections}</div>`:'';
  }
- async function mount(host,workspace,routers,canEdit,api=MM){
+ async function mount(host,workspace,routers,canEdit,api=MM,options={}){
+  let initialInventory=routers.length===1?options.initialInventory:null;
   let revision=0,inventory=null,defaults={},review=null,pending=null,applying=false;
   const kinds=choices[workspace];
   host.innerHTML=`<section class="panel network-workspace" aria-label="${esc(workspaces[workspace][0])} controls"><header><details class="workspace-inline-help"><summary>About these settings</summary><p>${esc(workspaces[workspace][1])} Changes require review and confirmation.</p></details></header>
-   <label>Working router<select class="input" data-router><option value="">Select a router to view</option>${routers.map(r=>`<option value="${esc(r.device_id)}">${esc(r.hardware_name)}</option>`).join('')}</select></label>
+   <label${options.compact?' hidden':''}>Working router<select class="input" data-router><option value="">Select a router to view</option>${routers.map(r=>`<option value="${esc(r.device_id)}">${esc(r.hardware_name)}</option>`).join('')}</select></label>
    <div data-editor aria-live="polite">${routers.length?'Select a working router once; it is remembered across network pages.':'No router is registered for this business. Initial onboarding belongs in Magic Hub.'}</div></section>`;
   const select=host.querySelector('[data-router]'),editor=host.querySelector('[data-editor]');
   const current=()=>host.isConnected&&select.value;
@@ -55,9 +56,10 @@ window.MMNetwork = (() => {
    if(!id){editor.textContent='Choose a device.';return}
    editor.textContent='Reading live router inventory…';
    try{
-    const data=await api.get(`/routers/${encodeURIComponent(id)}/network/inventory`);
+    const data=initialInventory?{inventory:initialInventory}:await api.get(`/routers/${encodeURIComponent(id)}/network/inventory`);
+    initialInventory=null;
     if(!current()||revision!==stamp)return;
-    inventory=data.inventory;defaults={};
+    inventory=data.inventory;options.onInventory?.(inventory);defaults={};
     if(workspace==='pppoe'){
      try{const data=await api.get(`/routers/${encodeURIComponent(id)}/gateway/defaults`);defaults=data.defaults||{}}catch(_){/* Never invent an unchecked address. */}
      if(!current()||revision!==stamp)return;
@@ -66,10 +68,12 @@ window.MMNetwork = (() => {
    }catch(e){if(current()&&revision===stamp)editor.textContent=`Could not read this device safely. Nothing applied. ${error(e)}`}
   }
   function draw(){
-   editor.innerHTML=`<div class="network-context"><div><strong>Live device settings loaded</strong><p>${(inventory.interfaces||[]).length} interfaces reported · Opening settings does not change the router.</p></div><button class="btn" type="button" data-reload>Refresh status</button></div><h3>What would you like to manage?</h3><div class="network-tasks">${kinds.map(k=>`<button type="button" class="network-task" data-task="${k}" aria-pressed="false"><strong>${esc(schema[k].title)}</strong><span>${esc(descriptions[k])}</span><small>${schema[k].menu?`${objects(inventory,schema[k].menu).length} records reported`:'Setup wizard'}</small></button>`).join('')}</div><select data-kind hidden aria-hidden="true">${kinds.map(k=>`<option value="${k}">${esc(schema[k].title)}</option>`).join('')}</select><div class="network-settings" data-settings></div>`;
+   editor.innerHTML=`<div class="network-context"><div><strong>Live device settings loaded</strong><p>${(inventory.interfaces||[]).length} interfaces reported · Opening settings does not change the router.</p></div><button class="btn" type="button" data-reload>Refresh status</button></div><h3${options.compact?' hidden':''}>What would you like to manage?</h3><div class="network-tasks">${kinds.map(k=>`<button type="button" class="network-task" data-task="${k}" aria-pressed="false"><strong>${esc(schema[k].title)}</strong><span>${esc(descriptions[k])}</span><small>${schema[k].menu?`${objects(inventory,schema[k].menu).length} records reported`:'Setup wizard'}</small></button>`).join('')}</div><select data-kind hidden aria-hidden="true">${kinds.map(k=>`<option value="${k}">${esc(schema[k].title)}</option>`).join('')}</select><div class="network-settings" data-settings></div>`;
    editor.querySelector('[data-reload]').onclick=reload;
    editor.querySelectorAll('[data-task]').forEach(button=>button.onclick=()=>{editor.querySelector('[data-kind]').value=button.dataset.task;drawSettings()});
-   editor.querySelector('[data-kind]').onchange=drawSettings;drawSettings();
+   editor.querySelector('[data-kind]').onchange=drawSettings;
+   if(kinds.includes(options.kind))editor.querySelector('[data-kind]').value=options.kind;
+   drawSettings();
   }
   function drawSettings(){
    if(applying)return;
@@ -129,7 +133,7 @@ window.MMNetwork = (() => {
       output.innerHTML=`<h3>Review before applying</h3><ul>${review.steps.map(t=>`<li>${esc(t)}</li>`).join('')}</ul>${review.warnings.map(t=>`<p>${esc(t)}</p>`).join('')}<label><input type="checkbox" data-consent> I checked this device and the proposed changes. Apply to this router.</label><button class="btn" type="button" data-apply disabled>Back up and apply to router</button>`;
       const apply=output.querySelector('[data-apply]');output.querySelector('[data-consent]').onchange=e=>apply.disabled=!e.target.checked;
       apply.onclick=async()=>{
-       if(applying||!review||!pending)return;applying=true;const request={...pending,confirmation:review.confirmation};review=null;pending=null;++revision;
+       if(applying||!review||!pending)return;applying=true;options.onBusy?.(true);const request={...pending,confirmation:review.confirmation};review=null;pending=null;++revision;
        const navigation=[select,...editor.querySelectorAll('[data-task],[data-reload],[data-record]')].map(el=>[el,el.disabled]);navigation.forEach(([el])=>el.disabled=true);
        const savedStamp=revision;select.disabled=true;form.querySelectorAll('input,select,button').forEach(el=>el.disabled=true);apply.disabled=true;output.textContent='Backing up, applying and verifying router settings…';
        try{
@@ -139,7 +143,7 @@ window.MMNetwork = (() => {
         form.querySelectorAll('input[type="password"]').forEach(el=>el.value='');
         output.textContent=`Router settings verified. Backup: ${data.result.backup}. Test a real client before calling the service operational. Reload router to edit again.`;
        }catch(e){if(output.isConnected&&savedStamp===revision)output.textContent=`Apply failed. ${error(e)} ${e.data?.result?.rolled_back?'Previous settings restored and verified.':'Rollback not confirmed; inspect the router and its backup before retrying.'}`}
-       finally{applying=false;navigation.forEach(([el,disabled])=>{if(el.isConnected)el.disabled=disabled});request.values={}}
+       finally{applying=false;options.onBusy?.(false);navigation.forEach(([el,disabled])=>{if(el.isConnected)el.disabled=disabled});request.values={}}
       };
      }catch(e){if(output.isConnected&&stamp===revision)output.textContent=`Review failed; nothing applied. ${error(e)}`}
     };

@@ -38,10 +38,14 @@
   <script src="/assets/js/app.js" defer></script>
   <script src="/assets/js/workspaces.js?v=20261025-1" defer></script>
   <script src="/assets/js/i18n.js" defer></script>
-  <script src="/assets/js/network-control.js?v=20261025-1" defer></script>
+  <script src="/assets/js/network-control.js?v=20261028-review" defer></script>
+  <script src="/assets/js/router-telemetry.js?v=20261028-telemetry3" defer></script>
+  <link rel="stylesheet" href="/assets/css/router-telemetry.css?v=20261028-telemetry3">
+  <script src="/assets/js/device-workspace.js?v=20261028-telemetry3" defer></script>
+  <link rel="stylesheet" href="/assets/css/device-workspace.css?v=20261028-telemetry3">
   <script src="/assets/js/management-migration.js?v=20261024-1" defer></script>
   <script src="/assets/js/hub-management.js?v=20261025-1" defer></script>
-  <script src="/assets/js/workflow-revamp.js?v=20261025-1" defer></script>
+  <script src="/assets/js/workflow-revamp.js?v=20261028-review" defer></script>
   <link rel="stylesheet" href="/assets/vendor/maplibre/maplibre-gl.css">
   <style>
     /* ════════════════════════════════════════════════════════════════════
@@ -448,13 +452,9 @@ async function renderJellyfinPortal(main) {
 }
 
 async function renderInternetWorkspace(main) {
-  main.querySelector("#content").innerHTML = `<section class="panel"><div class="panel-body"><h2>What would you like to set up?</h2><p>First add a site and finish its Magic Hub connection. Each task reads the selected router before offering changes.</p><div class="revamp-task-grid">${[
-    ["network", "Start a guest internet service", "Guided customer ports, addresses, DHCP and Hotspot setup."],
-    ["wan", "Connect an internet provider", "ISP uplink, primary/backup connections and PPPoE uplink."],
-    ["existing", "Manage LAN and Hotspot", "Existing address pools, reservations, guest login and speed limits."],
-    ["wifi", "Manage Wi-Fi", "Supported radio names and security; physical-radio acceptance is required for writes."],
-    ["pppoe", "Manage subscriber internet", "PPPoE customer accounts and speed plans, when your business uses them."],
-  ].map(([route,title,description]) => `<a class="revamp-task" href="#${route}"><strong>${title}</strong><span>${description}</span></a>`).join("")}</div></div></section>`;
+  await MMDeviceWorkspace.mount(main.querySelector("#content"), {
+    api: MM, canEdit: SITE_EDITOR_ROLES.includes(ME?.user?.user_role), voucherEndpoint: "/vouchers",
+  });
 }
 
 async function renderObservedWorkspace(main, kind) {
@@ -465,7 +465,8 @@ async function renderObservedWorkspace(main, kind) {
   if (kind === "guests") {
     let sites = [];
     try { const data = await MM.get("/sites"); sites = asArray(data.sites || data); } catch (_) { /* Guest reads do not depend on site-label availability. */ }
-    if (host.isConnected) await MMRevamp.mountGuests(host, routers, MM, SITE_EDITOR_ROLES.includes(ME?.user?.user_role), sites);
+    const scopedRouters = await MMDeviceWorkspace.resolveSites(routers, sites, MM);
+    if (host.isConnected) await MMRevamp.mountGuests(host, scopedRouters, MM, SITE_EDITOR_ROLES.includes(ME?.user?.user_role), sites);
   } else await MMRevamp.mountObserved(host, kind, routers, MM, SITE_EDITOR_ROLES.includes(ME?.user?.user_role));
 }
 
@@ -1999,13 +2000,24 @@ function openEditRouter(main, r) {
 }
 
 /* ---------- Topology ---------- */
-async function renderTopology(main, selectedSite = "") {
+let topologyRenderRevision = 0;
+async function renderTopology(main, selectedSite = null) {
+  const request = ++topologyRenderRevision;
+  const content = main.querySelector("#content");
   let topo = await MM.get("/topology/map");
   let sites = [];
   try { sites = asArray((await MM.get("/sites")).sites); } catch (_) {}
   let fleet = {peers: []};
   try { fleet = await MM.get("/fleet/health"); } catch (_) {}
-  const content = main.querySelector("#content");
+  if (!content?.isConnected || main.querySelector("#content") !== content || request !== topologyRenderRevision) return;
+  if (selectedSite === null) {
+    const preferred = sessionStorage.getItem("mm_topology_router") || sessionStorage.getItem("mm_selected_router");
+    const devices = [];
+    const collectDevices = node => { if (node.device) devices.push(node.device); asArray(node.children).forEach(collectDevices); };
+    asArray(topo.roots).forEach(collectDevices); devices.push(...asArray(topo.orphans));
+    const contextSite = devices.find(device => device.device_id === preferred)?.site_id || sessionStorage.getItem("mm_selected_site");
+    selectedSite = sites.some(site => site.site_id === contextSite) ? contextSite : "";
+  }
   if (selectedSite) {
     const roots = asArray(topo.roots).filter(n => n.device?.site_id === selectedSite);
     const ids = new Set(); const collect = n => { ids.add(n.device?.device_id); asArray(n.children).forEach(collect); }; roots.forEach(collect);
@@ -2016,14 +2028,24 @@ async function renderTopology(main, selectedSite = "") {
     fleet = {...fleet,peers,unknown:peers.filter(p=>p.state==="unknown").length,offline:peers.filter(p=>p.state==="offline").length,stale:peers.filter(p=>p.state==="stale").length};
   }
   content.innerHTML = `<div class="panel"><div class="panel-body"><label>Business site<select class="input" id="topology-site"><option value="">All sites and unassigned devices</option>${sites.map(s=>`<option value="${esc(s.site_id)}"${s.site_id===selectedSite?' selected':''}>${esc(s.name)}</option>`).join("")}</select></label><p class="muted small">This is a management-relationship map, not discovered physical cabling. DHCP/ARP discovery is available under Devices.</p></div></div><div id="topo-tree">${loading()}</div>`;
-  content.querySelector("#topology-site").addEventListener("change", event => renderTopology(main, event.target.value));
+  content.querySelector("#topology-site").addEventListener("change", event => {
+    sessionStorage.setItem("mm_selected_site", event.target.value);
+    sessionStorage.removeItem("mm_topology_router");
+    sessionStorage.removeItem("mm_selected_router");
+    renderTopology(main, event.target.value);
+  });
   content.querySelector("#topo-tree").innerHTML = topologyTree(topo, fleet);
 
   const selectDevice = (detailID) => {
     content.querySelectorAll("[data-topo-detail]").forEach(el => el.classList.toggle("is-selected", el.dataset.topoDetail === detailID));
     content.querySelectorAll(".topo-detail").forEach(el => { el.hidden = el.id !== detailID; });
+    const selected = content.querySelector(`#${detailID} [data-config-device]`);
+    if (selected) sessionStorage.setItem("mm_selected_router", selected.dataset.configDevice);
   };
   content.querySelectorAll("[data-topo-detail]").forEach(el => el.addEventListener("click", () => selectDevice(el.dataset.topoDetail)));
+  const preferredID = sessionStorage.getItem("mm_topology_router") || sessionStorage.getItem("mm_selected_router");
+  const preferredLink = Array.from(content.querySelectorAll("[data-config-device]")).find(link => link.dataset.configDevice === preferredID);
+  if (preferredLink) selectDevice(preferredLink.closest(".topo-detail").id);
   const refresh = content.querySelector("#topo-refresh");
   if (refresh) refresh.addEventListener("click", async () => {
     refresh.disabled = true;
@@ -3441,6 +3463,16 @@ async function renderVouchers(main, issuedBatch = null) {
       const field = guestVoucherForm.querySelector("#"+id);
       if (field) field.value = pendingRequest[key] == null ? "" : String(pendingRequest[key]);
     }
+  }
+  if (guestVoucherForm) {
+    const gatewaySelect = guestVoucherForm.querySelector("#gv-gateway");
+    if (!pendingRequest) MMRevamp.routerContext(gatewaySelect, guestGateways, () => {});
+    gatewaySelect.addEventListener("change", () => {
+      const chosen = guestGateways.find(item => item.device_id === gatewaySelect.value);
+      if (chosen?.site_id) sessionStorage.setItem("mm_selected_site", chosen.site_id);
+    });
+    const back = document.createElement("a"); back.href = "#internet"; back.className = "btn"; back.textContent = "Back to device workspace";
+    guestVoucherForm.querySelector(".workspace-actions").append(back);
   }
   if (guestVoucherForm) guestVoucherForm.addEventListener("submit", async event => {
     event.preventDefault();

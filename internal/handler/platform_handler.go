@@ -117,14 +117,38 @@ func validatePricingPromo(p *model.PricingPromo) error {
 	return nil
 }
 
-// ListBusinesses returns every business across all tenants (DEVELOPER only).
+// PlatformBusinessSummary is a read-only view of Business for the platform API.
+// Sensitive fields (OwnerEmail) are intentionally omitted so cross-tenant
+// business listings never expose owner contact details.
+type PlatformBusinessSummary struct {
+	BusinessID       string `json:"business_id"`
+	CompanyName      string `json:"company_name"`
+	AccessTier       string `json:"access_tier"`
+	IsActive         bool   `json:"is_active"`
+	DeviceQuotaLimit int    `json:"device_quota_limit"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
+}
+
 func (h *PlatformHandler) ListBusinesses(c *gin.Context) {
 	bizs, err := h.businessRepo.ListAll()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list businesses"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"businesses": bizs, "count": len(bizs)})
+	summaries := make([]PlatformBusinessSummary, 0, len(bizs))
+	for _, b := range bizs {
+		summaries = append(summaries, PlatformBusinessSummary{
+			BusinessID:       b.BusinessID,
+			CompanyName:      b.CompanyName,
+			AccessTier:       b.AccessTier,
+			IsActive:         b.IsActive,
+			DeviceQuotaLimit: b.DeviceQuotaLimit,
+			CreatedAt:        b.CreatedAt,
+			UpdatedAt:        b.UpdatedAt,
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{"businesses": summaries, "count": len(summaries)})
 }
 
 // ListOpenIncidents returns open incidents across every business (DEVELOPER only).
@@ -274,6 +298,21 @@ func (h *PlatformHandler) ResetOwnerPassword(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+// PlatformBusinessState is a read-only view of business state for the platform API.
+// Sensitive fields (OwnerEmail) are intentionally omitted so platform queries
+// never expose owner contact details.
+type PlatformBusinessState struct {
+	BusinessID            string `json:"business_id"`
+	CompanyName           string `json:"company_name"`
+	AccessTier            string `json:"access_tier"`
+	IsActive              bool   `json:"is_active"`
+	DeviceQuotaLimit      int    `json:"device_quota_limit"`
+	DeviceCount           int    `json:"device_count"`
+	OpenIncidents         int    `json:"open_incidents"`
+	PurchasedExtraSlots   bool   `json:"purchased_extra_slots"`
+	AITokenBalance        int    `json:"ai_token_balance"`
+}
+
 // TenantState: GET /platform/businesses/:businessId/state
 func (h *PlatformHandler) TenantState(c *gin.Context) {
 	businessID := c.Param("businessId")
@@ -291,7 +330,6 @@ func (h *PlatformHandler) TenantState(c *gin.Context) {
 		"company_name":          st.CompanyName,
 		"access_tier":           st.AccessTier,
 		"is_active":             st.IsActive,
-		"owner_email":           st.OwnerEmail,
 		"device_quota_limit":    st.DeviceQuotaLimit,
 		"device_count":          st.DeviceCount,
 		"open_incidents":        st.OpenIncidents,

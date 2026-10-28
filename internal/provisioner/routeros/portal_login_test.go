@@ -50,7 +50,7 @@ func TestPortalPreflightRequiresFormLogin(t *testing.T) {
 		switch {
 		case strings.HasPrefix(command, "/ip hotspot profile print count-only"):
 			return "1", nil
-		case strings.HasPrefix(command, "/ip hotspot profile print value-list"):
+		case command == portalProfileCommand(`name="hsprof"`):
 			return "name: hsprof\nlogin-by: " + loginBy + "\nhtml-directory: hotspot\n", nil
 		case strings.HasPrefix(command, "/file print count-only where name=\"flash\""):
 			return "0", nil
@@ -62,7 +62,7 @@ func TestPortalPreflightRequiresFormLogin(t *testing.T) {
 			return "0", nil
 		case strings.HasPrefix(command, "/ip hotspot print count-only where profile="):
 			return "1", nil
-		case strings.HasPrefix(command, "/ip hotspot print value-list"):
+		case strings.Contains(command, `[/ip hotspot get [find where profile="hsprof" disabled=no] name]`):
 			return "name: hs1\n", nil
 		case strings.Contains(command, "/file get [find name="):
 			return "<html>original</html>", nil
@@ -169,7 +169,7 @@ func TestPortalPAPDeploymentDoesNotRequireCHAPHelper(t *testing.T) {
 	delete(r.files, "hotspot/md5.js")
 	wrapped := stubRunner{run: func(ctx context.Context, command string) (string, error) {
 		out, err := r.Run(ctx, command)
-		if strings.HasPrefix(command, "/ip hotspot profile print value-list") {
+		if command == portalProfileCommand(`name="guest"`) {
 			out = strings.ReplaceAll(out, "http-chap,mac", "http-pap,mac")
 		}
 		return out, err

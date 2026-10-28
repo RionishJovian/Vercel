@@ -30,6 +30,7 @@ function fixture({listFailure=false}={}) {
     },
     async post(path,body) {writes.push({path,body});return {batch_id:body.batch_id,state:'ready',vouchers:issued,product:'guest-internet',data_mb:1024,validity_starts:'first_use'};},
   };
+  window.eval(fs.readFileSync(new URL('../web/assets/js/workflow-revamp.js',import.meta.url),'utf8'));
   window.eval(functions);
   return {dom,window,writes,main:window.document.querySelector('main')};
 }

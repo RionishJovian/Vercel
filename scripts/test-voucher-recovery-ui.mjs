@@ -22,6 +22,7 @@ function fixture(post) {
     if(path==='/guest-vouchers/batches')return {batches:[]};
     if(path==='/vouchers')return {vouchers:[]};return {};
   },async post(path,body){writes.push({path,body:JSON.parse(JSON.stringify(body))});return post(path,body,writes.length);}};
+  w.eval(fs.readFileSync(new URL('../web/assets/js/workflow-revamp.js',import.meta.url),'utf8'));
   w.eval(functions);return {dom,w,writes,main:w.document.querySelector('main')};
 }
 async function submit(f){const d=f.w.document;d.querySelector('#gv-gateway').value=gateway;d.querySelector('#gv-label').value='Daily';d.querySelector('#gv-count').value='2';d.querySelector('#guest-voucher-form').dispatchEvent(new f.w.Event('submit',{cancelable:true}));await flush();}
