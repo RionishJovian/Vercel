@@ -68,10 +68,13 @@ func quickRetryHandler(s *retryEnrollmentHub) *VPSHandler {
 	}
 }
 
-func requestQuickEnrollment(h *VPSHandler, biz string) *httptest.ResponseRecorder {
+func requestQuickEnrollment(h *VPSHandler, biz string, resume ...bool) *httptest.ResponseRecorder {
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest("POST", "/", strings.NewReader(`{"management_rest_port":443,"confirm_enrollment":true}`))
+	if len(resume) > 0 && resume[0] {
+		c.Request = httptest.NewRequest("POST", "/", strings.NewReader(`{"management_rest_port":443,"confirm_enrollment":true,"resume_existing":true}`))
+	}
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Params = gin.Params{{Key: "deviceId", Value: "gateway"}}
 	c.Set(auth.ContextKeyBusinessID, biz)
@@ -202,6 +205,27 @@ func TestQuickEnrollmentKeyExpiryPreservesExistingTunnel(t *testing.T) {
 	}
 	if len(s.keys) != 1 || s.peers["tenant/gateway"].RouterPublicKey != reserved {
 		t.Fatal("expired setup rotated or re-enrolled the existing tunnel")
+	}
+	w = requestQuickEnrollment(h, "tenant", true)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"existing_tunnel_required":true`) || !strings.Contains(w.Body.String(), `"one_paste":false`) {
+		t.Fatalf("explicit installed-tunnel repair unavailable: %d %s", w.Code, w.Body.String())
+	}
+	var result struct {
+		Script string `json:"router_script"`
+	}
+	if json.Unmarshal(w.Body.Bytes(), &result) != nil || strings.Contains(result.Script, "private-key=") || !strings.Contains(result.Script, "router key differs") || !strings.Contains(result.Script, "interface ownership mismatch") {
+		t.Fatal("repair installs a replacement identity or lacks existing-interface guards")
+	}
+	if len(s.keys) != 1 || s.peers["tenant/gateway"].RouterPublicKey != reserved {
+		t.Fatal("explicit repair changed the reserved tunnel")
+	}
+}
+
+func TestQuickRecoveryCannotCreateNewEnrollment(t *testing.T) {
+	s := &retryEnrollmentHub{peers: map[string]hub.Peer{}}
+	w := requestQuickEnrollment(quickRetryHandler(s), "tenant", true)
+	if w.Code != 409 || len(s.keys) != 0 || len(s.peers) != 0 {
+		t.Fatal("repair created a new enrollment", w.Code)
 	}
 }
 

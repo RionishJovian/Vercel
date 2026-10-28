@@ -153,8 +153,9 @@ func (h *VPSHandler) QuickEnrollGateway(c *gin.Context) {
 	}
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 2048)
 	var body struct {
-		Port    int  `json:"management_rest_port"`
-		Confirm bool `json:"confirm_enrollment"`
+		Port           int  `json:"management_rest_port"`
+		Confirm        bool `json:"confirm_enrollment"`
+		ResumeExisting bool `json:"resume_existing"`
 	}
 	if c.ShouldBindJSON(&body) != nil || !body.Confirm || body.Port < 1 || body.Port > 65535 {
 		c.JSON(400, gin.H{"error": "confirm one-paste enrollment with a management port"})
@@ -178,6 +179,7 @@ func (h *VPSHandler) QuickEnrollGateway(c *gin.Context) {
 	identity := hub.Identity{TenantID: biz, RouterID: device.DeviceID, RequestedBy: user}
 	var peer hub.Peer
 	var script string
+	recovery := false
 	if h.liveHub != nil {
 		peer, err = h.liveHub.InspectRouter(c.Request.Context(), identity)
 		if err != nil && !errors.Is(err, hub.ErrPeerNotFound) {
@@ -198,6 +200,11 @@ func (h *VPSHandler) QuickEnrollGateway(c *gin.Context) {
 		if key.public != "" && key.public == peer.RouterPublicKey {
 			script, err = hub.BuildQuickConnectScript(device.DeviceID, peer, key.private)
 		} else {
+			if !body.ResumeExisting {
+				c.JSON(409, gin.H{"error": "Original setup key expired. Explicitly choose repair for an already-installed tunnel; its router key will be preserved.", "code": "hub_router_key_unavailable"})
+				return
+			}
+			recovery = true
 			var scripts hub.RouterScripts
 			scripts, err = hub.BuildRouterScripts(device.DeviceID, peer)
 			script = scripts.Setup
@@ -207,6 +214,10 @@ func (h *VPSHandler) QuickEnrollGateway(c *gin.Context) {
 			return
 		}
 	} else {
+		if body.ResumeExisting {
+			c.JSON(409, gin.H{"error": "No existing enrollment can be repaired. Use normal one-paste setup.", "code": "hub_recovery_unavailable"})
+			return
+		}
 		key, err := h.quickEnrollmentKeys(biz, device.DeviceID, true)
 		if err != nil {
 			c.JSON(503, gin.H{"error": "router key preparation temporarily unavailable"})
@@ -228,15 +239,15 @@ func (h *VPSHandler) QuickEnrollGateway(c *gin.Context) {
 		c.JSON(503, gin.H{"error": "automatic management preparation failed"})
 		return
 	}
-	// Automatic management may recover the original one-paste artifact from its
-	// short-lived cache. A peer record alone cannot recover the router private
-	// key, so never advertise the legacy step-two script as fresh installation.
-	if !strings.Contains(script, "private-key=\"") {
+	// A peer record cannot recover the router private key. Only an explicitly
+	// requested repair may use the existing-interface script, and that response
+	// must never advertise itself as a fresh one-paste installation.
+	if !strings.Contains(script, "private-key=\"") && !recovery {
 		c.JSON(409, gin.H{"error": "existing router key cannot be recovered; enrollment preserved", "code": "hub_router_key_unavailable"})
 		return
 	}
 	c.JSON(200, gin.H{"peer_id": peer.PeerID, "device_id": device.DeviceID, "tunnel_address": peer.TunnelAddress,
 		"hub_public_key": peer.HubPublicKey, "endpoint": peer.Endpoint, "allowed_ips": peer.AllowedIPs,
 		"router_script": script, "state": "hub_peer_enrolled", "lan_reachability_verified": false,
-		"router_configuration_required": true, "one_paste": true, "automatic_management": true})
+		"router_configuration_required": true, "one_paste": !recovery, "existing_tunnel_required": recovery, "automatic_management": true})
 }

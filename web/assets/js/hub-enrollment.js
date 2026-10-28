@@ -1,8 +1,9 @@
-export function mountHubEnrollment(root, {api, escape:esc}) {
+export function mountHubEnrollment(root, {api, escape:esc, onVerified}) {
   root.querySelectorAll('[data-hub-enrollment]').forEach(container => {
     const form=container.querySelector('form'), status=container.querySelector('[role="status"]');
     const submit=form.querySelector('button[type="submit"]');
     const gateway=container.dataset.hubEnrollment;
+    const recoveryOption=container.querySelector('[data-hub-recovery-option]');
     let busy=false;
     const finish=container.querySelector('[data-hub-finish]');
     finish?.addEventListener('click',async()=>{
@@ -14,6 +15,8 @@ export function mountHubEnrollment(root, {api, escape:esc}) {
         if(!container.isConnected)return;
         if(result.state!=='management_authenticated')throw Error('unverified');
         message.textContent='Connected. Router management is ready. LAN devices require their own verification.';
+        try {await onVerified?.(gateway);}
+        catch {if(container.isConnected)message.textContent='Connected. Router management is ready. Refresh the page to reload its capability status.';}
       } catch(error) {
         if(container.isConnected)message.textContent=error.data?.code==='hub_handshake_unverified'
           ?'No recent tunnel connection is verified. The router may be offline or the network path may be blocked. Your gateway record is kept; this check does not reset it or require a new script.'
@@ -59,14 +62,17 @@ export function mountHubEnrollment(root, {api, escape:esc}) {
       if(values.get('confirm_enrollment')!=='on'){status.textContent='Confirm that you authorize enrolling this gateway.';return;}
       busy=true;submit.disabled=true;status.textContent='Creating or verifying the Hub allocation…';
       try {
+        const resumeExisting=values.get('resume_existing')==='on';
         const result=await api.post(`/vps/peers/${encodeURIComponent(gateway)}/quick-enroll`,{
           management_rest_port:Number(values.get('management_rest_port')),
-          confirm_enrollment:values.get('confirm_enrollment')==='on'
+          confirm_enrollment:values.get('confirm_enrollment')==='on',
+          ...(resumeExisting?{resume_existing:true}:{})
         });
         if(!container.isConnected)return;
-        if(result.state!=='hub_peer_enrolled'||result.router_configuration_required!==true||result.one_paste!==true||result.automatic_management!==true)throw Error('unverified');
-        status.innerHTML=`<strong>One-paste script ready</strong>
-          <p>Copy the entire block into WinBox → New Terminal and press Enter within 30 minutes. It installs the private tunnel and a dedicated management account. Then select Finish connection below.</p>${scriptPanel('setup','Connection — paste in WinBox New Terminal',result.router_script)}
+        const recovery=result.existing_tunnel_required===true&&result.one_paste===false&&resumeExisting;
+        if(result.state!=='hub_peer_enrolled'||result.router_configuration_required!==true||(!recovery&&result.one_paste!==true)||result.automatic_management!==true)throw Error('unverified');
+        status.innerHTML=`<strong>${recovery?'Installed-connection repair ready':'One-paste script ready'}</strong>
+          <p>${recovery?'This script requires the original Magic Hub tunnel on this RouterBOARD. It stops if the interface is absent or its key differs; it cannot install a replacement router key. Paste the complete block in WinBox New Terminal within 30 minutes, then select Finish connection.':'Copy the entire block into WinBox → New Terminal and press Enter within 30 minutes. It installs the private tunnel and a dedicated management account. Then select Finish connection below.'}</p>${scriptPanel('setup','Connection — paste in WinBox New Terminal',result.router_script)}
           <dl><dt>Assigned address</dt><dd><code>${esc(result.tunnel_address)}</code></dd>
           <dt>Hub public key</dt><dd><code>${esc(result.hub_public_key||'Not reported')}</code></dd>
           <dt>Endpoint</dt><dd><code>${esc(result.endpoint||'Not reported')}</code></dd>
@@ -74,7 +80,9 @@ export function mountHubEnrollment(root, {api, escape:esc}) {
           <p>Finish connection verifies the tunnel and router before enabling management. Keep this script private.</p>`;
       } catch(error) {
         if(!container.isConnected)return;
-        status.textContent=error.data?.code==='hub_management_preflight_failed'?'One-paste setup is not ready on this server. Contact platform support; no new tunnel was allocated.':error.data?.code==='hub_router_key_unavailable'?'This gateway already has a reserved tunnel key, but its original installation script is no longer available. The existing connection was preserved; no replacement key was installed.':
+        if(error.data?.code==='hub_router_key_unavailable'&&recoveryOption)recoveryOption.hidden=false;
+        status.textContent=error.data?.code==='hub_management_preflight_failed'?'One-paste setup is not ready on this server. Contact platform support; no new tunnel was allocated.':error.data?.code==='hub_router_key_unavailable'?'This gateway already has a reserved tunnel key, but its original installation script is no longer available. If its Magic Hub tunnel is already installed on this RouterBOARD, select Repair installed connection and generate a repair script. The existing key is preserved.':
+          error.data?.code==='hub_recovery_unavailable'?'No existing tunnel allocation can be repaired. Clear Repair installed connection and use normal one-paste setup.':
           error.status===503?'Enrollment preparation is unavailable. No connection was confirmed; your gateway record is preserved.':
           error.status===403?'Your account needs gateway-management permission and an active plan.':
           'One-paste enrollment was not confirmed. Retry once; no router changes were made.';

@@ -1556,7 +1556,7 @@ function routerBoardPanel(routers, fleet, capabilityByID = new Map(), hubCapabil
     const capabilityStatus = capabilityStatusByID.get(router.device_id) || (caps ? "ready" : "unknown");
     return `<article class="routerboard-card state-${esc(state)}" data-gateway-id="${esc(router.device_id)}">
     <header><span class="routerboard-glyph">${MMTheme.icon("router", 22)}</span><div><span class="fleet-kicker">${esc(topologyLayerLabel(router.deployment_layer))}</span><h3>${esc(router.hardware_name || "Unnamed RouterBOARD")}</h3><p>${esc([router.vendor, router.device_model].filter(Boolean).join(" · ") || "MikroTik device")}</p></div><span class="status ${state === "up" ? "ok" : (state === "offline" ? "bad" : "unknown")}">${esc(stateLabel)}</span></header>
-      <dl><dt>Transport</dt><dd>${esc(router.transport || "direct")}</dd><dt>Management IP</dt><dd class="mono">${esc(router.management_ip || "Not registered")}</dd><dt>Last signal</dt><dd>${router.last_seen_at ? esc(ts(router.last_seen_at)) : "No verified signal"}</dd><dt>Device ID</dt><dd class="mono">${esc(router.device_id)}</dd></dl>
+      <dl><dt>Transport</dt><dd>${esc(router.transport || "direct")}</dd><dt>Management IP</dt><dd class="mono" data-router-management-ip="${esc(router.device_id)}">${esc(router.management_ip || "Not registered")}</dd><dt>Last signal</dt><dd>${router.last_seen_at ? esc(ts(router.last_seen_at)) : "No verified signal"}</dd><dt>Device ID</dt><dd class="mono">${esc(router.device_id)}</dd></dl>
       <div class="routerboard-capabilities" data-capability-slot="${esc(router.device_id)}">
         ${routerCapabilitySlot(router, caps, capabilityStatus)}
       </div>
@@ -1565,6 +1565,7 @@ function routerBoardPanel(routers, fleet, capabilityByID = new Map(), hubCapabil
           <h3>1. Connect with one paste</h3><p>Magic Hub creates a one-time RouterOS script. Copy the entire block into WinBox → New Terminal and press Enter. The router keeps its private WireGuard key; no public-key copy step is required.</p>
           <form class="quick-config-form"><label>Router HTTPS management port<input name="management_rest_port" type="number" min="1" max="65535" value="443" required></label>
             <label class="check-label"><input name="confirm_enrollment" type="checkbox" required> I authorize a private Magic Hub connection and a dedicated router management account.</label>
+            <label class="check-label" data-hub-recovery-option hidden><input name="resume_existing" type="checkbox"> Repair installed connection — this RouterBOARD already has its original Magic Hub tunnel. Preserve its router key.</label>
             <p class="muted small">Run the script within 30 minutes. It grants the app management access through the private tunnel.</p>
             <button type="submit" class="btn">Generate one-paste script</button><div role="status" aria-live="polite"></div>
           </form>
@@ -1843,8 +1844,16 @@ async function renderSites(main, workspace = location.hash === "#gateways" ? "ga
   if (gatewayOnly) {
     MMHubManagement.mount(content.querySelector("#hub-management"), routers, canEdit, MM);
     wireHubLookup(content); wireConns(main, conns, sites);
-    const {mountHubEnrollment}=await import("/assets/js/hub-enrollment.js?v=20261024-restart-safe-1");
-    if(content.isConnected)mountHubEnrollment(content,{api:MM,escape:esc});
+    const {mountHubEnrollment}=await import("/assets/js/hub-enrollment.js?v=20261029-repair");
+    if(content.isConnected)mountHubEnrollment(content,{api:MM,escape:esc,onVerified:async deviceID=>{
+      const data=await MM.get('/routers');if(!content.isConnected)return;
+      const updated=asArray(data.routers||data).find(r=>r.device_id===deviceID);
+      const router=routers.find(r=>r.device_id===deviceID);if(!router||!updated)return;
+      Object.assign(router,updated);
+      const address=[...content.querySelectorAll('[data-router-management-ip]')].find(el=>el.dataset.routerManagementIp===deviceID);
+      if(address)address.textContent=router.management_ip||'Not registered';
+      await loadRouterCapability(content,router,capabilityByID);
+    }});
   }
   else if (capacityLimitsEnabled) wireAllowance(main, allowance, requests, allowanceKinds);
 }

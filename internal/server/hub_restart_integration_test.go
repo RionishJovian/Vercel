@@ -64,10 +64,13 @@ func TestAutomaticOnePasteSurvivesCoordinatorRestart(t *testing.T) {
 		}
 		return h
 	}
-	run := func(h *handler.VPSHandler) (int, string) {
+	run := func(h *handler.VPSHandler, recovery ...bool) (int, string) {
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
 		c.Request = httptest.NewRequest("POST", "/", strings.NewReader(`{"management_rest_port":443,"confirm_enrollment":true}`))
+		if len(recovery) > 0 && recovery[0] {
+			c.Request = httptest.NewRequest("POST", "/", strings.NewReader(`{"management_rest_port":443,"confirm_enrollment":true,"resume_existing":true}`))
+		}
 		c.Request.Header.Set("Content-Type", "application/json")
 		c.Params = gin.Params{{Key: "deviceId", Value: id}}
 		c.Set(auth.ContextKeyBusinessID, biz)
@@ -106,6 +109,11 @@ func TestAutomaticOnePasteSurvivesCoordinatorRestart(t *testing.T) {
 	code, _ = run(fourth)
 	if code != 409 || stub.calls != 1 {
 		t.Fatal("expired key silently replaced peer", code)
+	}
+	fifth := makeHandler()
+	code, repair := run(fifth, true)
+	if code != 200 || stub.calls != 1 || strings.Contains(repair, "private-key=") || !strings.Contains(repair, "router key differs") || !strings.Contains(repair, "/user/ssh-keys import") {
+		t.Fatal("explicit installed-tunnel repair failed or replaced the identity", code)
 	}
 	box, _ := secretbox.New(cfg.Provisioner.Applier.CredentialKey)
 	if e = (database.PendingEnrollmentStore{DB: db, Box: box}).Delete(context.Background(), biz, id); e != nil {

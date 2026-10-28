@@ -63,6 +63,19 @@ func TestRouterScriptRejectsUnsafeAllocation(t *testing.T) {
 	}
 }
 
+func TestRouterScriptRepeatPasteUsesRouterOSArrayRendering(t *testing.T) {
+	p := scriptFixture()
+	p.AllowedIPs = []string{"10.77.0.1/32", "10.77.0.9/32"}
+	s, err := BuildRouterScripts("gateway", p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// RouterOS :tostr arrays use semicolons; the write grammar still takes CSV.
+	if !strings.Contains(s.Setup, `[:tostr [/interface/wireguard/peers get $peer allowed-address]] != "10.77.0.1/32;10.77.0.9/32"`) || !strings.Contains(s.Setup, "allowed-address=10.77.0.1/32,10.77.0.9/32") {
+		t.Fatal("repeat-paste read validation uses the write serialization")
+	}
+}
+
 func TestQuickConnectKeepsPrivateKeyOnlyInOnePasteScript(t *testing.T) {
 	privateKey, publicKey, err := GenerateRouterKeypair()
 	if err != nil {

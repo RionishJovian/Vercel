@@ -46,3 +46,7 @@ UDP 51820 with an allowing firewall rule; no successful handshake is recorded
 for the selected peer. Further router-side diagnosis needs its current online
 state and the result of running the setup script; do not assume the tunnel is
 working solely because a script was pasted.
+
+The subsequent [RouterBOARD workflow readiness release](ROUTERBOARD-WORKFLOW-READINESS-20261029.md)
+supersedes these initial image identities and adds explicit installed-tunnel
+repair, repeat-paste address-list compatibility and verified-connection refresh.
