@@ -1,12 +1,44 @@
 package handler
 
 import (
+	"errors"
+	"fmt"
 	"github.com/gin-gonic/gin"
+	"mega-magic/internal/provisioner/routeros"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 )
+
+func TestRouterReadErrorsDistinguishSetupWithoutLeakingConnectionFacts(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, tc := range []struct {
+		name   string
+		err    error
+		status int
+		setup  bool
+	}{
+		{"unconfigured", routeros.ErrNoTarget, http.StatusConflict, true},
+		{"wrapped", fmt.Errorf("private connection facts: %w", routeros.ErrNoTarget), http.StatusConflict, true},
+		{"incomplete", routeros.ErrIncompleteTarget, http.StatusConflict, true},
+		{"unpinned", routeros.ErrHostKeyUnpinned, http.StatusConflict, true},
+		{"blocked", routeros.ErrTargetNotAllowed, http.StatusBadGateway, false},
+		{"transport", errors.New("private connection facts"), http.StatusBadGateway, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+			respondRouterReadError(c, tc.err, "Could not read network inventory safely")
+			if w.Code != tc.status || strings.Contains(w.Body.String(), "private connection facts") {
+				t.Fatalf("unsafe error response: %d %s", w.Code, w.Body.String())
+			}
+			if strings.Contains(w.Body.String(), "router_management_required") != tc.setup {
+				t.Fatalf("incorrect prerequisite classification: %s", w.Body.String())
+			}
+		})
+	}
+}
 
 func TestNetworkWritesDefaultOffBeforeAnyRouterLookup(t *testing.T) {
 	gin.SetMode(gin.TestMode)

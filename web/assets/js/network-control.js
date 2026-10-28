@@ -28,6 +28,15 @@ window.MMNetwork = (() => {
  const descriptions={firewall:'Drop invalid IPv4 connections to the router on one selected port. This switch changes only the Mega Magic protection rule; all other firewall rules stay in place.',shield:'Review HotSpot IP-binding exemptions. Disable one unwanted bypass after review; managed grace access is protected. This does not claim to prevent every bypass method.',fairshare:'Share total upload/download bandwidth between client IP addresses using PCQ. Active FastTrack and overlapping queues must be reviewed first.',addresses:'Inspect assigned router addresses. Use Create customer network for a new LAN; existing management addresses are protected from casual edits.',routes:'Inspect routes and priorities. Use Internet connections for reviewed dual-uplink changes.',wan:'Keep a backup ISP ready or distribute connections across two ISPs.',pppoe_client:'Connect an ISP that gave you a PPPoE username and password.',pppoe_server:'Set up internet service for your wired subscribers.',pppoe_service:'Change the plan or state of an existing subscriber service.',subscriber:'Create or manage a customer login.',ppp_profile:'Set address allocation and speeds for a subscriber plan.',wifi:'Change the name and password of an onboard Wi-Fi network.',wireless:'Manage radios using the older RouterOS wireless driver.',dhcp:'Manage automatic client address assignment.',pool:'Adjust the addresses available to clients.',dhcp_network:'Set the gateway and DNS supplied to LAN clients.',hotspot:'Manage an existing guest internet service.',hotspot_profile:'Configure how guests sign in to a Hotspot.',lease:'Reserve an address for a specific client.',queue:'Set a client upload and download limit.'};
  const workspaces={protection:['Protection','Manage router protection and review portal exemptions.'],qos:['Fairshare QoS','Control customer bandwidth and fair sharing.'],ip:['IP and DHCP','Inspect IP addresses and routes; manage client address allocation.'],wan:['Internet connections','Choose how your business connects to the internet.'],pppoe:['Customer internet','Manage subscriber services, customer logins and speed plans.'],wifi:['Wi-Fi networks','Manage the radios on the selected device. Remote access points need their own connected device.'],existing:['LAN and Hotspot','Manage the services already running on your customer network.']};
  const objects=(inventory,key)=>(inventory.objects?.[key]||[]);
+ function showReadFailure(host,error,deviceID,retry){
+  const needsConnection=error.data?.code==='router_management_required';
+  const enrollment=[...document.querySelectorAll('[data-hub-enrollment]')].find(el=>el.dataset.hubEnrollment===deviceID);
+  host.innerHTML=`<p role="status">${needsConnection?'Connect this router first.':'Router status unavailable. Could not read this device safely. Nothing applied.'} ${esc(error.data?.error||error.message||'Request failed')}</p><div class="workspace-actions">${needsConnection?(enrollment?'<button class="btn" type="button" data-connect-router>Connect Magic Hub</button>':'<a class="btn" href="#gateways">Open Magic Hub</a>'):''}<button class="btn" type="button" data-retry-read>Refresh status</button></div>`;
+  host.querySelector('[data-retry-read]').onclick=retry;
+  host.querySelector('[data-connect-router]')?.addEventListener('click',()=>{
+   enrollment.open=true;enrollment.scrollIntoView?.({block:'center'});enrollment.querySelector('summary')?.focus();
+  });
+ }
  const label=o=>o.values.name||o.values['service-name']||o.values.address||o.id;
  const secretField=key=>/password|passphrase|pre-shared-key|private-key|secret/i.test(key);
  const currentNames={'interface':'Port','gateway':'Gateway','add-default-route':'Automatic default route','disabled':'State','dst-address':'Destination','distance':'Route priority','default-route-distance':'Route priority','use-peer-dns':'Use ISP DNS','configuration.ssid':'Wi-Fi network name','configuration.country':'Country','configuration.mode':'Radio mode','ssid':'Wi-Fi network name','country':'Country','mode':'Mode','user':'ISP username','name':'Name','address':'Address','dynamic':'Dynamic','routing-table':'Routing table','comment':'Comment'};
@@ -65,7 +74,7 @@ window.MMNetwork = (() => {
      if(!current()||revision!==stamp)return;
     }
     draw();
-   }catch(e){if(current()&&revision===stamp)editor.textContent=`Could not read this device safely. Nothing applied. ${error(e)}`}
+   }catch(e){if(current()&&revision===stamp)showReadFailure(editor,e,id,reload)}
   }
   function draw(){
    editor.innerHTML=`<div class="network-context"><div><strong>Live device settings loaded</strong><p>${(inventory.interfaces||[]).length} interfaces reported · Opening settings does not change the router.</p></div><button class="btn" type="button" data-reload>Refresh status</button></div><h3${options.compact?' hidden':''}>What would you like to manage?</h3><div class="network-tasks">${kinds.map(k=>`<button type="button" class="network-task" data-task="${k}" aria-pressed="false"><strong>${esc(schema[k].title)}</strong><span>${esc(descriptions[k])}</span><small>${schema[k].menu?`${objects(inventory,schema[k].menu).length} records reported`:'Setup wizard'}</small></button>`).join('')}</div><select data-kind hidden aria-hidden="true">${kinds.map(k=>`<option value="${k}">${esc(schema[k].title)}</option>`).join('')}</select><div class="network-settings" data-settings></div>`;
@@ -154,5 +163,5 @@ window.MMNetwork = (() => {
   const target=routers.find(r=>r.device_id===requested)||(routers.length===1?routers[0]:null);
   if(target){select.value=target.device_id;sessionStorage.setItem('mm_selected_router',target.device_id);await reload()}
  }
- return {mount};
+ return {mount,showReadFailure};
 })();

@@ -50,7 +50,7 @@ window.MMHubManagement = (() => {
       const inventory=data.inventory||{},health=inventory.health||{};
       const labels={'cpu-load':'CPU load (%)','free-memory':'Free memory (bytes)','total-memory':'Total memory (bytes)','uptime':'Uptime','version':'RouterOS version','board-name':'RouterBOARD'};
       status.innerHTML=`<p>Read at ${escape(new Date().toLocaleTimeString())}. Configuration readback does not prove guest internet access.</p><dl>${Object.entries(labels).map(([key,label])=>`<dt>${label}</dt><dd>${escape(health[key]||'Not reported')}</dd>`).join('')}</dl><h4>Interfaces</h4>${(inventory.interfaces||[]).map(i=>`<p><strong>${escape(i.name)}</strong> · ${escape(i.type)} · ${i.running?'Running':'Not running'}</p>`).join('')||'<p>Not reported</p>'}<p>${inventory.write_enabled?'Reviewed network changes are enabled.':'Network writes are currently held by the server. Read-only status remains available.'}</p>`;
-     }catch(e){if(pane.isConnected&&revision===stamp&&request===seq)status.textContent=`Router status unavailable. ${e.data?.error||e.message||'Retry when reachable.'}`}
+     }catch(e){if(pane.isConnected&&revision===stamp&&request===seq)MMNetwork.showReadFailure(status,e,id,load)}
      finally{if(refresh.isConnected&&request===seq)refresh.disabled=false}
     }
     select.onchange=load;refresh.onclick=load;if(r)await load();return;
