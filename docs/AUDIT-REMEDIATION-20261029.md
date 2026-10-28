@@ -1,5 +1,9 @@
 # Audit remediation — 29 October 2026
 
+The subsequent [frontend synchronization](FRONTEND-SYNC-20261029.md) updates the
+served frontend identity recorded below. The API hardening and data boundary
+remain unchanged.
+
 The five findings from the 28 October VPS/workspace audit are remediated on
 the production VPS. Local source is on `codex/normalize-audit-findings-20261028`.
 The work preserves the existing application, tenant boundaries, account passes,

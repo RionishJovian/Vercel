@@ -3,6 +3,7 @@
 # windows. External script execution, plugins and foreign framing are blocked.
 (mm_security_headers) {
     header {
+        defer
         Strict-Transport-Security "max-age=31536000"
         X-Content-Type-Options "nosniff"
         X-Frame-Options "SAMEORIGIN"

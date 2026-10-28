@@ -2,6 +2,8 @@ import security-headers.caddy
 
 :80 {
     import mm_security_headers
+    @html path / /*.html
+    header @html Cache-Control "no-cache"
     encode gzip
     root * /srv
     handle /api/* {
