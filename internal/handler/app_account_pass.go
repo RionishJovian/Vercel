@@ -58,6 +58,15 @@ func (h *PlatformHandler) RecordAccountPass(c *gin.Context) {
 	}
 
 	if h.IndividualPassesEnabled && in.Action == "activate" {
+		var paymentPending bool
+		if e := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM app_account_pass_renewals WHERE user_id=$1 AND business_id=$2 AND status='pending' AND amount_mmk IS NOT NULL)`, userID, businessID).Scan(&paymentPending); e != nil {
+			c.JSON(503, gin.H{"error": "Pending payment status unavailable"})
+			return
+		}
+		if paymentPending {
+			c.JSON(409, gin.H{"error": "Review this account's pending payment request instead of activating the pass separately"})
+			return
+		}
 		var primary string
 		if e := tx.QueryRow(`SELECT user_id FROM business_app_primary_users WHERE business_id=$1 FOR SHARE`, businessID).Scan(&primary); e != nil || primary != userID {
 			c.JSON(409, gin.H{"error": "Select this business's authorized primary login before activating its pass"})

@@ -14,12 +14,14 @@ import (
 
 // RequestAccountRenewal creates no payment/grant. It is usable after app expiry.
 func (h *AuthHandler) RequestAccountRenewal(c *gin.Context) {
-	var in struct {
-		Plan string `json:"plan"`
-	}
+	var in accountRenewalRequest
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 4096)
 	if c.ShouldBindJSON(&in) != nil || (in.Plan != "monthly" && in.Plan != "annual") {
 		c.JSON(400, gin.H{"error": "monthly or annual plan required"})
+		return
+	}
+	if in.BankAccountID != "" || in.BankReference != "" || in.IdempotencyKey != "" || in.ExpectedAmount != 0 {
+		h.requestPaidAccountRenewal(c, in)
 		return
 	}
 	var id, plan string
@@ -63,7 +65,7 @@ func (h *AuthHandler) RequestAccountRenewal(c *gin.Context) {
 func (h *AuthHandler) AccountRenewals(c *gin.Context) {
 	var raw []byte
 	err := runInTenant(c, h.db, auth.GetBusinessID(c), func(tx *sql.Tx) error {
-		return tx.QueryRow(`SELECT COALESCE(jsonb_agg(q),'[]'::jsonb) FROM(SELECT id,plan,status,created_at,decided_at FROM app_account_pass_renewals WHERE user_id=$1 AND business_id=$2 ORDER BY created_at DESC LIMIT 20)q`, auth.GetUserID(c), auth.GetBusinessID(c)).Scan(&raw)
+		return tx.QueryRow(`SELECT COALESCE(jsonb_agg(q),'[]'::jsonb) FROM(SELECT id,plan,status,created_at,decided_at,amount_mmk,bank_reference,bank_snapshot,idempotency_key FROM app_account_pass_renewals WHERE user_id=$1 AND business_id=$2 ORDER BY created_at DESC LIMIT 20)q`, auth.GetUserID(c), auth.GetBusinessID(c)).Scan(&raw)
 	})
 	if err != nil {
 		c.JSON(503, gin.H{"error": "renewal history unavailable"})
@@ -78,7 +80,7 @@ func (h *PlatformHandler) AccountRenewalInbox(c *gin.Context) {
 		return
 	}
 	var raw []byte
-	err := h.db.QueryRowContext(c.Request.Context(), `SELECT COALESCE(jsonb_agg(q),'[]'::jsonb) FROM(SELECT r.id,r.user_id,r.business_id,u.email,r.plan,r.status,r.created_at FROM app_account_pass_renewals r JOIN users u ON u.user_id=r.user_id AND u.business_id=r.business_id WHERE r.status='pending' ORDER BY r.created_at,r.id LIMIT 100)q`).Scan(&raw)
+	err := h.db.QueryRowContext(c.Request.Context(), `SELECT COALESCE(jsonb_agg(q),'[]'::jsonb) FROM(SELECT r.id,r.user_id,r.business_id,u.email,r.plan,r.status,r.created_at,r.amount_mmk,r.bank_reference,r.bank_snapshot FROM app_account_pass_renewals r JOIN users u ON u.user_id=r.user_id AND u.business_id=r.business_id WHERE r.status='pending' ORDER BY r.created_at,r.id LIMIT 100)q`).Scan(&raw)
 	if err != nil {
 		c.JSON(503, gin.H{"error": "renewal inbox unavailable"})
 		return
@@ -97,7 +99,8 @@ func (h *PlatformHandler) DecideAccountRenewal(c *gin.Context) {
 		return
 	}
 	var in struct {
-		Approve *bool `json:"approve"`
+		Approve         *bool `json:"approve"`
+		PaymentVerified bool  `json:"payment_verified"`
 	}
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 4096)
 	if c.ShouldBindJSON(&in) != nil || in.Approve == nil {
@@ -111,6 +114,7 @@ func (h *PlatformHandler) DecideAccountRenewal(c *gin.Context) {
 	}
 	defer tx.Rollback()
 	var user, biz, plan, status string
+	var amount sql.NullInt64
 	e = tx.QueryRow(`SELECT user_id,business_id FROM app_account_pass_renewals WHERE id=$1`, id).Scan(&user, &biz)
 	if errors.Is(e, sql.ErrNoRows) {
 		c.Status(404)
@@ -124,7 +128,7 @@ func (h *PlatformHandler) DecideAccountRenewal(c *gin.Context) {
 		c.Status(503)
 		return
 	}
-	e = tx.QueryRow(`SELECT plan,status FROM app_account_pass_renewals WHERE id=$1 AND user_id=$2 AND business_id=$3 FOR UPDATE`, id, user, biz).Scan(&plan, &status)
+	e = tx.QueryRow(`SELECT plan,status,amount_mmk FROM app_account_pass_renewals WHERE id=$1 AND user_id=$2 AND business_id=$3 FOR UPDATE`, id, user, biz).Scan(&plan, &status, &amount)
 	if e != nil {
 		c.Status(503)
 		return
@@ -137,6 +141,10 @@ func (h *PlatformHandler) DecideAccountRenewal(c *gin.Context) {
 	now := time.Now().UTC()
 	decision := "rejected"
 	if *in.Approve {
+		if amount.Valid && !in.PaymentVerified {
+			c.JSON(400, gin.H{"error": "Verify the bank payment before approving this paid pass request"})
+			return
+		}
 		if h.IndividualPassesEnabled {
 			var primary string
 			if e = tx.QueryRow(`SELECT user_id FROM business_app_primary_users WHERE business_id=$1 FOR SHARE`, biz).Scan(&primary); e != nil || primary != user {
@@ -159,7 +167,11 @@ func (h *PlatformHandler) DecideAccountRenewal(c *gin.Context) {
 			c.Status(503)
 			return
 		}
-		revision, e = database.ActivateAccountPassTXN(tx, user, biz, auth.GetUserID(c), plan, revision, now)
+		if amount.Valid {
+			revision, e = database.RenewAccountPassTXN(tx, user, biz, auth.GetUserID(c), plan, revision, now)
+		} else {
+			revision, e = database.ActivateAccountPassTXN(tx, user, biz, auth.GetUserID(c), plan, revision, now)
+		}
 		if e != nil {
 			c.Status(503)
 			return

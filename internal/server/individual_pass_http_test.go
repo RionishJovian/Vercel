@@ -17,7 +17,7 @@ import (
 
 func TestIndividualProductionRouteChain(t *testing.T) {
 	db := subscriptionHTTPDatabase(t)
-	for _, path := range []string{"../../migrations/20261024030000_app_account_passes.sql", "../../migrations/20261024040000_individual_pass_rollout.sql"} {
+	for _, path := range []string{"../../migrations/20261024030000_app_account_passes.sql", "../../migrations/20261024040000_individual_pass_rollout.sql", "../../migrations/20261029090000_account_pass_checkout.sql"} {
 		raw, e := os.ReadFile(path)
 		if e != nil {
 			t.Fatal(e)
