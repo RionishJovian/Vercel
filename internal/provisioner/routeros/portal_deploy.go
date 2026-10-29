@@ -93,6 +93,28 @@ type PortalDeploymentResult struct {
 	Plan       PortalDeploymentPlan `json:"plan"`
 }
 
+// Deployment can only target a profile used by exactly one enabled server.
+const portalProfilesCommand = `:foreach id in=[/ip hotspot profile find] do={ :local profileName [/ip hotspot profile get $id name]; :if ([:len [/ip hotspot find where profile=$profileName disabled=no]]=1) do={ :put ("name: " . $profileName) } }`
+
+// Read only fields used by deployment, avoiding script-bearing broad output.
+func portalProfileCommand(selector string) string {
+	return `:local id [/ip hotspot profile find where ` + selector + `]; :put ("login-by: " . [:tostr [/ip hotspot profile get $id login-by]]); :put ("html-directory: " . [:tostr [/ip hotspot profile get $id html-directory]]); :put ("html-directory-override: " . [:tostr [/ip hotspot profile get $id html-directory-override]])`
+}
+
+// Read one owned rule with scalar getters. Presentation-oriented print output
+// is not a stable key/value protocol on RouterOS.
+func portalGardenCommand(selector string, media bool) string {
+	fields := []string{"dst-host", "dst-port", "protocol", "server", "action", "disabled"}
+	if media {
+		fields[0] = "dst-address"
+	}
+	command := `:local id [/ip hotspot walled-garden ip find where ` + selector + `]; :if ([:len $id]!=1) do={ :error "failure: ambiguous portal access rule" };`
+	for _, field := range fields {
+		command += ` :put (` + routerOSQuoted(field+": ") + ` . [:tostr [/ip hotspot walled-garden ip get $id ` + field + `]]);`
+	}
+	return command
+}
+
 // portalLoginHTML is the router-served voucher entry page. The RouterBOARD
 // substitutes its $(...) macros and validates the code against its own
 // hotspot user list (the app provisions each issued code as a local user), so
@@ -208,7 +230,7 @@ func (a *DeviceApplier) PortalProfiles(ctx context.Context, businessID, deviceID
 	if err != nil {
 		return nil, err
 	}
-	out, err := r.Run(ctx, "/ip hotspot profile print value-list detail")
+	out, err := r.Run(ctx, portalProfilesCommand)
 	if err != nil {
 		return nil, fmt.Errorf("could not read HotSpot profiles")
 	}
@@ -227,7 +249,6 @@ type portalState struct {
 	original, replacement, selector, garden string
 	mediaGarden                             string
 	mediaHost, mediaPort                    string
-	hasMediaGarden                          bool
 	directory, destination                  string
 	needsCHAP                               bool
 	hasGarden                               bool
@@ -245,11 +266,12 @@ func portalPreflight(ctx context.Context, r CommandRunner, businessID, deviceID 
 	if err != nil || strings.TrimSpace(count) != "1" {
 		return s, fmt.Errorf("HotSpot profile not found or ambiguous")
 	}
-	out, err := r.Run(ctx, "/ip hotspot profile print value-list detail where "+s.selector)
+	out, err := r.Run(ctx, portalProfileCommand(s.selector))
 	if err != nil {
 		return s, fmt.Errorf("could not read HotSpot profile")
 	}
 	p := parseValueList(out)
+	p["login-by"] = strings.ReplaceAll(p["login-by"], ";", ",")
 	if !strings.Contains(","+p["login-by"]+",", ",mac,") {
 		return s, fmt.Errorf("configure MAC authentication for managed guests in gateway setup first")
 	}
@@ -290,7 +312,7 @@ func portalPreflight(ctx context.Context, r CommandRunner, businessID, deviceID 
 	if err != nil || strings.TrimSpace(out) != "1" {
 		return s, fmt.Errorf("select a profile used by exactly one enabled HotSpot server")
 	}
-	out, err = r.Run(ctx, "/ip hotspot print value-list detail where profile="+routerOSQuoted(request.Profile)+" disabled=no")
+	out, err = r.Run(ctx, `:put ("name: " . [/ip hotspot get [find where profile=`+routerOSQuoted(request.Profile)+` disabled=no] name])`)
 	if err != nil {
 		return s, fmt.Errorf("could not read HotSpot server")
 	}
@@ -318,14 +340,15 @@ func portalPreflight(ctx context.Context, r CommandRunner, businessID, deviceID 
 	if renderErr != nil {
 		return s, renderErr
 	}
-	s.garden = "comment=" + routerOSQuoted("mm-portal-"+request.Profile) + " dynamic=no"
+	s.garden = "comment=" + routerOSQuoted("mm-portal-"+request.Profile)
 	mediaHost, mediaPort, mediaErr := mediaTarget(request)
 	if mediaErr != nil {
 		return s, mediaErr
 	}
 	s.mediaHost, s.mediaPort = mediaHost, mediaPort
+	s.plan.MediaHost, s.plan.MediaPort = mediaHost, mediaPort
 	if mediaHost != "" {
-		s.mediaGarden = "comment=" + routerOSQuoted("mm-media-"+request.Profile) + " dynamic=no"
+		s.mediaGarden = "comment=" + routerOSQuoted("mm-media-"+request.Profile)
 	}
 	out, err = r.Run(ctx, "/ip hotspot walled-garden ip print count-only where "+s.garden)
 	if err != nil {
@@ -333,7 +356,7 @@ func portalPreflight(ctx context.Context, r CommandRunner, businessID, deviceID 
 	}
 	s.hasGarden = strings.TrimSpace(out) == "1"
 	if s.hasGarden {
-		out, err = r.Run(ctx, "/ip hotspot walled-garden ip print value-list detail where "+s.garden)
+		out, err = r.Run(ctx, portalGardenCommand(s.garden, false))
 		g := parseValueList(out)
 		if err != nil || g["dst-host"] != portalHost || g["dst-port"] != "443" || g["protocol"] != "tcp" || g["server"] != server || g["action"] != "accept" || g["disabled"] == "yes" || g["disabled"] == "true" {
 			return s, fmt.Errorf("existing managed portal rule differs; operator review required")
@@ -412,16 +435,19 @@ func (a *DeviceApplier) ApplyPortal(ctx context.Context, businessID, deviceID st
 		return result, fmt.Errorf("persistent login backup did not verify; active profile unchanged")
 	}
 	addedGarden := false
+	addedMediaGarden := false
 	rollback := func() {
 		cleanup, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		_, e := r.Run(cleanup, "/ip hotspot profile set [find "+s.selector+"] html-directory="+routerOSQuoted(s.directory))
-		out, readErr := r.Run(cleanup, "/ip hotspot profile print value-list detail where "+s.selector)
+		out, readErr := r.Run(cleanup, portalProfileCommand(s.selector))
 		ok := e == nil && readErr == nil && parseValueList(out)["html-directory"] == s.directory
+		if addedMediaGarden {
+			_, e = r.Run(cleanup, "/ip hotspot walled-garden ip remove [find "+s.mediaGarden+"]")
+			out, readErr = r.Run(cleanup, "/ip hotspot walled-garden ip print count-only where "+s.mediaGarden)
+			ok = ok && e == nil && readErr == nil && strings.TrimSpace(out) == "0"
+		}
 		if addedGarden {
-			if s.hasMediaGarden {
-				_, _ = r.Run(cleanup, "/ip hotspot walled-garden ip remove [find "+s.mediaGarden+"]")
-			}
 			_, e = r.Run(cleanup, "/ip hotspot walled-garden ip remove [find "+s.garden+"]")
 			out, readErr = r.Run(cleanup, "/ip hotspot walled-garden ip print count-only where "+s.garden)
 			ok = ok && e == nil && readErr == nil && strings.TrimSpace(out) == "0"
@@ -433,13 +459,13 @@ func (a *DeviceApplier) ApplyPortal(ctx context.Context, businessID, deviceID st
 			rollback()
 			return result, fmt.Errorf("managed media access rule already exists; operator review required")
 		}
+		addedMediaGarden = true // Contain a write even if its SSH response is lost.
 		_, err = r.Run(ctx, "/ip hotspot walled-garden ip add action=accept disabled=no protocol=tcp dst-port="+s.mediaPort+" dst-address="+routerOSQuoted(s.mediaHost)+" server="+routerOSQuoted(s.plan.Server)+" comment="+routerOSQuoted("mm-media-"+s.plan.Profile))
 		if err != nil {
 			rollback()
 			return result, fmt.Errorf("media access rule failed; check rollback status")
 		}
-		s.hasMediaGarden = true
-		out, e := r.Run(ctx, "/ip hotspot walled-garden ip print value-list detail where "+s.mediaGarden)
+		out, e := r.Run(ctx, portalGardenCommand(s.mediaGarden, true))
 		g := parseValueList(out)
 		if e != nil || g["dst-address"] != s.mediaHost || g["dst-port"] != s.mediaPort || g["protocol"] != "tcp" || g["action"] != "accept" {
 			rollback()
@@ -464,7 +490,7 @@ func (a *DeviceApplier) ApplyPortal(ctx context.Context, businessID, deviceID st
 		rollback()
 		return result, fmt.Errorf("login page verification failed; check rollback status")
 	}
-	out, err = r.Run(ctx, "/ip hotspot walled-garden ip print value-list detail where "+s.garden)
+	out, err = r.Run(ctx, portalGardenCommand(s.garden, false))
 	g := parseValueList(out)
 	if err != nil || g["dst-host"] != portalHost || g["dst-port"] != "443" || g["protocol"] != "tcp" || g["server"] != s.plan.Server || g["action"] != "accept" || g["disabled"] == "yes" || g["disabled"] == "true" {
 		rollback()
@@ -472,7 +498,7 @@ func (a *DeviceApplier) ApplyPortal(ctx context.Context, businessID, deviceID st
 	}
 	_, err = r.Run(ctx, "/ip hotspot profile set [find "+s.selector+"] html-directory="+routerOSQuoted(s.destination))
 	if err == nil {
-		out, err = r.Run(ctx, "/ip hotspot profile print value-list detail where "+s.selector)
+		out, err = r.Run(ctx, portalProfileCommand(s.selector))
 	}
 	if err != nil || parseValueList(out)["html-directory"] != s.destination {
 		rollback()

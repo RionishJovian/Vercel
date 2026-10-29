@@ -25,6 +25,40 @@ func TestDB_GuestVoucherSchemaReadiness(t *testing.T) {
 	if err := guestVoucherSchemaReady(db); err != nil {
 		t.Fatal(err)
 	}
+	// The serving login has explicit service-only RLS policies instead of
+	// SUPERUSER/BYPASSRLS. Tenant-visible or unexpected policies remain refused.
+	t.Run("validated runtime service policy", func(t *testing.T) {
+		b, err := os.ReadFile("../../deploy/runtime-db-role.sql")
+		if err != nil {
+			t.Fatal(err)
+		}
+		script := strings.ReplaceAll(strings.ReplaceAll(string(b), "\nBEGIN;", ""), "\nCOMMIT;", "")
+		if _, err = db.Exec("BEGIN;\n" + script); err != nil {
+			t.Fatal(err)
+		}
+		defer db.Exec("ROLLBACK")
+		if err = guestVoucherSchemaReady(db); err != nil {
+			t.Fatalf("service role rejected: %v", err)
+		}
+		for _, mutation := range []string{
+			`ALTER POLICY mm_runtime_service ON guest_voucher_grants TO authenticated`,
+			`ALTER POLICY mm_runtime_service ON guest_voucher_grants USING (business_id IS NOT NULL)`,
+			`ALTER ROLE mega_magic_runtime BYPASSRLS`,
+			`ALTER ROLE mega_magic_runtime INHERIT`,
+			`CREATE POLICY unexpected_service_policy ON guest_access_recovery USING(true)`,
+			`REVOKE authenticated FROM mega_magic_runtime; GRANT mega_magic_runtime TO authenticated`,
+		} {
+			if _, err = db.Exec("SAVEPOINT runtime_policy_mutation; " + mutation); err != nil {
+				t.Fatal(err)
+			}
+			if err = guestVoucherSchemaReady(db); err == nil {
+				t.Fatalf("unsafe service policy accepted: %s", mutation)
+			}
+			if _, err = db.Exec("ROLLBACK TO SAVEPOINT runtime_policy_mutation"); err != nil {
+				t.Fatal(err)
+			}
+		}
+	})
 	// Each mutation is only in this test's randomly named disposable database.
 	for _, stmt := range []string{
 		`ALTER TABLE guest_voucher_issue_batches NO FORCE ROW LEVEL SECURITY`,

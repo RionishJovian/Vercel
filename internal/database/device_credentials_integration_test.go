@@ -38,10 +38,25 @@ func openTestDB(t *testing.T) *DB {
 	return &DB{raw}
 }
 
+func openCredentialTestDB(t *testing.T) *DB {
+	t.Helper()
+	if os.Getenv("MM_TEST_DB_URL") != "" {
+		return requireHarness(t)
+	}
+	return openTestDB(t)
+}
+
 // pickTestDevice returns a (business_id, device_id) pair that currently has no
 // SSH target, so the test owns exactly the rows it touches.
 func pickTestDevice(t *testing.T, db *DB) (businessID, deviceID string) {
 	t.Helper()
+	if db == harnessDB {
+		businessID = insertBusiness(t, db)
+		if err := db.QueryRow(`INSERT INTO devices(business_id,hardware_name) VALUES($1,'Credential workflow fixture') RETURNING device_id`, businessID).Scan(&deviceID); err != nil {
+			t.Fatal(err)
+		}
+		return businessID, deviceID
+	}
 	err := db.QueryRow(`
 		SELECT business_id::text, device_id::text
 		  FROM devices
@@ -58,7 +73,7 @@ func pickTestDevice(t *testing.T, db *DB) (businessID, deviceID string) {
 }
 
 func TestDeviceCredentialSourceRoundTrip(t *testing.T) {
-	db := openTestDB(t)
+	db := openCredentialTestDB(t)
 	ctx := context.Background()
 
 	key, err := secretbox.GenerateKey()
@@ -142,7 +157,7 @@ func TestDeviceCredentialSourceRoundTrip(t *testing.T) {
 // A wrong encryption key must make the device unresolvable rather than
 // producing an empty password. This is the fail-closed property at the DB layer.
 func TestDeviceCredentialSourceWrongKeyFailsClosed(t *testing.T) {
-	db := openTestDB(t)
+	db := openCredentialTestDB(t)
 	ctx := context.Background()
 
 	keyA, _ := secretbox.GenerateKey()

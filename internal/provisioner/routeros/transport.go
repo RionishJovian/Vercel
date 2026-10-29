@@ -145,6 +145,11 @@ var rosErrorMarkers = []string{
 
 func detectRouterOSError(out string) error {
 	for _, line := range strings.Split(out, "\n") {
+		for _, prefix := range []string{"syntax error (line ", "expected end of command (line ", "expected value value (line ", "input does not match any value of "} {
+			if strings.HasPrefix(strings.TrimSpace(line), prefix) {
+				return fmt.Errorf("routeros reported a syntax error")
+			}
+		}
 		for _, m := range rosErrorMarkers {
 			if strings.Contains(line, m) {
 				return fmt.Errorf("routeros reported an error: %s", strings.TrimSpace(line))

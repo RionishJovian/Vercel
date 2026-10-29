@@ -64,11 +64,36 @@ func normalizeQuickConfig(cfg QuickConfig) (QuickConfig, error) {
 	return cfg, nil
 }
 
+// Keep SSH command input ASCII. RouterOS console input can silently discard
+// UTF-8 glyphs; hex escapes preserve their original bytes in HTML and scripts.
 func routerOSQuoted(value string) string {
-	value = strings.ReplaceAll(value, `\`, `\\`)
-	value = strings.ReplaceAll(value, `"`, `\"`)
-	value = strings.ReplaceAll(value, `$`, `\$`)
-	return `"` + value + `"`
+	var b strings.Builder
+	b.WriteByte('"')
+	const hex = "0123456789ABCDEF"
+	for i := 0; i < len(value); i++ {
+		c := value[i]
+		switch c {
+		case '\\', '"', '$':
+			b.WriteByte('\\')
+			b.WriteByte(c)
+		case '\r':
+			b.WriteString(`\r`)
+		case '\n':
+			b.WriteString(`\n`)
+		case '\t':
+			b.WriteString(`\t`)
+		default:
+			if c < 32 || c >= 127 {
+				b.WriteByte('\\')
+				b.WriteByte(hex[c>>4])
+				b.WriteByte(hex[c&15])
+			} else {
+				b.WriteByte(c)
+			}
+		}
+	}
+	b.WriteByte('"')
+	return b.String()
 }
 
 func quickConfigFromRunner(ctx context.Context, runner CommandRunner) (QuickConfig, error) {

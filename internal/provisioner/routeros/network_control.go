@@ -22,6 +22,7 @@ type NetworkObject struct {
 	Values map[string]string `json:"values"`
 }
 type NetworkInventory struct {
+	ObservedAt       string                     `json:"observed_at,omitempty"`
 	Health           map[string]string          `json:"health,omitempty"`
 	WriteEnabled     bool                       `json:"write_enabled"`
 	WiFiWriteEnabled bool                       `json:"wifi_write_enabled"`

@@ -1,3 +1,42 @@
+# Default app workspace — owner decision 2026-10-28
+
+The owner requested consolidation into one current local workspace and removal of the older app workspaces. This section supersedes conflicting repository names, source paths, continuation instructions and historical defaults below.
+
+- Default local workspace: `/Users/aces/GitHub/Mega-Magic`.
+- Default GitHub repository: `https://github.com/RionishJovian/Vercel.git`; default branch: `main`.
+- Current app: Go API (`cmd/server`, `internal`, `pkg`) and production frontend (`web`). `src`, Python backend and Sites files are retained historical/prototype material.
+- Read `.repo-identity.json` and `docs/WORKSPACE-CONSOLIDATION-20261028.md` before implementation. The consolidated source combines Vercel main `14b20de6`, the October 28 local feature changes, and the October 28 release frontend. Use this folder for future work; do not restore an old folder based on its name or historical instructions.
+- Telemetry uses the existing Admin role and EnableLive read interface. Preserve tenant checks, voucher batch recovery/printing guards, account pass checks, typed router operations and explicit write gates.
+- `.local/` contains private local recovery records and is excluded from Git and frontend packaging. Do not publish it or treat it as active app source.
+- Consolidation is a local source change. It does not deploy code, migrate a database, modify a router, or certify current live/physical readings. Historical deployment records are dated evidence.
+
+## Owner-confirmed router context — 2026-10-29
+
+Router actions open directly for the current Magic Hub router. Do not repeat
+device selection inside each setting or action. Automatically use a single
+registered router; legacy multi-router workspaces choose context once above
+the settings. Keep the target visible, reject stale/foreign selections, and
+lock context changes during writes. Preserve explicit review/apply gates.
+
+## Owner-confirmed guest voucher simplicity — 2026-10-29
+
+New Internet guest voucher codes use eight uppercase letters, avoiding ambiguous
+I, L, O and U. Preserve existing issued codes, batch identities, quotas and
+first-use evidence. Distinguish installing codes on the router from refreshing
+usage back into the app. The Internet Portal editor remains under Vouchers →
+Guest page, with the existing `#portal` deep link.
+
+## Owner-confirmed topology — 2026-10-29
+
+Site topology must present the RouterBOARD and observed connected devices as a
+visual device-image diagram, with connection lines, interface labels, status and
+a clickable inspector, following the Ruijie interaction model within Jade Glass.
+Use actual model imagery where identified and library device symbols otherwise.
+Preserve the distinction between observed associations/forwarding ports and
+unknown physical attachments; never invent switch hops or online status.
+
+# Historical instructions retained for provenance
+
 # Prototype Instructions
 
 Run the local server yourself and open the preview in the browser available to this environment. Do not give the user server-start instructions when you can run it.

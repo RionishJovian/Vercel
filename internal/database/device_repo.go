@@ -28,10 +28,10 @@ func (r *DeviceRepository) CreateDevice(device *model.Device) (*model.Device, er
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 		RETURNING device_id, business_id, parent_gateway_id, hardware_name, device_model,
 		          deployment_layer, vendor, category, transport, mac_address,
-		          management_ip, is_online, last_seen_at, created_at, updated_at`
+		          management_ip, is_online, last_seen_at, created_at, updated_at, site_id`
 
 	d := &model.Device{}
-	var parentGatewayID, deviceModel, macAddr, mgmtIP sql.NullString
+	var parentGatewayID, deviceModel, macAddr, mgmtIP, siteID sql.NullString
 	var lastSeen sql.NullTime
 
 	err := r.db.QueryRow(query,
@@ -50,12 +50,13 @@ func (r *DeviceRepository) CreateDevice(device *model.Device) (*model.Device, er
 	).Scan(
 		&d.DeviceID, &d.BusinessID, &parentGatewayID, &d.HardwareName, &deviceModel,
 		&d.DeploymentLayer, &d.Vendor, &d.Category, &d.Transport, &macAddr,
-		&mgmtIP, &d.IsOnline, &lastSeen, &d.CreatedAt, &d.UpdatedAt,
+		&mgmtIP, &d.IsOnline, &lastSeen, &d.CreatedAt, &d.UpdatedAt, &siteID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("create device: %w", err)
 	}
 
+	d.SiteID = scanNullableString(siteID)
 	d.ParentGatewayID = scanNullableString(parentGatewayID)
 	d.DeviceModel = scanNullableString(deviceModel)
 	d.MACAddress = scanMACAddr(macAddr)
@@ -70,18 +71,18 @@ func (r *DeviceRepository) GetDeviceByID(deviceID string) (*model.Device, error)
 	query := `
 		SELECT device_id, business_id, parent_gateway_id, hardware_name, device_model,
 		       deployment_layer, vendor, category, transport, mac_address,
-		       management_ip, is_online, last_seen_at, created_at, updated_at
+		       management_ip, is_online, last_seen_at, created_at, updated_at, site_id
 		FROM devices
 		WHERE device_id = $1`
 
 	d := &model.Device{}
-	var parentGatewayID, deviceModel, macAddr, mgmtIP sql.NullString
+	var parentGatewayID, deviceModel, macAddr, mgmtIP, siteID sql.NullString
 	var lastSeen sql.NullTime
 
 	err := r.db.QueryRow(query, deviceID).Scan(
 		&d.DeviceID, &d.BusinessID, &parentGatewayID, &d.HardwareName, &deviceModel,
 		&d.DeploymentLayer, &d.Vendor, &d.Category, &d.Transport, &macAddr,
-		&mgmtIP, &d.IsOnline, &lastSeen, &d.CreatedAt, &d.UpdatedAt,
+		&mgmtIP, &d.IsOnline, &lastSeen, &d.CreatedAt, &d.UpdatedAt, &siteID,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -90,6 +91,7 @@ func (r *DeviceRepository) GetDeviceByID(deviceID string) (*model.Device, error)
 		return nil, fmt.Errorf("get device by id: %w", err)
 	}
 
+	d.SiteID = scanNullableString(siteID)
 	d.ParentGatewayID = scanNullableString(parentGatewayID)
 	d.DeviceModel = scanNullableString(deviceModel)
 	d.MACAddress = scanMACAddr(macAddr)
@@ -104,7 +106,7 @@ func (r *DeviceRepository) ListDevicesByBusiness(businessID string) ([]*model.De
 	query := `
 		SELECT device_id, business_id, parent_gateway_id, hardware_name, device_model,
 		       deployment_layer, vendor, category, transport, mac_address,
-		       management_ip, is_online, last_seen_at, created_at, updated_at
+		       management_ip, is_online, last_seen_at, created_at, updated_at, site_id
 		FROM devices
 		WHERE business_id = $1
 		ORDER BY created_at DESC`
@@ -118,18 +120,19 @@ func (r *DeviceRepository) ListDevicesByBusiness(businessID string) ([]*model.De
 	var devices []*model.Device
 	for rows.Next() {
 		d := &model.Device{}
-		var parentGatewayID, deviceModel, macAddr, mgmtIP sql.NullString
+		var parentGatewayID, deviceModel, macAddr, mgmtIP, siteID sql.NullString
 		var lastSeen sql.NullTime
 
 		err := rows.Scan(
 			&d.DeviceID, &d.BusinessID, &parentGatewayID, &d.HardwareName, &deviceModel,
 			&d.DeploymentLayer, &d.Vendor, &d.Category, &d.Transport, &macAddr,
-			&mgmtIP, &d.IsOnline, &lastSeen, &d.CreatedAt, &d.UpdatedAt,
+			&mgmtIP, &d.IsOnline, &lastSeen, &d.CreatedAt, &d.UpdatedAt, &siteID,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("scan device row: %w", err)
 		}
 
+		d.SiteID = scanNullableString(siteID)
 		d.ParentGatewayID = scanNullableString(parentGatewayID)
 		d.DeviceModel = scanNullableString(deviceModel)
 		d.MACAddress = scanMACAddr(macAddr)
@@ -181,10 +184,10 @@ func (r *DeviceRepository) UpdateDevice(device *model.Device) (*model.Device, er
 		WHERE device_id = $1
 		RETURNING device_id, business_id, parent_gateway_id, hardware_name, device_model,
 		          deployment_layer, vendor, category, transport, mac_address,
-		          management_ip, is_online, last_seen_at, created_at, updated_at`
+		          management_ip, is_online, last_seen_at, created_at, updated_at, site_id`
 
 	d := &model.Device{}
-	var parentGatewayID, deviceModel, macAddr, mgmtIP sql.NullString
+	var parentGatewayID, deviceModel, macAddr, mgmtIP, siteID sql.NullString
 	var lastSeen sql.NullTime
 
 	err := r.db.QueryRow(query,
@@ -204,7 +207,7 @@ func (r *DeviceRepository) UpdateDevice(device *model.Device) (*model.Device, er
 	).Scan(
 		&d.DeviceID, &d.BusinessID, &parentGatewayID, &d.HardwareName, &deviceModel,
 		&d.DeploymentLayer, &d.Vendor, &d.Category, &d.Transport, &macAddr,
-		&mgmtIP, &d.IsOnline, &lastSeen, &d.CreatedAt, &d.UpdatedAt,
+		&mgmtIP, &d.IsOnline, &lastSeen, &d.CreatedAt, &d.UpdatedAt, &siteID,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -213,6 +216,7 @@ func (r *DeviceRepository) UpdateDevice(device *model.Device) (*model.Device, er
 		return nil, fmt.Errorf("update device: %w", err)
 	}
 
+	d.SiteID = scanNullableString(siteID)
 	d.ParentGatewayID = scanNullableString(parentGatewayID)
 	d.DeviceModel = scanNullableString(deviceModel)
 	d.MACAddress = scanMACAddr(macAddr)
@@ -254,10 +258,10 @@ func (r *DeviceRepository) CreateDeviceTXN(tx *sql.Tx, device *model.Device) (*m
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 		RETURNING device_id, business_id, parent_gateway_id, hardware_name, device_model,
 		          deployment_layer, vendor, category, transport, mac_address,
-		          management_ip, is_online, last_seen_at, created_at, updated_at`
+		          management_ip, is_online, last_seen_at, created_at, updated_at, site_id`
 
 	d := &model.Device{}
-	var parentGatewayID, deviceModel, macAddr, mgmtIP sql.NullString
+	var parentGatewayID, deviceModel, macAddr, mgmtIP, siteID sql.NullString
 	var lastSeen sql.NullTime
 
 	err := tx.QueryRow(query,
@@ -268,11 +272,12 @@ func (r *DeviceRepository) CreateDeviceTXN(tx *sql.Tx, device *model.Device) (*m
 	).Scan(
 		&d.DeviceID, &d.BusinessID, &parentGatewayID, &d.HardwareName, &deviceModel,
 		&d.DeploymentLayer, &d.Vendor, &d.Category, &d.Transport, &macAddr,
-		&mgmtIP, &d.IsOnline, &lastSeen, &d.CreatedAt, &d.UpdatedAt,
+		&mgmtIP, &d.IsOnline, &lastSeen, &d.CreatedAt, &d.UpdatedAt, &siteID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("create device: %w", err)
 	}
+	d.SiteID = scanNullableString(siteID)
 	d.ParentGatewayID = scanNullableString(parentGatewayID)
 	d.DeviceModel = scanNullableString(deviceModel)
 	d.MACAddress = scanMACAddr(macAddr)
@@ -286,18 +291,18 @@ func (r *DeviceRepository) GetDeviceByIDTXN(tx *sql.Tx, deviceID string) (*model
 	query := `
 		SELECT device_id, business_id, parent_gateway_id, hardware_name, device_model,
 		       deployment_layer, vendor, category, transport, mac_address,
-		       management_ip, is_online, last_seen_at, created_at, updated_at
+		       management_ip, is_online, last_seen_at, created_at, updated_at, site_id
 		FROM devices
 		WHERE device_id = $1`
 
 	d := &model.Device{}
-	var parentGatewayID, deviceModel, macAddr, mgmtIP sql.NullString
+	var parentGatewayID, deviceModel, macAddr, mgmtIP, siteID sql.NullString
 	var lastSeen sql.NullTime
 
 	err := tx.QueryRow(query, deviceID).Scan(
 		&d.DeviceID, &d.BusinessID, &parentGatewayID, &d.HardwareName, &deviceModel,
 		&d.DeploymentLayer, &d.Vendor, &d.Category, &d.Transport, &macAddr,
-		&mgmtIP, &d.IsOnline, &lastSeen, &d.CreatedAt, &d.UpdatedAt,
+		&mgmtIP, &d.IsOnline, &lastSeen, &d.CreatedAt, &d.UpdatedAt, &siteID,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -305,6 +310,7 @@ func (r *DeviceRepository) GetDeviceByIDTXN(tx *sql.Tx, deviceID string) (*model
 	if err != nil {
 		return nil, fmt.Errorf("get device by id: %w", err)
 	}
+	d.SiteID = scanNullableString(siteID)
 	d.ParentGatewayID = scanNullableString(parentGatewayID)
 	d.DeviceModel = scanNullableString(deviceModel)
 	d.MACAddress = scanMACAddr(macAddr)
@@ -319,7 +325,7 @@ func (r *DeviceRepository) ListDevicesByBusinessTXN(tx *sql.Tx, businessID strin
 	query := `
 		SELECT device_id, business_id, parent_gateway_id, hardware_name, device_model,
 		       deployment_layer, vendor, category, transport, mac_address,
-		       management_ip, is_online, last_seen_at, created_at, updated_at
+		       management_ip, is_online, last_seen_at, created_at, updated_at, site_id
 		FROM devices
 		WHERE business_id = $1
 		ORDER BY created_at DESC`
@@ -333,15 +339,16 @@ func (r *DeviceRepository) ListDevicesByBusinessTXN(tx *sql.Tx, businessID strin
 	var devices []*model.Device
 	for rows.Next() {
 		d := &model.Device{}
-		var parentGatewayID, deviceModel, macAddr, mgmtIP sql.NullString
+		var parentGatewayID, deviceModel, macAddr, mgmtIP, siteID sql.NullString
 		var lastSeen sql.NullTime
 		if err := rows.Scan(
 			&d.DeviceID, &d.BusinessID, &parentGatewayID, &d.HardwareName, &deviceModel,
 			&d.DeploymentLayer, &d.Vendor, &d.Category, &d.Transport, &macAddr,
-			&mgmtIP, &d.IsOnline, &lastSeen, &d.CreatedAt, &d.UpdatedAt,
+			&mgmtIP, &d.IsOnline, &lastSeen, &d.CreatedAt, &d.UpdatedAt, &siteID,
 		); err != nil {
 			return nil, fmt.Errorf("scan device row: %w", err)
 		}
+		d.SiteID = scanNullableString(siteID)
 		d.ParentGatewayID = scanNullableString(parentGatewayID)
 		d.DeviceModel = scanNullableString(deviceModel)
 		d.MACAddress = scanMACAddr(macAddr)
@@ -366,10 +373,10 @@ func (r *DeviceRepository) UpdateDeviceTXN(tx *sql.Tx, device *model.Device) (*m
 		WHERE device_id = $1
 		RETURNING device_id, business_id, parent_gateway_id, hardware_name, device_model,
 		          deployment_layer, vendor, category, transport, mac_address,
-		          management_ip, is_online, last_seen_at, created_at, updated_at`
+		          management_ip, is_online, last_seen_at, created_at, updated_at, site_id`
 
 	d := &model.Device{}
-	var parentGatewayID, deviceModel, macAddr, mgmtIP sql.NullString
+	var parentGatewayID, deviceModel, macAddr, mgmtIP, siteID sql.NullString
 	var lastSeen sql.NullTime
 
 	err := tx.QueryRow(query,
@@ -380,7 +387,7 @@ func (r *DeviceRepository) UpdateDeviceTXN(tx *sql.Tx, device *model.Device) (*m
 	).Scan(
 		&d.DeviceID, &d.BusinessID, &parentGatewayID, &d.HardwareName, &deviceModel,
 		&d.DeploymentLayer, &d.Vendor, &d.Category, &d.Transport, &macAddr,
-		&mgmtIP, &d.IsOnline, &lastSeen, &d.CreatedAt, &d.UpdatedAt,
+		&mgmtIP, &d.IsOnline, &lastSeen, &d.CreatedAt, &d.UpdatedAt, &siteID,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -388,6 +395,7 @@ func (r *DeviceRepository) UpdateDeviceTXN(tx *sql.Tx, device *model.Device) (*m
 	if err != nil {
 		return nil, fmt.Errorf("update device: %w", err)
 	}
+	d.SiteID = scanNullableString(siteID)
 	d.ParentGatewayID = scanNullableString(parentGatewayID)
 	d.DeviceModel = scanNullableString(deviceModel)
 	d.MACAddress = scanMACAddr(macAddr)

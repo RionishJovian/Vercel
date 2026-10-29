@@ -51,3 +51,6 @@ scripts/migration/.ported.sql
 # Generated production frontend build
 vercel-public/
 .vercel/
+
+# Private consolidation/recovery evidence; never app or deployment inputs.
+.local/

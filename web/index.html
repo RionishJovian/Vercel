@@ -195,7 +195,21 @@
       .land-hero::before,.cell::before{animation:none;display:none;}
       .brand-intro{display:none;}
     }
-  </style>
+  .brand-intro-skip{
+    position:absolute;right:20px;bottom:20px;color:#8eb69b;background:transparent;
+    border:1px solid rgba(142,182,155,.35);border-radius:8px;padding:8px 12px;cursor:pointer;
+  }
+  .brand-intro-skip:hover{
+    background:rgba(142,182,155,.15);border-color:rgba(142,182,155,.6);
+    transform:translateY(-1px);transition:transform .2s ease;
+  }
+  .skip-text{font-size:14px;font-weight:600;color:#8eb69b;letter-spacing:.05em;}
+  .skip-countdown{
+    position:absolute;left:100%;top:50%;transform:translate(-8px,-50%);
+    font-size:11px;color:rgba(142,182,155,.6);font-weight:500;
+    background:rgba(142,182,155,.15);padding:4px 8px;border-radius:6px;margin-top:2px;
+  }
+</style>
   <link rel="stylesheet" href="/assets/css/redesign.css">
 </head>
 <body class="page-marketing">
@@ -203,7 +217,13 @@
   <div class="brand-intro-line"></div>
   <picture><source srcset="/assets/images/mikromagic-mark-20260930.webp" type="image/webp"><img class="brand-intro-mark" src="/assets/images/mikromagic-mark-20260930.png" alt="MikroTik Magic"></picture>
   <div class="brand-intro-name">Network magic, controlled</div>
-  <button class="brand-intro-skip" id="brand-intro-skip" type="button">Skip</button>
+  <button class="brand-intro-skip" id="brand-intro-skip" type="button">
+    <span class="skip-text">Skip Intro</span>
+    <span class="skip-countdown" id="skip-countdown"></span>
+  </button>
+  <div class="intro-progress" id="intro-progress">
+    <div class="progress-bar" id="progress-bar"></div>
+  </div>
 </div>
 <div class="lg-orb lg-orb-a"></div>
 <div class="lg-orb lg-orb-b"></div>
@@ -306,15 +326,22 @@
   const reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   let seen = false;
   try { seen = sessionStorage.getItem("mm_brand_intro_seen") === "1"; } catch (_) {}
-  if (reduced || seen) { intro.remove(); return; }
+  if (reduced || seen) { intro.remove(); redirect(); return; }
   try { sessionStorage.setItem("mm_brand_intro_seen", "1"); } catch (_) {}
   let removed = false;
   const close = () => {
     if (removed) return; removed = true; intro.classList.add("is-leaving");
-    setTimeout(() => intro.remove(), 420);
+    setTimeout(() => {
+      intro.remove();
+      redirect();
+    }, 420);
   };
   document.getElementById("brand-intro-skip").addEventListener("click", close);
-  setTimeout(close, 2600);
+  document.getElementById("skip-countdown").textContent = "Skipping...";
+  setTimeout(close, 1500);
+  function redirect() {
+    try { window.location.href = "/app.html"; } catch (e) { window.location = "/app.html"; }
+  }
 })();
 </script>
 </body>

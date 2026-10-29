@@ -127,7 +127,7 @@ func BuildRouterScripts(deviceID string, peer Peer) (RouterScripts, error) {
   :if ([/ip/address get $addr comment] != "%s" || [/ip/address get $addr address] != "%s") do={ :error "STOP: existing address mismatch" }
   :if ([/ip/address get $addr disabled]) do={ :error "STOP: existing tunnel address disabled" }
 }
-`, name, marker, peer.RouterPublicKey, name, marker, peer.HubPublicKey, host, port, strings.Join(peer.AllowedIPs, ","), name, marker, peer.TunnelAddress)
+`, name, marker, peer.RouterPublicKey, name, marker, peer.HubPublicKey, host, port, strings.Join(peer.AllowedIPs, ";"), name, marker, peer.TunnelAddress)
 	setup += fmt.Sprintf(`:local assigned [/ip/address find where address="%s"]
 :if ([:len $assigned] > 1) do={ :error "STOP: duplicate tunnel address" }
 :if ([:len $assigned] = 1) do={

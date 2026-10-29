@@ -2,11 +2,15 @@ package database
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
 	"mega-magic/internal/model"
 )
+
+// ErrVoucherCodeCollision leaves the transaction usable for another random code.
+var ErrVoucherCodeCollision = errors.New("voucher code already exists in this business")
 
 // VoucherRepository handles voucher database operations
 type VoucherRepository struct {
@@ -339,6 +343,7 @@ func (r *VoucherRepository) CreateVoucherTXN(tx *sql.Tx, voucher *model.Voucher)
 		                      price_mmk, duration_minutes, device_mac, status,
 		                      first_seen_at, expires_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		ON CONFLICT (business_id, code) DO NOTHING
 		RETURNING id, business_id, device_id, plan_key, plan_label, code,
 		          price_mmk, duration_minutes, device_mac, status,
 		          first_seen_at, expires_at, created_at, updated_at`
@@ -357,6 +362,9 @@ func (r *VoucherRepository) CreateVoucherTXN(tx *sql.Tx, voucher *model.Voucher)
 		&v.PriceMMK, &durationMin, &deviceMAC, &v.Status,
 		&firstSeen, &expires, &v.CreatedAt, &v.UpdatedAt,
 	)
+	if err == sql.ErrNoRows {
+		return nil, ErrVoucherCodeCollision
+	}
 	if err != nil {
 		return nil, fmt.Errorf("create voucher: %w", err)
 	}

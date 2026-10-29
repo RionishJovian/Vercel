@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"github.com/gin-gonic/gin"
 	"mega-magic/internal/auth"
 	"mega-magic/internal/provisioner/routeros"
@@ -68,7 +69,7 @@ func (h *SecurityHandler) NetworkControl(c *gin.Context) {
 		}
 		inventory, err := reader.ReadRouterOverview(ctx, b, d)
 		if err != nil {
-			c.JSON(http.StatusBadGateway, gin.H{"error": "Could not read router health safely"})
+			respondRouterReadError(c, err, "Could not read router health safely")
 			return
 		}
 		inventory.WriteEnabled = enabled
@@ -80,7 +81,7 @@ func (h *SecurityHandler) NetworkControl(c *gin.Context) {
 		}
 		inventory, err := controller.ReadNetwork(ctx, b, d)
 		if err != nil {
-			c.JSON(http.StatusBadGateway, gin.H{"error": "Could not read network inventory safely"})
+			respondRouterReadError(c, err, "Could not read network inventory safely")
 			return
 		}
 		inventory.WriteEnabled = enabled
@@ -118,4 +119,17 @@ func (h *SecurityHandler) NetworkControl(c *gin.Context) {
 	default:
 		c.Status(http.StatusNotFound)
 	}
+}
+
+// Missing management setup is an expected prerequisite, not an upstream outage.
+// Never forward transport/DB errors: they can contain private connection facts.
+func respondRouterReadError(c *gin.Context, err error, fallback string) {
+	if errors.Is(err, routeros.ErrNoTarget) || errors.Is(err, routeros.ErrIncompleteTarget) || errors.Is(err, routeros.ErrHostKeyUnpinned) {
+		c.JSON(http.StatusConflict, gin.H{
+			"code":  "router_management_required",
+			"error": "This router has no usable saved management connection. Complete Connect Magic Hub, then refresh status. No router settings were changed.",
+		})
+		return
+	}
+	c.JSON(http.StatusBadGateway, gin.H{"error": fallback})
 }

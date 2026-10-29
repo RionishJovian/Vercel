@@ -19,6 +19,7 @@ function fixture({failure=false}={}){
  if(path==='/routers')return{routers:[{device_id:'gateway',deployment_layer:'MAIN_GATEWAY',hardware_name:'Lab'}]};return{};},
  async put(path,body){writes.push({path,body});await flush();if(failure)throw Error('batch shop assignment changed; refresh before retrying');assigned=body.reseller_id;return {assignment:{batch_id:batch,reseller_id:assigned},codes_changed:false};},
  async post(path,body){writes.push({path,body});return{batch_id:body.batch_id,state:'ready',vouchers:[]};}};
+ w.eval(fs.readFileSync(new URL('../web/assets/js/workflow-revamp.js',import.meta.url),'utf8'));
  w.eval(code);return{dom,w,batch,shop,writes,main:w.document.querySelector('main')};
 }
 test('Shop assignment uses current revision, prevents duplicate submits and persists readback',async t=>{

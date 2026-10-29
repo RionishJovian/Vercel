@@ -22,7 +22,7 @@ func TestObservationsFixedReadOnlyMenusAndPartialFailure(t *testing.T) {
 		return "", fmt.Errorf("source unavailable")
 	})
 	result, e := readObservations(context.Background(), r)
-	if e != nil || calls != 4 || !result.Available["arp"] || result.Available["hotspot_sessions"] || len(result.Objects["arp"]) != 1 || result.WriteEnabled {
+	if e != nil || calls != len(observationOrder)+1 || !result.Available["arp"] || result.Available["hotspot_sessions"] || len(result.Objects["arp"]) != 1 || result.WriteEnabled || result.ObservedAt == "" {
 		t.Fatalf("%+v %v", result, e)
 	}
 	ctx, cancel := context.WithCancel(context.Background())

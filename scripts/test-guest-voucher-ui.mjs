@@ -7,6 +7,7 @@ const start=source.indexOf('const SHEET_MM =');
 const end=source.indexOf('/* ---------- Magic Coins',start);
 const dom=new JSDOM('<main><div id="content"></div></main>',{runScripts:'outside-only',url:'https://example.test'});
 const context=dom.window,main=context.document.querySelector('main'),getCalls=[];
+context.eval(fs.readFileSync(new URL('../web/assets/js/workflow-revamp.js',import.meta.url),'utf8'));
 let enabled=true,postCount=0,lastBody,release;
 Object.assign(context,{
   ME:{business:{business_id:'fixture-business'},user:{user_role:'OWNER'}},SITE_EDITOR_ROLES:['OWNER','ADMIN','DEVELOPER'],

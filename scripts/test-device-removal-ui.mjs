@@ -6,17 +6,17 @@ import {JSDOM} from 'jsdom';
 const source=fs.readFileSync(new URL('../web/app.html',import.meta.url),'utf8');
 const slice=source.slice(source.indexOf('function confirmDeviceRemoval('),source.indexOf('function hubEnrollmentUnavailableMessage('));
 function fixture({role='OWNER',remove=async()=>{},refresh=async()=>{}}={}) {
- const dom=new JSDOM('<main><div id="content"><button data-router-delete="device/a">Delete</button></div></main>');
+ const dom=new JSDOM('<main><div id="content"><article><button data-router-delete="device/a">Delete</button><p data-router-removal-status role="alert" hidden></p></article></div></main>');
  const document=dom.window.document,content=document.querySelector('#content'),button=document.querySelector('button');
  const calls=[],errors=[],refreshes=[];
  dom.window.HTMLDialogElement.prototype.showModal=function(){this.open=true;};
  dom.window.HTMLDialogElement.prototype.close=function(){this.open=false;this.dispatchEvent(new dom.window.Event('close'));};
  const context=vm.createContext({document,ME:{user:{user_role:role}},SITE_EDITOR_ROLES:['OWNER','ADMIN','DEVELOPER'],encodeURIComponent,Error,
   confirm:()=>{throw Error('Native confirmation must not be used');},MM:{del:async path=>{calls.push(path);return remove();}},
-  renderSites:async(main,workspace)=>{refreshes.push(workspace);return refresh();},showErr:error=>errors.push(error.message)});
+  renderSites:async(main,workspace)=>{refreshes.push(workspace);return refresh();}});
  vm.runInContext(slice,context);
- context.wireRouterRemoval(content,document.querySelector('main'),[{device_id:'device/a',hardware_name:'Test <router>'}],'gateways');
- return {dom,button,calls,errors,refreshes,content,dialog:()=>document.querySelector('dialog'),accept:()=>document.querySelector('[data-confirm-delete]').click(),cancel:()=>document.querySelector('[data-confirm-cancel]').click()};
+ context.wireRouterRemoval(content,document.querySelector('main'),[{device_id:'device/a',hardware_name:'Test <router>'}],'gateways',error=>errors.push(error.message));
+ return {dom,button,calls,errors,refreshes,content,status:document.querySelector('[data-router-removal-status]'),dialog:()=>document.querySelector('dialog'),accept:()=>document.querySelector('[data-confirm-delete]').click(),cancel:()=>document.querySelector('[data-confirm-cancel]').click()};
 }
 const tick=()=>new Promise(resolve=>setTimeout(resolve,0));
 test('cancel, Escape and viewer produce no deletion request',async()=>{
@@ -38,6 +38,13 @@ test('the themed modal names the record safely and requires explicit destructive
 test('pending deletion is sent once; failure keeps record and allows retry',async()=>{
  let reject;const f=fixture({remove:()=>new Promise((_,r)=>reject=r)});f.button.click();f.button.click();assert.equal(f.dom.window.document.querySelectorAll('dialog').length,1);f.accept();await tick();assert.equal(f.calls.length,1);assert.equal(f.button.disabled,true);
  reject(new Error('Record is referenced'));await tick();assert.deepEqual(f.errors,['Record is referenced']);assert.equal(f.refreshes.length,0);assert.equal(f.button.disabled,false);
+ assert.equal(f.status.hidden,false);assert.equal(f.status.textContent,'Record is referenced');
+});
+test('linked-history conflict is visible beside the device without a global showErr',async()=>{
+ const message='Device linked to vouchers <private-history>. No records were deleted.';
+ const f=fixture({remove:async()=>{throw {status:409,data:{error:message},message:'Conflict'}}});
+ f.button.click();f.accept();await tick();assert.equal(f.status.hidden,false);assert.equal(f.status.textContent,message);assert.equal(f.status.querySelector('private-history'),null);assert.equal(f.button.disabled,false);assert.equal(f.refreshes.length,0);
+ f.button.click();assert.equal(f.status.hidden,true);f.cancel();await tick();assert.equal(f.calls.length,1);
 });
 test('a detached response cannot redraw a different page',async()=>{
  let resolve;const f=fixture({remove:()=>new Promise(r=>resolve=r)});f.button.click();f.accept();await tick();f.content.remove();resolve();await tick();assert.equal(f.refreshes.length,0);assert.equal(f.errors.length,0);

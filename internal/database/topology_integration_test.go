@@ -91,3 +91,53 @@ func listInTenant(t *testing.T, repo *DeviceRepository, db *DB, businessID strin
 	}
 	return out
 }
+
+// A persisted site must survive the repository projection used by /topology/map.
+func TestDB_Topology_preservesAssignedSite(t *testing.T) {
+	db := requireHarness(t)
+	biz := insertBusiness(t, db)
+	foreign := insertBusiness(t, db)
+	var site string
+	if err := db.QueryRow(`INSERT INTO sites (business_id,name) VALUES ($1,'Topology site') RETURNING site_id`, biz).Scan(&site); err != nil {
+		t.Fatal(err)
+	}
+	id := insertDeviceRow(t, db, biz, nil, "Site gateway", "MAIN_GATEWAY")
+	unassigned := insertDeviceRow(t, db, biz, nil, "Unassigned", "MAIN_GATEWAY")
+	if _, err := db.Exec(`UPDATE devices SET site_id=$1 WHERE device_id=$2`, site, id); err != nil {
+		t.Fatal(err)
+	}
+	repo := NewDeviceRepository(db)
+	d, err := repo.GetDeviceByID(id)
+	if err != nil || d.SiteID == nil || *d.SiteID != site {
+		t.Fatalf("site projection lost: %+v %v", d, err)
+	}
+	d.HardwareName = "Renamed"
+	d, err = repo.UpdateDevice(d)
+	if err != nil || d.SiteID == nil || *d.SiteID != site {
+		t.Fatalf("update lost site: %+v %v", d, err)
+	}
+	list := listInTenant(t, repo, db, biz)
+	if len(list) != 2 {
+		t.Fatalf("list: %d", len(list))
+	}
+	for _, d := range list {
+		if d.DeviceID == id && (d.SiteID == nil || *d.SiteID != site) {
+			t.Fatal("tenant list lost assigned site")
+		}
+		if d.DeviceID == unassigned && d.SiteID != nil {
+			t.Fatal("unassigned device gained a site")
+		}
+	}
+	if len(listInTenant(t, repo, db, foreign)) != 0 {
+		t.Fatal("foreign tenant exposed gateway")
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	d, err = repo.GetDeviceByIDTXN(tx, id)
+	if err != nil || d.SiteID == nil || *d.SiteID != site {
+		t.Fatalf("txn getter lost site: %v", err)
+	}
+}

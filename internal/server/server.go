@@ -76,6 +76,12 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		return nil, fmt.Errorf("database connection: %w", err)
 	}
 	sugar.Info("Database connected")
+	if cfg.Environment == "production" || cfg.Environment == "prod" {
+		if err := database.CheckRuntimePrivileges(db); err != nil {
+			_ = db.Close()
+			return nil, err
+		}
+	}
 
 	natsRepo := database.NewNATSSubjectRepository(db)
 	messagingClient, err := messaging.NewClient(cfg.NATS, natsRepo)
@@ -628,6 +634,7 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 				routers.GET("", routerHandler.ListRouters)
 				routers.GET("/:id/capabilities", securityHandler.RouterCapabilities)
 				handler.RegisterManagementMigrationRoutes(routers, securityHandler)
+				routers.GET("/:id/telemetry", auth.RequireMinRole(model.RoleAdmin), securityHandler.RouterTelemetry)
 				routers.GET("/:id/quick-config", securityHandler.ReadQuickConfig)
 				routers.GET("/:id/network/:action", auth.RequireMinRole(model.RoleAdmin), securityHandler.NetworkControl)
 				routers.POST("/:id/network/:action", auth.RequireMinRole(model.RoleAdmin), securityHandler.NetworkControl)

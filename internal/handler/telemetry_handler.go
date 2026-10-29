@@ -2,7 +2,6 @@ package handler
 
 import (
 	"database/sql"
-	"encoding/json"
 	"net/http"
 	"strconv"
 	"time"
@@ -34,84 +33,15 @@ func (h *TelemetryHandler) withTenantTx(c *gin.Context, businessID string, fn fu
 	return runInTenant(c, h.db, businessID, fn)
 }
 
-// Ingest receives a telemetry sample (from the collector or edge agent) and stores it.
+// Ingest retires the browser-writable legacy telemetry endpoint. Router readings
+// are collected server-side through the authenticated, tenant-scoped RouterOS
+// reader; client-supplied measurements must never feed incident evaluation.
 func (h *TelemetryHandler) Ingest(c *gin.Context) {
-	businessID := auth.GetBusinessID(c)
-	if businessID == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
-		return
-	}
-
-	var req struct {
-		DeviceID       *string  `json:"device_id"`
-		SubjectKind    string   `json:"subject_kind"`
-		SubjectID      string   `json:"subject_id"`
-		CPUPercent     *float64 `json:"cpu_pct"`
-		MemoryPercent  *float64 `json:"memory_pct"`
-		LatencyMs      *int     `json:"latency_ms"`
-		UptimeSeconds  *int64   `json:"uptime_seconds"`
-		WANState       *string  `json:"wan_state"`
-		ConnectorState *string  `json:"connector_state"`
-		TunnelState    *string  `json:"tunnel_state"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid payload: " + err.Error()})
-		return
-	}
-	if req.SubjectKind == "" || req.SubjectID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "subject_kind and subject_id are required"})
-		return
-	}
-
-	sample := &model.TelemetrySample{
-		BusinessID:     businessID,
-		DeviceID:       req.DeviceID,
-		SubjectKind:    req.SubjectKind,
-		SubjectID:      req.SubjectID,
-		CPUPercent:     req.CPUPercent,
-		MemoryPercent:  req.MemoryPercent,
-		LatencyMs:      req.LatencyMs,
-		UptimeSeconds:  req.UptimeSeconds,
-		WANState:       req.WANState,
-		ConnectorState: req.ConnectorState,
-		TunnelState:    req.TunnelState,
-		ObservedAt:     time.Now().UTC(),
-	}
-	if err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
-		_, err := h.telemetryRepo.InsertTXN(tx, sample)
-		return err
-	}); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to store telemetry: " + err.Error()})
-		return
-	}
-
-	// Cache the latest sample per device for fast dashboard reads.
-	if req.DeviceID != nil && *req.DeviceID != "" {
-		_ = h.cache.SetJSON(c.Request.Context(), h.cache.Key(businessID, "telemetry:latest:"+*req.DeviceID), sample, 5*time.Minute)
-	}
-
-	// Fan out to NATS so the policy evaluator (and future consumers) see the
-	// sample without coupling. Fire-and-forget: storage already succeeded.
-	if h.msg != nil {
-		env := map[string]any{
-			"business_id":     businessID,
-			"device_id":       req.DeviceID,
-			"subject_kind":    req.SubjectKind,
-			"subject_id":      req.SubjectID,
-			"cpu_pct":         req.CPUPercent,
-			"memory_pct":      req.MemoryPercent,
-			"latency_ms":      req.LatencyMs,
-			"wan_state":       req.WANState,
-			"connector_state": req.ConnectorState,
-			"tunnel_state":    req.TunnelState,
-			"observed_at":     time.Now().UTC(),
-		}
-		if data, err := json.Marshal(env); err == nil {
-			_ = h.msg.Publish(businessID, "telemetry.ingest", data)
-		}
-	}
-
-	c.JSON(http.StatusCreated, gin.H{"status": "ok", "sample": sample})
+	c.Header("Cache-Control", "no-store")
+	c.JSON(http.StatusGone, gin.H{
+		"error": "Client-supplied telemetry is no longer accepted; use the read-only router telemetry endpoint",
+		"code":  "telemetry_ingest_retired",
+	})
 }
 
 // List returns telemetry samples for a device or the whole business.

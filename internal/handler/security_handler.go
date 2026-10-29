@@ -13,6 +13,7 @@ import (
 	"mega-magic/internal/database"
 	"mega-magic/internal/provisioner"
 	"mega-magic/internal/provisioner/routeros"
+	"mega-magic/internal/routertelemetry"
 	"mega-magic/internal/security"
 )
 
@@ -78,6 +79,7 @@ type SecurityHandler struct {
 	capabilities    routerCapabilityProbe
 	quickConfig     routerQuickConfigurator
 	managementMoves managementMigrationController
+	routerTelemetry *routertelemetry.Service
 	trustedCIDRs    []string
 }
 
@@ -92,6 +94,7 @@ func (h *SecurityHandler) EnableLive(apply *provisioner.ApplyService, configurat
 	h.apply = apply
 	h.prober = prober
 	h.quickConfig = configurator
+	h.enableRouterTelemetry(configurator)
 	if capabilityProbe, ok := prober.(routerCapabilityProbe); ok {
 		h.capabilities = capabilityProbe
 	}

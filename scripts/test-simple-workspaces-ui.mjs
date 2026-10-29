@@ -6,7 +6,9 @@ const code = fs.readFileSync('web/assets/js/workspaces.js','utf8');
 const source = fs.readFileSync('web/app.html','utf8');
 function setup(html='') {
  const dom = new JSDOM(`<main>${html}</main>`,{runScripts:'outside-only',url:'https://example.test'});
- dom.window.eval(code); return {window:dom.window,host:dom.window.document.querySelector('main'),workspace:dom.window.MMWorkspace};
+ dom.window.eval(code);
+ dom.window.eval(fs.readFileSync(new URL('../web/assets/js/workflow-revamp.js',import.meta.url),'utf8'));
+ return {window:dom.window,host:dom.window.document.querySelector('main'),workspace:dom.window.MMWorkspace};
 }
 test('related routes stay reachable with one active parent and filtered child navigation', () => {
  const {workspace,host} = setup();

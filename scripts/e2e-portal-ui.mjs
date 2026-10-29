@@ -345,6 +345,24 @@ try {
     await cdp.send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:2,mobile:true});
     assert.equal(await cdp.eval('document.documentElement.scrollWidth<=innerWidth+1'),true,'Voucher batch preview fits mobile');
     console.log('Voucher batch Chromium acceptance passed: one issuance, exact returned batch, 100 + 5 print selections, price/time/data details, no samples or older codes, and mobile layout.');
+
+  } else if (process.env.E2E_ROUTER_CAPACITY_ONLY) {
+    await cdp.eval("location.hash='gateways'");
+    await waitFor(() => cdp.eval("!!document.querySelector('#site-add')"), "Magic Hub router registration");
+    await cdp.pointerClick("#site-add");
+    await waitFor(() => cdp.eval("document.querySelector('#site-form')?.hidden === false"), "router registration form");
+    assert.equal(await cdp.eval("document.querySelector('#sr-save').disabled"), true, "capacity still blocks creation");
+    assert.equal(await cdp.eval("document.querySelector('[data-capacity-recovery]').getAttribute('href')"), "#managed-devices", "capacity recovery uses existing workflow");
+    await cdp.pointerClick("[data-capacity-recovery]");
+    await waitFor(() => cdp.eval("!!document.querySelector('#req-add')"), "capacity request entry");
+    assert.equal(await cdp.eval("document.querySelector('.page-title').textContent"), "Managed-device records", "recovery opens the existing device workspace");
+    await cdp.pointerClick("#req-add");
+    await waitFor(() => cdp.eval("document.querySelector('#req-form')?.hidden === false"), "capacity request form");
+    assert.equal(await cdp.eval("document.querySelector('#req-form').hidden"), false, "request form is reachable");
+    assert.equal(await cdp.eval("document.querySelector('#qr-kind').value"), "routers", "router capacity is the request default");
+    assert.equal(portalDeployments.length, 0, "capacity navigation does not deploy a portal");
+    assert.equal(writes.length, 0, "opening capacity recovery makes no API writes");
+    console.log("Router capacity recovery passed: exhausted creation stays blocked; link reaches existing request form without writes.");
   } else if (process.env.E2E_NETWORK_CONTROL_ONLY) {
     const choose=async view=>{
       await cdp.eval(`loadView(${JSON.stringify(view)},document.querySelector('#main'),ME)`);

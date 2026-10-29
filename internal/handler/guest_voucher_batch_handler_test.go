@@ -15,6 +15,7 @@ import (
 	"mega-magic/internal/auth"
 	"mega-magic/internal/database"
 	"mega-magic/internal/model"
+	"mega-magic/internal/voucher"
 )
 
 func batchTestID() string {
@@ -83,6 +84,11 @@ func TestGuestVoucherIssueBatchReusesIdentityAndRejectsMismatch(t *testing.T) {
 	if len(initial) != 2 || len(repeated) != 2 || initial[0].ID != repeated[0].ID || initial[0].Code != repeated[0].Code {
 		t.Fatalf("retry changed voucher identities: %+v %+v", initial, repeated)
 	}
+	for _, v := range initial {
+		if len(v.Code) != 8 || strings.Trim(v.Code, voucher.GuestCodeAlphabet) != "" {
+			t.Fatal("new guest batch did not use eight uppercase letters")
+		}
+	}
 	mismatch := batchTestCall(h, "POST", biz, id, batchTestBody(id, device, 2000), h.Issue)
 	if mismatch.Code != 409 {
 		t.Fatalf("same key changed allowance: %d %s", mismatch.Code, mismatch.Body.String())
@@ -91,6 +97,54 @@ func TestGuestVoucherIssueBatchReusesIdentityAndRejectsMismatch(t *testing.T) {
 	_ = db.QueryRow(`SELECT count(*) FROM vouchers WHERE business_id=$1`, biz).Scan(&count)
 	if count != 2 {
 		t.Fatalf("unexpected voucher count %d", count)
+	}
+}
+
+func TestGuestVoucherBatchRetryKeepsLegacyLongCodes(t *testing.T) {
+	db := harness_testdb(t)
+	biz, device := loginFixture(t, db)
+	h := loginHandler(db)
+	p := &loginProvisionStub{}
+	h.Provisioner = p
+	id := batchTestID()
+	codes := []string{"ABCDEFGH2345", "JKMNPQRS6789"}
+	ids := []string{}
+	err := withTenant(db, biz, func(tx *sql.Tx) error {
+		repo := database.GuestVoucherBatchRepository{}
+		_, err := repo.CreateTXN(tx, database.GuestVoucherIssueBatch{ID: id, BusinessID: biz, DeviceID: device, RequestHash: strings.Repeat("a", 64), Label: "Legacy batch", PriceMMK: 1000, Minutes: 60, DataMB: 256, TotalCount: 2})
+		if err != nil {
+			return err
+		}
+		for i, code := range codes {
+			v, err := database.NewVoucherRepository(db).CreateVoucherTXN(tx, &model.Voucher{BusinessID: biz, DeviceID: &device, PlanKey: "guest-internet", PlanLabel: "Legacy batch", Code: code, PriceMMK: 1000, Status: "unused"})
+			if err != nil {
+				return err
+			}
+			ids = append(ids, v.ID)
+			if err = (database.GuestVoucherRepository{}).IssueTXN(tx, biz, v.ID, device, 60, 256); err != nil {
+				return err
+			}
+			if err = repo.AddItemTXN(tx, biz, id, v.ID, i); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := batchTestCall(h, "POST", biz, id, "", h.RetryIssueBatch)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"state":"ready"`) {
+		t.Fatalf("legacy retry: %d %s", w.Code, w.Body.String())
+	}
+	var got []*model.Voucher
+	if err = json.Unmarshal(batchTestJSON(t, w)["vouchers"], &got); err != nil || len(got) != 2 || len(p.calls) != 1 {
+		t.Fatal("legacy batch not verified", err)
+	}
+	for i, v := range got {
+		if v.ID != ids[i] || v.Code != codes[i] || p.calls[0][i].Code != codes[i] {
+			t.Fatal("legacy retry replaced an original code or identity")
+		}
 	}
 }
 

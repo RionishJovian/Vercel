@@ -26,12 +26,17 @@ func portalTestApplier(r CommandRunner) *DeviceApplier {
 }
 
 type portalRunner struct {
-	directory  string
-	files      map[string]string
-	garden     bool
-	commands   []string
-	failSwitch bool
-	badRule    bool
+	directory       string
+	files           map[string]string
+	garden          bool
+	commands        []string
+	failSwitch      bool
+	badRule         bool
+	host            string
+	mediaGarden     bool
+	failLogin       bool
+	failMediaAdd    bool
+	failMediaRemove bool
 }
 
 var portalQuoted = regexp.MustCompile(`"((?:\\.|[^"\\])*)"`)
@@ -40,11 +45,11 @@ func (r *portalRunner) Run(_ context.Context, cmd string) (string, error) {
 	r.commands = append(r.commands, cmd)
 	q := portalQuoted.FindAllStringSubmatch(cmd, -1)
 	switch {
-	case cmd == "/ip hotspot profile print value-list detail":
+	case cmd == portalProfilesCommand:
 		return "name: default\nname: guest\n", nil
 	case strings.HasPrefix(cmd, "/ip hotspot profile print count-only"):
 		return "1\n", nil
-	case strings.HasPrefix(cmd, "/ip hotspot profile print value-list"):
+	case cmd == portalProfileCommand(`name="guest"`):
 		return "name: guest\nlogin-by: http-chap,mac\nhtml-directory: " + r.directory + "\n", nil
 	case strings.HasPrefix(cmd, "/ip hotspot profile set"):
 		if r.failSwitch {
@@ -56,7 +61,7 @@ func (r *portalRunner) Run(_ context.Context, cmd string) (string, error) {
 		return "", nil
 	case strings.HasPrefix(cmd, "/ip hotspot print count-only"):
 		return "1", nil
-	case strings.HasPrefix(cmd, "/ip hotspot print value-list"):
+	case cmd == `:put ("name: " . [/ip hotspot get [find where profile="guest" disabled=no] name])`:
 		return "name: guest-server\nprofile: guest\n", nil
 	case cmd == "/file print count-only where name=\"flash\"":
 		return "1", nil
@@ -84,34 +89,98 @@ func (r *portalRunner) Run(_ context.Context, cmd string) (string, error) {
 		}
 		return "", nil
 	case strings.HasPrefix(cmd, "/file set"):
-		v := q[1][1]
-		v = strings.ReplaceAll(v, `\"`, `"`)
-		v = strings.ReplaceAll(v, `\$`, `$`)
-		v = strings.ReplaceAll(v, `\\`, `\`)
+		if r.failLogin {
+			return "", errors.New("login write failed")
+		}
+		v := decodeRouterOSStringForTest(q[1][1])
 		r.files[q[0][1]] = v
 		return "", nil
 	case strings.HasPrefix(cmd, "/ip hotspot walled-garden ip print count-only"):
+		if strings.Contains(cmd, `"mm-media-guest"`) {
+			if r.mediaGarden {
+				return "1", nil
+			}
+			return "0", nil
+		}
 		if r.garden {
 			return "1", nil
 		}
 		return "0", nil
-	case strings.HasPrefix(cmd, "/ip hotspot walled-garden ip print value-list"):
-		host := portalHost
+	case strings.HasPrefix(cmd, ":local id [/ip hotspot walled-garden ip find where "):
+		if strings.Contains(cmd, `"mm-media-guest"`) {
+			return "dst-address: 192.168.88.10\ndst-port: 8096\nprotocol: tcp\naction: accept\n", nil
+		}
+		host := r.host
 		if r.badRule {
 			host = "bad.example"
 		}
 		return "dst-host: " + host + "\ndst-port: 443\nprotocol: tcp\nserver: guest-server\naction: accept\ndisabled: no\n", nil
 	case strings.HasPrefix(cmd, "/ip hotspot walled-garden ip add"):
+		if strings.Contains(cmd, `"mm-media-guest"`) {
+			r.mediaGarden = true
+			if r.failMediaAdd {
+				return "", errors.New("lost response after media rule write")
+			}
+			return "", nil
+		}
 		r.garden = true
 		return "", nil
 	case strings.HasPrefix(cmd, "/ip hotspot walled-garden ip remove"):
+		if strings.Contains(cmd, `"mm-media-guest"`) {
+			if r.failMediaRemove {
+				return "", errors.New("media cleanup failed")
+			}
+			r.mediaGarden = false
+			return "", nil
+		}
 		r.garden = false
 		return "", nil
 	}
 	return "", errors.New("unexpected command")
 }
 func newPortalRunner() *portalRunner {
-	return &portalRunner{directory: "hotspot", files: map[string]string{"hotspot/login.html": "<html>Original</html>", "hotspot/md5.js": "function hexMD5(input) { /* RouterOS helper */ }"}}
+	return &portalRunner{directory: "hotspot", host: portalHost, files: map[string]string{"hotspot/login.html": "<html>Original</html>", "hotspot/md5.js": "function hexMD5(input) { /* RouterOS helper */ }"}}
+}
+
+func TestPortalDeploymentBindsMediaTargetAndCleansUpFailures(t *testing.T) {
+	for _, mode := range []string{"changed-target", "login-failure", "lost-add-response", "cleanup-failure"} {
+		t.Run(mode, func(t *testing.T) {
+			r := newPortalRunner()
+			r.garden, r.host = true, portalHost
+			a := portalTestApplier(r)
+			request := PortalDeployment{Profile: "guest", MediaHost: "192.168.88.10", MediaPort: "8096"}
+			plan, err := a.PreviewPortal(context.Background(), "biz", "device", request)
+			if err != nil || plan.MediaHost != request.MediaHost || plan.MediaPort != request.MediaPort {
+				t.Fatalf("review lost the media target: %+v %v", plan, err)
+			}
+			request.Version, request.Confirmation = plan.Version, plan.Confirmation
+			r.commands = nil
+			switch mode {
+			case "changed-target":
+				request.MediaHost = "192.168.88.11"
+			case "lost-add-response":
+				r.failMediaAdd = true
+			default:
+				r.failLogin = true
+				r.failMediaRemove = mode == "cleanup-failure"
+			}
+			result, err := a.ApplyPortal(context.Background(), "biz", "device", request)
+			if err == nil || result.Verified || r.directory != "hotspot" || !r.garden {
+				t.Fatalf("failed deployment not contained: %+v %v", result, err)
+			}
+			if mode == "changed-target" {
+				if portalHasWrites(r.commands) {
+					t.Fatal("changed review target caused router writes")
+				}
+			} else if mode == "cleanup-failure" {
+				if result.RolledBack || !r.mediaGarden {
+					t.Fatal("reported rollback despite unremoved media rule")
+				}
+			} else if !result.RolledBack || r.mediaGarden {
+				t.Fatalf("new media rule not removed: %+v", result)
+			}
+		})
+	}
 }
 func portalHasWrites(commands []string) bool {
 	for _, c := range commands {
@@ -236,5 +305,86 @@ func TestPortalDeploymentRejectsInjectionAndConflictingRule(t *testing.T) {
 	}
 	if portalHasWrites(r.commands) {
 		t.Fatal("wrote during rejected preview")
+	}
+}
+
+func TestPortalProfilesUsesExplicitReadOnlyGetters(t *testing.T) {
+	r := newPortalRunner()
+	profiles, err := portalTestApplier(r).PortalProfiles(context.Background(), "biz", "device")
+	if err != nil || len(profiles) != 2 || len(r.commands) != 1 || r.commands[0] != portalProfilesCommand {
+		t.Fatalf("profiles=%v err=%v commands=%v", profiles, err, r.commands)
+	}
+	if portalHasWrites(r.commands) || strings.Contains(r.commands[0], "value-list") {
+		t.Fatal("profile discovery must use fixed read-only getter output")
+	}
+}
+
+func TestPortalReviewAcceptsRouterOSListDelimiter(t *testing.T) {
+	if !strings.Contains(portalProfileCommand(`name="guest"`), `[:tostr [/ip hotspot profile get $id login-by]]`) {
+		t.Fatal("RouterOS arrays must be scalar before adding the output label")
+	}
+	r := newPortalRunner()
+	runner := commandRunnerFunc(func(ctx context.Context, cmd string) (string, error) {
+		out, err := r.Run(ctx, cmd)
+		if cmd == portalProfileCommand(`name="guest"`) {
+			out = strings.ReplaceAll(out, "http-chap,mac", "http-chap;mac")
+		}
+		return out, err
+	})
+	if _, err := portalTestApplier(runner).PreviewPortal(context.Background(), "biz", "device", PortalDeployment{Profile: "guest"}); err != nil {
+		t.Fatal(err)
+	}
+	if portalHasWrites(r.commands) {
+		t.Fatal("review modified router")
+	}
+}
+
+func TestPortalRuleVerificationUsesScalarGetters(t *testing.T) {
+	for _, media := range []bool{false, true} {
+		command := portalGardenCommand(`comment="mm-portal-guest"`, media)
+		if strings.Contains(command, "print value-list") || !strings.Contains(command, "[:len $id]!=1") {
+			t.Fatal("rule read must be unique and independent of print formatting")
+		}
+		for _, field := range []string{"dst-port", "protocol", "server", "action", "disabled"} {
+			if !strings.Contains(command, `get $id `+field+`]]`) {
+				t.Fatalf("missing scalar %s", field)
+			}
+		}
+	}
+}
+
+func TestPortalIPRuleSelectorDoesNotFilterUnsupportedDynamicFlag(t *testing.T) {
+	r := newPortalRunner()
+	a := portalTestApplier(r)
+	plan, e := a.PreviewPortal(context.Background(), "biz", "device", PortalDeployment{Profile: "guest"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	result, e := a.ApplyPortal(context.Background(), "biz", "device", PortalDeployment{Profile: "guest", Version: plan.Version, Confirmation: plan.Confirmation})
+	if e != nil || !result.Verified {
+		t.Fatal(e)
+	}
+	for _, cmd := range r.commands {
+		if strings.Contains(cmd, "walled-garden ip") && strings.Contains(cmd, "dynamic=") {
+			t.Fatal("IP walled-garden has no dynamic selector; it hides owned rules and breaks cleanup")
+		}
+	}
+}
+
+func TestPortalRejectsDuplicateOwnedRulesBeforeWrites(t *testing.T) {
+	r := newPortalRunner()
+	wrapped := commandRunnerFunc(func(ctx context.Context, cmd string) (string, error) {
+		if strings.HasPrefix(cmd, `/ip hotspot walled-garden ip print count-only where comment="mm-portal-guest"`) {
+			r.commands = append(r.commands, cmd)
+			return "5", nil
+		}
+		return r.Run(ctx, cmd)
+	})
+	_, e := portalTestApplier(wrapped).PreviewPortal(context.Background(), "biz", "device", PortalDeployment{Profile: "guest"})
+	if e == nil || !strings.Contains(e.Error(), "ambiguous") {
+		t.Fatalf("duplicate rules must block deployment: %v", e)
+	}
+	if portalHasWrites(r.commands) {
+		t.Fatal("ambiguous rules caused writes")
 	}
 }
