@@ -92,10 +92,7 @@ func (r *portalRunner) Run(_ context.Context, cmd string) (string, error) {
 		if r.failLogin {
 			return "", errors.New("login write failed")
 		}
-		v := q[1][1]
-		v = strings.ReplaceAll(v, `\"`, `"`)
-		v = strings.ReplaceAll(v, `\$`, `$`)
-		v = strings.ReplaceAll(v, `\\`, `\`)
+		v := decodeRouterOSStringForTest(q[1][1])
 		r.files[q[0][1]] = v
 		return "", nil
 	case strings.HasPrefix(cmd, "/ip hotspot walled-garden ip print count-only"):
@@ -109,7 +106,7 @@ func (r *portalRunner) Run(_ context.Context, cmd string) (string, error) {
 			return "1", nil
 		}
 		return "0", nil
-	case strings.HasPrefix(cmd, "/ip hotspot walled-garden ip print value-list"):
+	case strings.HasPrefix(cmd, ":local id [/ip hotspot walled-garden ip find where "):
 		if strings.Contains(cmd, `"mm-media-guest"`) {
 			return "dst-address: 192.168.88.10\ndst-port: 8096\nprotocol: tcp\naction: accept\n", nil
 		}
@@ -323,6 +320,9 @@ func TestPortalProfilesUsesExplicitReadOnlyGetters(t *testing.T) {
 }
 
 func TestPortalReviewAcceptsRouterOSListDelimiter(t *testing.T) {
+	if !strings.Contains(portalProfileCommand(`name="guest"`), `[:tostr [/ip hotspot profile get $id login-by]]`) {
+		t.Fatal("RouterOS arrays must be scalar before adding the output label")
+	}
 	r := newPortalRunner()
 	runner := commandRunnerFunc(func(ctx context.Context, cmd string) (string, error) {
 		out, err := r.Run(ctx, cmd)
@@ -336,5 +336,55 @@ func TestPortalReviewAcceptsRouterOSListDelimiter(t *testing.T) {
 	}
 	if portalHasWrites(r.commands) {
 		t.Fatal("review modified router")
+	}
+}
+
+func TestPortalRuleVerificationUsesScalarGetters(t *testing.T) {
+	for _, media := range []bool{false, true} {
+		command := portalGardenCommand(`comment="mm-portal-guest"`, media)
+		if strings.Contains(command, "print value-list") || !strings.Contains(command, "[:len $id]!=1") {
+			t.Fatal("rule read must be unique and independent of print formatting")
+		}
+		for _, field := range []string{"dst-port", "protocol", "server", "action", "disabled"} {
+			if !strings.Contains(command, `get $id `+field+`]]`) {
+				t.Fatalf("missing scalar %s", field)
+			}
+		}
+	}
+}
+
+func TestPortalIPRuleSelectorDoesNotFilterUnsupportedDynamicFlag(t *testing.T) {
+	r := newPortalRunner()
+	a := portalTestApplier(r)
+	plan, e := a.PreviewPortal(context.Background(), "biz", "device", PortalDeployment{Profile: "guest"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	result, e := a.ApplyPortal(context.Background(), "biz", "device", PortalDeployment{Profile: "guest", Version: plan.Version, Confirmation: plan.Confirmation})
+	if e != nil || !result.Verified {
+		t.Fatal(e)
+	}
+	for _, cmd := range r.commands {
+		if strings.Contains(cmd, "walled-garden ip") && strings.Contains(cmd, "dynamic=") {
+			t.Fatal("IP walled-garden has no dynamic selector; it hides owned rules and breaks cleanup")
+		}
+	}
+}
+
+func TestPortalRejectsDuplicateOwnedRulesBeforeWrites(t *testing.T) {
+	r := newPortalRunner()
+	wrapped := commandRunnerFunc(func(ctx context.Context, cmd string) (string, error) {
+		if strings.HasPrefix(cmd, `/ip hotspot walled-garden ip print count-only where comment="mm-portal-guest"`) {
+			r.commands = append(r.commands, cmd)
+			return "5", nil
+		}
+		return r.Run(ctx, cmd)
+	})
+	_, e := portalTestApplier(wrapped).PreviewPortal(context.Background(), "biz", "device", PortalDeployment{Profile: "guest"})
+	if e == nil || !strings.Contains(e.Error(), "ambiguous") {
+		t.Fatalf("duplicate rules must block deployment: %v", e)
+	}
+	if portalHasWrites(r.commands) {
+		t.Fatal("ambiguous rules caused writes")
 	}
 }

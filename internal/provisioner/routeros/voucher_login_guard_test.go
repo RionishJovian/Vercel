@@ -114,21 +114,16 @@ func guardBody(store map[string]string, command string) string {
 // honouring RouterOS backslash escapes, and returns the unescaped value and
 // the remaining text.
 func scanQuoted(s string) (value, rest string, ok bool) {
-	var b strings.Builder
 	for i := 1; i < len(s); i++ {
-		switch s[i] {
-		case '\\':
-			if i+1 < len(s) {
-				b.WriteByte(s[i+1])
-				i++
-			}
-		case '"':
-			return b.String(), s[i+1:], true
-		default:
-			b.WriteByte(s[i])
+		if s[i] == '\\' {
+			i++
+			continue
+		}
+		if s[i] == '"' {
+			return decodeRouterOSStringForTest(s[1:i]), s[i+1:], true
 		}
 	}
-	return b.String(), "", false
+	return "", "", false
 }
 
 // guardAddArgs parses the `key=value` arguments of an `add` command, where a

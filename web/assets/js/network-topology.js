@@ -24,6 +24,10 @@
         if (v.address) n.ip = v.address;
         if (v['host-name'] || v.identity) n.name = v.identity || v['host-name'];
         if (v.board || v.platform) n.model = v.board || v.platform;
+        if (key === 'arp' && String(wireless.get(v.interface)?.['configuration.mode']).startsWith('station')) {
+          n.upstream=true;n.kind='upstream';n.ports.push(v.interface);n.connection='Uplink neighbour (ARP)';
+          if(n.name==='Unknown device')n.name='Upstream neighbour';
+        }
         if (key === 'neighbors' && v.interface) {n.ports.push(v.interface);n.connection='Neighbour reported';n.direct=true;}
         if (key === 'bridge_hosts' && v['on-interface']) {n.ports.push(v['on-interface']);n.connection='Learned on port';n.direct=true;}
         if (key === 'wifi_clients') {
@@ -41,7 +45,7 @@
     }
     const all=[...devices.values()].map(n=>({...n,ports:[...new Set(n.ports)]}));
     const board = inv.health?.['board-name'] || device.device_model || '';
-    return {root:{id:device.device_id,name:device.hardware_name || 'RouterBOARD',model:board,kind:'router',image:/hAP\s*ax[²2]/i.test(board+' '+device.hardware_name) ? 'hap-ax2.webp':'switch.svg',state:inv.observed_at && (inv.health?.version || Object.values(inv.available || {}).some(Boolean))?'Management reachable':'Not read',sources:['Pinned management connection']},devices:all,observedAt:inv.observed_at,unavailable:Object.entries(inv.available || {}).filter(([,ok])=>!ok).map(([key])=>key)};
+    return {root:{id:device.device_id,name:device.hardware_name || 'RouterBOARD',model:board,kind:'router',image:/hAP\s*ax(?:\^?2|²)/i.test(board+' '+device.hardware_name) ? 'hap-ax2.webp':'switch.svg',state:inv.observed_at && (inv.health?.version || Object.values(inv.available || {}).some(Boolean))?'Management reachable':'Not read',sources:['Pinned management connection']},devices:all,observedAt:inv.observed_at,unavailable:Object.entries(inv.available || {}).filter(([,ok])=>!ok).map(([key])=>key)};
   }
   async function mount(host,{api,topology,isCurrent=()=>true}) {
     const devices=[];const collect=n=>{if(n.device)devices.push(n.device);(n.children||[]).forEach(collect);};

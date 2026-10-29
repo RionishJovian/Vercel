@@ -3,6 +3,7 @@ package routeros
 import (
 	"context"
 	"errors"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -136,5 +137,58 @@ func TestValidateQuickConfigRejectsInjectionAndBadDNS(t *testing.T) {
 	}
 	if _, err := ValidateQuickConfig(QuickConfig{Identity: "safe-router", DNSServers: []string{"not-an-ip"}}); err == nil {
 		t.Fatal("invalid DNS address must be rejected")
+	}
+}
+
+// Decode only the RouterOS escapes emitted by the scalar encoder. Unlike a
+// replacement chain this keeps a literal backslash+n distinct from a newline.
+func decodeRouterOSStringForTest(raw string) string {
+	var b strings.Builder
+	for i := 0; i < len(raw); i++ {
+		if raw[i] != '\\' || i+1 == len(raw) {
+			b.WriteByte(raw[i])
+			continue
+		}
+		i++
+		switch raw[i] {
+		case 'n':
+			b.WriteByte('\n')
+		case 'r':
+			b.WriteByte('\r')
+		case 't':
+			b.WriteByte('\t')
+		default:
+			if i+1 < len(raw) {
+				if n, e := strconv.ParseUint(raw[i:i+2], 16, 8); e == nil {
+					b.WriteByte(byte(n))
+					i++
+					continue
+				}
+			}
+			b.WriteByte(raw[i])
+		}
+	}
+	return b.String()
+}
+func TestRouterOSQuotedKeepsMultilinePayloadInOneCommand(t *testing.T) {
+	for _, value := range []string{"first\nsecond", "first\r\nsecond\tend", "literal \\n and \\r", "quote \" and $variable", "မင်္ဂလာပါ\n<script>"} {
+		quoted := routerOSQuoted(value)
+		for i := 0; i < len(quoted); i++ {
+			if quoted[i] >= 127 {
+				t.Fatal("non-ASCII bytes can be dropped by RouterOS SSH input")
+			}
+		}
+		if strings.ContainsAny(quoted, "\r\n\t") {
+			t.Fatal("literal control character escaped the SSH command string")
+		}
+		if got := decodeRouterOSStringForTest(quoted[1 : len(quoted)-1]); got != value {
+			t.Fatalf("quoted payload changed bytes: got %q want %q", got, value)
+		}
+	}
+}
+
+func TestRouterOSQuotedPreservesPortalGlyphBytes(t *testing.T) {
+	if got := routerOSQuoted("••••••••…"); got != `"\E2\80\A2\E2\80\A2\E2\80\A2\E2\80\A2\E2\80\A2\E2\80\A2\E2\80\A2\E2\80\A2\E2\80\A6"` {
+		t.Fatalf("portal glyph encoder: %q", got)
 	}
 }

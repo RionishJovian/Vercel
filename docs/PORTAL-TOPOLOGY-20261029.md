@@ -31,31 +31,61 @@ clickable inspector: https://jacs.ruijienetworks.com/wiki2/article/72 .
 Verification and live release evidence are recorded separately; this document
 alone does not certify current router connectivity or installed portal state.
 
-## Verified release
+## Verified release and physical installation
 
-Live immutable images: `mega-magic-api:portal-topology-20261029` and
-`mega-magic-web:portal-topology-20261029`. All 67 frontend files matched the
-local release, container and served HTTP bytes; changed frontend assets also
-matched public HTTPS. Readiness passed. Existing data containers, configuration,
-router credentials, WireGuard peer allocations and 19 issued voucher identity /
-allowance snapshots were preserved. Rollback copies remain on the VPS.
+Live API: `mega-magic-api:portal-verified-20261029`.
+Live frontend: `mega-magic-web:portal-utf8-20261029`.
+All 67 frontend files matched local source, container and HTTP; changed assets
+also matched HTTPS. The API binary hash is
+`b01934522dda743fad8dc169a78c05f8e49a5a927b4a57ae09468e16dbc41e95`.
+Readiness passed. Data containers, deployment configuration, encrypted router
+credentials, WireGuard allocations and 19 existing voucher identity/allowance
+snapshots were preserved. Rollback copies remain on the VPS.
 
-Local checks: full Go suite, 882 passing checks against a disposable PostgreSQL
-database with the race detector (11 environment-gated skips), 126 UI checks,
-production frontend build and the existing device/site continuity checks.
-The new diagram and inspector were visually checked in a local browser fixture.
-The viewport override did not take effect; visual verification used the actual
-browser width, rather than claiming a 390px device test.
+The owner explicitly authorized the portal Apply step for this installation.
+The saved design was installed on hAP ax2 / `mm-lab-hsprof` at 16:20 Yangon time
+on 29 October. The deployment verified all 18,553 UTF-8 HTML bytes, the scoped
+TCP 443 rule and the active profile directory. The app recorded the operation.
+The active file is `mm-portal-e4db84599f1f0563/login.html`; its SHA-256 is
+`b279d2f89345e096fa45f46de73ea22922f0bd162ccd18eff8617e696ca79d55`.
+The verified original-page backup is
+`mm-portal-e4db84599f1f0563/login-backup-e4db84599f1f0563.html`.
+The original `mm-local-lab-20261022` directory was retained.
 
-The read-only production probe confirmed the gateway's saved site is returned,
-but its pinned management connection timed out. The VPS's allocated hAP ax2
-peer had no handshake for roughly 3.5 hours and its SSH port was unreachable.
-Live profile discovery, portal review and actual guest acceptance remain
-unverified until that router reconnects. No portal was installed by this task.
-The browser's default network route also closed live app connections; HTTPS
-release verification succeeded over the working interface and on the VPS.
+Live testing exposed three provider-format issues that the earlier fixtures did
+not model: RouterOS array concatenation repeated the field label; raw multiline
+SSH strings failed to parse; and unescaped UTF-8 input silently lost glyphs.
+Scalar conversion and ASCII commands containing explicit UTF-8 byte escapes now
+preserve the exact page and script bytes. Parser errors are detected without
+returning credential-bearing provider output to API callers.
 
-The release updated the portal/map backend files against their exact deployed
-preimages. Pre-existing server route/field ordering and platform business-listing
-DTO differences were retained outside this task. This is not a claim that all
+The IP allow-list has no `dynamic` field. The old predicate hid existing rules
+and made its cleanup check incorrectly report success. Five identical entries
+from failed attempts were checked by exact IDs, comment, host, port, protocol,
+server, action and enabled state, then removed; zero remaining was verified and
+audited. The corrected apply installed one verified owned entry. Previous failure
+audit records were retained. The original portal profile stayed active during the
+failed attempts. Other allow-list entries were not changed. See the official
+[IP allow-list reference](https://manual.mikrotik.com/docs/cli-reference/ip/hotspot/walled-garden/ip/)
+and [HotSpot documentation](https://manual.mikrotik.com/docs/authentication-authorization-accounting/hotspot-captive-portal/).
+
+Checks passed: full Go suite, 887 checks against disposable PostgreSQL with the
+race detector (11 environment-gated skips), 127 UI checks, the production frontend
+build and device/site continuity checks. All eight read-only observation sources
+were available on the physical hAP ax2. The diagram was visually checked using an
+actual router snapshot. A requested viewport override did not take effect, so
+visual verification used the actual browser width rather than claiming a 390px
+phone test. The deployed guest design was visually checked in an inert local
+preview backed by the verified saved design. Browser access to the live app was
+blocked by the default network path; HTTPS checks succeeded over the working
+interface and on the VPS.
+
+A guest login has not been consumed or certified. The last readiness read showed
+the `Magic Cafe` guest radio inactive and zero Mega Magic voucher users installed.
+Portal installation does not configure that radio or install a voucher batch.
+Those remain separate operations with their existing review and apply gates.
+
+The changed portal/map backend files were reconciled against exact deployed
+preimages. Pre-existing route/field ordering and platform business-listing DTO
+differences were retained outside this task. This record does not claim all
 backend source files or local/production database contents are identical.

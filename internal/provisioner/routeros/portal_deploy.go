@@ -98,7 +98,21 @@ const portalProfilesCommand = `:foreach id in=[/ip hotspot profile find] do={ :l
 
 // Read only fields used by deployment, avoiding script-bearing broad output.
 func portalProfileCommand(selector string) string {
-	return `:local id [/ip hotspot profile find where ` + selector + `]; :put ("login-by: " . [/ip hotspot profile get $id login-by]); :put ("html-directory: " . [/ip hotspot profile get $id html-directory]); :put ("html-directory-override: " . [/ip hotspot profile get $id html-directory-override])`
+	return `:local id [/ip hotspot profile find where ` + selector + `]; :put ("login-by: " . [:tostr [/ip hotspot profile get $id login-by]]); :put ("html-directory: " . [:tostr [/ip hotspot profile get $id html-directory]]); :put ("html-directory-override: " . [:tostr [/ip hotspot profile get $id html-directory-override]])`
+}
+
+// Read one owned rule with scalar getters. Presentation-oriented print output
+// is not a stable key/value protocol on RouterOS.
+func portalGardenCommand(selector string, media bool) string {
+	fields := []string{"dst-host", "dst-port", "protocol", "server", "action", "disabled"}
+	if media {
+		fields[0] = "dst-address"
+	}
+	command := `:local id [/ip hotspot walled-garden ip find where ` + selector + `]; :if ([:len $id]!=1) do={ :error "failure: ambiguous portal access rule" };`
+	for _, field := range fields {
+		command += ` :put (` + routerOSQuoted(field+": ") + ` . [:tostr [/ip hotspot walled-garden ip get $id ` + field + `]]);`
+	}
+	return command
 }
 
 // portalLoginHTML is the router-served voucher entry page. The RouterBOARD
@@ -326,7 +340,7 @@ func portalPreflight(ctx context.Context, r CommandRunner, businessID, deviceID 
 	if renderErr != nil {
 		return s, renderErr
 	}
-	s.garden = "comment=" + routerOSQuoted("mm-portal-"+request.Profile) + " dynamic=no"
+	s.garden = "comment=" + routerOSQuoted("mm-portal-"+request.Profile)
 	mediaHost, mediaPort, mediaErr := mediaTarget(request)
 	if mediaErr != nil {
 		return s, mediaErr
@@ -334,7 +348,7 @@ func portalPreflight(ctx context.Context, r CommandRunner, businessID, deviceID 
 	s.mediaHost, s.mediaPort = mediaHost, mediaPort
 	s.plan.MediaHost, s.plan.MediaPort = mediaHost, mediaPort
 	if mediaHost != "" {
-		s.mediaGarden = "comment=" + routerOSQuoted("mm-media-"+request.Profile) + " dynamic=no"
+		s.mediaGarden = "comment=" + routerOSQuoted("mm-media-"+request.Profile)
 	}
 	out, err = r.Run(ctx, "/ip hotspot walled-garden ip print count-only where "+s.garden)
 	if err != nil {
@@ -342,7 +356,7 @@ func portalPreflight(ctx context.Context, r CommandRunner, businessID, deviceID 
 	}
 	s.hasGarden = strings.TrimSpace(out) == "1"
 	if s.hasGarden {
-		out, err = r.Run(ctx, "/ip hotspot walled-garden ip print value-list detail where "+s.garden)
+		out, err = r.Run(ctx, portalGardenCommand(s.garden, false))
 		g := parseValueList(out)
 		if err != nil || g["dst-host"] != portalHost || g["dst-port"] != "443" || g["protocol"] != "tcp" || g["server"] != server || g["action"] != "accept" || g["disabled"] == "yes" || g["disabled"] == "true" {
 			return s, fmt.Errorf("existing managed portal rule differs; operator review required")
@@ -451,7 +465,7 @@ func (a *DeviceApplier) ApplyPortal(ctx context.Context, businessID, deviceID st
 			rollback()
 			return result, fmt.Errorf("media access rule failed; check rollback status")
 		}
-		out, e := r.Run(ctx, "/ip hotspot walled-garden ip print value-list detail where "+s.mediaGarden)
+		out, e := r.Run(ctx, portalGardenCommand(s.mediaGarden, true))
 		g := parseValueList(out)
 		if e != nil || g["dst-address"] != s.mediaHost || g["dst-port"] != s.mediaPort || g["protocol"] != "tcp" || g["action"] != "accept" {
 			rollback()
@@ -476,7 +490,7 @@ func (a *DeviceApplier) ApplyPortal(ctx context.Context, businessID, deviceID st
 		rollback()
 		return result, fmt.Errorf("login page verification failed; check rollback status")
 	}
-	out, err = r.Run(ctx, "/ip hotspot walled-garden ip print value-list detail where "+s.garden)
+	out, err = r.Run(ctx, portalGardenCommand(s.garden, false))
 	g := parseValueList(out)
 	if err != nil || g["dst-host"] != portalHost || g["dst-port"] != "443" || g["protocol"] != "tcp" || g["server"] != s.plan.Server || g["action"] != "accept" || g["disabled"] == "yes" || g["disabled"] == "true" {
 		rollback()

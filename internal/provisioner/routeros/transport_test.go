@@ -18,6 +18,7 @@ func TestDetectRouterOSError(t *testing.T) {
 		"",
 		"Configuration backup saved",
 		"  name: wg-magichub",
+		"comment: syntax error (line 1 column 2)",
 	}
 	for _, c := range clean {
 		if err := detectRouterOSError(c); err != nil {
@@ -30,6 +31,10 @@ func TestDetectRouterOSError(t *testing.T) {
 		"bad parameter interface (line 1 column 63)",
 		"bad command name print (line 1 column 16)",
 		"no such item",
+		"syntax error (line 1 column 6)",
+		"expected value value (line 1 column 16)",
+		"input does not match any value of value-name (/ip/hotspot/walled-garden/ip/get (value-name); line 1)",
+		"expected end of command (line 2 column 1)",
 	}
 	for _, d := range dirty {
 		if err := detectRouterOSError(d); err == nil {
