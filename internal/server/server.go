@@ -612,6 +612,7 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 		{
 			protected.GET("/subscription", handler.SubscriptionStatus)
 			protected.GET("/me/app-pass", authHandler.AppPass)
+			protected.GET("/me/app-pass/checkout-options", authHandler.AccountPassCheckoutOptions)
 			protected.GET("/me/app-pass/renewals", authHandler.AccountRenewals)
 			protected.POST("/me/app-pass/renewals", authHandler.RequestAccountRenewal)
 			protected.GET("/me", authHandler.Me)

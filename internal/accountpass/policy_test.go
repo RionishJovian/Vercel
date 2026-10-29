@@ -46,6 +46,9 @@ func TestExactExpiryTransitionAndExemption(t *testing.T) {
 	}
 }
 func TestRecoveryCannotWriteManagement(t *testing.T) {
+	if !RecoveryRoute("GET", "/api/v1/me/app-pass/checkout-options") || RecoveryRoute("POST", "/api/v1/me/app-pass/checkout-options") {
+		t.Fatal("payment options recovery must be read-only")
+	}
 	if !RecoveryRoute("POST", "/api/v1/me/app-pass/renewals") || !RecoveryRoute("GET", "/api/v1/me") {
 		t.Fatal("renewal/signin recovery blocked")
 	}

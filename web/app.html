@@ -3807,19 +3807,88 @@ async function renderStore(main) {
 
 async function renderIndividualPass(main, pass) {
   const content=main.querySelector("#content");
-  const labels={active:"Active",transition:"Seven-day transition",expired:"Expired",revoked:"Revoked",pass_required:"Activation required",authorized_login_required:"Authorized login review required",platform_exempt:"Platform administrator exempt"};
-  let requests=null;
-  try { const r=await MM.get("/me/app-pass/renewals");if(Array.isArray(r.requests))requests=r.requests; }catch(_){}
+  const [historyResult,optionsResult]=await Promise.allSettled([MM.get("/me/app-pass/renewals"),MM.get("/me/app-pass/checkout-options")]);
+  const requests=historyResult.status==="fulfilled"&&Array.isArray(historyResult.value.requests)?historyResult.value.requests:null;
+  const options=optionsResult.status==="fulfilled"?optionsResult.value:null;
+  const banks=Array.isArray(options?.bank_accounts)?options.bank_accounts:[];
   const pending=requests?.find(r=>r.status==="pending");
-  content.innerHTML=`<section class="panel"><div class="panel-body"><h2>Your app pass</h2><p>${esc(labels[pass.state]||"Unavailable")}</p><p>Activation: ${pass.activated_at?esc(ts(pass.activated_at)):"Not activated"}<br>Expiry: ${pass.expires_at?esc(ts(pass.expires_at)):"Not recorded"}${pass.transition_expires_at?`<br>Transition ends: ${esc(ts(pass.transition_expires_at))}`:""}</p><p>${pass.capacity_exempt?"Your platform administrator account is exempt from pass and workspace limits.":"One authorized login for your private workspace, one business site and one RouterBOARD."} Monthly and annual passes include the same features. Voucher, AI and Jellyfin usage has no app subscription quota; service availability and supported device capabilities still apply.</p><p>Expiry blocks app management. Existing guest internet sessions continue under the router's voucher limits.</p>${pass.state==="platform_exempt"?"":`<form id="account-renewal-form"><h3>Request activation or renewal</h3><p>This sends a request to the platform administrator. It does not charge money or confirm payment. Approval starts a new calendar month or year.</p><label>Plan<select class="input" name="plan"><option value="monthly">Monthly</option><option value="annual">Annual</option></select></label><button class="btn btn-primary" type="submit"${requests===null||pending||pass.authorized_login===false?" disabled":""}>Send request</button><p role="status">${requests===null?"Renewal history unavailable. Reload before submitting.":pending?"A renewal request is already awaiting review.":pass.authorized_login===false?"Contact the platform administrator to review the authorized login.":""}</p></form>`}</div></section><section class="panel"><div class="panel-body"><h2>Your renewal requests</h2>${requests===null?'<p role="alert">Could not load renewal requests.</p>':requests.length?requests.map(r=>`<p>${esc(ts(r.created_at))} · ${esc(r.plan)} · ${esc(r.status)}</p>`).join(""):'<p>No renewal requests.</p>'}</div></section>`;
-  const form=content.querySelector("#account-renewal-form");
-  form?.addEventListener("submit",async e=>{
-    e.preventDefault();const button=form.querySelector("button"),status=form.querySelector('[role="status"]');
-    if(button.disabled)return;button.disabled=true;status.textContent="Sending…";
-    try { await MM.post("/me/app-pass/renewals",{plan:form.elements.plan.value});await renderIndividualPass(main,pass); }
-    catch(err){status.textContent=apiErrorText(err,"Request not confirmed. Reload before retrying.");}
+  const exempt=pass.state==="platform_exempt";
+  const labels={active:"Active",transition:"Seven-day transition",expired:"Expired",revoked:"Revoked",pass_required:"Activation required",authorized_login_required:"Authorized login review required",platform_exempt:"Platform administrator exempt"};
+  const price=value=>Number.isInteger(value)&&value>0?storePrice(value):"Not published";
+  const planPrice=key=>options?.plans?.[key]?.amount_mmk;
+  const user=typeof ME!=="undefined"?ME?.user?.user_id:null;
+  const business=typeof ME!=="undefined"?ME?.business?.business_id:null;
+  const storageKey=user&&business?`mm-account-pass-checkout:${business}:${user}`:null;
+  let draft=null,storageOK=!!storageKey;
+  try {
+    const raw=storageKey&&sessionStorage.getItem(storageKey);
+    if(raw){const saved=JSON.parse(raw);if(["monthly","annual"].includes(saved.plan)&&typeof saved.idempotency_key==="string")draft=saved;else storageOK=false;}
+    if(draft&&requests?.some(r=>r.idempotency_key===draft.idempotency_key)){sessionStorage.removeItem(storageKey);draft=null;}
+  }catch(_){storageOK=false;}
+  const disabled=exempt||pass.authorized_login===false||requests===null||!!pending||!options?.available||!banks.length||!storageOK;
+  const unavailable=exempt?"No payment is required for the platform administrator.":pass.authorized_login===false?"Contact the platform administrator to review the authorized login.":requests===null?"Renewal history unavailable. Refresh before submitting.":pending?"A pass request is already awaiting review. Do not transfer another payment.":!options?"Payment options could not be loaded. Refresh to retry.":!options.available||!banks.length?"The platform has not published a complete payment account.":!storageOK?"Browser storage is unavailable. A safe retry ID is required before submitting payment details.":"";
+  const card=key=>`<article class="store-product${key==="annual"?" featured":""}"><span class="fleet-kicker">${key==="annual"?"ANNUAL PASS":"MONTHLY PASS"}</span><h3>${esc(price(planPrice(key)))}</h3><p>${key==="annual"?"One calendar year":"One calendar month"} · same app features</p><button class="btn${key==="annual"?" btn-primary":""}" type="button" data-pass-plan="${key}"${disabled||draft||!Number.isInteger(planPrice(key))?" disabled":""}>${exempt?"Administrator exempt":`Choose ${key}`}</button></article>`;
+  content.innerHTML=`<section class="panel"><div class="panel-body"><h2>Your app pass</h2><p>${esc(labels[pass.state]||pass.state||"Unavailable")}</p>${exempt?'<p>No pass purchase is needed for this administrator account.</p>':`<p>Activation: ${pass.activated_at?esc(ts(pass.activated_at)):"Not activated"}<br>Expiry: ${pass.expires_at?esc(ts(pass.expires_at)):"Not recorded"}${pass.transition_expires_at?`<br>Transition ends: ${esc(ts(pass.transition_expires_at))}`:""}</p>`}<p>Monthly and annual passes include the same features: one authorized login, one private workspace, one site and one RouterBOARD. Renewing a paid pass keeps its remaining time.</p><p class="muted">Expiry blocks app management. Existing guest internet sessions continue under the router's voucher limits.</p><button class="btn" type="button" data-pass-refresh>Refresh status</button><p role="status" data-pass-status>${esc(unavailable)}</p></div></section>
+    <section class="store-products">${card("monthly")}${card("annual")}</section>
+    ${!exempt&&pass.authorized_login!==false?`<section class="panel" id="pass-payment-panel" hidden><div class="panel-body"><form id="account-renewal-form"><h3 data-pass-title>Submit payment reference</h3><p>Transfer the exact amount to the selected account, then enter your bank transaction reference. The platform administrator verifies the transfer before activating access.</p><label>Plan<select class="input" name="plan"><option value="monthly">Monthly</option><option value="annual">Annual</option></select></label><p data-pass-amount></p><label>Payment account<select class="input" name="bank_account_id">${banks.map(b=>`<option value="${esc(b.id)}">${esc(b.bank_name)} · ${esc(b.holder_name)}</option>`).join("")}</select></label><p data-pass-bank></p><label>Bank transaction reference<input class="input" name="bank_reference" required maxlength="120" autocomplete="off" placeholder="Reference from your transfer"></label><div class="field"><label><input type="checkbox" name="confirmed" required> I transferred this amount to the displayed account.</label></div><div class="dialog-actions"><button class="btn btn-primary" type="submit">Submit payment for review</button></div><p role="status"></p></form></div></section>`:""}
+    <section class="panel"><div class="panel-body"><h2>Your pass requests</h2>${requests===null?'<p role="alert">Could not load renewal requests.</p>':requests.length?requests.map(r=>`<article class="panel-body"><strong>${r.plan==="annual"?"Annual":"Monthly"} · ${esc(({pending:"Awaiting review",approved:"Approved",rejected:"Rejected"})[r.status]||r.status)}</strong><p>${esc(ts(r.created_at))}${Number.isInteger(r.amount_mmk)?` · ${esc(price(r.amount_mmk))}<br>Bank reference: ${esc(r.bank_reference||"")}`:" · Activation request; no payment evidence recorded"}</p>${r.status==="pending"?'<p>Do not pay again while this request is being reviewed.</p>':r.status==="rejected"&&r.amount_mmk?'<p>Contact the administrator if you transferred money. Rejection does not issue a bank refund.</p>':""}</article>`).join(""):'<p>No renewal requests.</p>'}</div></section>`;
+  const status=content.querySelector('[data-pass-status]');
+  const refresh=async()=>{
+    try{const current=await MM.get("/me/app-pass");await renderIndividualPass(main,current);}
+    catch(err){status.textContent=apiErrorText(err,"Pass status could not be refreshed.");}
+  };
+  content.querySelector('[data-pass-refresh]').addEventListener('click',()=>void refresh());
+  const form=content.querySelector('#account-renewal-form');
+  if(!form)return;
+  const panel=content.querySelector('#pass-payment-panel');
+  const amount=content.querySelector('[data-pass-amount]');
+  const destination=content.querySelector('[data-pass-bank]');
+  const formStatus=form.querySelector('[role="status"]');
+  const submit=form.querySelector('button[type="submit"]');
+  const update=()=>{
+    amount.textContent=`Amount: ${price(draft?draft.expected_amount_mmk:planPrice(form.elements.plan.value))}`;
+    const bank=banks.find(b=>b.id===form.elements.bank_account_id.value);
+    destination.textContent=bank?`${bank.bank_name} · ${bank.account_number} · ${bank.holder_name}`:"Payment account unavailable; contact the administrator if you have transferred money.";
+  };
+  const freeze=value=>{
+    [...form.elements].forEach(e=>{e.disabled=value;});
+    content.querySelectorAll('[data-pass-plan]').forEach(b=>{b.disabled=value||disabled;});
+  };
+  const restore=()=>{
+    panel.hidden=false;form.elements.plan.value=draft.plan;
+    form.elements.bank_account_id.value=draft.bank_account_id;form.elements.bank_reference.value=draft.bank_reference;
+    form.elements.confirmed.checked=true;freeze(true);submit.disabled=false;submit.textContent="Retry saved payment request";
+    formStatus.textContent="The earlier submission was not confirmed. This retry uses the same details and request ID; do not transfer money again.";update();
+  };
+  content.querySelectorAll('[data-pass-plan]').forEach(button=>button.addEventListener('click',()=>{
+    if(button.disabled)return;panel.hidden=false;form.elements.plan.value=button.dataset.passPlan;update();form.elements.bank_reference.focus();
+  }));
+  form.elements.plan.addEventListener('change',update);form.elements.bank_account_id.addEventListener('change',update);
+  if(draft&&!pending&&requests!==null&&!disabled)restore();
+  form.addEventListener('submit',async event=>{
+    event.preventDefault();if(submit.disabled||disabled||(!draft&&!form.elements.confirmed.checked))return;
+    if(!draft){
+      const reference=form.elements.bank_reference.value.trim();
+      if(!reference||reference.length>120||!banks.some(b=>b.id===form.elements.bank_account_id.value)){formStatus.textContent="Select a payment account and enter its transfer reference.";return;}
+      try{
+        draft={plan:form.elements.plan.value,bank_account_id:form.elements.bank_account_id.value,bank_reference:reference,expected_amount_mmk:planPrice(form.elements.plan.value),idempotency_key:crypto.randomUUID()};
+        sessionStorage.setItem(storageKey,JSON.stringify(draft));
+      }catch(_){draft=null;formStatus.textContent="Could not retain a safe retry ID. No payment request was submitted.";return;}
+    }
+    freeze(true);formStatus.textContent="Submitting reference for review…";
+    try{
+      await MM.post('/me/app-pass/renewals',draft);sessionStorage.removeItem(storageKey);draft=null;
+      await refresh();
+    }catch(err){
+      const detail=apiErrorText(err,"Submission not confirmed. Refresh status before retrying; do not transfer money again.");
+      if([400,403,409].includes(err.status)){
+        sessionStorage.removeItem(storageKey);draft=null;
+        await refresh();const message=content.querySelector('[data-pass-status]');if(message)message.textContent=detail;
+      }else{restore();formStatus.textContent=detail;}
+    }
   });
 }
+
 
 async function renderLegacyStoreCheckout(main) {
   const [pricingResult, walletResult, keyResult, historyResult, optionsResult, subscriptionResult] = await Promise.allSettled([
@@ -4805,13 +4874,13 @@ async function loadPlatformRenewals(panel) {
     const data=await MM.get("/platform/account-renewals");
     if(!Array.isArray(data.requests))throw Error("Invalid renewal response");
     if(!panel.isConnected||panel._renewalRequest!==request)return;
-    panel.innerHTML=`<h2>Client activation &amp; renewal requests</h2><p>Up to 100 pending requests, oldest first. Approval starts the selected calendar month or year immediately. Verify any payment separately before approving.</p><button class="btn" type="button" data-renewal-refresh>Refresh requests</button>${data.requests.length?data.requests.map(r=>`<form data-renewal-id="${esc(r.id)}" class="panel-body"><strong>${esc(r.email)}</strong><p>${esc(r.plan)} · Requested ${esc(ts(r.created_at))}</p><label><input type="checkbox" name="confirmed" required> I have reviewed this client's request and intend to record this decision.</label><button class="btn btn-primary" type="submit" data-decision="approve">Approve and activate</button><button class="btn" type="submit" data-decision="reject">Reject request</button><p role="status"></p></form>`).join(""):'<p>No pending requests.</p>'}`;
+    panel.innerHTML=`<h2>Client activation &amp; renewal requests</h2><p>Up to 100 pending requests, oldest first. Verify the amount and bank reference before approval. Paid renewals retain remaining time and add one calendar month or year.</p><button class="btn" type="button" data-renewal-refresh>Refresh requests</button>${data.requests.length?data.requests.map(r=>`<form data-renewal-id="${esc(r.id)}" data-paid="${r.amount_mmk?"true":"false"}" class="panel-body"><strong>${esc(r.email)}</strong><p>${esc(r.plan)} · Requested ${esc(ts(r.created_at))}</p>${r.amount_mmk?`<p>Amount: ${esc(storePrice(r.amount_mmk))}<br>Reference: ${esc(r.bank_reference||"")}<br>Payee: ${esc(r.bank_snapshot?.bank_name||"")} · ${esc(r.bank_snapshot?.account_number||"")} · ${esc(r.bank_snapshot?.holder_name||"")}</p>`:"<p>Activation request — no payment evidence recorded.</p>"}<label><input type="checkbox" name="confirmed" required> ${r.amount_mmk?"I checked this payment against the bank record.":"I reviewed this client's activation request."}</label><button class="btn btn-primary" type="submit" data-decision="approve">Approve and activate</button><button class="btn" type="submit" data-decision="reject">Reject request</button><p role="status"></p></form>`).join(""):'<p>No pending requests.</p>'}`;
     panel.querySelector('[data-renewal-refresh]').addEventListener('click',()=>void loadPlatformRenewals(panel));
     panel.querySelectorAll('[data-renewal-id]').forEach(form=>form.addEventListener('submit',async e=>{
       e.preventDefault();const button=e.submitter,status=form.querySelector('[role="status"]');
       if(form.dataset.pending==="true"||!button||!form.reportValidity())return;
       form.dataset.pending="true";form.querySelectorAll('button').forEach(b=>b.disabled=true);status.textContent="Recording decision…";
-      try { await MM.post(`/platform/account-renewals/${encodeURIComponent(form.dataset.renewalId)}/decision`,{approve:button.dataset.decision==="approve"});await loadPlatformRenewals(panel); }
+      try { await MM.post(`/platform/account-renewals/${encodeURIComponent(form.dataset.renewalId)}/decision`,{approve:button.dataset.decision==="approve",...(form.dataset.paid==="true"&&button.dataset.decision==="approve"?{payment_verified:true}:{})});await loadPlatformRenewals(panel); }
       catch(err){status.textContent=apiErrorText(err,"Decision not confirmed. Refresh requests before retrying.");}
     }));
   }catch(_){if(panel.isConnected&&panel._renewalRequest===request){panel.innerHTML='<p role="alert">Renewal requests are unavailable. No empty inbox is inferred.</p><button class="btn" data-renewal-refresh>Retry</button>';panel.querySelector('button').addEventListener('click',()=>void loadPlatformRenewals(panel));}}

@@ -96,7 +96,7 @@ func Evaluate(now time.Time, enabled, operator bool, start, end, revoked, transi
 // available. Public guest auth, router enforcement and sync workers never use it.
 func RecoveryRoute(method, path string) bool {
 	switch method + " " + path {
-	case "GET /api/v1/me", "GET /api/v1/me/profile", "GET /api/v1/me/app-pass", "GET /api/v1/subscription", "POST /api/v1/me/presence", "POST /api/v1/me/password", "GET /api/v1/me/app-pass/renewals", "POST /api/v1/me/app-pass/renewals":
+	case "GET /api/v1/me", "GET /api/v1/me/profile", "GET /api/v1/me/app-pass", "GET /api/v1/subscription", "POST /api/v1/me/presence", "POST /api/v1/me/password", "GET /api/v1/me/app-pass/checkout-options", "GET /api/v1/me/app-pass/renewals", "POST /api/v1/me/app-pass/renewals":
 		return true
 	}
 	return false

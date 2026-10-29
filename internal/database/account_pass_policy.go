@@ -65,8 +65,16 @@ func AccountPassStatusTXN(tx *sql.Tx, businessID, userID string, enabled, operat
 }
 
 func CheckIndividualPassSchema(db *DB) error {
-	if _, err := db.Exec(`SELECT p.user_id,t.expires_at,r.starts_at,r.enforcement_enabled,a.user_id,n.status,e.changed_by FROM app_account_passes p LEFT JOIN app_account_pass_transitions t ON t.user_id=p.user_id CROSS JOIN app_account_pass_rollouts r LEFT JOIN business_app_primary_users a ON a.business_id=p.business_id LEFT JOIN app_account_pass_renewals n ON n.user_id=p.user_id LEFT JOIN business_app_primary_events e ON e.business_id=p.business_id LIMIT 0`); err != nil {
+	if _, err := db.Exec(`SELECT p.user_id,t.expires_at,r.starts_at,r.enforcement_enabled,a.user_id,n.status,n.amount_mmk,n.bank_account_id,n.bank_reference,n.bank_snapshot,n.idempotency_key,e.changed_by FROM app_account_passes p LEFT JOIN app_account_pass_transitions t ON t.user_id=p.user_id CROSS JOIN app_account_pass_rollouts r LEFT JOIN business_app_primary_users a ON a.business_id=p.business_id LEFT JOIN app_account_pass_renewals n ON n.user_id=p.user_id LEFT JOIN business_app_primary_events e ON e.business_id=p.business_id LIMIT 0`); err != nil {
 		return err
+	}
+	var checkoutReady bool
+	if err := db.QueryRow(`SELECT EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='app_account_pass_renewals'::regclass AND conname='account_pass_payment_evidence' AND contype='c' AND convalidated)
+ AND EXISTS(SELECT 1 FROM pg_index WHERE indexrelid=to_regclass('account_pass_payment_key') AND indrelid='app_account_pass_renewals'::regclass AND indisunique AND indisvalid AND pg_get_indexdef(indexrelid) LIKE '%(user_id, idempotency_key)%')`).Scan(&checkoutReady); err != nil {
+		return err
+	}
+	if !checkoutReady {
+		return fmt.Errorf("individual pass checkout protections incomplete")
 	}
 	var protected, guards int
 	if err := db.QueryRow(`SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relname IN('app_account_passes','app_account_pass_events','app_account_pass_transitions','app_account_pass_renewals','business_app_primary_users','business_app_primary_events') AND c.relrowsecurity AND c.relforcerowsecurity`).Scan(&protected); err != nil {
