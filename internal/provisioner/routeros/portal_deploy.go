@@ -93,7 +93,8 @@ type PortalDeploymentResult struct {
 	Plan       PortalDeploymentPlan `json:"plan"`
 }
 
-const portalProfilesCommand = `:foreach id in=[/ip hotspot profile find] do={ :put ("name: " . [/ip hotspot profile get $id name]) }`
+// Deployment can only target a profile used by exactly one enabled server.
+const portalProfilesCommand = `:foreach id in=[/ip hotspot profile find] do={ :local profileName [/ip hotspot profile get $id name]; :if ([:len [/ip hotspot find where profile=$profileName disabled=no]]=1) do={ :put ("name: " . $profileName) } }`
 
 // Read only fields used by deployment, avoiding script-bearing broad output.
 func portalProfileCommand(selector string) string {
@@ -215,7 +216,7 @@ func (a *DeviceApplier) PortalProfiles(ctx context.Context, businessID, deviceID
 	if err != nil {
 		return nil, err
 	}
-	out, err := r.Run(ctx, "/ip hotspot profile print value-list detail")
+	out, err := r.Run(ctx, portalProfilesCommand)
 	if err != nil {
 		return nil, fmt.Errorf("could not read HotSpot profiles")
 	}
@@ -256,6 +257,7 @@ func portalPreflight(ctx context.Context, r CommandRunner, businessID, deviceID 
 		return s, fmt.Errorf("could not read HotSpot profile")
 	}
 	p := parseValueList(out)
+	p["login-by"] = strings.ReplaceAll(p["login-by"], ";", ",")
 	if !strings.Contains(","+p["login-by"]+",", ",mac,") {
 		return s, fmt.Errorf("configure MAC authentication for managed guests in gateway setup first")
 	}

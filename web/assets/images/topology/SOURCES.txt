@@ -1,0 +1,8 @@
+hap-ax2.webp: MikroTik official hAP ax2 product photograph.
+https://mikrotik.com/product/hap_ax2
+https://cdn.mikrotik.com/web-assets/rb_images/2203_lg.webp
+Product imagery identifies the model; it does not establish online status.
+
+SVG device symbols: Phosphor Icons (@phosphor-icons/react 2.1.10), duotone.
+https://phosphoricons.com/ — MIT license, included in PHOSPHOR-LICENSE.txt.
+Generic symbols indicate a saved device category; they are not model photographs.

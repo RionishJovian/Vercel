@@ -26,6 +26,15 @@ first-use evidence. Distinguish installing codes on the router from refreshing
 usage back into the app. The Internet Portal editor remains under Vouchers →
 Guest page, with the existing `#portal` deep link.
 
+## Owner-confirmed topology — 2026-10-29
+
+Site topology must present the RouterBOARD and observed connected devices as a
+visual device-image diagram, with connection lines, interface labels, status and
+a clickable inspector, following the Ruijie interaction model within Jade Glass.
+Use actual model imagery where identified and library device symbols otherwise.
+Preserve the distinction between observed associations/forwarding ports and
+unknown physical attachments; never invent switch hops or online status.
+
 # Historical instructions retained for provenance
 
 # Prototype Instructions

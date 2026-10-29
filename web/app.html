@@ -41,6 +41,8 @@
   <script src="/assets/js/network-control.js?v=20261029-context" defer></script>
   <script src="/assets/js/router-telemetry.js?v=20261028-telemetry3" defer></script>
   <link rel="stylesheet" href="/assets/css/router-telemetry.css?v=20261028-telemetry3">
+  <script src="/assets/js/network-topology.js?v=20261029-map1" defer></script>
+  <link rel="stylesheet" href="/assets/css/network-topology.css?v=20261029-map1">
   <script src="/assets/js/device-workspace.js?v=20261028-telemetry3" defer></script>
   <link rel="stylesheet" href="/assets/css/device-workspace.css?v=20261028-telemetry3">
   <script src="/assets/js/management-migration.js?v=20261029-context" defer></script>
@@ -2045,13 +2047,17 @@ async function renderTopology(main, selectedSite = null) {
     const peers = asArray(fleet.peers).filter(p => ids.has(p.device_id));
     fleet = {...fleet,peers,unknown:peers.filter(p=>p.state==="unknown").length,offline:peers.filter(p=>p.state==="offline").length,stale:peers.filter(p=>p.state==="stale").length};
   }
-  content.innerHTML = `<div class="panel"><div class="panel-body"><label>Business site<select class="input" id="topology-site"><option value="">All sites and unassigned devices</option>${sites.map(s=>`<option value="${esc(s.site_id)}"${s.site_id===selectedSite?' selected':''}>${esc(s.name)}</option>`).join("")}</select></label><p class="muted small">This is a management-relationship map, not discovered physical cabling. DHCP/ARP discovery is available under Devices.</p></div></div><div id="topo-tree">${loading()}</div>`;
+  content.innerHTML = `<div class="panel"><div class="panel-body"><label>Business site<select class="input" id="topology-site"><option value="">All sites and unassigned devices</option>${sites.map(s=>`<option value="${esc(s.site_id)}"${s.site_id===selectedSite?' selected':''}>${esc(s.name)}</option>`).join("")}</select></label><p class="muted small">Live device map · Select a device to inspect its address, connection and evidence.</p></div></div><div id="topo-tree">${loading()}</div>`;
   content.querySelector("#topology-site").addEventListener("change", event => {
     sessionStorage.setItem("mm_selected_site", event.target.value);
     sessionStorage.removeItem("mm_topology_router");
     sessionStorage.removeItem("mm_selected_router");
     renderTopology(main, event.target.value);
   });
+  if (window.MMNetworkTopology) {
+    await MMNetworkTopology.mount(content.querySelector("#topo-tree"), {api:MM, topology:topo, isCurrent:()=>request===topologyRenderRevision && content.isConnected});
+    return;
+  }
   content.querySelector("#topo-tree").innerHTML = topologyTree(topo, fleet);
 
   const selectDevice = (detailID) => {
@@ -4382,11 +4388,11 @@ async function wirePortalDeployment(main) {
   const mediaPayload = () => ({media_host: "", media_port: ""});
   const preview = main.querySelector("#pd-preview"), apply = main.querySelector("#pd-apply");
   const status = main.querySelector("#pd-status"), review = main.querySelector("#pd-review");
-  let plan = null, revision = 0;
+  let plan = null, revision = 0, gateways = [];
   const reset = () => { plan = null; apply.hidden = true; apply.disabled = true; review.hidden = true; };
   try {
     const response = await MM.get("/routers");
-    const gateways = (response.routers || []).filter(r => r.deployment_layer === "MAIN_GATEWAY");
+    gateways = (response.routers || []).filter(r => r.deployment_layer === "MAIN_GATEWAY");
     router.innerHTML = `<option value="">${gateways.length ? "Select gateway" : "No gateways — connect Magic Hub first"}</option>` + gateways.map(r => `<option value="${esc(r.device_id)}">${esc(r.hardware_name || r.device_id)}</option>`).join("");
   } catch (e) { status.textContent = errorText(e, "Gateways could not be loaded."); }
   router.addEventListener("change", async () => {
@@ -4400,10 +4406,15 @@ async function wirePortalDeployment(main) {
       if (current !== revision) return;
       profile.innerHTML = '<option value="">Select profile</option>' + (response.profiles || []).map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join("");
       profile.disabled = false;
-      if (!response.profiles?.length) status.textContent = "No HotSpot profiles found. Configure the gateway customer network first.";
+      if (response.profiles?.length === 1) { profile.value = response.profiles[0]; preview.disabled = false; status.textContent = "HotSpot profile found. Review deployment to continue."; }
+      if (!response.profiles?.length) status.textContent = "No eligible HotSpot profile found. A profile must belong to one enabled HotSpot server. Open Magic Hub → Router → HotSpot & LAN to check the guest network.";
     } catch (e) { if (current === revision) { profile.innerHTML = '<option value="">Profiles unavailable</option>'; status.textContent = errorText(e, "Finish Magic Hub management connection first."); } }
   });
   profile.addEventListener("change", () => { ++revision; reset(); preview.disabled = !profile.value; status.textContent = ""; });
+  const preferred = sessionStorage.getItem("mm_selected_router");
+  const context = gateways.length === 1 ? gateways[0] : gateways.find(r=>r.device_id === preferred);
+  if (context) { router.value = context.device_id; router.dispatchEvent(new Event("change")); }
+
   if (mediaNote) {
     mediaNote.textContent = "Internet access only. Jellyfin Guest Portal is configured separately; this deployment does not publish a media-server access rule.";
   }

@@ -45,7 +45,7 @@ func (r *portalRunner) Run(_ context.Context, cmd string) (string, error) {
 	r.commands = append(r.commands, cmd)
 	q := portalQuoted.FindAllStringSubmatch(cmd, -1)
 	switch {
-	case cmd == "/ip hotspot profile print value-list detail":
+	case cmd == portalProfilesCommand:
 		return "name: default\nname: guest\n", nil
 	case strings.HasPrefix(cmd, "/ip hotspot profile print count-only"):
 		return "1\n", nil
@@ -308,5 +308,33 @@ func TestPortalDeploymentRejectsInjectionAndConflictingRule(t *testing.T) {
 	}
 	if portalHasWrites(r.commands) {
 		t.Fatal("wrote during rejected preview")
+	}
+}
+
+func TestPortalProfilesUsesExplicitReadOnlyGetters(t *testing.T) {
+	r := newPortalRunner()
+	profiles, err := portalTestApplier(r).PortalProfiles(context.Background(), "biz", "device")
+	if err != nil || len(profiles) != 2 || len(r.commands) != 1 || r.commands[0] != portalProfilesCommand {
+		t.Fatalf("profiles=%v err=%v commands=%v", profiles, err, r.commands)
+	}
+	if portalHasWrites(r.commands) || strings.Contains(r.commands[0], "value-list") {
+		t.Fatal("profile discovery must use fixed read-only getter output")
+	}
+}
+
+func TestPortalReviewAcceptsRouterOSListDelimiter(t *testing.T) {
+	r := newPortalRunner()
+	runner := commandRunnerFunc(func(ctx context.Context, cmd string) (string, error) {
+		out, err := r.Run(ctx, cmd)
+		if cmd == portalProfileCommand(`name="guest"`) {
+			out = strings.ReplaceAll(out, "http-chap,mac", "http-chap;mac")
+		}
+		return out, err
+	})
+	if _, err := portalTestApplier(runner).PreviewPortal(context.Background(), "biz", "device", PortalDeployment{Profile: "guest"}); err != nil {
+		t.Fatal(err)
+	}
+	if portalHasWrites(r.commands) {
+		t.Fatal("review modified router")
 	}
 }

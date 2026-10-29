@@ -3,6 +3,7 @@ package routeros
 import (
 	"context"
 	"fmt"
+	"time"
 )
 
 // ReadObservations uses only fixed read-only menus and fields. It never calls
@@ -22,11 +23,21 @@ var observationMenus = map[string]networkMenu{
 	"discovery_leases": {"/ip dhcp-server lease", []string{"address", "mac-address", "host-name", "status", "server"}},
 	"arp":              {"/ip arp", []string{"address", "mac-address", "interface"}},
 	"neighbors":        {"/ip neighbor", []string{"address", "mac-address", "identity", "platform", "board", "interface"}},
+	"bridge_hosts":     {"/interface bridge host", []string{"mac-address", "on-interface", "bridge", "local"}},
+	"wifi_clients":     {"/interface wifi registration-table", []string{"mac-address", "interface", "signal"}},
+	"wifi_interfaces":  {"/interface wifi", []string{"name", "configuration.mode", "configuration.ssid", "disabled", "running"}},
+	"interfaces":       {"/interface", []string{"name", "type", "mac-address", "running", "disabled"}},
 }
 
+var observationOrder = []string{"hotspot_sessions", "discovery_leases", "arp", "neighbors", "bridge_hosts", "wifi_clients", "wifi_interfaces", "interfaces"}
+
 func readObservations(ctx context.Context, r CommandRunner) (NetworkInventory, error) {
-	result := NetworkInventory{Objects: map[string][]NetworkObject{}, Available: map[string]bool{}}
-	for _, key := range []string{"hotspot_sessions", "discovery_leases", "arp", "neighbors"} {
+	result := NetworkInventory{ObservedAt: time.Now().UTC().Format(time.RFC3339), Objects: map[string][]NetworkObject{}, Available: map[string]bool{}}
+	if err := ctx.Err(); err != nil {
+		return NetworkInventory{}, err
+	}
+	result.Health = readHubHealth(ctx, r)
+	for _, key := range observationOrder {
 		if err := ctx.Err(); err != nil {
 			return NetworkInventory{}, err
 		}
@@ -43,7 +54,7 @@ func readObservations(ctx context.Context, r CommandRunner) (NetworkInventory, e
 			result.Objects[key] = objects
 		}
 	}
-	if len(result.Available) != 4 {
+	if len(result.Available) != len(observationOrder) {
 		return NetworkInventory{}, fmt.Errorf("incomplete observation inventory")
 	}
 	return result, nil
