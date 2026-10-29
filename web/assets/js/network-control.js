@@ -54,7 +54,7 @@ window.MMNetwork = (() => {
   let revision=0,inventory=null,defaults={},review=null,pending=null,applying=false;
   const kinds=choices[workspace];
   host.innerHTML=`<section class="panel network-workspace" aria-label="${esc(workspaces[workspace][0])} controls"><header><details class="workspace-inline-help"><summary>About these settings</summary><p>${esc(workspaces[workspace][1])} Changes require review and confirmation.</p></details></header>
-   <label${options.compact?' hidden':''}>Working router<select class="input" data-router><option value="">Select a router to view</option>${routers.map(r=>`<option value="${esc(r.device_id)}">${esc(r.hardware_name)}</option>`).join('')}</select></label>
+   ${routers.length===1&&!options.compact?`<p class="network-note">${esc(routers[0].hardware_name)}</p>`:''}<label${options.compact||routers.length===1?' hidden':''}>Working router<select class="input" data-router><option value="">Select a router to view</option>${routers.map(r=>`<option value="${esc(r.device_id)}">${esc(r.hardware_name)}</option>`).join('')}</select></label>
    <div data-editor aria-live="polite">${routers.length?'Select a working router once; it is remembered across network pages.':'No router is registered for this business. Initial onboarding belongs in Magic Hub.'}</div></section>`;
   const select=host.querySelector('[data-router]'),editor=host.querySelector('[data-editor]');
   const current=()=>host.isConnected&&select.value;
@@ -139,7 +139,7 @@ window.MMNetwork = (() => {
       const data=await api.post(`/routers/${encodeURIComponent(id)}/network/preview`,body);
       if(!current()||stamp!==revision||!output.isConnected)return;
       review=data.review;pending=body;
-      output.innerHTML=`<h3>Review before applying</h3><ul>${review.steps.map(t=>`<li>${esc(t)}</li>`).join('')}</ul>${review.warnings.map(t=>`<p>${esc(t)}</p>`).join('')}<label><input type="checkbox" data-consent> I checked this device and the proposed changes. Apply to this router.</label><button class="btn" type="button" data-apply disabled>Back up and apply to router</button>`;
+      output.innerHTML=`<h3>Review before applying</h3><p>Router: <strong>${esc(routers.find(r=>r.device_id===id)?.hardware_name||'Selected router')}</strong></p><ul>${review.steps.map(t=>`<li>${esc(t)}</li>`).join('')}</ul>${review.warnings.map(t=>`<p>${esc(t)}</p>`).join('')}<label><input type="checkbox" data-consent> I checked this device and the proposed changes. Apply to this router.</label><button class="btn" type="button" data-apply disabled>Back up and apply to router</button>`;
       const apply=output.querySelector('[data-apply]');output.querySelector('[data-consent]').onchange=e=>apply.disabled=!e.target.checked;
       apply.onclick=async()=>{
        if(applying||!review||!pending)return;applying=true;options.onBusy?.(true);const request={...pending,confirmation:review.confirmation};review=null;pending=null;++revision;

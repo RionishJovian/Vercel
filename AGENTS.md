@@ -10,6 +10,14 @@ The owner requested consolidation into one current local workspace and removal o
 - `.local/` contains private local recovery records and is excluded from Git and frontend packaging. Do not publish it or treat it as active app source.
 - Consolidation is a local source change. It does not deploy code, migrate a database, modify a router, or certify current live/physical readings. Historical deployment records are dated evidence.
 
+## Owner-confirmed router context — 2026-10-29
+
+Router actions open directly for the current Magic Hub router. Do not repeat
+device selection inside each setting or action. Automatically use a single
+registered router; legacy multi-router workspaces choose context once above
+the settings. Keep the target visible, reject stale/foreign selections, and
+lock context changes during writes. Preserve explicit review/apply gates.
+
 # Historical instructions retained for provenance
 
 # Prototype Instructions
