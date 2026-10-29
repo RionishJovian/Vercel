@@ -299,3 +299,73 @@ func TestQuickEnrollmentPreflightPreventsPeerReservation(t *testing.T) {
 		t.Fatal("failed preflight allocated installation state")
 	}
 }
+
+func TestQuickEnrollmentSavedManagementConflict(t *testing.T) {
+	for _, role := range []string{"OWNER", "ADMIN", "DEVELOPER", "VIEWER"} {
+		for _, foreign := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/foreign=%v", role, foreign), func(t *testing.T) {
+				s := &retryEnrollmentHub{peers: map[string]hub.Peer{}}
+				h := quickRetryHandler(s)
+				preflights, preparations := 0, 0
+				h.ConfigureAutomaticPreflight(func(_ context.Context, biz, id string) error {
+					preflights++
+					if biz != "tenant" || id != "gateway" {
+						t.Fatal("preflight used an untrusted target")
+					}
+					return fmt.Errorf("private diagnostic: %w", ErrHubManagementConfigured)
+				})
+				h.automaticPrepare = func(context.Context, string, string, string, string) (string, error) {
+					preparations++
+					return "", nil
+				}
+				if foreign {
+					h.liveDevice = func(*gin.Context, string, string) (*model.Device, error) {
+						return &model.Device{BusinessID: "other", DeviceID: "gateway", DeploymentLayer: "MAIN_GATEWAY"}, nil
+					}
+				}
+				w := httptest.NewRecorder()
+				c, _ := gin.CreateTestContext(w)
+				c.Request = httptest.NewRequest("POST", "/", strings.NewReader(`{"management_rest_port":443,"confirm_enrollment":true,"resume_existing":true}`))
+				c.Request.Header.Set("Content-Type", "application/json")
+				c.Params = gin.Params{{Key: "deviceId", Value: "gateway"}}
+				c.Set(auth.ContextKeyBusinessID, "tenant")
+				c.Set(auth.ContextKeyUserID, "owner")
+				c.Set(auth.ContextKeyUserRole, role)
+				h.QuickEnrollGateway(c)
+				want := 409
+				if foreign {
+					want = 404
+				}
+				if role == "VIEWER" {
+					want = 403
+				}
+				if w.Code != want {
+					t.Fatalf("status %d, want %d", w.Code, want)
+				}
+				conflict := strings.Contains(w.Body.String(), "hub_management_already_configured")
+				if conflict != (want == 409) || preflights != map[bool]int{true: 1, false: 0}[want == 409] {
+					t.Fatal("saved connection state escaped authorization or was misclassified")
+				}
+				if len(s.keys) != 0 || len(s.peers) != 0 || len(h.quickKeys) != 0 || preparations != 0 {
+					t.Fatal("saved connection conflict allocated or prepared replacement credentials")
+				}
+				if strings.Contains(w.Body.String(), "private diagnostic") || w.Header().Get("Cache-Control") != "no-store" {
+					t.Fatal("diagnostic leaked or response cacheable")
+				}
+			})
+		}
+	}
+}
+
+func TestQuickEnrollmentManagementSavedDuringPreparation(t *testing.T) {
+	s := &retryEnrollmentHub{peers: map[string]hub.Peer{}}
+	h := quickRetryHandler(s)
+	h.ConfigureAutomaticPreflight(func(context.Context, string, string) error { return nil })
+	h.automaticPrepare = func(context.Context, string, string, string, string) (string, error) {
+		return "", ErrHubManagementConfigured
+	}
+	w := requestQuickEnrollment(h, "tenant")
+	if w.Code != 409 || !strings.Contains(w.Body.String(), "hub_management_already_configured") || strings.Contains(w.Body.String(), "router_script") {
+		t.Fatal("concurrent saved connection was not preserved and classified")
+	}
+}

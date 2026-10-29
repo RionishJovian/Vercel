@@ -28,6 +28,10 @@ try {
   await submitHandler(event);assert.match(status.textContent,/not confirmed/);
   api.post=async()=>{throw {status:503,message:'INTERNAL_SECRET'}};
   await submitHandler(event);assert.match(status.textContent,/preparation is unavailable/);assert(!status.textContent.includes('INTERNAL_SECRET'));assert(!button.disabled);
+  api.post=async()=>{throw {status:409,data:{code:'hub_management_already_configured'},message:'INTERNAL_SECRET'}};
+  await submitHandler(event);assert.match(status.textContent,/already has a saved management connection/);assert.match(status.textContent,/Select Finish connection/);assert.match(status.textContent,/connectivity is not yet confirmed/);assert(!status.textContent.includes('server'));assert(!status.textContent.includes('INTERNAL_SECRET'));assert(!button.disabled);assert.equal(recoveryOption.hidden,true);
+  api.post=async()=>{throw {status:503,data:{code:'hub_management_preflight_failed'}}};
+  await submitHandler(event);assert.match(status.textContent,/not ready on this server/);assert.equal(recoveryOption.hidden,true);
   api.post=async()=>{throw {status:409,data:{code:'hub_router_key_unavailable'},message:'INTERNAL_SECRET'}};
   await submitHandler(event);assert.match(status.textContent,/original installation script is no longer available/);assert(!status.textContent.includes('INTERNAL_SECRET'));assert(!button.disabled);
   assert.equal(recoveryOption.hidden,false);

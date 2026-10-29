@@ -17,6 +17,10 @@ type hubEnroller interface {
 	EnrollPeer(context.Context, hub.Identity, string, int) (hub.Peer, error)
 }
 
+// ErrHubManagementConfigured protects an existing saved connection from being
+// overwritten by onboarding. It does not assert that the router is reachable.
+var ErrHubManagementConfigured = errors.New("management already configured; use existing connection")
+
 // Configure only after the Hub create-only contract has been staged and tested.
 func (h *VPSHandler) ConfigureHubEnrollment(client hubEnroller) { h.enrollmentHub = client }
 
@@ -172,6 +176,10 @@ func (h *VPSHandler) QuickEnrollGateway(c *gin.Context) {
 	}
 	if h.automaticPreflight != nil {
 		if e := h.automaticPreflight(c.Request.Context(), biz, device.DeviceID); e != nil {
+			if errors.Is(e, ErrHubManagementConfigured) {
+				c.JSON(409, gin.H{"error": "This router already has a saved management connection. Use Finish connection to verify it; no setup credentials were replaced.", "code": "hub_management_already_configured"})
+				return
+			}
 			c.JSON(503, gin.H{"error": "One-paste preparation is unavailable on this server. No new Hub allocation was requested.", "code": "hub_management_preflight_failed"})
 			return
 		}
@@ -236,6 +244,10 @@ func (h *VPSHandler) QuickEnrollGateway(c *gin.Context) {
 	}
 	script, err = h.automaticPrepare(c.Request.Context(), biz, device.DeviceID, peer.RouterPublicKey, script)
 	if err != nil {
+		if errors.Is(err, ErrHubManagementConfigured) {
+			c.JSON(409, gin.H{"error": "This router already has a saved management connection. Use Finish connection to verify it; no setup credentials were replaced.", "code": "hub_management_already_configured"})
+			return
+		}
 		c.JSON(503, gin.H{"error": "automatic management preparation failed"})
 		return
 	}

@@ -1844,7 +1844,7 @@ async function renderSites(main, workspace = location.hash === "#gateways" ? "ga
   if (gatewayOnly) {
     MMHubManagement.mount(content.querySelector("#hub-management"), routers, canEdit, MM);
     wireHubLookup(content); wireConns(main, conns, sites);
-    const {mountHubEnrollment}=await import("/assets/js/hub-enrollment.js?v=20261029-repair");
+    const {mountHubEnrollment}=await import("/assets/js/hub-enrollment.js?v=20261029-existing-connection");
     if(content.isConnected)mountHubEnrollment(content,{api:MM,escape:esc,onVerified:async deviceID=>{
       const data=await MM.get('/routers');if(!content.isConnected)return;
       const updated=asArray(data.routers||data).find(r=>r.device_id===deviceID);

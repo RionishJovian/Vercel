@@ -71,7 +71,7 @@ func configureAutomaticHubManagement(h *handler.VPSHandler, source *database.Dev
 			return e
 		}
 		if previous != nil {
-			return errors.New("management already configured; use existing connection")
+			return handler.ErrHubManagementConfigured
 		}
 		return nil
 	})
@@ -90,7 +90,7 @@ func configureAutomaticHubManagement(h *handler.VPSHandler, source *database.Dev
 			return "", err
 		}
 		if previous != nil {
-			return "", errors.New("management already configured; use existing connection")
+			return "", handler.ErrHubManagementConfigured
 		}
 		mu.Lock()
 		defer mu.Unlock()

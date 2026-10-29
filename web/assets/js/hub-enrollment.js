@@ -81,7 +81,8 @@ export function mountHubEnrollment(root, {api, escape:esc, onVerified}) {
       } catch(error) {
         if(!container.isConnected)return;
         if(error.data?.code==='hub_router_key_unavailable'&&recoveryOption)recoveryOption.hidden=false;
-        status.textContent=error.data?.code==='hub_management_preflight_failed'?'One-paste setup is not ready on this server. Contact platform support; no new tunnel was allocated.':error.data?.code==='hub_router_key_unavailable'?'This gateway already has a reserved tunnel key, but its original installation script is no longer available. If its Magic Hub tunnel is already installed on this RouterBOARD, select Repair installed connection and generate a repair script. The existing key is preserved.':
+        status.textContent=error.data?.code==='hub_management_already_configured'?'This router already has a saved management connection. Select Finish connection below to verify it. A new setup script is blocked to protect the existing credentials; router connectivity is not yet confirmed.':
+          error.data?.code==='hub_management_preflight_failed'?'One-paste setup is not ready on this server. Contact platform support; no new tunnel was allocated.':error.data?.code==='hub_router_key_unavailable'?'This gateway already has a reserved tunnel key, but its original installation script is no longer available. If its Magic Hub tunnel is already installed on this RouterBOARD, select Repair installed connection and generate a repair script. The existing key is preserved.':
           error.data?.code==='hub_recovery_unavailable'?'No existing tunnel allocation can be repaired. Clear Repair installed connection and use normal one-paste setup.':
           error.status===503?'Enrollment preparation is unavailable. No connection was confirmed; your gateway record is preserved.':
           error.status===403?'Your account needs gateway-management permission and an active plan.':
