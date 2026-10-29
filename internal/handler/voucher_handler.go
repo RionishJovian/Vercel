@@ -128,7 +128,13 @@ func (h *VoucherHandler) createOneVoucher(tx *sql.Tx, businessID, planKey, planL
 ) (*model.Voucher, error) {
 	var lastErr error
 	for attempt := 0; attempt < voucherCodeAttempts; attempt++ {
-		code, err := voucher.GenerateCode(rand.Reader, voucher.DefaultCodeLength)
+		var code string
+		var err error
+		if planKey == "guest-internet" {
+			code, err = voucher.GenerateGuestCode(rand.Reader)
+		} else {
+			code, err = voucher.GenerateCode(rand.Reader, voucher.DefaultCodeLength)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -151,7 +157,7 @@ func (h *VoucherHandler) createOneVoucher(tx *sql.Tx, businessID, planKey, planL
 			return created, nil
 		}
 		lastErr = err
-		if !isUniqueViolation(err) {
+		if !errors.Is(err, database.ErrVoucherCodeCollision) && !isUniqueViolation(err) {
 			return nil, err
 		}
 	}

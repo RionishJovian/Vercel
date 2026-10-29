@@ -20,6 +20,11 @@ const CodeAlphabet = "23456789ABCDEFGHJKMNPQRSTVWXYZ"
 // DefaultCodeLength is the generated code length.
 const DefaultCodeLength = 12
 
+// Guest internet codes are short, uppercase letters for entry from printed cards.
+// Keep existing business-pass generation and acceptance of older codes unchanged.
+const GuestCodeLength = 8
+const GuestCodeAlphabet = "ABCDEFGHJKMNPQRSTVWXYZ"
+
 // StatusActive is the state a voucher must be in to be redeemable. It is also
 // the status CreateVoucher assigns.
 const StatusActive = "active"
@@ -38,10 +43,19 @@ func GenerateCode(r io.Reader, length int) (string, error) {
 	if length <= 0 {
 		length = DefaultCodeLength
 	}
+	return generateCode(r, length, CodeAlphabet)
+}
+
+// GenerateGuestCode uses uniform cryptographic sampling for new guest vouchers.
+func GenerateGuestCode(r io.Reader) (string, error) {
+	return generateCode(r, GuestCodeLength, GuestCodeAlphabet)
+}
+
+func generateCode(r io.Reader, length int, alphabet string) (string, error) {
 	if r == nil {
 		return "", errors.New("voucher: nil random source")
 	}
-	const limit = 256 - (256 % len(CodeAlphabet)) // 240
+	limit := 256 - (256 % len(alphabet))
 
 	out := make([]byte, 0, length)
 	buf := make([]byte, length*2)
@@ -53,7 +67,7 @@ func GenerateCode(r io.Reader, length int) (string, error) {
 			if int(b) >= limit {
 				continue // reject to keep the distribution uniform
 			}
-			out = append(out, CodeAlphabet[int(b)%len(CodeAlphabet)])
+			out = append(out, alphabet[int(b)%len(alphabet)])
 			if len(out) == length {
 				break
 			}

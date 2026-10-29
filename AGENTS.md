@@ -18,6 +18,14 @@ registered router; legacy multi-router workspaces choose context once above
 the settings. Keep the target visible, reject stale/foreign selections, and
 lock context changes during writes. Preserve explicit review/apply gates.
 
+## Owner-confirmed guest voucher simplicity — 2026-10-29
+
+New Internet guest voucher codes use eight uppercase letters, avoiding ambiguous
+I, L, O and U. Preserve existing issued codes, batch identities, quotas and
+first-use evidence. Distinguish installing codes on the router from refreshing
+usage back into the app. The Internet Portal editor remains under Vouchers →
+Guest page, with the existing `#portal` deep link.
+
 # Historical instructions retained for provenance
 
 # Prototype Instructions

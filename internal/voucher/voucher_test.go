@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"errors"
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -77,6 +78,38 @@ func TestGenerateCode_unique(t *testing.T) {
 			t.Fatalf("duplicate code generated: %s", c)
 		}
 		seen[c] = true
+	}
+}
+
+func TestGuestCodesEightUnambiguousLetters(t *testing.T) {
+	for i := 0; i < 100; i++ {
+		code, err := GenerateGuestCode(rand.Reader)
+		if err != nil || len(code) != 8 {
+			t.Fatalf("guest code length or entropy source failure: %v", err)
+		}
+		for _, letter := range code {
+			if letter < 'A' || letter > 'Z' || strings.ContainsRune("ILOU", letter) {
+				t.Fatalf("guest code contains a digit or ambiguous letter: %q", letter)
+			}
+		}
+	}
+	code, err := GenerateCode(rand.Reader, 0)
+	if err != nil || len(code) != 12 {
+		t.Fatal("business-pass default changed", err)
+	}
+}
+
+func TestGuestCodeRejectionAndEntropyFailure(t *testing.T) {
+	// A 22-letter alphabet rejects bytes >= 242, then maps uniformly.
+	src := bytes.NewReader([]byte{255, 242, 0, 1, 21, 22, 23, 241, 0, 1, 0, 1, 0, 1, 0, 1})
+	code, err := GenerateGuestCode(src)
+	if err != nil || code != "ABZABZAB" {
+		t.Fatalf("guest rejection sampling: code=%q err=%v", code, err)
+	}
+	for _, reader := range []io.Reader{nil, bytes.NewReader([]byte{0})} {
+		if code, err := GenerateGuestCode(reader); err == nil || code != "" {
+			t.Fatal("entropy failure returned a usable guest code")
+		}
 	}
 }
 

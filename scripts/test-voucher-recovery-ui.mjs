@@ -58,7 +58,7 @@ test('all-code filters and direct printing exclude unverified inventory',t=>{
 test('server-retained batch resumes after browser storage is cleared',async t=>{
   const f=fixture(async()=>({batch_id:batchID,state:'ready',vouchers:[],data_mb:1024}));t.after(()=>f.dom.window.close());const original=f.w.MM.get;
   f.w.MM.get=async path=>path==='/guest-vouchers/batches'?{batches:[{batch_id:batchID,state:'unknown',verified_count:0,total_count:2}]}:original(path);
-  await f.w.renderVouchers(f.main);f.w.document.querySelector('[data-gv-batch-retry]').click();await flush();assert.equal(f.writes[0].path,`/guest-vouchers/batches/${batchID}/retry`);
+  await f.w.renderVouchers(f.main);const install=f.w.document.querySelector('[data-gv-batch-retry]');assert.equal(install.textContent,'Install on router');assert.match(f.w.document.querySelector('#guest-voucher-form').parentElement.textContent,/8 uppercase letters/);assert.equal(f.w.document.querySelector('#gv-sync').textContent,'Refresh usage');install.click();await flush();assert.equal(f.writes[0].path,`/guest-vouchers/batches/${batchID}/retry`);assert.deepEqual(f.writes[0].body,{});
 });
 test('no issuance request is sent when retry identity cannot be retained',async t=>{
   const f=fixture(async()=>({}));t.after(()=>f.dom.window.close());await f.w.renderVouchers(f.main);f.w.retainGuestVoucherRequest=()=>{throw Error('storage blocked');};
