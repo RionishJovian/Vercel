@@ -353,6 +353,9 @@ func (h *RouterHandler) DeleteRouter(c *gin.Context) {
 			if errors.As(err, &pending) && pending.Code == "55000" && pending.Message == "management_migration_pending" {
 				return &httpError{status: http.StatusConflict, msg: "Recover or cancel this router's management migration before deleting its record"}
 			}
+			if errors.As(err, &pending) && pending.Code == "23503" {
+				return &httpError{status: http.StatusConflict, msg: "This device record is linked to vouchers, issuance batches or guest recovery history and cannot be deleted. Keep the device record to preserve that history. No records were deleted."}
+			}
 			return &httpError{status: http.StatusInternalServerError, msg: "failed to delete router"}
 		}
 		return nil

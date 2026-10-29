@@ -1511,11 +1511,13 @@ function confirmDeviceRemoval(router) {
   });
 }
 
-function wireRouterRemoval(content, main, routers, workspace) {
+function wireRouterRemoval(content, main, routers, workspace, onError) {
   content.querySelectorAll("button[data-router-delete]").forEach(button => button.addEventListener("click", async () => {
     if (button.disabled || !SITE_EDITOR_ROLES.includes(ME?.user?.user_role)) return;
     const router = routers.find(item => item.device_id === button.dataset.routerDelete);
     if (!router) return;
+    const removalStatus = button.closest("article")?.querySelector("[data-router-removal-status]");
+    if (removalStatus) { removalStatus.hidden = true; removalStatus.textContent = ""; }
     button.disabled = true;
     const confirmed = await confirmDeviceRemoval(router);
     if (!confirmed || !content.isConnected || !SITE_EDITOR_ROLES.includes(ME?.user?.user_role)) {
@@ -1528,9 +1530,15 @@ function wireRouterRemoval(content, main, routers, workspace) {
       removed = true;
       if (content.isConnected) await renderSites(main, workspace);
     } catch (error) {
-      if (content.isConnected) showErr(removed
-        ? new Error("The device record was deleted, but the list could not refresh. Reload this page.")
-        : error);
+      if (content.isConnected) {
+        const failure = removed ? new Error("The device record was deleted, but the list could not refresh. Reload this page.") : error;
+        if (removalStatus?.isConnected) {
+          removalStatus.textContent = failure.data?.reason || failure.data?.error || failure.message || "Could not delete the device record. Try again.";
+          removalStatus.hidden = false;
+          removalStatus.scrollIntoView?.({block:"nearest"});
+        }
+        onError?.(failure);
+      }
     } finally {
       if (!removed && button.isConnected) button.disabled = false;
     }
@@ -1573,6 +1581,7 @@ function routerBoardPanel(routers, fleet, capabilityByID = new Map(), hubCapabil
           <button type="button" class="btn" data-hub-finish>Finish connection</button><div data-hub-finish-status role="status" aria-live="polite"></div>
         </details>` : `<div class="notice" role="status"><strong>Magic Hub connection unavailable</strong><p>${esc(hubEnrollmentUnavailableMessage(hubCapability.code))}</p></div>`}</div>` : ""}
       <footer>${canEdit ? `<button class="btn btn-sm" type="button" data-edit="${esc(router.device_id)}">Edit record</button><button class="btn btn-sm" type="button" data-router-delete="${esc(router.device_id)}">Delete device record</button>` : ""}<button class="btn btn-sm" type="button" data-router-topology="${esc(router.device_id)}">Topology</button>${canEdit ? `<button class="btn btn-sm" type="button" data-reboot="${esc(router.device_id)}"${state !== "up" ? " disabled title=\"No verified reachability\"" : ""}>Reboot</button>` : ""}</footer>
+      <p class="alert" role="alert" data-router-removal-status hidden></p>
     </article>`;
   }).join("");
   return `<section class="routerboard-console"><header><div><span class="fleet-kicker">ROUTER MANAGEMENT</span><h2>Your router${routers.length === 1 ? "" : "s"}</h2></div></header><div class="routerboard-grid mobile-device-list">${cards}</div></section>`;
@@ -1732,7 +1741,7 @@ async function renderSites(main, workspace = location.hash === "#gateways" ? "ga
     openEditRouter(main, routers.find(r => r.device_id === btn.dataset.edit));
   }));
 
-  wireRouterRemoval(content, main, routers, workspace);
+  wireRouterRemoval(content, main, routers, workspace, showErr);
 
   content.querySelectorAll("button[data-reboot]").forEach(btn => btn.addEventListener("click", async () => {
     const id = btn.dataset.reboot;
