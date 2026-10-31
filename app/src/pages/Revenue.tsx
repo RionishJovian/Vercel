@@ -4,13 +4,15 @@ import { asArray, mmk, num, type VoucherReport } from "../lib/types";
 import { useI18n } from "../i18n";
 import { Icon } from "../components/icons";
 import { Skeleton } from "../components/Skeleton";
+import { RevenuePayments } from "./RevenuePayments";
+import type { Me } from "../lib/types";
 
 const STATES = [
   ["available_count", "rv.available", "s-available"], ["reserved_count", "rv.reserved", "s-reserved"], ["activated_count", "rv.activated", "s-activated"],
   ["expired_count", "rv.expired", "s-expired"], ["revoked_count", "rv.revoked", "s-revoked"],
 ] as const;
 
-export function Revenue() {
+export function Revenue({ me }: { me: Me }) {
   const { t } = useI18n();
   const { data: r, error, isLoading } = useSWR<VoucherReport>("/voucher-report", fetcher);
   if (isLoading) return <Skeleton h={360} />;
@@ -58,6 +60,7 @@ export function Revenue() {
           ))}
         </section>
       ) : null}
+      <RevenuePayments canDecide={["ADMIN", "OWNER", "DEVELOPER"].includes(me.user?.user_role ?? "")} />
     </>
   );
 }

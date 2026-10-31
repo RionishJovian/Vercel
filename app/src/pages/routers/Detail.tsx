@@ -5,6 +5,7 @@ import { useI18n } from "../../i18n";
 import { Note } from "../../components/ui";
 import { Skeleton } from "../../components/Skeleton";
 import type { RouterRow } from ".";
+import { Capabilities } from "./Capabilities";
 
 interface Iface { name: string; disabled?: boolean; running?: boolean; rx_bps?: number; tx_bps?: number }
 interface Telemetry { state?: string; snapshot?: { resources?: Record<string, unknown> & { board_name?: string; routeros_version?: string; cpu_percent?: number; memory_used_bytes?: number | string; memory_total_bytes?: number | string; uptime_seconds?: number }; hotspot_sessions?: number | null; dhcp_bound_leases?: number | null; interfaces?: Iface[]; issues?: string[] } }
@@ -55,6 +56,7 @@ export function Detail({ id, router }: { id: string; router?: RouterRow }) {
           )}
           {asArray<string>(snap.issues).length > 0 && <Note kind="warn">{asArray<string>(snap.issues).join(" · ")}</Note>}
           <p className="soft small">{t("r.readOnly")}</p>
+          <Capabilities id={id} />
         </>
       )}
     </>

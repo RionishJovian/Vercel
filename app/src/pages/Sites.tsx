@@ -1,10 +1,12 @@
-import { useState, type FormEvent } from "react";
+import { lazy, Suspense, useState, type FormEvent } from "react";
 import useSWR from "swr";
 import { api, fetcher, isUnauthorized } from "../lib/api";
 import { asArray, num, type Me } from "../lib/types";
 import { useI18n } from "../i18n";
 import { BackLink, Field, Note } from "../components/ui";
 import { Skeleton } from "../components/Skeleton";
+
+const SiteMap = lazy(() => import("../components/SiteMap"));
 
 interface Site { site_id: string; name: string; location?: string | null; timezone?: string | null; latitude?: number | null; longitude?: number | null; notes?: string | null; device_count?: number }
 interface Conn { site_id?: string | null; cloud_status?: string; cloud_last_seen_at?: string }
@@ -20,7 +22,7 @@ export function connectionIsFresh(c: Conn, now = Date.now()): boolean {
 type PathState = "online" | "offline" | "unassigned";
 const stateOf = (site: Site, conns: Conn[]): PathState => { const p = conns.filter((c) => c.site_id === site.site_id); return p.some((c) => connectionIsFresh(c)) ? "online" : p.length ? "offline" : "unassigned"; };
 
-function SiteForm({ site, onDone, onCancel }: { site: Site | null; onDone: () => void; onCancel: () => void }) {
+function SiteForm({ site, coords, setCoords, onDone, onCancel }: { site: Site | null; coords: { lat: string; lng: string }; setCoords: (c: { lat: string; lng: string }) => void; onDone: () => void; onCancel: () => void }) {
   const { t } = useI18n();
   const [msg, setMsg] = useState(""), [busy, setBusy] = useState(false);
   async function save(e: FormEvent<HTMLFormElement>) {
@@ -42,8 +44,11 @@ function SiteForm({ site, onDone, onCancel }: { site: Site | null; onDone: () =>
       <Field label={t("site.location")} htmlFor="s-loc"><input className="input" id="s-loc" name="location" placeholder={t("site.locationHint")} defaultValue={site?.location ?? ""} /></Field>
       <Field label={t("site.tz")} htmlFor="s-tz"><input className="input" id="s-tz" name="tz" defaultValue={site?.timezone ?? "Asia/Yangon"} /></Field>
       <div className="two">
-        <Field label={t("site.lat")} htmlFor="s-lat"><input className="input" id="s-lat" name="lat" type="number" step="any" min={-90} max={90} placeholder="16.866" defaultValue={site?.latitude ?? ""} /></Field>
-        <Field label={t("site.lng")} htmlFor="s-lng"><input className="input" id="s-lng" name="lng" type="number" step="any" min={-180} max={180} placeholder="96.195" defaultValue={site?.longitude ?? ""} /></Field>
+        <Field label={t("site.lat")} htmlFor="s-lat"><input className="input" id="s-lat" name="lat" type="number" step="any" min={-90} max={90} placeholder="16.866" value={coords.lat} onChange={(e) => setCoords({ ...coords, lat: e.target.value })} /></Field>
+        <Field label={t("site.lng")} htmlFor="s-lng"><input className="input" id="s-lng" name="lng" type="number" step="any" min={-180} max={180} placeholder="96.195" value={coords.lng} onChange={(e) => setCoords({ ...coords, lng: e.target.value })} /></Field>
+      </div>
+      <p className="soft small">{t("site.pinHelp")}</p>
+      <div className="row" style={{ justifyContent: "flex-start" }}><button className="pill" type="button" onClick={() => setCoords({ lat: "", lng: "" })}>{t("site.clearPin")}</button>
       </div>
       <Field label={t("site.notes")} htmlFor="s-notes"><input className="input" id="s-notes" name="notes" defaultValue={site?.notes ?? ""} /></Field>
       {msg && <Note kind="bad">{msg}</Note>}
@@ -58,7 +63,7 @@ export function Sites({ me }: { me: Me }) {
   const canEdit = EDITORS.includes(me.user?.user_role ?? "");
   const sitesRes = useSWR<{ sites?: Site[] }>("/sites", fetcher);
   const connRes = useSWR<{ connections?: Conn[] }>("/router-connections", fetcher, { shouldRetryOnError: false });
-  const [form, setForm] = useState<{ site: Site | null } | null>(null);
+  const [form, setForm] = useState<{ site: Site | null } | null>(null), [coords, setCoords] = useState({ lat: "", lng: "" });
   const [selected, setSelected] = useState(() => { try { return localStorage.getItem(SELECTED) ?? ""; } catch { return ""; } });
   const [err, setErr] = useState("");
   const [confirmDel, setConfirmDel] = useState("");
@@ -81,8 +86,14 @@ export function Sites({ me }: { me: Me }) {
     <>
       {back}<h1>{t("title.sites")}</h1><p className="soft">{t("site.lead")}</p>
       {err && <Note kind="bad">{err}</Note>}
-      {canEdit && !form && <button className="btn" type="button" onClick={() => setForm({ site: null })}>{t("site.add")}</button>}
-      {form && <SiteForm site={form.site} onDone={done} onCancel={() => setForm(null)} />}
+      {canEdit && !form && <button className="btn" type="button" onClick={() => { setCoords({ lat: "", lng: "" }); setForm({ site: null }); }}>{t("site.add")}</button>}
+      {(sites.some((x) => x.latitude != null) || form) && (
+        <Suspense fallback={<Skeleton h={280} />}>
+          <SiteMap sites={sites} states={Object.fromEntries(sites.map((x) => [x.site_id, stateOf(x, conns)]))} selected={selected} onSelect={(id) => pick(id === selected ? "" : id)} pick={form ? { lat: coords.lat, lng: coords.lng, onPick: (la, lo) => setCoords({ lat: la.toFixed(6), lng: lo.toFixed(6) }) } : undefined} />
+          <p className="soft small">{t("site.mapCredit")}</p>
+        </Suspense>
+      )}
+      {form && <SiteForm site={form.site} coords={coords} setCoords={setCoords} onDone={done} onCancel={() => setForm(null)} />}
       {!sites.length ? <Note>{t("site.none")}</Note> : (
         <div className="stack">
           {sites.map((s) => {
@@ -99,7 +110,7 @@ export function Sites({ me }: { me: Me }) {
                     <div className="row" style={{ justifyContent: "flex-start" }}><button className="pill" type="button" onClick={() => setConfirmDel("")}>{t("c.cancel")}</button><button className="pill danger" type="button" onClick={() => void remove(s.site_id)}>{t("site.delete")}</button></div></div>
                 ) : (
                   <div className="row" style={{ justifyContent: "flex-start" }}>
-                    <button className="pill" type="button" disabled={!!form} onClick={() => setForm({ site: s })}>{t("site.edit")}</button>
+                    <button className="pill" type="button" disabled={!!form} onClick={() => { setCoords({ lat: s.latitude != null ? String(s.latitude) : "", lng: s.longitude != null ? String(s.longitude) : "" }); setForm({ site: s }); }}>{t("site.edit")}</button>
                     <button className="pill danger" type="button" disabled={!!form} onClick={() => setConfirmDel(s.site_id)}>{t("site.delete")}</button>
                   </div>
                 ))}

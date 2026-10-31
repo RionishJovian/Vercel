@@ -59,7 +59,7 @@ export function App() {
   const signedOut = () => { void mutate(() => true, undefined, { revalidate: false }); setAuth({ state: "out", notice: t("c.sessionEnded") }); };
   let page: React.ReactNode, tab = route.name;
   switch (route.name) {
-    case "revenue": page = <Revenue />; tab = "home"; break;
+    case "revenue": page = <Revenue me={me} />; tab = "home"; break;
     case "router": page = <Routers sub={route.sub} params={route.params} />; break;
     case "jellyfin": page = <Jellyfin sub={route.sub} me={me} />; break;
     case "fleet": page = <Fleet />; tab = "more"; break;
