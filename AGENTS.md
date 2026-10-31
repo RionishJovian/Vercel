@@ -1,6 +1,6 @@
 # Console frontend — owner decision 2026-11-01
 
-The console is the React app in `app/`, served at `/v2/`. The old `web/app.html`, the vanilla `web/v2` and their UI tests were removed; `/app.html` redirects to `/v2/`. `web/` now holds only the landing, pricing, sign-in and guest portal pages plus shared assets. Older notes below that name `web/app.html` are historical. Several `web/assets/js` and `css` files were used only by the old console and are now unused.
+The console is the React app in `app/`, served at `/v2/`. The old `web/app.html`, the vanilla `web/v2` and their UI tests were removed; `/app.html` redirects to `/v2/`. `web/` now holds only the landing, pricing, sign-in and guest portal pages plus shared assets. Older notes below that name `web/app.html` are historical. Several The old console-only files in `web/assets` were removed with it.
 
 # Default app workspace — owner decision 2026-10-28
 

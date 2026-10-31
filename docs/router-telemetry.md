@@ -1,5 +1,7 @@
 # RouterBOARD telemetry
 
+> **Note (2026-11-01):** the old console this document describes (`web/app.html`, the vanilla `web/v2` and their scripts) was removed. The console is now the React app in `app/`, served at `/v2/`. This is a dated record; file names and UI steps below may no longer exist.
+
 Implemented in the existing Go API and `web/` application. Mega Magic reads the
 router through its saved management connection; RouterBOARD remains responsible
 for captive login, guest access and time/data enforcement. This collector installs

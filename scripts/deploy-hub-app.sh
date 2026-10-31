@@ -12,7 +12,7 @@ files=(internal/server/server.go internal/server/hub_management.go internal/conf
  internal/handler/vps_handler.go internal/handler/hub_enrollment.go internal/handler/hub_enrollment_test.go
  internal/handler/hub_management.go internal/handler/hub_management_test.go
  internal/database/device_credentials.go internal/hub/client.go internal/hub/client_test.go
- internal/hub/router_script.go internal/hub/router_script_test.go web/assets/js/hub-enrollment.js)
+ internal/hub/router_script.go internal/hub/router_script_test.go)
 cp -p server "$backup/server"
 for file in "${files[@]}"; do
  mkdir -p "$backup/$(dirname "$file")"
@@ -40,4 +40,4 @@ curl --fail --silent https://mikromagic.com/health >/dev/null
 sudo systemctl is-active --quiet mega-magic-api
 trap - ERR
 printf 'Scoped Hub app deployment complete. Rollback: %s\n' "$backup"
-sha256sum server internal/server/server.go web/assets/js/hub-enrollment.js
+sha256sum server internal/server/server.go

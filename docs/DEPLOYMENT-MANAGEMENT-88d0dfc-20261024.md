@@ -1,5 +1,7 @@
 # Live management-panel deployment — 2026-10-24
 
+> **Note (2026-11-01):** the old console this document describes (`web/app.html`, the vanilla `web/v2` and their scripts) was removed. The console is now the React app in `app/`, served at `/v2/`. This is a dated record; file names and UI steps below may no longer exist.
+
 Release `88d0dfc` (including `d456a21`) deployed and enabled on srv2032937 at approximately 12:00 UTC. Authorized by the owner's “deploy and enable live” instruction.
 
 ## Provenance

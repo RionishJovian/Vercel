@@ -1,5 +1,7 @@
 # Individual client access release — 24 October 2026
 
+> **Note (2026-11-01):** the old console this document describes (`web/app.html`, the vanilla `web/v2` and their scripts) was removed. The console is now the React app in `app/`, served at `/v2/`. This is a dated record; file names and UI steps below may no longer exist.
+
 ## Confirmed model
 
 The platform DEVELOPER manages client accounts. A client has one authorized owner login, one private internal business workspace, one site and one RouterBOARD. Business IDs remain the isolation boundary; client staff creation/invitation redemption is retired. Existing users, routers, Store history and voucher records are preserved. Ambiguous primary logins require explicit operator selection, with expected-identity concurrency protection and an audit record.

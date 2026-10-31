@@ -1,5 +1,7 @@
 # Guest voucher installation and eight-letter codes
 
+> **Note (2026-11-01):** the old console this document describes (`web/app.html`, the vanilla `web/v2` and their scripts) was removed. The console is now the React app in `app/`, served at `/v2/`. This is a dated record; file names and UI steps below may no longer exist.
+
 29 October 2026. New Internet guest vouchers use eight uniformly sampled
 uppercase letters, excluding ambiguous I, L, O and U. Generation uses
 `crypto/rand` and rejection sampling. Business-pass generation retains its

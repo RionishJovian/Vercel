@@ -1,5 +1,7 @@
 # Gateway, guest commerce and portal security audit
 
+> **Note (2026-11-01):** the old console this document describes (`web/app.html`, the vanilla `web/v2` and their scripts) was removed. The console is now the React app in `app/`, served at `/v2/`. This is a dated record; file names and UI steps below may no longer exist.
+
 Audit date: 2026-10-01. Read-only audit; no production settings, router configuration, accounts or payments were changed. This report supersedes historical voucher-readiness scorecards for the maintained Go application.
 
 ## Verdict and evidence boundary

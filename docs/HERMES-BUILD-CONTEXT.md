@@ -1,5 +1,7 @@
 # Hermes: MegaMagic local build context
 
+> **Note (2026-11-01):** the old console this document describes (`web/app.html`, the vanilla `web/v2` and their scripts) was removed. The console is now the React app in `app/`, served at `/v2/`. This is a dated record; file names and UI steps below may no longer exist.
+
 Verified locally on 2026-10-21. Read `AGENTS.md` first, then this file and
 `docs/HERMES-CONTINUATION-20261021.md`. Recheck Git identity and current state at
 each new task; the commands and observations below do not establish live state.

@@ -1,5 +1,7 @@
 # MegaMagic continuation: verified local handoff
 
+> **Note (2026-11-01):** the old console this document describes (`web/app.html`, the vanilla `web/v2` and their scripts) was removed. The console is now the React app in `app/`, served at `/v2/`. This is a dated record; file names and UI steps below may no longer exist.
+
 Date: 2026-10-21 (Asia/Yangon). Scope: local continuation, not deployment.
 
 ## Resume point

@@ -1,5 +1,7 @@
 # Live app re-audit — 2026-10-03
 
+> **Note (2026-11-01):** the old console this document describes (`web/app.html`, the vanilla `web/v2` and their scripts) was removed. The console is now the React app in `app/`, served at `/v2/`. This is a dated record; file names and UI steps below may no longer exist.
+
 ## Verdict
 
 **Reachable and improved, but NOT fully functional across the requested business workflows.**

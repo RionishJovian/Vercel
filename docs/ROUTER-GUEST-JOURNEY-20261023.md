@@ -1,5 +1,7 @@
 # Integrated router-to-guest candidate — 2026-10-23
 
+> **Note (2026-11-01):** the old console this document describes (`web/app.html`, the vanilla `web/v2` and their scripts) was removed. The console is now the React app in `app/`, served at `/v2/`. This is a dated record; file names and UI steps below may no longer exist.
+
 Status: deployed to megamagic.tech on 2026-10-23 after the owner explicitly requested “deploy now”. The server rollout is verified; physical RouterBOARD/phone certification remains incomplete because the spare hAP ax2 is unavailable per the owner's latest reply. The complete original goal remains open.
 
 ## Coherent source
