@@ -44,6 +44,7 @@ export default async function guestPage() {
   const bankName = input("gp-bank", cfg.bank_name, { maxlength: "120" });
   const bankHolder = input("gp-holder", cfg.bank_holder, { maxlength: "120" });
   const bankAcc = input("gp-acc", cfg.bank_account, { maxlength: "60", inputmode: "numeric" });
+  const instructions = h("textarea", { class: "input", id: "gp-instr", maxlength: "600", rows: "4", style: "padding:12px 16px;min-height:104px" }, cfg.payment_instructions || "");
   const mmqr = input("gp-mmqr", cfg.mmqr_url, { maxlength: "500", placeholder: "https://…/mmqr.jpg" });
   const graceMin = input("gp-gmin", cfg.guest_grace_minutes ?? 10, { type: "number", min: "1", max: "1440", inputmode: "numeric" });
   const graceData = input("gp-gdata", cfg.guest_grace_data_mb ?? 50, { type: "number", min: "1", max: "10240", inputmode: "numeric" });
@@ -88,7 +89,7 @@ export default async function guestPage() {
     };
   };
   const pushHosted = () => {
-    if (hosted.contentWindow && hosted.isConnected) hosted.contentWindow.postMessage({ type: "mm-portal-preview", config: draft(), lang: getLang() === "my" ? "my" : "en" }, location.origin);
+    if (hosted.contentWindow && hosted.isConnected) hosted.contentWindow.postMessage({ type: "mm-portal-preview", config: Object.assign(draft(), { payment_instructions: instructions.value.trim() }), lang: getLang() === "my" ? "my" : "en" }, location.origin);
   };
   const onReady = (ev) => {
     if (!hosted.isConnected) { window.removeEventListener("message", onReady); return; }
@@ -129,7 +130,7 @@ export default async function guestPage() {
       business_name: name.value.trim(), welcome_text: welcome.value.trim(), terms_text: terms.value.trim(),
       primary_hex: primary.value, glass_tint_hex: tint.value,
       bank_name: bankName.value.trim(), bank_holder: bankHolder.value.trim(), bank_account: bankAcc.value.trim(),
-      mmqr_url: mmqr.value.trim(), guest_grace_minutes: gm, guest_grace_data_mb: gd,
+      mmqr_url: mmqr.value.trim(), payment_instructions: instructions.value.trim(), guest_grace_minutes: gm, guest_grace_data_mb: gd,
       voucher_login_enabled: voucherOn.checked, mobile_payment_enabled: paymentOn.checked, guest_plans: plans().filter((p) => p.key || p.label || p.minutes || p.amount || p.data_mb),
     };
     try { await api.put("/portal/config", body); msg.replaceChildren(note("ok", t("g.saved")), note("warn", t("g.deployHint"))); }
@@ -144,7 +145,7 @@ export default async function guestPage() {
       h("label", { class: "row", for: "gp-payment" }, h("span", null, t("g.mobilePay")), paymentOn),
       h("p", { class: "soft small" }, t("g.methodsHint"))),
     h("section", { class: "glass stack" }, h("h2", { class: "num" }, t("g.pay")),
-      field("gp-bank", t("g.bank"), bankName), field("gp-holder", t("g.holder"), bankHolder), field("gp-acc", t("g.acc"), bankAcc), field("gp-mmqr", t("g.mmqr"), mmqr),
+      field("gp-bank", t("g.bank"), bankName), field("gp-holder", t("g.holder"), bankHolder), field("gp-acc", t("g.acc"), bankAcc), field("gp-mmqr", t("g.mmqr"), mmqr), field("gp-instr", t("g.instr"), instructions), h("p", { class: "soft small" }, t("g.instrHint")),
       h("div", { class: "row" }, field("gp-gmin", t("g.graceMin"), graceMin), field("gp-gdata", t("g.graceData"), graceData)),
       h("p", { class: "soft small" }, t("g.graceHint"))),
     h("section", { class: "stack" }, h("h2", { class: "num" }, t("g.plans")), plansBox, addPlan),

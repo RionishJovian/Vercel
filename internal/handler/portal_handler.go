@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 
@@ -503,12 +504,17 @@ func (h *PortalHandler) StaffUpdateConfig(c *gin.Context) {
 		GuestPlans           *[]model.GuestPlan `json:"guest_plans"`
 		VoucherLoginEnabled  *bool              `json:"voucher_login_enabled"`
 		MobilePaymentEnabled *bool              `json:"mobile_payment_enabled"`
+		PaymentInstructions  *string            `json:"payment_instructions"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
+	if req.PaymentInstructions != nil && !validPaymentInstructions(*req.PaymentInstructions) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "payment instructions must be at most 600 characters"})
+		return
+	}
 	if req.GraceMinutes != nil && (*req.GraceMinutes < 1 || *req.GraceMinutes > 1440) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "grace time must be between 1 and 1440 minutes"})
 		return
@@ -600,6 +606,9 @@ func (h *PortalHandler) StaffUpdateConfig(c *gin.Context) {
 				existing.MediaPort = port
 			}
 		}
+		if req.PaymentInstructions != nil {
+			existing.PaymentInstructions = strings.TrimSpace(*req.PaymentInstructions)
+		}
 		if req.BankName != nil {
 			existing.BankName = *req.BankName
 		}
@@ -658,6 +667,12 @@ func (h *PortalHandler) StaffUpdateConfig(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"status": "ok", "config": merged})
+}
+
+// validPaymentInstructions bounds the owner-written bank-transfer text. It is
+// rendered as plain text on the guest page, so only length and NUL are checked.
+func validPaymentInstructions(s string) bool {
+	return utf8.RuneCountInString(s) <= 600 && !strings.ContainsRune(s, 0)
 }
 
 func safePortalImageURL(raw string) bool {

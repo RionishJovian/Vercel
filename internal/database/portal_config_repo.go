@@ -26,11 +26,11 @@ func strOrNil(s string) interface{} {
 	return s
 }
 
-const portalConfigCols = `business_id, business_name, welcome_text, terms_text, primary_hex, glass_tint_hex, consent_required, consent_text, bank_name, bank_account, bank_holder, mmqr_url, media_host, media_port, guest_grace_minutes, guest_grace_data_mb, guest_plans, voucher_login_enabled, mobile_payment_enabled, updated_at`
+const portalConfigCols = `business_id, business_name, welcome_text, terms_text, primary_hex, glass_tint_hex, consent_required, consent_text, bank_name, bank_account, bank_holder, mmqr_url, media_host, media_port, guest_grace_minutes, guest_grace_data_mb, guest_plans, voucher_login_enabled, mobile_payment_enabled, updated_at, payment_instructions`
 
 func portalConfigUpsertSQL() string {
-	return `INSERT INTO portal_configs (business_id, business_name, welcome_text, terms_text, primary_hex, glass_tint_hex, consent_required, consent_text, bank_name, bank_account, bank_holder, mmqr_url, media_host, media_port, guest_grace_minutes, guest_grace_data_mb, guest_plans, voucher_login_enabled, mobile_payment_enabled, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+	return `INSERT INTO portal_configs (business_id, business_name, welcome_text, terms_text, primary_hex, glass_tint_hex, consent_required, consent_text, bank_name, bank_account, bank_holder, mmqr_url, media_host, media_port, guest_grace_minutes, guest_grace_data_mb, guest_plans, voucher_login_enabled, mobile_payment_enabled, updated_at, payment_instructions)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
 		ON CONFLICT (business_id) DO UPDATE SET
 		   business_name = EXCLUDED.business_name,
 		   welcome_text = EXCLUDED.welcome_text,
@@ -50,18 +50,19 @@ func portalConfigUpsertSQL() string {
 		   guest_plans = EXCLUDED.guest_plans,
 		   voucher_login_enabled = EXCLUDED.voucher_login_enabled,
 		   mobile_payment_enabled = EXCLUDED.mobile_payment_enabled,
-		   updated_at = EXCLUDED.updated_at`
+		   updated_at = EXCLUDED.updated_at,
+		   payment_instructions = EXCLUDED.payment_instructions`
 }
 
 func scanPortalConfig(row interface{ Scan(...interface{}) error }) (*model.PortalConfig, error) {
 	p := &model.PortalConfig{}
 	var welcome, terms, primary, glass, consentText, bankName, bankAccount, bankHolder, mmqrURL sql.NullString
-	var mediaHost sql.NullString
+	var mediaHost, paymentInstructions sql.NullString
 	var guestPlans []byte
 	err := row.Scan(&p.BusinessID, &p.BusinessName, &welcome, &terms, &primary, &glass,
 		&p.ConsentRequired, &consentText, &bankName, &bankAccount, &bankHolder, &mmqrURL,
 		&mediaHost, &p.MediaPort,
-		&p.GuestGraceMinutes, &p.GuestGraceDataMB, &guestPlans, &p.VoucherLoginEnabled, &p.MobilePaymentEnabled, &p.UpdatedAt)
+		&p.GuestGraceMinutes, &p.GuestGraceDataMB, &guestPlans, &p.VoucherLoginEnabled, &p.MobilePaymentEnabled, &p.UpdatedAt, &paymentInstructions)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -78,6 +79,7 @@ func scanPortalConfig(row interface{ Scan(...interface{}) error }) (*model.Porta
 	p.BankHolder = nullStr(bankHolder)
 	p.MMQRURL = nullStr(mmqrURL)
 	p.MediaHost = nullStr(mediaHost)
+	p.PaymentInstructions = nullStr(paymentInstructions)
 	if len(guestPlans) > 0 {
 		// jsonb arrives as []byte; decode into the typed slice (tolerant on no-op).
 		_ = json.Unmarshal(guestPlans, &p.GuestPlans)
@@ -103,7 +105,7 @@ func (r *PortalConfigRepository) Upsert(cfg *model.PortalConfig) error {
 		cfg.PrimaryHex, cfg.GlassTintHex, cfg.ConsentRequired, cfg.ConsentText,
 		strOrNil(cfg.BankName), strOrNil(cfg.BankAccount), strOrNil(cfg.BankHolder), strOrNil(cfg.MMQRURL),
 		strOrNil(cfg.MediaHost), portalMediaPort(cfg.MediaHost, cfg.MediaPort),
-		cfg.GuestGraceMinutes, cfg.GuestGraceDataMB, guestPlans, voucherEnabled, paymentEnabled, time.Now().UTC())
+		cfg.GuestGraceMinutes, cfg.GuestGraceDataMB, guestPlans, voucherEnabled, paymentEnabled, time.Now().UTC(), strOrNil(cfg.PaymentInstructions))
 	return err
 }
 
@@ -145,7 +147,7 @@ func (r *PortalConfigRepository) UpsertTXN(tx *sql.Tx, cfg *model.PortalConfig) 
 		cfg.PrimaryHex, cfg.GlassTintHex, cfg.ConsentRequired, cfg.ConsentText,
 		strOrNil(cfg.BankName), strOrNil(cfg.BankAccount), strOrNil(cfg.BankHolder), strOrNil(cfg.MMQRURL),
 		strOrNil(cfg.MediaHost), portalMediaPort(cfg.MediaHost, cfg.MediaPort),
-		cfg.GuestGraceMinutes, cfg.GuestGraceDataMB, guestPlans, voucherEnabled, paymentEnabled, time.Now().UTC())
+		cfg.GuestGraceMinutes, cfg.GuestGraceDataMB, guestPlans, voucherEnabled, paymentEnabled, time.Now().UTC(), strOrNil(cfg.PaymentInstructions))
 	return err
 }
 
