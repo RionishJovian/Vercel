@@ -111,7 +111,7 @@ export default async function guestPage() {
       primary_hex: primary.value, glass_tint_hex: tint.value,
       bank_name: bankName.value.trim(), bank_holder: bankHolder.value.trim(), bank_account: bankAcc.value.trim(),
       mmqr_url: mmqr.value.trim(), guest_grace_minutes: gm, guest_grace_data_mb: gd,
-      voucher_login_enabled: voucherOn.checked, mobile_payment_enabled: paymentOn.checked, guest_plans: plans(),
+      voucher_login_enabled: voucherOn.checked, mobile_payment_enabled: paymentOn.checked, guest_plans: plans().filter((p) => p.key || p.label || p.minutes || p.amount || p.data_mb),
     };
     try { await api.put("/portal/config", body); msg.replaceChildren(note("ok", t("g.saved")), note("warn", t("g.deployHint"))); }
     catch (err) { rethrow(err); msg.replaceChildren(note("bad", t("g.saveFailed"))); }
