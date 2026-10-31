@@ -54,3 +54,6 @@ vercel-public/
 
 # Private consolidation/recovery evidence; never app or deployment inputs.
 .local/
+
+# Local Python virtual environment
+.venv/
