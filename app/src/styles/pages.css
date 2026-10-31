@@ -112,3 +112,16 @@
 .rq { padding-top: 12px; border-top: 1px solid var(--edge-soft); }
 .pair-code { font-size: clamp(2rem, 9vw, 2.8rem); font-weight: 700; letter-spacing: .12em; padding: 14px; text-align: center; border-radius: var(--r-row); border: 1px dashed var(--edge); }
 @media (min-width: 700px) { .store-grid { grid-template-columns: repeat(2, 1fr); } }
+
+/* Fleet */
+.fleet-summary { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; }
+.fleet-summary > div { display: flex; flex-direction: column; gap: 2px; }
+.big { font-size: 2rem; line-height: 1.1; }
+.tone-ok { color: var(--ok); } .tone-warn { color: var(--warn); } .tone-bad { color: var(--bad); }
+.fleet-row { gap: 10px; flex-wrap: wrap; }
+.signal { display: inline-flex; gap: 3px; }
+.signal i { width: 8px; height: 18px; border-radius: 3px; background: var(--edge-soft); }
+.signal i.on.up { background: var(--ok); } .signal i.on.stale { background: var(--warn); } .signal i.on.offline { background: var(--bad); }
+@media (min-width: 900px) { .fleet-summary { grid-template-columns: repeat(4, 1fr); } }
+.menu-link { min-height: 60px; font-size: 1.05rem; transition: border-color var(--t-fast), transform var(--t-base) var(--ease-out); }
+.menu-link:hover { border-color: var(--edge); transform: translateX(2px); }

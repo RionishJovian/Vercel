@@ -1,6 +1,12 @@
 // Strings added by the React app. Burmese is a first draft for native-speaker review.
 const extra = {
   en: {
+    "fl.title": "Fleet health", "fl.lead": "Which routers can be reached through their secure management connection right now.", "fl.availability": "Availability", "fl.attention": "Needs attention", "fl.stale": "stale", "fl.incidents": "Open incidents", "fl.overall": "Overall",
+    "fl.state.up": "Online", "fl.state.stale": "Stale", "fl.state.offline": "Offline", "fl.state.unknown": "Unknown", "fl.none": "No routers yet. Add a router to see it here.", "fl.unnamed": "Unnamed router", "fl.gateway": "Gateway", "fl.peer": "Managed peer",
+    "gu.title": "Guests", "gu.lead": "Hotspot sessions read from your gateways. Disconnecting ends one session; it does not block the guest.", "gu.sessions": "Active sessions", "gu.sessionsPartial": "Reported sessions, incomplete", "gu.sources": "Gateways read", "gu.site": "Site", "gu.allSites": "All sites", "gu.unassigned": "No site", "gu.allGateways": "All gateways",
+    "gu.search": "Search guests", "gu.refresh": "Refresh", "gu.refreshing": "Reading guest sessions from your gateways…", "gu.done": "Latest read finished. Refresh to check for changes.", "gu.noSources": "No gateway is registered yet.", "gu.empty": "No active sessions were reported.", "gu.noMatch": "No session matches your search.",
+    "gu.guest": "Hotspot guest", "gu.active": "Active at last read", "gu.disconnect": "Disconnect", "gu.confirm": "Disconnect this guest? They can reconnect with valid access:", "gu.disconnecting": "Disconnecting and checking the router…", "gu.disconnected": "Session disconnected and confirmed by the router.", "gu.failed": "Could not disconnect.",
+    "gu.unavailable": "Some gateways could not report sessions. They are not counted as empty or offline.", "gu.held": "Disconnect needs administrator permission and a gateway that allows router actions.",
     "home.sub": "Today's sales and router status.", "app.theme": "Appearance", "app.day": "Day", "app.night": "Night",
     "home.pace": "of your usual day", "home.paceNone": "No sales in the last 7 days to compare with.",
     "home.today": "Used today", "home.week": "Last 7 days", "home.month": "Last 30 days",
@@ -12,6 +18,12 @@ const extra = {
     "soon.title": "This page is being rebuilt", "soon.body": "Use the previous app for now. It will move here soon.", "soon.open": "Open previous app",
   },
   my: {
+    "fl.title": "Router အခြေအနေ", "fl.lead": "လုံခြုံသော စီမံခန့်ခွဲမှုချိတ်ဆက်မှုဖြင့် ယခု ရောက်နိုင်သော Router များ။", "fl.availability": "ရရှိနိုင်မှု", "fl.attention": "ဂရုစိုက်ရန်", "fl.stale": "ကြန့်ကြာ", "fl.incidents": "ဖွင့်ထားသော ပြဿနာ", "fl.overall": "ခြုံငုံ",
+    "fl.state.up": "အွန်လိုင်း", "fl.state.stale": "ကြန့်ကြာ", "fl.state.offline": "အော့ဖ်လိုင်း", "fl.state.unknown": "မသိရ", "fl.none": "Router မရှိသေးပါ။ ထည့်လျှင် ဤနေရာတွင် ပေါ်မည်။", "fl.unnamed": "အမည်မရှိသော Router", "fl.gateway": "Gateway", "fl.peer": "စီမံထားသော Router",
+    "gu.title": "ဧည့်သည်များ", "gu.lead": "သင့် gateway များမှ ဖတ်ထားသော Hotspot session များ။ ဖြတ်ချလျှင် session တစ်ခုသာ ပြီးဆုံးပြီး ဧည့်သည်ကို ပိတ်ပင်ခြင်း မဟုတ်ပါ။", "gu.sessions": "လက်ရှိ session", "gu.sessionsPartial": "ဖတ်ရသော session (မပြည့်စုံ)", "gu.sources": "ဖတ်ပြီး gateway", "gu.site": "ဆိုက်", "gu.allSites": "ဆိုက်အားလုံး", "gu.unassigned": "ဆိုက်မရှိ", "gu.allGateways": "Gateway အားလုံး",
+    "gu.search": "ဧည့်သည် ရှာမည်", "gu.refresh": "ပြန်ဖတ်မည်", "gu.refreshing": "Gateway များမှ session များ ဖတ်နေသည်…", "gu.done": "နောက်ဆုံးဖတ်ချက် ပြီးပါပြီ။ ပြောင်းလဲမှုကြည့်ရန် ပြန်ဖတ်ပါ။", "gu.noSources": "Gateway မှတ်ပုံတင်ထားခြင်း မရှိသေးပါ။", "gu.empty": "လက်ရှိ session မတွေ့ပါ။", "gu.noMatch": "ရှာသော session မတွေ့ပါ။",
+    "gu.guest": "Hotspot ဧည့်သည်", "gu.active": "နောက်ဆုံးဖတ်ချိန်တွင် အသုံးပြုနေ", "gu.disconnect": "ဖြတ်ချမည်", "gu.confirm": "ဤဧည့်သည်ကို ဖြတ်ချမလား? ခွင့်ပြုထားလျှင် ပြန်ချိတ်နိုင်သည်:", "gu.disconnecting": "ဖြတ်ချပြီး Router ကို စစ်နေသည်…", "gu.disconnected": "Session ကို ဖြတ်ချပြီး Router က အတည်ပြုပါပြီ။", "gu.failed": "ဖြတ်ချ၍ မရပါ။",
+    "gu.unavailable": "Gateway အချို့ session မပို့နိုင်ပါ။ ၎င်းတို့ကို အလွတ် သို့မဟုတ် အော့ဖ်လိုင်းအဖြစ် မရေတွက်ပါ။", "gu.held": "ဖြတ်ချရန် စီမံခန့်ခွဲသူ ခွင့်ပြုချက်နှင့် Router လုပ်ဆောင်ချက် ခွင့်ပြုထားသော gateway လိုသည်။",
     "home.sub": "ယနေ့ရောင်းချမှုနှင့် Router အခြေအနေ။", "app.theme": "အသွင်အပြင်", "app.day": "နေ့", "app.night": "ည",
     "home.pace": "သင့်ပုံမှန်နေ့နှင့် နှိုင်းယှဉ်", "home.paceNone": "နှိုင်းယှဉ်ရန် ၇ ရက်အတွင်း အရောင်း မရှိပါ။",
     "home.today": "ယနေ့ သုံးပြီး", "home.week": "ရက် ၇ ရက်", "home.month": "ရက် ၃၀",
