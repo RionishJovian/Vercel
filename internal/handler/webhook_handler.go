@@ -10,6 +10,7 @@ import (
 	"mega-magic/internal/auth"
 	"mega-magic/internal/database"
 	"mega-magic/internal/model"
+	"mega-magic/internal/security"
 )
 
 type WebhookHandler struct {
@@ -59,7 +60,7 @@ func (h *WebhookHandler) List(c *gin.Context) {
 		return nil
 	})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"webhooks": endpoints, "count": len(endpoints)})
@@ -95,6 +96,11 @@ func (h *WebhookHandler) Create(c *gin.Context) {
 		}
 	}
 
+	if err := security.ValidateWebhookURL(req.URL); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid webhook url: " + err.Error()})
+		return
+	}
+
 	ep := &model.WebhookEndpoint{
 		BusinessID: businessID,
 		URL:        req.URL,
@@ -113,7 +119,7 @@ func (h *WebhookHandler) Create(c *gin.Context) {
 		return nil
 	})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
 		return
 	}
 	c.JSON(http.StatusCreated, gin.H{"webhook": created})
@@ -154,6 +160,9 @@ func (h *WebhookHandler) Update(c *gin.Context) {
 		}
 
 		if req.URL != nil {
+			if err := security.ValidateWebhookURL(*req.URL); err != nil {
+				return &httpError{status: http.StatusBadRequest, msg: "invalid webhook url: " + err.Error()}
+			}
 			existing.URL = *req.URL
 		}
 		if req.Secret != nil {
@@ -172,7 +181,7 @@ func (h *WebhookHandler) Update(c *gin.Context) {
 		}
 
 		if err := h.webhookRepo.UpdateEndpointTXN(tx, existing); err != nil {
-			return &httpError{status: http.StatusInternalServerError, msg: err.Error()}
+			return &httpError{status: http.StatusInternalServerError, msg: "database error"}
 		}
 		updated = existing
 		return nil
@@ -205,7 +214,7 @@ func (h *WebhookHandler) Delete(c *gin.Context) {
 			return &httpError{status: http.StatusForbidden, msg: "access denied"}
 		}
 		if err := h.webhookRepo.DeleteEndpointTXN(tx, id); err != nil {
-			return &httpError{status: http.StatusInternalServerError, msg: err.Error()}
+			return &httpError{status: http.StatusInternalServerError, msg: "database error"}
 		}
 		return nil
 	})
@@ -241,7 +250,7 @@ func (h *WebhookHandler) ListDeliveries(c *gin.Context) {
 		return nil
 	})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"deliveries": deliveries, "count": len(deliveries)})
