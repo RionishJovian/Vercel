@@ -1,6 +1,7 @@
 /* App frame: phone-first with a floating glass tab bar; from 900px up the bar becomes a left rail. */
 .shell { min-height: 100dvh; padding: 0 var(--gutter) calc(var(--tabbar-h) + 28px + env(safe-area-inset-bottom)); }
 .topbar { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; justify-content: space-between; gap: 12px; max-width: var(--content-max); margin: 0 auto; padding: calc(12px + env(safe-area-inset-top)) 0 12px; }
+.topbar::before { content: ""; position: absolute; inset: 0 calc(50% - 50vw); z-index: -1; background: color-mix(in srgb, var(--bg-1) 72%, transparent); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); border-bottom: 1px solid var(--edge-soft); }
 .brand { white-space: nowrap; display: flex; align-items: center; gap: 10px; font-family: var(--font-display); font-weight: 700; font-size: 1.05rem; }
 .tools { display: flex; align-items: center; gap: 8px; }
 .seg { display: inline-flex; padding: 3px; border-radius: 999px; border: 1px solid var(--edge-soft); background: var(--glass); }
