@@ -104,15 +104,15 @@
             <li><span><span lang="en"><b>Jellyfin page.</b> Run a separate guest page for your media server too.</span><span lang="my"><b>Jellyfin စာမျက်နှာ။</b> သင့်မီဒီယာ server အတွက်လည်း သီးသန့် ဧည့်သည်စာမျက်နှာ ထားနိုင်သည်။</span></span></li>
           </ul>
         </div>
-        <div class="guest" role="img" aria-label="Sample guest login page">
-          <span class="sample"><span lang="en">Sample</span><span lang="my">နမူနာ</span></span>
-          <div class="card">
-            <img src="/assets/images/jade-portal-wifi-v1.webp" alt="" width="76" height="76" loading="lazy">
-            <h3><span lang="en">Welcome</span><span lang="my">ကြိုဆိုပါတယ်</span></h3>
-            <div class="field">ABCD&nbsp;EFGH</div>
-            <div class="go"><span lang="en">Connect</span><span lang="my">ချိတ်ဆက်မည်</span></div>
+        <figure class="phone-wrap">
+          <div class="phone">
+            <i class="island" aria-hidden="true"></i>
+            <div class="screen">
+              <video id="demo" muted loop playsinline preload="metadata" poster="/assets/video/portal-demo-my.jpg" aria-label="Short looping preview of the guest login and bank transfer pages"></video>
+            </div>
           </div>
-        </div>
+          <figcaption><span lang="en">The page guests see: voucher code, or buy by bank transfer. Preview recording.</span><span lang="my">ဧည့်သည်မြင်ရသော စာမျက်နှာ - ဘောက်ချာကုဒ် သို့မဟုတ် ဘဏ်လွှဲဝယ်ယူမှု။ အကြိုကြည့်ဗီဒီယို။</span></figcaption>
+        </figure>
       </div>
     </section>
 
@@ -185,7 +185,20 @@
       function show(l) {
         d.dataset.lang = l; d.lang = l;
         btns.forEach(function (b) { b.setAttribute("aria-pressed", b.dataset.setLang === l ? "true" : "false"); });
+        if (demo) loadDemo();
       }
+      /* Preview video: right language, only plays while on screen, still image if motion is reduced. */
+      var demo = document.getElementById("demo");
+      var still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+      var visible = false;
+      function loadDemo() {
+        var l = d.dataset.lang === "en" ? "en" : "my";
+        var src = "/assets/video/portal-demo-" + l + ".mp4";
+        if (demo.getAttribute("src") !== src) { demo.setAttribute("src", src); demo.setAttribute("poster", "/assets/video/portal-demo-" + l + ".jpg"); }
+        if (visible && !still) { var p = demo.play(); if (p && p.catch) p.catch(function () {}); }
+      }
+      if ("IntersectionObserver" in window) new IntersectionObserver(function (e) { visible = e[0].isIntersecting; if (visible) loadDemo(); else demo.pause(); }, { threshold: .25 }).observe(demo);
+      loadDemo();
       show(d.dataset.lang === "en" ? "en" : "my");
       btns.forEach(function (b) { b.addEventListener("click", function () { show(b.dataset.setLang); try { localStorage.setItem("mm2_lang", b.dataset.setLang); } catch (e) {} }); });
       document.getElementById("theme").addEventListener("click", function () {
