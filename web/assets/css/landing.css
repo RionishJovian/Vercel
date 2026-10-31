@@ -78,35 +78,15 @@ img { max-width: 100%; display: block; }
 @media (min-width: 760px) { .nav-links { display: flex; } .tools .signin { display: inline-flex; } }
 
 /* Hero */
-.hero { padding-block: clamp(36px, 8vw, 96px) clamp(40px, 7vw, 88px); display: grid; gap: clamp(32px, 6vw, 64px); align-items: center; }
-.hero h1 { font-size: clamp(2.3rem, 6.4vw, 4.4rem); max-width: 14ch; }
+.hero { padding-block: clamp(56px, 11vw, 140px) clamp(40px, 7vw, 88px); display: grid; justify-items: center; text-align: center; }
+.hero h1 { font-size: clamp(2.3rem, 6.4vw, 4.4rem); max-width: 16ch; }
 [data-lang="my"] .hero h1 { font-size: clamp(1.9rem, 5vw, 3.3rem); max-width: 18ch; }
-.hero .lead { margin-top: 20px; font-size: clamp(1.05rem, 2.2vw, 1.25rem); color: var(--ink-soft); max-width: 46ch; }
-.cta { margin-top: 28px; display: flex; flex-wrap: wrap; gap: 12px; }
-.fine { margin-top: 18px; font-size: .9rem; color: var(--ink-mute); max-width: 52ch; }
-@media (min-width: 940px) { .hero { grid-template-columns: 1.05fr .95fr; } }
+.hero .lead { margin: 20px auto 0; font-size: clamp(1.05rem, 2.2vw, 1.25rem); color: var(--ink-soft); max-width: 46ch; }
+.cta { margin-top: 28px; display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
+.fine { margin-top: 18px; margin-inline: auto; font-size: .9rem; color: var(--ink-mute); max-width: 52ch; }
 
-/* The instrument: the product's own dial, as a sample. */
-.instrument { padding: clamp(20px, 3vw, 30px); border-radius: 34px; display: grid; gap: 18px; }
-.sample { position: absolute; top: 14px; right: 20px; font-size: .75rem; color: var(--ink-mute); }
-.dial { position: relative; width: min(280px, 72%); margin-inline: auto; aspect-ratio: 1; }
-.dial svg { width: 100%; height: 100%; transform: rotate(-90deg); }
-.dial .track { fill: none; stroke: var(--edge-soft); stroke-width: 10; }
-.dial .arc { fill: none; stroke: var(--jade); stroke-width: 10; stroke-linecap: round; stroke-dasharray: 0 440; opacity: 0; animation: arc 1.6s var(--ease-out) .25s forwards; }
-@keyframes arc { 8% { opacity: 1; } to { opacity: 1; stroke-dasharray: 348 440; } }
-.dial .read { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; gap: 2px; }
-.dial-cap { text-align: center; color: var(--ink-soft); font-size: .9rem; margin-top: -6px; }
-.dial .read b { font: 650 clamp(2rem, 6vw, 2.8rem)/1 var(--font-display); font-variant-numeric: tabular-nums; }
-.dial .read span { color: var(--ink-soft); font-size: .85rem; }
-.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.cap { padding: 12px 16px; border-radius: 18px; border: 1px solid var(--edge-soft); background: var(--glass-strong); display: grid; gap: 2px; }
-.cap small { color: var(--ink-mute); font-size: .8rem; }
-.cap b { font: 650 1.25rem var(--font-display); }
-.dots { display: inline-flex; gap: 6px; vertical-align: middle; margin-right: 8px; }
-.dots i { width: 12px; height: 12px; border-radius: 50%; background: var(--jade); }
-.dots i.off { background: #ff8f97; }
-[data-theme="day"] .dots i.off { background: #b3261e; }
-@media (prefers-reduced-motion: reduce) { .dial .arc { animation: none; opacity: 1; stroke-dasharray: 348 440; } html { scroll-behavior: auto; } }
+
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
 
 /* Sections */
 section.band { padding-block: clamp(44px, 8vw, 96px); }
