@@ -570,19 +570,13 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 		portalPublic := tv1.Group("/portal", auth.BoundedPortalRateLimit(), boundedPortalBody())
 		{
 			portalPublic.GET("/:deviceId/config", portalHandler.PublicConfig)
-			portalPublic.POST("/:deviceId/redeem", portalHandler.PublicRedeem)
 			portalPublic.GET("/status", portalHandler.PublicStatus)
 			// Media catalogue: the owner's published library for the business that
 			// owns THIS hotspot. Resolved from the device id, so no publication
 			// hash is ever exposed to a guest and tenants cannot cross-read.
 			portalPublic.GET("/:deviceId/media", mediaCatalogueHandler.PublicCatalogue)
-			// Billing: guest submits a purchase request (device-anchored).
-			portalPublic.POST("/:deviceId/purchase", billingHandler.PublicCreatePurchase)
-			// Guest wifi (Option C): online-banking purchase with a free grace
-			// window; the guest attaches the receipt within the window. Web path
-			// is ALWAYS available (the Telegram bot is the separately-gated extra).
-			portalPublic.POST("/:deviceId/guest-purchase", guestWifiHandler.PublicGuestPurchase)
-			portalPublic.POST("/guest-purchase/:requestId/receipt", guestWifiHandler.PublicAttachReceipt)
+			// No online guest purchase or cloud voucher redemption: guests buy codes at
+			// shops and redeem them on the RouterBOARD login page.
 		}
 
 		authGroup := tv1.Group("/auth", auth.CookieOrigin(), auth.BoundedAuthRateLimit())

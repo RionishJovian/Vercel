@@ -106,16 +106,10 @@ func registerGuestVoucherEndpoints(r *gin.Engine, service *auth.Service, db *dat
 		c.Header("Cache-Control", "no-store")
 		c.JSON(200, gin.H{"enabled": true, "validity_starts": "first_use", "batch_recovery_enabled": true, "batch_id_required": true, "reseller_assignment_enabled": true, "max_batch_size": handler.GuestVoucherIssueBatchLimit})
 	})
-	public := r.Group("/api/v1/portal", auth.CookieOrigin(), auth.BoundedPortalRateLimit(), boundedPortalBody())
-	public.POST("/:deviceId/guest-voucher", h.Redeem)
-	// Mutating MAC transfer remains absent until uncertain completion and restart
-	// reconciliation are implemented. Read-only resume is a separate capability.
-	if h.Recoverer != nil {
-		public.POST("/:deviceId/guest-recovery", guestRecoveryOrigin(), h.Recover)
-	}
-	if h.Resumer != nil {
-		public.POST("/:deviceId/guest-resume", guestRecoveryOrigin(), h.Resume)
-	}
+	// There is deliberately no public guest endpoint here. Guests enter their
+	// voucher on the login page installed on the RouterBOARD, which validates
+	// it locally; the cloud app only issues codes, installs them on the router
+	// and reads usage back.
 }
 
 // Readiness is checked before exposing any route or minting recovery cookies.
