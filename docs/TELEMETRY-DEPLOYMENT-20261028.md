@@ -1,5 +1,7 @@
 # MegaMagic telemetry deployment — 2026-10-28
 
+> **Note (2026-11-01):** the old console this document describes (`web/app.html`, the vanilla `web/v2` and their scripts) was removed. The console is now the React app in `app/`, served at `/v2/`. This is a dated record; file names and UI steps below may no longer exist.
+
 Deployed with the owner's explicit request. Live page:
 [Router telemetry](https://megamagic.tech/app.html?release=telemetry-20261028#internet).
 The release query avoids an old browser HTML cache.

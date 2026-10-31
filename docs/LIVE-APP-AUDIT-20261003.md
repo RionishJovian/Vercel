@@ -1,5 +1,7 @@
 # Live app audit — 2026-10-03
 
+> **Note (2026-11-01):** the old console this document describes (`web/app.html`, the vanilla `web/v2` and their scripts) was removed. The console is now the React app in `app/`, served at `/v2/`. This is a dated record; file names and UI steps below may no longer exist.
+
 ## Verdict and scope
 
 The app is reachable and its API/nginx services are healthy, but it is not yet a fully functional production business workflow. This audit found confirmed display/classification defects and separately identified unavailable product functions.

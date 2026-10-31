@@ -1,5 +1,7 @@
 # Current agent handoff
 
+> **Note (2026-11-01):** the old console this document describes (`web/app.html`, the vanilla `web/v2` and their scripts) was removed. The console is now the React app in `app/`, served at `/v2/`. This is a dated record; file names and UI steps below may no longer exist.
+
 ## 2026-10-04 owner-confirmed LAN-only media boundary
 
 The owner confirmed playback is **only for guests connected to the business's

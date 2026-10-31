@@ -1,4 +1,4 @@
-# Handoff for the next session (2026-10-31, 19:00 Myanmar time)
+# Handoff for the next session (2026-11-01)
 
 Start here. Everything below is the current state; nothing else is needed from earlier chats.
 
@@ -6,18 +6,18 @@ Start here. Everything below is the current state; nothing else is needed from e
 Mega Magic: multi-tenant cloud control plane for MikroTik RouterBOARD owners (Starlink -> RouterBOARD -> neighbourhood hotspot). The captive portal runs on the router; the cloud (Magic Hub, WireGuard) only manages: issues voucher codes, installs them on the router, reads usage back. Guests redeem codes on the router login page, never in the cloud. Each client: one login, one site, one router by default; extras (router/site, Jellyfin dashboard, future features) are sold through the Store catalog managed by the platform admin.
 Jellyfin = media server the owner runs on their own PC. Jellyfin vouchers give media playback from that host only, no internet; separate page, stock, batches and shops from internet vouchers.
 
-## State
-- Nothing is merged or deployed except a manual test copy of the new app. Work is on branches in RionishJovian/Vercel.
-- PRs: #6 webhook SSRF block, #7 close public cloud guest routes, #8 SSH host-key verification by default, #9 Store add-on catalog (needs migration `migrations/20261031100000_store_addons.sql` + rerun `deploy/runtime-db-role.sql`), #10 new app in `web/v2/` (branch `ui/jade-glass-rebuild`). Suggested merge order: #6, #8, #7, #9, #10.
-- New app (`web/v2/`, plain ES modules, phone first, Burmese/English): sign-in, Home, Revenue, Internet vouchers, Router list/map/detail (read-only), Store, Platform, Jellyfin dashboard, More. Look: midnight forest green gradient, wand status light (`js/status.js`, driven by `/fleet/health`), liquid-glass tab bar, keycap buttons, iOS haptic click (`js/feedback.js`, toggle in More).
-- Live test copy: https://megamagic.tech/v2/index.html, copied into the running web container with `docker cp` (lost if the container is recreated; PR #10 + web image rebuild makes it permanent). Refresh: in the VPS console clone the branch to /tmp/mm-v2-src, `docker exec mega-magic-go-restored-web-1 rm -rf /srv/v2`, `docker cp /tmp/mm-v2-src/web/v2 mega-magic-go-restored-web-1:/srv/v2`, remove /tmp/mm-v2-src.
-- Still on the old app (`/app.html`): router setup/Wi-Fi/protection tools (the server holds network writes until a router test passes), voucher guest-page editor, Jellyfin guest page and vouchers.
-- Mock API for local UI tests existed only in the earlier session (not committed).
+## State (2026-11-01)
+- Everything below is merged to `main` and deployed to https://megamagic.tech (GitHub one-click deploy works). PRs #1-#19 are merged; #7 was reverted by #11 because hosted bank-transfer payment needs the public guest routes.
+- **Console:** the React app in `app/` (Vite, React 19, TypeScript, SWR), served at `/v2/` with hash routes, Burmese/English, Day/Night, Jade Glass look. It replaced the old `web/app.html` and the vanilla `web/v2`, which were removed (PR #19 and the asset cleanup). `/app.html` redirects to `/v2/`. All former features are ported, including the voucher guest-page editor, Jellyfin guest page, Hub, Internet setup, topology and Magic Dude.
+- **Static pages in `web/`:** landing (`index.html`, animated logo, phone recording of the guest page), `pricing.html` (prices only from `GET /api/v1/pricing`), `signin.html` (sign in and create account), `portal.html` (hosted guest page). Shared: `assets/js/api.js`, `site.js`, `assets/css/landing.css`, `site-pages.css`, `media-guest.*`.
+- **Self registration:** `POST /auth/register` creates a business, owner and authorized login. With individual passes enforced the new login gets one 7-day trial (`app_account_trials`, migration `20261101090000_account_trials.sql` applied to production 2026-10-31). No email verification or CAPTCHA (accepted by the owner). `billing.self_registration_enabled=false` closes sign-ups. No real test account has been created on production.
+- **Build:** `Dockerfile.web.prod` builds `app/` in a Node stage into `/srv/v2`; the Vercel build (`scripts/prepare-vercel-build.mjs`) also builds it into `vercel-public/v2`. CI validate runs the app tests and build, the Go tests, `test:deployment`, `test:vercel` and `test:critical-ui`.
+- Migrations are never run by the deploy; apply them by hand with a backup first (see the VPS section).
 
 ## VPS (Hostinger KVM 4, srv2032937, 156.67.216.128)
 - **Expires 2026-11-04. Renew it.**
 - Live compose project `mega-magic-go-restored` (api, web, db, redis, nats), host Caddy, WireGuard hub on the host (wg0 10.77.0.1/24, UDP 51820/51821). Live data volumes are named `mega-magic-go-staging_*` (misleading; never clean up by that name).
-- Nightly DB backup: `/usr/local/sbin/mm-db-backup.sh`, timer `mm-db-backup.timer` 20:00 UTC, output `/opt/backups/nightly` (never auto-deleted).
+- Backups: take one before any migration with `/usr/local/sbin/mm-db-backup.sh`. Nightly DB backup: `/usr/local/sbin/mm-db-backup.sh`, timer `mm-db-backup.timer` 20:00 UTC, output `/opt/backups/nightly` (never auto-deleted).
 - Moved (not deleted) to `/root/_to_delete/20261031` with MANIFEST.txt. Stage B cleanup not done (`build21` volumes, `mm-*` source copies, `/root/go`).
 - Console access: Hostinger "Web console" opens a new tab and must be clicked by the owner. The owner's VPS console is reachable only from an AU IP (known issue, fix later).
 
@@ -32,7 +32,7 @@ Jellyfin = media server the owner runs on their own PC. Jellyfin vouchers give m
 - Cloud side still to build: `product=media` vouchers (`plan_key='guest-media'`), fail-closed readiness check, review/apply step, separate reports, per-site Jellyfin host settings. Only after the router test passes.
 
 ## Next steps
-1. Renew VPS. 2. Owner reviews `/v2/` on the phone and lists fixes. 3. Router session (short): Wi-Fi diagnostics, then the rule test. 4. Merge and deploy PRs in order. 5. Build the voucher guest-page editor, Jellyfin guest page and vouchers. 6. Native-speaker review of the Burmese text.
+1. Renew the VPS (expires 2026-11-04). 2. Router session (short; owner plans it for 2026-11-02): Wi-Fi diagnostics, then the Jellyfin rule test, grace window and router-page link checks. 3. Native-speaker review of all Burmese text (app, landing, pricing, sign-in; marked draft). 4. After the router test passes: cloud side of `product=media` vouchers and per-site Jellyfin host settings. 5. Optional: create one real trial account on production to confirm the trial end to end, then remove it.
 
 ## Working rules the owner set
 - Remove wrongly built or unneeded things only with care: move to a holding folder instead of deleting on the VPS. Never enter passwords for the owner; the owner signs in and approves production changes. Keep chat replies short; the owner is often busy and the 5-hour usage limit matters.

@@ -1,5 +1,7 @@
 # Restructuring release — 24 October 2026
 
+> **Note (2026-11-01):** the old console this document describes (`web/app.html`, the vanilla `web/v2` and their scripts) was removed. The console is now the React app in `app/`, served at `/v2/`. This is a dated record; file names and UI steps below may no longer exist.
+
 Base deployment: fa3b6ef. Owner confirmed that current monthly/annual passes belong to an individual login, not a whole business.
 
 ## Current account passes

@@ -3,7 +3,7 @@ import path from 'node:path';
 // The console is the React app in app/, built into the web image (and the Vercel build) at /v2/.
 // These are the static pages and shared assets that ship from web/.
 export const requiredFrontendFiles = ['index.html','signin.html','pricing.html','portal.html',
- 'assets/js/api.js','assets/js/site.js','assets/js/theme.js',
+ 'assets/js/api.js','assets/js/site.js',
  'assets/css/landing.css','assets/css/site-pages.css'];
 export function assertProductionFrontend(source) {
  for (const file of requiredFrontendFiles) if (!existsSync(path.join(source,file))) throw Error('Missing production web file: '+file);

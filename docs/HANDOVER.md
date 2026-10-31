@@ -1,5 +1,7 @@
 # HANDOVER - MikroMagic / Mega Magic
 
+> **Note (2026-11-01):** the old console this document describes (`web/app.html`, the vanilla `web/v2` and their scripts) was removed. The console is now the React app in `app/`, served at `/v2/`. This is a dated record; file names and UI steps below may no longer exist.
+
 ### 2026-10-05 AX2 one-paste recovery — implementation validated, rollout pending
 
 Quick-enroll now refuses to label an existing allocation's step-two-only script
