@@ -1,348 +1,178 @@
 <!doctype html>
-<html lang="en">
+<html lang="my" data-lang="my" data-theme="night">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Mega Magic</title>
+  <meta name="description" content="Cloud management for MikroTik hotspots.">
+  <meta name="theme-color" content="#04120f">
+  <meta name="robots" content="index">
+  <meta property="og:title" content="Mega Magic">
+  <meta property="og:description" content="Sell Wi-Fi vouchers and manage every MikroTik router from your phone.">
+  <meta property="og:type" content="website">
   <link rel="icon" type="image/png" sizes="64x64" href="/assets/images/mikromagic-favicon-green-v2-64.png?v=20260930-3">
   <link rel="apple-touch-icon" sizes="180x180" href="/assets/images/mikromagic-touch-green-v2-180.png?v=20260930-3">
   <link rel="manifest" href="/site.webmanifest?v=20260930-3">
-  <meta name="theme-color" content="#051f20">
-  <meta name="description" content="Mega Magic operates your MikroTik fleet: self-healing recovery, provisioning, billing and guest Wi-Fi from one console.">
-  <meta name="robots" content="index">
-  <script src="/assets/js/theme.js"></script>
-  <link rel="stylesheet" href="/assets/css/styles.css">
-  <style>
-    /* ════════════════════════════════════════════════════════════════════
-       Mega Magic — Liquid-Glass luxury landing overlay (inline, scoped here)
-       Same visual language as the operator dashboard: backdrop-blur glass
-       over ambient glow orbs, light sweeps, 3D hover depth, gold/ice accents.
-       Vanilla CSS only — the landing carries no JavaScript.
-       ════════════════════════════════════════════════════════════════════ */
-    :root{
-      --bg:#070a10; --ink:#f4f1ea; --ink-soft:#c6c1b6; --ink-muted:#8d8a83;
-      --accent:#7dd3fc; --gold:#e7b457; --gold-deep:#b9882c;
-      --line:rgba(255,255,255,.10); --line-soft:rgba(255,255,255,.055);
-      --glass:blur(22px) saturate(165%);
-      --ease:cubic-bezier(.20,.70,.20,1);
-    }
-    html{color-scheme:dark;}
-    body{
-      margin:0; min-height:100vh; color:var(--ink);
-      background:
-        radial-gradient(1200px 760px at 8% -14%, rgba(56,189,248,.20), transparent 62%),
-        radial-gradient(940px 680px at 104% 4%, rgba(147,51,234,.14), transparent 55%),
-        radial-gradient(1080px 820px at 50% 112%, rgba(231,180,87,.14), transparent 60%),
-        var(--bg);
-      background-attachment:fixed;
-      font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-    }
-    ::selection{background:rgba(125,211,252,.28);}
-
-    /* Short first-visit cinematic reveal: no sound, skippable, and far lighter
-       than an autoplay video on mobile connections. */
-    .brand-intro{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;overflow:hidden;background:#031816;transition:opacity .38s ease,visibility .38s ease;}
-    .brand-intro::before{content:"";position:absolute;width:min(84vw,720px);aspect-ratio:1;border-radius:50%;background:radial-gradient(circle,rgba(142,182,155,.34),transparent 68%);filter:blur(30px);animation:introAura 2.2s ease-out both;}
-    .brand-intro-mark{position:relative;width:clamp(132px,22vw,250px);filter:drop-shadow(0 0 34px rgba(167,243,208,.38));animation:introMark 2.2s cubic-bezier(.2,.72,.2,1) both;}
-    .brand-intro-line{position:absolute;top:50%;left:50%;width:min(72vw,620px);height:1px;background:linear-gradient(90deg,transparent,#a7f3d0,transparent);transform:translate(-50%,-50%) scaleX(0);animation:introLine 2.2s ease-out both;}
-    .brand-intro-name{position:absolute;top:calc(50% + clamp(92px,15vw,165px));color:#f3f3f3;font-size:13px;font-weight:650;letter-spacing:.28em;text-transform:uppercase;animation:introName 2.2s ease-out both;}
-    .brand-intro-skip{position:absolute;right:20px;bottom:20px;color:#8eb69b;background:transparent;border:1px solid rgba(142,182,155,.35);border-radius:8px;padding:8px 12px;cursor:pointer;}
-    .brand-intro.is-leaving{opacity:0;visibility:hidden;}
-    @keyframes introMark{0%{opacity:0;transform:scale(.72) rotate(-8deg);filter:blur(14px)}34%{opacity:1;filter:blur(0) drop-shadow(0 0 42px rgba(167,243,208,.6))}72%{transform:scale(1.04) rotate(0)}100%{opacity:1;transform:scale(1)}}
-    @keyframes introAura{0%{opacity:0;transform:scale(.45)}60%{opacity:1}100%{opacity:.45;transform:scale(1.2)}}
-    @keyframes introLine{0%,28%{opacity:0;transform:translate(-50%,-50%) scaleX(0)}54%{opacity:1;transform:translate(-50%,-50%) scaleX(1)}100%{opacity:0;transform:translate(-50%,-50%) scaleX(1.16)}}
-    @keyframes introName{0%,48%{opacity:0;transform:translateY(8px)}75%,100%{opacity:1;transform:none}}
-
-    /* Ambient glow orbs + grain (decorative, behind the glass) */
-    .lg-orb{position:fixed;border-radius:50%;filter:blur(88px);pointer-events:none;z-index:0;}
-    .lg-orb-a{width:600px;height:600px;top:-190px;left:-150px;background:radial-gradient(circle,rgba(56,189,248,.55),transparent 70%);}
-    .lg-orb-b{width:520px;height:520px;top:20%;right:-190px;background:radial-gradient(circle,rgba(168,85,247,.5),transparent 70%);}
-    .lg-orb-c{width:500px;height:500px;bottom:-170px;right:30%;background:radial-gradient(circle,rgba(231,180,87,.5),transparent 70%);}
-    .lg-grain{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.05;
-      background-image:radial-gradient(#fff 1px,transparent 1px);background-size:3px 3px;}
-
-    .landing{position:relative;z-index:1;}
-
-    /* ---------- Nav: frosted glass bar ---------- */
-    .land-nav{
-      position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:16px;
-      padding:16px 30px;
-      background:rgba(9,12,18,.55);
-      -webkit-backdrop-filter:var(--glass); backdrop-filter:var(--glass);
-      border-bottom:1px solid var(--line);
-      box-shadow:0 1px 40px -24px rgba(0,0,0,.9);
-    }
-    .rail-brand{display:flex;align-items:center;gap:10px;color:#fff;font-weight:650;letter-spacing:.02em;text-shadow:0 0 24px rgba(125,211,252,.28);}
-    .rail-brand .dot{
-      width:12px;height:12px;border-radius:4px;
-      background:radial-gradient(circle at 32% 30%, #ffe9ae, var(--gold) 58%, var(--gold-deep));
-      box-shadow:0 0 16px rgba(231,180,87,.7), inset 0 0 6px rgba(255,255,255,.55);
-    }
-    .land-nav .spacer{flex:1;}
-    .land-signin{
-      color:var(--accent);text-decoration:none;font-weight:600;letter-spacing:.02em;
-      padding:8px 14px;border-radius:10px;
-      background:rgba(255,255,255,.045);
-      -webkit-backdrop-filter:blur(8px); backdrop-filter:blur(8px);
-      border:1px solid rgba(125,211,252,.30);
-      transition:background .25s, color .25s, box-shadow .3s, transform var(--ease) .3s;
-    }
-    .land-signin:hover{background:rgba(125,211,252,.12);color:#fff;transform:translateY(-1px);
-      box-shadow:0 0 0 1px rgba(125,211,252,.5), 0 10px 26px -12px rgba(56,189,248,.5);}
-
-    /* ---------- Hero: glass panel with sweep ---------- */
-    .land-hero{
-      position:relative;overflow:hidden;
-      max-width:1180px;margin:56px auto 30px;padding:64px 34px;text-align:center;
-      background:rgba(255,255,255,.05);
-      -webkit-backdrop-filter:var(--glass); backdrop-filter:var(--glass);
-      border:1px solid var(--line); border-radius:22px;
-      box-shadow:0 30px 70px -34px rgba(0,0,0,.95), inset 0 1px 0 rgba(255,255,255,.08);
-    }
-    .land-hero::after{ /* hairline top gleam */
-      content:"";position:absolute;top:0;left:8%;right:8%;height:1px;
-      background:linear-gradient(90deg,transparent,rgba(255,255,255,.28),transparent);
-    }
-    .land-hero::before{ /* periodic light sweep */
-      content:"";position:absolute;top:-20%;left:-80%;width:52%;height:140%;
-      background:linear-gradient(105deg,transparent,rgba(255,255,255,.07),transparent);
-      transform:skewX(-12deg);animation:lgSweep 4.8s ease-in-out infinite;pointer-events:none;
-    }
-    @keyframes lgSweep{0%{left:-80%;}62%,100%{left:135%;}}
-    .land-eyebrow{
-      display:inline-block;margin-bottom:22px;color:var(--gold);font-size:13px;
-      letter-spacing:.14em;text-transform:uppercase;
-      padding:5px 14px;border-radius:999px;border:1px solid rgba(231,180,87,.35);
-      background:rgba(231,180,87,.08);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
-      box-shadow:0 0 18px rgba(231,180,87,.25);
-    }
-    .land-hero h1{
-      font-size:clamp(34px,5.5vw,60px);line-height:1.06;letter-spacing:-.02em;color:#fff;
-      text-shadow:0 0 34px rgba(125,211,252,.28);
-      animation:lgIn .6s var(--ease) both;
-    }
-    .land-hero h1 .accent{background:linear-gradient(90deg,#7dd3fc,#a5e6ff);-webkit-background-clip:text;background-clip:text;color:transparent;text-shadow:none;}
-    @keyframes lgIn{from{opacity:0;transform:translateY(14px) scale(.99);}to{opacity:1;transform:none;}}
-    .land-hero p{
-      max-width:660px;margin:22px auto 30px;color:var(--ink-soft);font-size:17px;line-height:1.65;
-      animation:lgIn .6s var(--ease) both;
-    }
-
-    .land-cta{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;animation:lgIn .6s var(--ease) both;}
-    .btn{
-      background:rgba(255,255,255,.045);color:var(--ink);
-      -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
-      border:1px solid var(--line);border-radius:12px;padding:12px 22px;font-weight:600;
-      text-decoration:none;
-      transition:transform var(--ease) .3s, background .25s, box-shadow .3s, border-color .3s;
-    }
-    .btn:hover{background:rgba(255,255,255,.10);transform:translateY(-2px);box-shadow:0 14px 30px -14px rgba(0,0,0,.7);}
-    .btn-primary{
-      background:radial-gradient(130% 220% at 22% 0%, #43b8f8, #0ea5e9 55%, #0369a1);
-      color:#04121a;font-weight:650;border:none;
-      box-shadow:inset 0 0 0 1px rgba(255,255,255,.18), 0 10px 28px -10px rgba(56,189,248,.65);
-    }
-    .btn-primary:hover{box-shadow:inset 0 0 0 1px rgba(255,255,255,.28), 0 16px 34px -10px rgba(56,189,248,.8);}
-
-    /* ---------- Feature sections ---------- */
-    .land-section{max-width:1180px;margin:64px auto;}
-    .land-section h2{
-      color:#fff;font-size:30px;letter-spacing:-.01em;text-align:center;
-      margin:0 0 10px;text-shadow:0 0 28px rgba(125,211,252,.22);
-    }
-    .land-rule{width:64px;height:2px;margin:14px auto 38px;border-radius:2px;
-      background:linear-gradient(90deg,var(--gold),var(--accent));}
-    .land-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:22px;}
-    .cell{
-      position:relative;overflow:hidden;
-      background:rgba(255,255,255,.05);
-      -webkit-backdrop-filter:var(--glass); backdrop-filter:var(--glass);
-      border:1px solid var(--line); border-radius:18px;padding:26px 24px;
-      box-shadow:0 22px 50px -30px rgba(0,0,0,.9), inset 0 1px 0 rgba(255,255,255,.07);
-      transition:transform var(--ease) .4s, box-shadow var(--ease) .4s, border-color .4s;
-    }
-    .cell:hover{
-      transform:translateY(-3px);
-      box-shadow:0 32px 76px -36px rgba(0,0,0,.98), 0 0 0 1px rgba(255,255,255,.09),
-                 inset 0 1px 0 rgba(255,255,255,.09);
-    }
-    .cell::after{ /* hairline top gleam */
-      content:"";position:absolute;top:0;left:12%;right:12%;height:1px;
-      background:linear-gradient(90deg,transparent,rgba(255,255,255,.28),transparent);
-    }
-    .cell::before{ /* soft periodic sweep */
-      content:"";position:absolute;top:-18%;left:-80%;width:50%;height:136%;
-      background:linear-gradient(105deg,transparent,rgba(255,255,255,.045),transparent);
-      transform:skewX(-12deg);animation:lgSweep 5.5s ease-in-out infinite;pointer-events:none;
-    }
-    .cell .glyph{
-      width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;
-      font-size:17px;color:#fff;margin-bottom:14px;
-      background:radial-gradient(120% 200% at 30% 0%, rgba(125,211,252,.9), rgba(56,189,248,.35));
-      -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
-      box-shadow:inset 0 0 0 1px rgba(255,255,255,.18), 0 0 16px rgba(56,189,248,.35);
-    }
-    .cell h3{color:#fff;font-size:18px;letter-spacing:.01em;margin:0 0 10px;}
-    .cell p{color:var(--ink-soft);font-size:15px;line-height:1.6;margin:0;}
-
-    @media (max-width:640px){
-      .land-hero{padding:44px 20px;}
-      .land-nav{padding:14px 18px;}
-      .land-grid{grid-template-columns:1fr;}
-    }
-    @media (prefers-reduced-motion: reduce){
-      *{transition:none!important;animation:none!important;}
-      .land-hero::before,.cell::before{animation:none;display:none;}
-      .brand-intro{display:none;}
-    }
-  .brand-intro-skip{
-    position:absolute;right:20px;bottom:20px;color:#8eb69b;background:transparent;
-    border:1px solid rgba(142,182,155,.35);border-radius:8px;padding:8px 12px;cursor:pointer;
-  }
-  .brand-intro-skip:hover{
-    background:rgba(142,182,155,.15);border-color:rgba(142,182,155,.6);
-    transform:translateY(-1px);transition:transform .2s ease;
-  }
-  .skip-text{font-size:14px;font-weight:600;color:#8eb69b;letter-spacing:.05em;}
-  .skip-countdown{
-    position:absolute;left:100%;top:50%;transform:translate(-8px,-50%);
-    font-size:11px;color:rgba(142,182,155,.6);font-weight:500;
-    background:rgba(142,182,155,.15);padding:4px 8px;border-radius:6px;margin-top:2px;
-  }
-</style>
-  <link rel="stylesheet" href="/assets/css/redesign.css">
+  <link rel="preload" as="font" type="font/woff2" crossorigin href="/assets/fonts/bricolage-grotesque-latin-wght-normal-DLoelf7F.woff2">
+  <script>
+    /* Same keys as the app so Day/Night and language carry over after sign-in. */
+    (function () {
+      var d = document.documentElement;
+      try {
+        var t = localStorage.getItem("mm_theme");
+        d.dataset.theme = t === "day" || t === "night" ? t : (matchMedia("(prefers-color-scheme: light)").matches ? "day" : "night");
+        var l = localStorage.getItem("mm2_lang");
+        if (l === "en" || l === "my") { d.dataset.lang = l; d.lang = l; }
+      } catch (e) {}
+    })();
+  </script>
+  <link rel="stylesheet" href="/assets/css/landing.css?v=20261101">
 </head>
-<body class="page-marketing">
-<div class="brand-intro" id="brand-intro" role="dialog" aria-label="MikroTik Magic introduction">
-  <div class="brand-intro-line"></div>
-  <picture><source srcset="/assets/images/mikromagic-mark-20260930.webp" type="image/webp"><img class="brand-intro-mark" src="/assets/images/mikromagic-mark-20260930.png" alt="MikroTik Magic"></picture>
-  <div class="brand-intro-name">Network magic, controlled</div>
-  <button class="brand-intro-skip" id="brand-intro-skip" type="button">
-    <span class="skip-text">Skip Intro</span>
-    <span class="skip-countdown" id="skip-countdown"></span>
-  </button>
-  <div class="intro-progress" id="intro-progress">
-    <div class="progress-bar" id="progress-bar"></div>
-  </div>
-</div>
-<div class="lg-orb lg-orb-a"></div>
-<div class="lg-orb lg-orb-b"></div>
-<div class="lg-orb lg-orb-c"></div>
-<div class="lg-grain"></div>
+<body>
+  <a class="skip" href="#main"><span lang="en">Skip to content</span><span lang="my">အကြောင်းအရာသို့ ကျော်မည်</span></a>
 
-<div class="land-nav">
-  <div class="rail-brand"><img class="brand-logo" src="/assets/images/mikromagic-mark-20260930.png" alt="">Mega Magic</div>
-  <div class="spacer"></div>
-  <div><a class="land-signin" href="/signin.html">Sign in →</a></div>
-</div>
-
-<div class="landing">
-  <section class="land-hero">
-    <span class="land-eyebrow">MikroTik cloud management</span>
-    <h1>Run your hotspot business<br>from <span class="accent">one place.</span></h1>
-    <p>Configure MikroTik gateways, monitor guests and routers, sell Wi-Fi access, and manage every site remotely through a simpler web console.</p>
-    <div class="land-cta">
-      <a class="btn btn-primary" href="/signin.html">Sign in</a>
-      <a class="btn" href="/pricing.html">Pricing</a>
-      <a class="btn telegram-cta" href="https://t.me/nish2769" target="_blank" rel="noopener noreferrer" aria-label="Contact Mega Magic support on Telegram">
-        <span class="telegram-plane" aria-hidden="true">➤</span>
-        Contact us on Telegram
-      </a>
-    </div>
-  </section>
-
-  <section class="land-section">
-    <h2>Everything you need to operate</h2>
-    <div class="land-rule"></div>
-    <div class="land-grid">
-      <div class="cell">
-        <div class="glyph" data-lucide="activity"></div>
-        <h3>Fleet health</h3>
-        <p>See which routers are online, offline, or need attention, then open the right device controls from the same screen.</p>
-      </div>
-      <div class="cell">
-        <div class="glyph" data-lucide="network"></div>
-        <h3>Live topology</h3>
-        <p>Follow the connection from your cloud hub to each gateway, port, access point, and downstream device.</p>
-      </div>
-      <div class="cell">
-        <div class="glyph" data-lucide="router"></div>
-        <h3>RouterBOARD control</h3>
-        <p>Check reachability, change supported RouterOS settings, create backups, reboot safely, and review every action.</p>
-      </div>
-      <div class="cell">
-        <div class="glyph" data-lucide="wifi"></div>
-        <h3>Guest Wi-Fi</h3>
-        <p>Offer voucher login, mobile payment, or both through a captive portal branded for your business.</p>
-      </div>
-      <div class="cell">
-        <div class="glyph" data-lucide="ticket"></div>
-        <h3>Vouchers &amp; revenue</h3>
-        <p>Create and print vouchers, manage resellers, approve guest payments, and track the money your hotspot earns.</p>
-      </div>
-      <div class="cell">
-        <div class="glyph" data-lucide="bot"></div>
-        <h3>Magic Dude</h3>
-        <p>Ask the floating assistant what is wrong, what a setting means, or what to do next without leaving your current page.</p>
+  <header class="nav">
+    <div class="wrap">
+      <a class="brand" href="/"><img src="/assets/images/mikromagic-mark-20260930.png" alt="" width="32" height="32">Mega Magic</a>
+      <nav class="nav-links" aria-label="Main">
+        <a href="#sell"><span lang="en">Sell</span><span lang="my">ရောင်းချရန်</span></a>
+        <a href="#watch"><span lang="en">Watch</span><span lang="my">ကြည့်ရှုရန်</span></a>
+        <a href="/pricing.html"><span lang="en">Pricing</span><span lang="my">စျေးနှုန်း</span></a>
+      </nav>
+      <div class="tools">
+        <button type="button" class="iconbtn" id="theme" aria-label="Day / Night">
+          <svg class="i-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+          <svg class="i-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z"/></svg>
+        </button>
+        <div class="seg" role="group" aria-label="Language">
+          <button type="button" data-set-lang="my" aria-pressed="true">မြန်မာ</button>
+          <button type="button" data-set-lang="en" aria-pressed="false">EN</button>
+        </div>
+        <a class="btn primary signin" href="/signin.html"><span lang="en">Sign in</span><span lang="my">ဝင်မည်</span></a>
       </div>
     </div>
-  </section>
+  </header>
 
-  <section class="land-section">
-    <h2>Designed for real hotspot businesses</h2>
-    <div class="land-rule"></div>
-    <div class="land-grid">
-      <div class="cell">
-        <div class="glyph" data-lucide="router"></div>
-        <h3>Works with your MikroTik</h3>
-        <p>Use gateway routers, wireless RouterBOARDs, or external access points. Available controls adapt to each device's real capabilities.</p>
+  <main id="main">
+    <section class="wrap hero">
+      <div>
+        <div class="logo-stage" aria-hidden="true">
+          <i class="glow"></i>
+          <i class="ring"></i><i class="ring"></i><i class="ring"></i>
+          <picture><source srcset="/assets/images/mikromagic-mark-20260930.webp" type="image/webp"><img class="mark" src="/assets/images/mikromagic-mark-20260930.png" alt="" width="260" height="260" fetchpriority="high"></picture>
+          <i class="spark sp1"></i><i class="spark sp2"></i><i class="spark sp3"></i><i class="spark sp4"></i><i class="spark sp5"></i>
+        </div>
+        <h1>
+          <span lang="en">The place where all the magic happens</span>
+          <span lang="my">မှော်ပညာအားလုံး ဖြစ်ပေါ်ရာ နေရာ</span>
+        </h1>
+        <p class="lead"><span lang="en">Cloud management for MikroTik hotspots.</span><span lang="my">MikroTik hotspot အတွက် cloud စီမံခန့်ခွဲမှု။</span></p>
+        <div class="cta">
+          <a class="btn primary" href="/signin.html"><span lang="en">Register your account</span><span lang="my">သင့်အကောင့် စာရင်းသွင်းမည်</span></a>
+          <div class="tg-wrap">
+          <i class="orbit o4" aria-hidden="true"></i><i class="orbit o3" aria-hidden="true"></i><i class="orbit o2" aria-hidden="true"></i>
+          <i class="orbit plane" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.5.71L12.6 16.3l-1.99 1.93c-.23.23-.42.42-.83.42z"/></svg></i>
+          <a class="btn tg" href="https://t.me/nish2769" target="_blank" rel="noopener noreferrer"><span class="tg-badge"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.5.71L12.6 16.3l-1.99 1.93c-.23.23-.42.42-.83.42z"/></svg></span><span lang="en">Contact us on Telegram</span><span lang="my">Telegram တွင် ဆက်သွယ်ရန်</span></a>
+        </div>
+        </div>
       </div>
-      <div class="cell">
-        <div class="glyph" data-lucide="backup"></div>
-        <h3>Each business stays separate</h3>
-        <p>Every customer sees only their own routers, guests, vouchers, revenue, team, Telegram approvals, and activity history.</p>
-      </div>
-      <div class="cell">
-        <div class="glyph" data-lucide="alert"></div>
-        <h3>Safer remote changes</h3>
-        <p>Important actions show exactly what will change, create a recovery point, and confirm that the router returns healthy.</p>
-      </div>
-    </div>
-  </section>
+    </section>
 
-  <section class="land-section land-guide">
-    <div>
-      <span class="land-eyebrow">Help whenever you need it</span>
-      <h2>Understand every tool.</h2>
-      <p>Open the product guide or ask Magic Dude to learn what a page controls, how to use it, and what will happen before you apply a change.</p>
-      <a class="btn btn-primary" href="/signin.html">Open your console</a>
-    </div>
-    <picture><source srcset="/assets/images/magic-dude-guide-network-20260930.webp" type="image/webp"><img src="/assets/images/magic-dude-guide-network-20260930.png" alt="Magic Dude explaining a secure network topology"></picture>
-  </section>
-</div>
-<script>
-(() => {
-  const intro = document.getElementById("brand-intro");
-  const reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  let seen = false;
-  try { seen = sessionStorage.getItem("mm_brand_intro_seen") === "1"; } catch (_) {}
-  if (reduced || seen) { intro.remove(); redirect(); return; }
-  try { sessionStorage.setItem("mm_brand_intro_seen", "1"); } catch (_) {}
-  let removed = false;
-  const close = () => {
-    if (removed) return; removed = true; intro.classList.add("is-leaving");
-    setTimeout(() => {
-      intro.remove();
-      redirect();
-    }, 420);
-  };
-  document.getElementById("brand-intro-skip").addEventListener("click", close);
-  document.getElementById("skip-countdown").textContent = "Skipping...";
-  setTimeout(close, 1500);
-  function redirect() {
-    try { window.location.href = "/v2/"; } catch (e) { window.location = "/v2/"; }
-  }
-})();
-</script>
+    <section class="band wrap" id="sell">
+      <div class="split">
+        <div>
+          <h2><span lang="en">Shield Captive Portal</span><span lang="my">လုံခြုံမှုကို စိတ်ချပါ</span></h2>
+          <ul class="points">
+            <li><span><span lang="en">Vouchers by plan, printed.</span><span lang="my">အစီအစဉ်အလိုက် ဘောက်ချာ၊ ပရင့်ထုတ်နိုင်။</span></span></li>
+            <li><span><span lang="en">Paid to your own bank.</span><span lang="my">သင့်ကိုယ်ပိုင်ဘဏ်သို့ ငွေရ။</span></span></li>
+            <li><span><span lang="en">A separate Jellyfin page.</span><span lang="my">Jellyfin စာမျက်နှာ သီးသန့်။</span></span></li>
+          </ul>
+        </div>
+        <figure class="phone-wrap">
+          <div class="phone">
+            <i class="island" aria-hidden="true"></i>
+            <div class="screen">
+              <video id="demo" muted loop playsinline preload="metadata" poster="/assets/video/portal-demo-my.jpg" aria-label="Short looping preview of the guest login and bank transfer pages"></video>
+            </div>
+          </div>
+        </figure>
+      </div>
+    </section>
+
+    <section class="band wrap" id="watch">
+      <div class="split flip">
+        <div>
+          <h2><span lang="en">Magic Network Topology</span><span lang="my">Ai-assist Network Topology</span></h2>
+          <ul class="points">
+            <li><span><span lang="en">Router status.</span><span lang="my">Router အခြေအနေ။</span></span></li>
+            <li><span><span lang="en">Active guests.</span><span lang="my">အသုံးပြုနေသော ဧည့်သည်။</span></span></li>
+            <li><span><span lang="en">Magic Dude gives advice only.</span><span lang="my">Magic Dude က အကြံပေးသာ။</span></span></li>
+          </ul>
+        </div>
+        <div class="glass topo" role="img" aria-label="Sample topology">
+          <div class="node"><img class="ico" src="/assets/images/topology/upstream.svg" alt="" width="34" height="34"><span><span lang="en">Internet</span><span lang="my">အင်တာနက်</span></span></div>
+          <span class="stem"></span>
+          <div class="node main"><img src="/assets/images/topology/hap-ax2.webp" alt="" width="56" height="56"><span>hAP ax²</span><small><span lang="en">Online</span><span lang="my">အွန်လိုင်း</span></small></div>
+          <span class="stem"></span>
+          <div class="row">
+            <div class="node"><img class="ico" src="/assets/images/topology/ap.svg" alt="" width="34" height="34"><span><span lang="en">Access point</span><span lang="my">Access point</span></span></div>
+            <div class="node"><img class="ico" src="/assets/images/topology/phone.svg" alt="" width="34" height="34"><span><span lang="en">Phone</span><span lang="my">ဖုန်း</span></span></div>
+            <div class="node"><img class="ico" src="/assets/images/topology/printer.svg" alt="" width="34" height="34"><span><span lang="en">Printer</span><span lang="my">ပရင်တာ</span></span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="band wrap">
+      <div class="glass close">
+        <h2><span lang="en">Start with one router.</span><span lang="my">Router တစ်လုံးဖြင့် စတင်ပါ။</span></h2>
+        <div class="cta">
+          <a class="btn primary" href="/signin.html"><span lang="en">Sign in</span><span lang="my">ဝင်မည်</span></a>
+          <a class="btn" href="/pricing.html"><span lang="en">See pricing</span><span lang="my">စျေးနှုန်း ကြည့်မည်</span></a>
+        </div>
+        <div class="tg-wrap">
+          <i class="orbit o4" aria-hidden="true"></i><i class="orbit o3" aria-hidden="true"></i><i class="orbit o2" aria-hidden="true"></i>
+          <i class="orbit plane" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.5.71L12.6 16.3l-1.99 1.93c-.23.23-.42.42-.83.42z"/></svg></i>
+          <a class="btn tg" href="https://t.me/nish2769" target="_blank" rel="noopener noreferrer"><span class="tg-badge"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.5.71L12.6 16.3l-1.99 1.93c-.23.23-.42.42-.83.42z"/></svg></span><span lang="en">Contact us on Telegram</span><span lang="my">Telegram တွင် ဆက်သွယ်ရန်</span></a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="wrap">
+    <span>© Mega Magic</span>
+    <span><a href="/pricing.html"><span lang="en">Pricing</span><span lang="my">စျေးနှုန်း</span></a> · <a href="https://t.me/nish2769" target="_blank" rel="noopener noreferrer">Telegram</a> · <a href="/signin.html"><span lang="en">Sign in</span><span lang="my">ဝင်မည်</span></a></span>
+  </footer>
+
+  <script>
+    (function () {
+      var d = document.documentElement;
+      var btns = document.querySelectorAll("[data-set-lang]");
+      function show(l) {
+        d.dataset.lang = l; d.lang = l;
+        btns.forEach(function (b) { b.setAttribute("aria-pressed", b.dataset.setLang === l ? "true" : "false"); });
+        if (demo) loadDemo();
+      }
+      /* Preview video: right language, only plays while on screen, still image if motion is reduced. */
+      var demo = document.getElementById("demo");
+      var still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+      var visible = false;
+      function loadDemo() {
+        var l = d.dataset.lang === "en" ? "en" : "my";
+        var src = "/assets/video/portal-demo-" + l + ".mp4";
+        if (demo.getAttribute("src") !== src) { demo.setAttribute("src", src); demo.setAttribute("poster", "/assets/video/portal-demo-" + l + ".jpg"); }
+        if (visible && !still) { var p = demo.play(); if (p && p.catch) p.catch(function () {}); }
+      }
+      if ("IntersectionObserver" in window) new IntersectionObserver(function (e) { visible = e[0].isIntersecting; if (visible) loadDemo(); else demo.pause(); }, { threshold: .25 }).observe(demo);
+      loadDemo();
+      show(d.dataset.lang === "en" ? "en" : "my");
+      btns.forEach(function (b) { b.addEventListener("click", function () { show(b.dataset.setLang); try { localStorage.setItem("mm2_lang", b.dataset.setLang); } catch (e) {} }); });
+      document.getElementById("theme").addEventListener("click", function () {
+        var n = d.dataset.theme === "day" ? "night" : "day";
+        d.dataset.theme = n;
+        try { localStorage.setItem("mm_theme", n); } catch (e) {}
+      });
+    })();
+  </script>
 </body>
 </html>
