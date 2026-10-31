@@ -121,13 +121,6 @@ section.band { padding-block: clamp(44px, 8vw, 96px); }
 .topo .row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; width: 100%; margin-top: 0; }
 .topo .row .node { padding: 10px 6px; }
 
-/* Safe change flow */
-.flow { margin-top: 36px; display: grid; gap: 14px; counter-reset: s; }
-.flow .step { padding: 22px; }
-.flow h3 { font-size: 1.2rem; }
-.flow p { color: var(--ink-soft); }
-@media (min-width: 860px) { .flow { grid-template-columns: repeat(3, 1fr); position: relative; } .flow .step:not(:last-child)::after { content: ""; position: absolute; top: 50%; right: -15px; width: 16px; border-top: 2px solid var(--jade); } }
-
 /* Capabilities */
 .caps { margin-top: 32px; display: grid; gap: 0; border-top: 1px solid var(--edge-soft); }
 .caps .item { display: grid; gap: 4px; padding: 20px 0; border-bottom: 1px solid var(--edge-soft); }
