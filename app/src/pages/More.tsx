@@ -4,8 +4,8 @@ import { useI18n } from "../i18n";
 
 /** Pages that live outside the five main tabs. Platform tools show only to the platform operator. */
 const LINKS: Array<{ href: string; key: string; dev?: boolean }> = [
-  { href: "#/revenue", key: "title.revenue" }, { href: "#/sites", key: "title.sites" }, { href: "#/hub", key: "hub.title" }, { href: "#/network", key: "title.network" }, { href: "#/topology", key: "tp.title" }, { href: "#/guests", key: "gu.title" }, { href: "#/incidents", key: "inc.title" }, { href: "#/security", key: "sec.title" }, { href: "#/backups", key: "bk.title" }, { href: "#/events", key: "ev.title" }, { href: "#/fleet", key: "fl.title" },
-  { href: "#/store", key: "title.store" }, { href: "#/platform", key: "title.platform", dev: true },
+  { href: "#/revenue", key: "title.revenue" }, { href: "#/sites", key: "title.sites" }, { href: "#/hub", key: "hub.title" }, { href: "#/network", key: "title.network" }, { href: "#/topology", key: "tp.title" }, { href: "#/devices", key: "dv.title" }, { href: "#/guests", key: "gu.title" }, { href: "#/incidents", key: "inc.title" }, { href: "#/security", key: "sec.title" }, { href: "#/backups", key: "bk.title" }, { href: "#/events", key: "ev.title" }, { href: "#/fleet", key: "fl.title" },
+  { href: "#/store", key: "title.store" }, { href: "#/profile", key: "pf.title" }, { href: "#/guide", key: "gd.title" }, { href: "#/platform", key: "title.platform", dev: true },
 ];
 
 export function More({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {

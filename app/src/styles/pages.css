@@ -175,3 +175,14 @@
 .capsules.wrap { grid-auto-flow: row; grid-template-columns: repeat(2, 1fr); }
 .evrow { align-items: flex-start; }
 @media (min-width: 900px) { .nt-layout { grid-template-columns: minmax(0, 1fr) 280px; align-items: start; } .nt-inspector { position: sticky; top: 76px; } .capsules.wrap { grid-template-columns: repeat(5, 1fr); } }
+
+/* Profile */
+.pf-hero { overflow: hidden; padding: 0; }
+.pf-coverbox { height: 120px; background: linear-gradient(135deg, color-mix(in srgb, var(--jade) 35%, var(--bg-2)), var(--bg-1)); }
+.pf-cover { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pf-id { display: flex; align-items: flex-end; gap: 14px; padding: 0 16px; margin-top: -36px; }
+.pf-avatarbox { position: relative; flex: none; width: 76px; height: 76px; border-radius: 50%; overflow: hidden; display: grid; place-items: center; border: 3px solid var(--glass-solid); background: var(--glass-strong); font-family: var(--font-display); font-weight: 700; font-size: 1.5rem; }
+.pf-avatarbox img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.pf-id h1 { font-size: 1.4rem; }
+label.pill input[type="file"] { display: none; }
+.pf-id .chip { align-self: flex-start; }

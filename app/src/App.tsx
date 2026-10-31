@@ -25,6 +25,9 @@ import { Events } from "./pages/Events";
 import { Security } from "./pages/Security";
 import { Backups } from "./pages/Backups";
 import { Topology } from "./pages/Topology";
+import { Devices } from "./pages/Devices";
+import { ProfilePage } from "./pages/Profile";
+import { Guide } from "./pages/Guide";
 import { Skeleton } from "./components/Skeleton";
 
 type Auth = { state: "loading" } | { state: "out"; notice?: string } | { state: "in"; me: Me };
@@ -59,6 +62,9 @@ export function App() {
     case "security": page = <Security />; tab = "more"; break;
     case "backups": page = <Backups />; tab = "more"; break;
     case "topology": page = <Topology />; tab = "more"; break;
+    case "devices": page = <Devices me={me} />; tab = "more"; break;
+    case "profile": page = <ProfilePage />; tab = "more"; break;
+    case "guide": page = <Guide me={me} />; tab = "more"; break;
     case "hub": page = <Hub me={me} />; tab = "more"; break;
     case "store": page = <Store me={me} />; tab = "more"; break;
     case "platform": page = <Platform me={me} />; tab = "more"; break;
