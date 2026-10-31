@@ -9,7 +9,6 @@ import { SignIn } from "./pages/SignIn";
 import { Home } from "./pages/Home";
 const Revenue = lazy(() => import("./pages/Revenue").then(m => ({ default: m.Revenue })));
 import { More } from "./pages/More";
-import { Soon } from "./pages/Soon";
 const Vouchers = lazy(() => import("./pages/vouchers").then(m => ({ default: m.Vouchers })));
 const Routers = lazy(() => import("./pages/routers").then(m => ({ default: m.Routers })));
 const Jellyfin = lazy(() => import("./pages/Jellyfin").then(m => ({ default: m.Jellyfin })));
@@ -89,7 +88,7 @@ export function App() {
     case "vouchers": page = <Vouchers sub={route.sub} />; break;
     case "more": page = <More me={me} onSignedOut={signedOut} />; break;
     case "home": page = <Home me={me} />; break;
-    default: page = <Soon legacy={"#" + route.name} />; tab = "more";
+    default: location.replace("#/home"); page = null;
   }
   return <Shell active={tab}><Suspense fallback={<Skeleton h={240} />}>{page}</Suspense></Shell>;
 }

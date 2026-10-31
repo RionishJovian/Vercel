@@ -109,7 +109,7 @@ export function Store({ me }: { me: Me }) {
     <>
       {back}<h1>{t("title.store")}</h1>
       {mode === "individual_pass" ? <AccountPass me={me} pass={sub.data} onRefresh={() => void sub.mutate()} />
-        : mode === "subscription_only" ? <Note kind="warn">{t("st.subOnly")} <a className="link" href="/app.html#store">{t("c.openLegacy")}</a></Note>
+        : mode === "subscription_only" ? <Note kind="warn">{t("st.subOnly")}</Note>
         : (
           <>
             {own.data && own.data.scope === "account" && own.data.authority === "app_account_passes" ? (

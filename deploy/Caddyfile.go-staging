@@ -6,6 +6,12 @@ import security-headers.caddy
     header @html Cache-Control "no-cache"
     encode gzip
     root * /srv
+    # The React app at /v2/ is the console. Old app.html links land there; the file stays in the image for rollback at /app.html?legacy=1.
+    @oldapp {
+        path /app.html
+        not query legacy=1
+    }
+    redir @oldapp /v2/ 302
     handle /api/* {
         reverse_proxy api:8080
     }

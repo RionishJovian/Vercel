@@ -179,7 +179,7 @@ document.getElementById("login-form").addEventListener("submit", async (e) => {
       password: document.getElementById("password").value,
     });
 
-    location.href = "/app.html";
+    location.href = "/v2/";
   } catch (err) {
     alert.hidden = false;
     alert.textContent = err.message === "network-unreachable"
