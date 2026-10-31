@@ -9,3 +9,5 @@ node_modules
 vercel-public
 design-alternatives
 work
+app/node_modules
+app/dist

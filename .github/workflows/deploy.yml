@@ -53,6 +53,8 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm run test:deployment && npm run test:vercel && npm run build && npm run test:critical-ui
+      - run: npm ci --ignore-scripts && npm test && npm run build
+        working-directory: app
       - run: go test -race ./internal/... && go build ./...
       - run: bash -n deploy/deploy-vps.sh
 
