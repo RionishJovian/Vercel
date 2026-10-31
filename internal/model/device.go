@@ -181,6 +181,9 @@ type PortalConfig struct {
 	// MMQRURL is the owner's MMQR payment QR image (Myanmar QR) guests scan to
 	// make the bank transfer. Served path or https URL.
 	MMQRURL string `json:"mmqr_url,omitempty"`
+	// PaymentInstructions is the owner's own free-text bank-transfer steps. The
+	// platform never takes payment; guests pay the owner's account directly.
+	PaymentInstructions string `json:"payment_instructions,omitempty"`
 	// MediaHost is the owner's LAN media server, stored once per business so a
 	// portal redeploy does not require retyping it. Only a private IPv4 address
 	// on the business network is accepted.

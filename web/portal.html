@@ -71,6 +71,7 @@
   .qr { text-align: center; margin: 16px 0; }
   .qr img { width: 210px; height: 210px; padding: 8px; background: #fff; border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 20px 45px -22px rgba(0,0,0,.8); }
   .qr .bank { color: var(--muted); font-size: 14px; margin-top: 8px; }
+  .pay-note { white-space: pre-wrap; text-align: left; color: #fff; }
   .timer { font-family: ui-monospace, monospace; font-size: 28px; font-weight: 700; color: var(--warn); text-align: center; margin: 14px 0; }
   .form-row { margin: 0 0 14px; } .form-row label { display: block; color: var(--muted); font-size: 12px; font-weight: 650; margin: 0 0 6px; }
   .form-row { text-align: left; }
@@ -168,7 +169,7 @@ var MM = {
   mediaOpenHint: "နောက်တစ်မျက်နှာတွင် ရုပ်ရှင်းရွေးချယ်ပါ။",
   mediaLoadFailed: "ရုပ်ရှင်းများ မဖွင့်နိုင်ပါ။ အထက်ရှိ လင့်မှတစ်ဆင့် အသုံးပြုနိုင်သေးသည်။",
   buy:      "WiFi ဝယ်ယူမှု",                                 // Buy WiFi  [needs native review]
-  pay:      "MMQR ဖြင့် ငွေပေးချေမှု",                        // Pay by MMQR  [needs native review]
+  pay:      "ဘဏ်လွှဲ ငွေပေးချေမှု",                            // Pay by bank transfer  [needs native review]
   steps:    "1) Plan ရွေးပါ  2) MMQR ငွေပေးချေပါ  3) ဖုန်းနံပါတ် ထည့်ပါ", // [phone token fixed; native review]
   choose:   "Plan ရွေးပါ",                                    // Choose a plan (Plan kept English)
   trial:    "MMQR ဖြင့် ငွေပေးချေပါ — trial အချိန်အတွင်း ပြီးအောင်", // [needs native review]
@@ -317,7 +318,7 @@ function renderVoucher(cfg) {
       '<button class="btn" id="voucher-submit" type="button">' + t("Connect", "voucherConnect") + '</button></div>' +
       '<p class="voucher-msg" id="voucher-msg" role="status" aria-live="polite"></p>' +
     '</section>' +
-    (paymentEnabled ? '<div class="portal-nav"><button class="btn btn-secondary" id="portal-go-payment" type="button">' + t("Buy WiFi with mobile payment →", "goPayment") + '</button><p class="portal-nav-note">' + t("Continue to plans and MMQR payment", "goPaymentNote") + '</p></div>' : '') +
+    (paymentEnabled ? '<div class="portal-nav"><button class="btn btn-secondary" id="portal-go-payment" type="button">' + t("Buy WiFi by bank transfer →", "goPayment") + '</button><p class="portal-nav-note">' + t("Continue to plans and MMQR payment", "goPaymentNote") + '</p></div>' : '') +
     consentMarkup(cfg);
   document.getElementById("voucher-submit").addEventListener("click", function () { redeemVoucher(cfg); });
   document.getElementById("voucher-code").addEventListener("keydown", function (e) {
@@ -333,7 +334,7 @@ function renderPlans(cfg) {
     applyBranding(cfg);
     RERENDER = function () { renderPlans(cfg); };
     document.getElementById("root").innerHTML = portalHeading(cfg, "voucherWelcome", "Connect to WiFi") +
-      '<p class="msg" role="status">' + t("Voucher login and mobile payment are currently unavailable. Ask the hotspot owner for help.", "accessUnavailable") + '</p>';
+      '<p class="msg" role="status">' + t("Voucher login and bank transfer are currently unavailable. Ask the hotspot owner for help.", "accessUnavailable") + '</p>';
     return;
   }
   applyBranding(cfg);
@@ -349,7 +350,7 @@ function renderPlans(cfg) {
   }).join("");
   document.getElementById("root").innerHTML =
     portalHeading(cfg, "buy", "Buy WiFi") +
-    '<p class="steps">' + t("1) Choose a plan · 2) Pay by MMQR (free trial) · 3) Enter phone + last 6 digits", "steps") + '</p>' +
+    '<p class="steps">' + t("1) Choose a plan · 2) Pay by bank transfer (free trial) · 3) Enter phone + last 6 digits", "steps") + '</p>' +
     '<h3>' + t("Choose a plan", "choose") + '</h3>' +
     (PREVIEW && cfg.preview_sample ? '<p class="pv-sample-note">Sample preview data — add a plan to replace it.</p>' : '') +
     (rows || '<p class="msg">' + t("No plans are available yet.", "noPlans") + '</p>') +
@@ -530,12 +531,13 @@ function renderPay(cfg, reqId, graceExp) {
   RERENDER = function () { renderPay(cfg, reqId, graceExp); };
   var end = new Date(graceExp).getTime();
   document.getElementById("root").innerHTML =
-    '<h1>' + t("Pay by MMQR", "pay") + '</h1>' +
+    '<h1>' + t("Pay by bank transfer", "pay") + '</h1>' +
     '<p class="steps">' + t("Scan the QR and complete the bank transfer before the trial ends.", "trial") + '</p>' +
     '<div class="qr">' + (cfg.mmqr_url ? '<img src="' + esc(cfg.mmqr_url) + '">' : '') +
       (cfg.bank_name || cfg.bank_holder || cfg.bank_account
         ? '<div class="bank">' + esc(cfg.bank_name||"") + ' · ' + esc(cfg.bank_holder||"") + ' · ' + esc(cfg.bank_account||"") + '</div>' : '') +
     '</div>' +
+    (cfg.payment_instructions ? '<p class="steps pay-note">' + esc(cfg.payment_instructions) + '</p>' : '') +
     '<p class="timer" id="timer"></p>' +
     '<p class="steps" id="grace-allowance">' + (LANG === "my" ? 'ယာယီအင်တာနက်: ' : 'Temporary internet: ') + esc(cfg.guest_grace_data_mb || 50) + ' MB · ' + esc(cfg.guest_grace_minutes || 10) + (LANG === "my" ? ' မိနစ်။ အချိန် သို့မဟုတ် ဒေတာ ကန့်သတ်ချက် ပြည့်လျှင် ရပ်ပါမည်။' : ' minutes. Access ends when either limit is reached. Uploads and downloads count.') + '</p>' +
     '<h3>' + t("After paying, confirm here", "afterPay") + '</h3>' +
