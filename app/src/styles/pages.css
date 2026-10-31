@@ -137,3 +137,14 @@
 .dot-state { width: 14px; height: 14px; border-radius: 50%; border: 1px solid var(--edge); }
 .dot-state.online { background: var(--ok); border-color: var(--ok); box-shadow: 0 0 10px var(--ok); }
 .dot-state.offline { background: color-mix(in srgb, var(--bad) 60%, transparent); border-color: var(--bad); }
+
+/* Internet setup editor */
+.tasks { display: grid; gap: 10px; }
+.task { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; text-align: left; padding: 14px 16px; border-radius: var(--r-row); border: 1px solid var(--edge-soft); background: var(--glass); color: var(--ink); transition: border-color var(--t-fast), background var(--t-base); }
+.task[aria-pressed="true"] { border-color: var(--jade); background: color-mix(in srgb, var(--jade) 12%, var(--glass)); }
+.task[disabled] { opacity: .6; cursor: not-allowed; }
+.fs { border: 1px solid var(--edge-soft); min-width: 0; } .fs legend { padding: 0 8px; font-weight: 650; }
+.steps { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+.recordcard { flex-direction: column; align-items: stretch; }
+.current { padding-bottom: 8px; border-bottom: 1px solid var(--edge-soft); }
+@media (min-width: 900px) { .tasks { grid-template-columns: repeat(2, 1fr); } }

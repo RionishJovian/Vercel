@@ -40,11 +40,12 @@ export function project(inv: Inv | undefined) {
 export function NetworkMap({ gateways, selected }: { gateways: RouterRow[]; selected: string | null }) {
   const { t, lang } = useI18n();
   const gw = gateways.find((g) => g.device_id === selected) ?? gateways[0];
-  const { data, error, isLoading } = useSWR<Inv>(`/routers/${encodeURIComponent(gw.device_id)}/network/inventory`, fetcher);
+  const { data, error, isLoading } = useSWR<{ inventory?: Inv }>(`/routers/${encodeURIComponent(gw.device_id)}/network/inventory`, fetcher);
   const [pick, setPick] = useState<Dev | null>(null);
   if (isLoading) return <Skeleton h={320} />;
   if (error) return <Note kind="bad">{t("map.failed")}</Note>;
-  const m = project(data);
+  // The server answers { inventory: … }.
+  const m = project(data?.inventory);
   const how = (d: Dev) => d.how === "wifi" ? t("map.how.wifi") : d.how === "neighbor" ? t("map.how.neighbor") : d.how === "learned" ? (lang === "my" ? `${d.port} ${t("map.how.learned")}` : `${t("map.how.learned")} ${d.port}`) : t("map.how.unknown");
   const Node = ({ d }: { d: Dev }) => <button type="button" className="mapnode dev" aria-pressed={pick?.mac === d.mac} onClick={() => setPick(d)}><b>{d.name}</b><span className="soft small">{how(d)}</span></button>;
   return (

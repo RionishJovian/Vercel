@@ -19,6 +19,7 @@ import { Fleet } from "./pages/Fleet";
 import { Guests } from "./pages/Guests";
 import { Sites } from "./pages/Sites";
 import { Hub } from "./pages/hub";
+import { Network } from "./pages/network";
 import { Skeleton } from "./components/Skeleton";
 
 type Auth = { state: "loading" } | { state: "out"; notice?: string } | { state: "in"; me: Me };
@@ -47,6 +48,7 @@ export function App() {
     case "fleet": page = <Fleet />; tab = "more"; break;
     case "guests": page = <Guests me={me} />; tab = "more"; break;
     case "sites": page = <Sites me={me} />; tab = "more"; break;
+    case "network": page = <Network me={me} sub={route.sub} />; tab = "more"; break;
     case "hub": page = <Hub me={me} />; tab = "more"; break;
     case "store": page = <Store me={me} />; tab = "more"; break;
     case "platform": page = <Platform me={me} />; tab = "more"; break;
