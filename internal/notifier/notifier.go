@@ -15,6 +15,7 @@ import (
 
 	"mega-magic/internal/database"
 	"mega-magic/internal/model"
+	"mega-magic/internal/security"
 )
 
 const (
@@ -40,8 +41,9 @@ func New(repo *database.WebhookRepository, db *database.DB, logger *zap.SugaredL
 	return &Notifier{
 		webhookRepo: repo,
 		db:          db,
-		client:      &http.Client{Timeout: 10 * time.Second},
-		logger:      logger,
+		// Tenant-supplied URLs: never connect to internal addresses or follow redirects.
+		client: security.SafeHTTPClient(10 * time.Second),
+		logger: logger,
 	}
 }
 
