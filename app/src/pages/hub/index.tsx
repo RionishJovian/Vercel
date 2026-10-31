@@ -6,6 +6,7 @@ import { useI18n } from "../../i18n";
 import { BackLink, Field, Note } from "../../components/ui";
 import { Skeleton } from "../../components/Skeleton";
 import { Enrollment } from "./Enrollment";
+import { DeviceForm, LAYERS } from "../devices/DeviceForm";
 import { enrollmentUnavailableKey, lookupError } from "./messages";
 import type { RouterRow } from "../routers";
 
@@ -42,6 +43,7 @@ function Lookup({ id }: { id: string }) {
 function Card({ r, state, canEdit, cap, openId, setOpen, onChanged }: { r: GW; state: string; canEdit: boolean; cap: Capability; openId: string; setOpen: (id: string) => void; onChanged: () => void }) {
   const { t } = useI18n();
   const [del, setDel] = useState<{ confirm: boolean; busy: boolean; err?: string }>({ confirm: false, busy: false });
+  const [editing, setEditing] = useState(false);
   async function remove() {
     setDel({ confirm: true, busy: true });
     try { await api.del(`/routers/${encodeURIComponent(r.device_id)}`); onChanged(); }
@@ -65,8 +67,10 @@ function Card({ r, state, canEdit, cap, openId, setOpen, onChanged }: { r: GW; s
       ) : <Note>{t(enrollmentUnavailableKey(cap.code))}</Note>)}
       <div className="row" style={{ justifyContent: "flex-start", flexWrap: "wrap" }}>
         <a className="pill" href={"#/router/" + encodeURIComponent(r.device_id)}>{t("hub.health")}</a>
+        {canEdit && !editing && <button className="pill" type="button" onClick={() => setEditing(true)}>{t("dm.edit")}</button>}
         {canEdit && !del.confirm && <button className="pill danger" type="button" onClick={() => setDel({ confirm: true, busy: false })}>{t("hub.delete")}</button>}
       </div>
+      {editing && <DeviceForm rec={r} layers={LAYERS} onDone={() => { setEditing(false); onChanged(); }} onCancel={() => setEditing(false)} />}
       {del.confirm && (
         <div className="note warn stack" role="alertdialog" aria-label={t("hub.delTitle")}>
           <b>{t("hub.delTitle")}</b><p className="small">{t("hub.delBody")}</p><p className="small">{t("hub.delNoReset")}</p><p className="small"><b>{t("hub.delPermanent")}</b></p>

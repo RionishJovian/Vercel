@@ -26,6 +26,7 @@ import { Security } from "./pages/Security";
 import { Backups } from "./pages/Backups";
 import { Topology } from "./pages/Topology";
 import { Devices } from "./pages/Devices";
+import { ManagedDevices } from "./pages/devices/ManagedDevices";
 import { ProfilePage } from "./pages/Profile";
 import { Guide } from "./pages/Guide";
 import { Templates } from "./pages/dev/Templates";
@@ -81,6 +82,7 @@ export function App() {
     case "i18n": page = <Translations me={me} />; tab = "more"; break;
     case "coins": page = <Coins me={me} />; tab = "more"; break;
     case "team": page = <Team />; tab = "more"; break;
+    case "managed-devices": page = <ManagedDevices me={me} />; tab = "more"; break;
     case "hub": page = <Hub me={me} />; tab = "more"; break;
     case "store": page = <Store me={me} />; tab = "more"; break;
     case "platform": page = <Platform me={me} sub={route.sub} />; tab = "more"; break;
