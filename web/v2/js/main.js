@@ -7,8 +7,9 @@ import router from "./screens/router.js";
 import vouchers from "./screens/vouchers.js";
 import jellyfin from "./screens/jellyfin.js";
 import more from "./screens/more.js";
+import revenue from "./screens/revenue.js";
 
-const SCREENS = { home, router, vouchers, jellyfin, more };
+const SCREENS = { home, router, vouchers, jellyfin, more, revenue };
 const TABS = [["home", "home"], ["router", "router"], ["vouchers", "ticket"], ["jellyfin", "play"], ["more", "dots"]];
 const root = document.getElementById("app");
 let me = null;

@@ -60,9 +60,34 @@ async function stock(ctx) {
   return out;
 }
 
-function printCodes(vouchers) {
-  const root = h("div", { class: "print-root" }, vouchers.map((v) =>
-    h("div", { class: "card" }, h("b", null, v.code), h("span", null, (v.plan_label || "") + " · " + mmk(v.price_mmk) + " MMK"), h("span", null, v.reseller_shop || ""))));
+const DEFAULT_LAYOUT = { business_name: "", wifi_name: "", support_contact: "", terms: "", show_price: true, show_expiry: true, show_qr: false, a4_columns: 3, a4_rows_per_page: 8, thermal_columns: 1, thermal_rows_per_strip: 1, paper_width_mm: 210 };
+
+async function loadLayout() {
+  try {
+    const res = await api.get("/voucher-print-layout");
+    return Object.assign({}, DEFAULT_LAYOUT, (res && res.layout) || {});
+  } catch (e) { rethrow(e); return Object.assign({}, DEFAULT_LAYOUT); }
+}
+
+// Printed cards are read by guests, so labels are Burmese + English.
+function validity(minutes) {
+  const m = Number(minutes) || 0;
+  if (m && m % 1440 === 0) return m / 1440 + " ရက် / day" + (m / 1440 > 1 ? "s" : "");
+  if (m && m % 60 === 0) return m / 60 + " နာရီ / hour" + (m / 60 > 1 ? "s" : "");
+  return m ? m + " မိနစ် / min" : "";
+}
+
+function printCodes(vouchers, layout) {
+  const L = Object.assign({}, DEFAULT_LAYOUT, layout || {});
+  const root = h("div", { class: "print-root", style: "grid-template-columns:repeat(" + Math.max(1, Math.min(8, Number(L.a4_columns) || 3)) + ",1fr)" },
+    vouchers.map((v) => h("div", { class: "card" },
+      L.business_name ? h("span", null, h("b", { class: "biz" }, L.business_name)) : null,
+      L.wifi_name ? h("span", null, "Wi-Fi: " + L.wifi_name) : null,
+      h("b", { class: "code" }, v.code),
+      L.show_price ? h("span", null, mmk(v.price_mmk) + " MMK") : null,
+      L.show_expiry && v.duration_minutes ? h("span", null, validity(v.duration_minutes) + " · " + t("v.validFirstUse")) : null,
+      L.terms ? h("span", { class: "terms" }, L.terms) : null,
+      L.support_contact ? h("span", null, L.support_contact) : null)));
   document.body.append(root);
   document.body.classList.add("printing");
   const done = () => { document.body.classList.remove("printing"); root.remove(); window.removeEventListener("afterprint", done); };
@@ -95,7 +120,7 @@ async function create(ctx) {
       writePending(null);
       const codes = asArray(res.vouchers);
       result.append(note("ok", t("v.ready")), note("warn", t("v.codesOnce")),
-        h("button", { class: "pill on", type: "button", onclick: () => printCodes(codes) }, t("v.print")),
+        h("button", { class: "pill on", type: "button", onclick: async () => printCodes(codes, await loadLayout()) }, t("v.print")),
         h("div", { class: "glass" }, codes.map((v) => h("div", { class: "row" }, h("b", { class: "mono" }, v.code), h("span", { class: "soft small" }, t("v.validFirstUse"))))));
     } else {
       result.append(note("warn", t("v.notReady")));
@@ -165,9 +190,56 @@ async function shops(ctx) {
   return out;
 }
 
-function printPane() {
-  return h("section", { class: "glass" }, h("p", { class: "soft" }, t("v.print.help")),
-    h("a", { class: "pill on", href: LEGACY + "#vouchers" }, t("c.openLegacy")));
+async function printPane(ctx) {
+  const [layoutRes, batchRes] = await Promise.allSettled([api.get("/voucher-print-layout"), api.get("/guest-vouchers/batches")]);
+  for (const r of [layoutRes, batchRes]) if (r.status === "rejected") rethrow(r.reason);
+  const layout = Object.assign({}, DEFAULT_LAYOUT, layoutRes.status === "fulfilled" && layoutRes.value ? layoutRes.value.layout : {});
+  const batches = batchRes.status === "fulfilled" ? asArray(batchRes.value && batchRes.value.stock_batches) : [];
+  const msg = h("div", { class: "stack" });
+
+  const biz = h("input", { class: "input", id: "pl-biz", maxlength: "120", required: true, value: layout.business_name });
+  const wifi = h("input", { class: "input", id: "pl-wifi", maxlength: "120", required: true, value: layout.wifi_name });
+  const support = h("input", { class: "input", id: "pl-support", maxlength: "200", required: true, value: layout.support_contact });
+  const terms = h("textarea", { class: "input", id: "pl-terms", maxlength: "2000", rows: "3", required: true, style: "padding:12px 16px;min-height:96px" }, layout.terms);
+  const cols = h("select", { class: "input", id: "pl-cols" }, [2, 3, 4, 5].map((n) => h("option", { value: String(n), selected: Number(layout.a4_columns) === n ? true : null }, String(n))));
+  const showPrice = h("input", { type: "checkbox", id: "pl-price", checked: layout.show_price ? true : null });
+  const showExpiry = h("input", { type: "checkbox", id: "pl-expiry", checked: layout.show_expiry ? true : null });
+  const save = h("button", { class: "btn", type: "submit" }, t("p.save"));
+  const form = h("form", { class: "glass", onsubmit: async (e) => {
+    e.preventDefault();
+    if (!form.reportValidity()) return;
+    save.disabled = true;
+    const body = Object.assign({}, layout, { business_name: biz.value.trim(), wifi_name: wifi.value.trim(), support_contact: support.value.trim(), terms: terms.value.trim(),
+      a4_columns: Number(cols.value), show_price: showPrice.checked, show_expiry: showExpiry.checked });
+    delete body.business_id; delete body.created_at; delete body.updated_at;
+    try { await api.put("/voucher-print-layout", body); Object.assign(layout, body); msg.replaceChildren(note("ok", t("p.saved"))); } catch (err) { rethrow(err); msg.replaceChildren(note("bad", t("p.saveFailed"))); }
+    save.disabled = false;
+  } },
+    h("h2", { class: "num" }, t("p.layout")),
+    h("label", { class: "field", for: "pl-biz" }, h("span", null, t("p.biz")), biz),
+    h("label", { class: "field", for: "pl-wifi" }, h("span", null, t("p.wifi")), wifi),
+    h("label", { class: "field", for: "pl-support" }, h("span", null, t("p.support")), support),
+    h("label", { class: "field", for: "pl-terms" }, h("span", null, t("p.terms")), terms),
+    h("label", { class: "field", for: "pl-cols" }, h("span", null, t("p.cols")), cols),
+    h("label", { class: "row", for: "pl-price" }, h("span", null, t("p.showPrice")), showPrice),
+    h("label", { class: "row", for: "pl-expiry" }, h("span", null, t("p.showExpiry")), showExpiry),
+    msg, save);
+
+  const pick = h("select", { class: "input", id: "pl-batch" }, batches.map((b) => h("option", { value: b.batch_id }, (b.plan_label || "—") + " · " + b.total_count)));
+  const printMsg = h("div", { class: "stack" });
+  const printBtn = h("button", { class: "btn", type: "button", onclick: async () => {
+    printBtn.disabled = true;
+    try {
+      const res = await api.get("/guest-vouchers/batches/" + encodeURIComponent(pick.value));
+      const codes = asArray(res && res.vouchers);
+      if (res && res.state === "ready" && codes.length) printCodes(codes, layout); else printMsg.replaceChildren(note("warn", t("p.notReady")));
+    } catch (err) { rethrow(err); printMsg.replaceChildren(note("bad", t("c.loadFailed"))); }
+    printBtn.disabled = false;
+  } }, t("p.printBtn"));
+  const printBox = batches.length
+    ? h("section", { class: "glass" }, h("h2", { class: "num" }, t("p.printBatch")), h("label", { class: "field", for: "pl-batch" }, h("span", null, t("p.pick")), pick), printMsg, printBtn)
+    : note("", t("p.noBatches"));
+  return h("div", { class: "stack" }, printBox, form);
 }
 
 export default {
@@ -175,7 +247,7 @@ export default {
   tab: "vouchers",
   async render(ctx) {
     const sub = TASKS.includes(ctx.sub) ? ctx.sub : "stock";
-    const pane = sub === "stock" ? await stock(ctx) : sub === "create" ? await create(ctx) : sub === "shops" ? await shops(ctx) : printPane();
+    const pane = sub === "stock" ? await stock(ctx) : sub === "create" ? await create(ctx) : sub === "shops" ? await shops(ctx) : await printPane(ctx);
     return h("div", { class: "stack" }, workspaceNav(), taskNav(sub), h("p", { class: "soft small" }, t("v.hint")), pane);
   },
 };

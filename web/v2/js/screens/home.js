@@ -31,7 +31,8 @@ export default {
     // Voucher value used (first use), never presented as cash received.
     const rev = h("section", { class: "glass" },
       h("h2", { class: "num" }, t("h.revenue")),
-      h("p", { class: "soft small" }, t("h.revenueHelp")));
+      h("p", { class: "soft small" }, t("h.revenueHelp")),
+      h("a", { class: "pill", href: "#/revenue", style: "align-self:flex-start" }, t("rv.open")));
     if (rep && num(rep.activation_today) !== null) {
       rev.append(
         h("div", { class: "big" }, mmk(rep.activation_today) + " ", h("span", { style: "font-size:22px" }, t("c.mmk"))),
