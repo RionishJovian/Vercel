@@ -729,6 +729,8 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 				storePurchases.POST("/:purchaseId/reject", auth.RequireRole(string(model.RoleDeveloper)), storeHandler.Reject)
 			}
 			protected.GET("/store/checkout-options", storeHandler.CheckoutOptions)
+			storeAddons := handler.NewStoreAddonHandler(db)
+			storeAddons.RegisterTenant(protected)
 
 			sites := protected.Group("/sites")
 			{
@@ -902,6 +904,7 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 		// or tenantMW.
 		platform := tv1.Group("/platform", auth.CookieOrigin(), auth.Middleware(authService), auth.RequireRole(string(model.RoleDeveloper)))
 		{
+			handler.NewStoreAddonHandler(db).RegisterPlatform(platform)
 			platform.GET("/pricing", platformHandler.GetPricing)
 			platform.PUT("/pricing", platformHandler.PutPricing)
 			platform.GET("/businesses", platformHandler.ListBusinesses)
