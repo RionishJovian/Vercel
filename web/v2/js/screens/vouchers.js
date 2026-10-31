@@ -1,6 +1,7 @@
 import { api } from "../api.js";
 import { h, mmk, asArray } from "../dom.js";
 import { t } from "../i18n.js";
+import guestPage from "./guestpage.js";
 
 const LEGACY = "/app.html";
 const TASKS = ["stock", "create", "shops", "print"];
@@ -11,10 +12,10 @@ function writePending(v) { try { if (v) localStorage.setItem(PENDING_KEY, JSON.s
 const rethrow = (e) => { if (e && e.message === "unauthorized") throw e; };
 const note = (kind, text) => h("div", { class: "note " + kind, role: kind === "bad" ? "alert" : "status" }, text);
 
-function workspaceNav() {
+function workspaceNav(guest) {
   return h("div", { class: "tabs-ws" },
-    h("a", { href: "#/vouchers", "aria-current": "page" }, t("v.ws.vouchers")),
-    h("a", { href: LEGACY + "#portal" }, t("v.ws.guest")));
+    h("a", { href: "#/vouchers", "aria-current": guest ? null : "page" }, t("v.ws.vouchers")),
+    h("a", { href: "#/vouchers/guest", "aria-current": guest ? "page" : null }, t("v.ws.guest")));
 }
 function taskNav(current) {
   return h("div", { class: "scroll-x" }, TASKS.map((k) =>
@@ -246,6 +247,7 @@ export default {
   titleKey: "title.vouchers",
   tab: "vouchers",
   async render(ctx) {
+    if (ctx.sub === "guest") return h("div", { class: "stack" }, workspaceNav(true), await guestPage(ctx));
     const sub = TASKS.includes(ctx.sub) ? ctx.sub : "stock";
     const pane = sub === "stock" ? await stock(ctx) : sub === "create" ? await create(ctx) : sub === "shops" ? await shops(ctx) : await printPane(ctx);
     return h("div", { class: "stack" }, workspaceNav(), taskNav(sub), h("p", { class: "soft small" }, t("v.hint")), pane);

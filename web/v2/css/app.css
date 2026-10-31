@@ -219,3 +219,5 @@ body{background:
 @keyframes twinkle{0%,100%{opacity:.25}50%{opacity:1}}
 @keyframes tip-glow{0%,100%{transform:scale(.85)}50%{transform:scale(1.2)}}
 @media (prefers-reduced-motion:reduce){.wand .orbit,.wand .orbit i,.wand .tip{animation:none}}
+.gp-frame{width:100%;height:520px;border:1px solid var(--line);border-radius:18px;background:#fff}
+.plan-row{display:flex;flex-direction:column;gap:10px}
