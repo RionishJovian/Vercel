@@ -1,0 +1,78 @@
+/* Jade glass design tokens. Night is the default; Day is a silver-mint counterpart.
+   Radii step with importance so nothing reads as a stack of identical cards:
+   instrument 34 > panel 24 > row 16 > control 14 > chip pill. */
+:root {
+  --font-display: "Bricolage Grotesque Variable", "Noto Sans Myanmar", system-ui, sans-serif;
+  --font-body: "Instrument Sans Variable", "Noto Sans Myanmar", system-ui, sans-serif;
+
+  --r-instrument: 34px;
+  --r-panel: 24px;
+  --r-row: 16px;
+  --r-control: 14px;
+
+  --ease-out: cubic-bezier(.22, 1, .36, 1);
+  --t-fast: 140ms;
+  --t-base: 240ms;
+
+  --tabbar-h: 76px;
+  --gutter: 16px;
+  --content-max: 1080px;
+}
+
+:root[data-theme="night"] {
+  color-scheme: dark;
+  --bg-0: #03100d;
+  --bg-1: #06201a;
+  --bg-2: #0a3329;
+  --glow: rgba(52, 211, 160, .16);
+
+  --ink: #eaf6f1;
+  --ink-soft: #b4cdc3;
+  --ink-mute: #8aa89c;
+
+  --glass: rgba(196, 228, 215, .07);
+  --glass-strong: rgba(196, 228, 215, .12);
+  --glass-solid: #0b241d;
+  --edge: rgba(214, 238, 228, .24);
+  --edge-soft: rgba(214, 238, 228, .12);
+  --shine: rgba(255, 255, 255, .22);
+
+  --jade: #5ee6b8;
+  --jade-deep: #1fae83;
+  --on-jade: #03231a;
+  --ok: #5ee6b8;
+  --warn: #f2c45a;
+  --bad: #ff8f97;
+  --shadow: 0 24px 60px -24px rgba(0, 0, 0, .7);
+}
+
+:root[data-theme="day"] {
+  color-scheme: light;
+  --bg-0: #e4efe9;
+  --bg-1: #d3e6dd;
+  --bg-2: #bfdacd;
+  --glow: rgba(14, 124, 90, .12);
+
+  --ink: #082a21;
+  --ink-soft: #2c5246;
+  --ink-mute: #4a6c60;
+
+  --glass: rgba(255, 255, 255, .62);
+  --glass-strong: rgba(255, 255, 255, .8);
+  --glass-solid: #f4faf7;
+  --edge: rgba(8, 60, 46, .26);
+  --edge-soft: rgba(8, 60, 46, .13);
+  --shine: rgba(255, 255, 255, .9);
+
+  --jade: #0b7a58;
+  --jade-deep: #07604a;
+  --on-jade: #f2fffa;
+  --ok: #0b7a58;
+  --warn: #8a5b00;
+  --bad: #b3261e;
+  --shadow: 0 24px 60px -28px rgba(8, 60, 46, .38);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  :root { --glass: var(--glass-solid); --glass-strong: var(--glass-solid); }
+}
