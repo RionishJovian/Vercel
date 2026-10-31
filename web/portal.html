@@ -256,7 +256,8 @@ async function loadConfig() {
     var cfg = d && (d.config || d);
     if (!cfg || typeof cfg !== "object" || Array.isArray(cfg) || typeof cfg.business_name !== "string" || !cfg.business_name.trim()) throw new Error("invalid config");
     cfg.guest_voucher_access = d.guest_voucher_access === true;
-    renderPortalHome(cfg);
+    // The router login page links here with start=pay so a guest lands on the plans.
+    if (QS.get("start") === "pay" && accessMethodEnabled(cfg, "mobile_payment_enabled")) renderPlans(cfg); else renderPortalHome(cfg);
   } catch (e) {
     renderConfigError();
   } finally {

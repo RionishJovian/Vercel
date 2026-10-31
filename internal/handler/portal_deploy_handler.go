@@ -92,5 +92,10 @@ func (h *SecurityHandler) savedRouterPortalDesign(c *gin.Context, businessID, de
 	if cfg == nil || !cfg.VoucherLoginEnabled {
 		return nil, fmt.Errorf("saved voucher portal unavailable")
 	}
-	return routeros.RouterPortalDesign(cfg), nil
+	design := routeros.RouterPortalDesign(cfg)
+	// The hosted page only helps when the owner enabled bank transfer and
+	// published at least one plan; otherwise the guest would reach a dead end.
+	design.BankTransfer = cfg.MobilePaymentEnabled && len(cfg.GuestPlans) > 0
+	design.DeviceID = deviceID
+	return design, nil
 }

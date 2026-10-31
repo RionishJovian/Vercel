@@ -34,6 +34,11 @@ type PortalLoginDesign struct {
 	GlassTintHex    string `json:"glass_tint_hex"`
 	ConsentRequired bool   `json:"consent_required"`
 	ConsentText     string `json:"consent_text"`
+	// BankTransfer adds a "Pay by bank transfer" link to the hosted page, which
+	// holds the owner's own account details. DeviceID is set by the server from
+	// the gateway being deployed (never from a request body) and must be a UUID.
+	BankTransfer bool   `json:"mobile_payment_enabled"`
+	DeviceID     string `json:"-"`
 }
 
 func RouterPortalDesign(c *model.PortalConfig) *PortalLoginDesign {
@@ -77,6 +82,16 @@ func RenderPortalLogin(design *PortalLoginDesign, preview bool) (string, error) 
 	page := portalLoginHTML()
 	page = strings.Replace(page, `<main class="card">`, `<main class="card"><img class="wifi-mark" src="`+portalWiFiMarkURL+`" alt="" width="78" height="66">`, 1)
 	page = strings.Replace(page, "<p>Enter voucher code to connect</p>", "<p>"+portalDesignText(d.WelcomeText)+"</p>", 1)
+	if d.BankTransfer {
+		href := "#"
+		if !preview {
+			if !guestRequestIDPattern.MatchString(d.DeviceID) {
+				return "", fmt.Errorf("a valid gateway id is required for the bank transfer link")
+			}
+			href = "https://" + portalHost + "/portal.html?deviceId=" + d.DeviceID + "&amp;start=pay&amp;ip=$(ip)"
+		}
+		page = strings.Replace(page, "</form>\n</main>", "</form>\n<a class=\"alt\" id=\"bank-transfer\" href=\""+href+"\">Pay by bank transfer</a>\n</main>", 1)
+	}
 	if d.BusinessName != "WiFi Voucher" {
 		page = strings.Replace(page, "</main>", `<span class="brand">`+portalDesignText(d.BusinessName)+`</span></main>`, 1)
 	}
