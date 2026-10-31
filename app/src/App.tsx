@@ -20,6 +20,11 @@ import { Guests } from "./pages/Guests";
 import { Sites } from "./pages/Sites";
 import { Hub } from "./pages/hub";
 import { Network } from "./pages/network";
+import { Incidents } from "./pages/Incidents";
+import { Events } from "./pages/Events";
+import { Security } from "./pages/Security";
+import { Backups } from "./pages/Backups";
+import { Topology } from "./pages/Topology";
 import { Skeleton } from "./components/Skeleton";
 
 type Auth = { state: "loading" } | { state: "out"; notice?: string } | { state: "in"; me: Me };
@@ -49,6 +54,11 @@ export function App() {
     case "guests": page = <Guests me={me} />; tab = "more"; break;
     case "sites": page = <Sites me={me} />; tab = "more"; break;
     case "network": page = <Network me={me} sub={route.sub} />; tab = "more"; break;
+    case "incidents": page = <Incidents me={me} />; tab = "more"; break;
+    case "events": page = <Events />; tab = "more"; break;
+    case "security": page = <Security />; tab = "more"; break;
+    case "backups": page = <Backups />; tab = "more"; break;
+    case "topology": page = <Topology />; tab = "more"; break;
     case "hub": page = <Hub me={me} />; tab = "more"; break;
     case "store": page = <Store me={me} />; tab = "more"; break;
     case "platform": page = <Platform me={me} />; tab = "more"; break;
