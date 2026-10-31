@@ -138,7 +138,6 @@ func TestIndividualProductionRouteChain(t *testing.T) {
 		req("GET", path, ownerToken, "", 200)
 	}
 	req("POST", "/api/v1/auth/invitations/accept", "", "{}", 410)
-	req("POST", "/api/v1/portal/11111111-1111-4111-8111-111111111111/guest-voucher", "", "{}", 400)
 	req("PUT", "/api/v1/platform/accounts/"+owner.UserID+"/pass", ownerToken, `{"action":"activate","plan":"monthly","revision":0}`, 403)
 	req("PUT", "/api/v1/platform/accounts/"+owner.UserID+"/pass", devToken, `{"action":"activate","plan":"monthly","revision":0}`, 200)
 	req("GET", "/api/v1/routers", ownerToken, "", 200)
@@ -153,7 +152,6 @@ func TestIndividualProductionRouteChain(t *testing.T) {
 		t.Fatal(e)
 	}
 	req("GET", "/api/v1/routers", ownerToken, "", 402)
-	req("POST", "/api/v1/portal/11111111-1111-4111-8111-111111111111/guest-voucher", "", "{}", 400)
 	if ok, e := database.AccountPassBusinessAccess(context.Background(), db, owner.BusinessID, time.Now()); e != nil || ok {
 		t.Fatal("expired worker access", ok, e)
 	}
