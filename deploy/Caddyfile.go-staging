@@ -12,6 +12,9 @@ import security-headers.caddy
         not query legacy=1
     }
     redir @oldapp /v2/ 302
+    # Serve the React app's index for the directory URL instead of the landing fallback.
+    @v2root path /v2 /v2/
+    rewrite @v2root /v2/index.html
     handle /api/* {
         reverse_proxy api:8080
     }
@@ -22,7 +25,7 @@ import security-headers.caddy
         reverse_proxy api:8080
     }
     handle {
-        try_files {path} /index.html
+        try_files {path} {path}/index.html /index.html
         file_server
     }
 }
