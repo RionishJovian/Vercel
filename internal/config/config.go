@@ -430,6 +430,9 @@ func (cfg *Config) Validate() error {
 	}
 
 	if env == "production" || env == "prod" {
+		if cfg.Provisioner.Applier.InsecureIgnoreHostKey {
+			problems = append(problems, "provisioner.applier.insecure_ignore_host_key must be false in production")
+		}
 		if !cfg.Database.RLSEnforce {
 			problems = append(problems, "database.rls_enforce must be true")
 		}
@@ -593,7 +596,9 @@ func setDefaults(v *viper.Viper) {
 	// PROVISIONER_*_CREDENTIAL_KEY variables and still get an empty key.
 	v.SetDefault("provisioner.applier.credential_key", "")
 	v.SetDefault("provisioner.applier.port", 22)
-	v.SetDefault("provisioner.applier.insecure_ignore_host_key", true)
+	// Off by default: a router SSH connection must verify the host key. Only a
+	// disposable lab may turn this on, and production refuses to start with it on.
+	v.SetDefault("provisioner.applier.insecure_ignore_host_key", false)
 	v.SetDefault("provisioner.applier.allow_empty_password", false)
 	v.SetDefault("provisioner.applier.timeout", "10s")
 	v.SetDefault("provisioner.applier.interface", "wg-magichub")
