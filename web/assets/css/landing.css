@@ -79,10 +79,10 @@ img { max-width: 100%; display: block; }
 
 /* Hero */
 .hero { padding-block: clamp(56px, 11vw, 140px) clamp(40px, 7vw, 88px); display: grid; justify-items: center; text-align: center; }
-.hero h1 { font-size: clamp(2.3rem, 6.4vw, 4.4rem); max-width: 16ch; }
+.hero h1 { margin-inline: auto; font-size: clamp(2.3rem, 6.4vw, 4.4rem); max-width: 16ch; }
 [data-lang="my"] .hero h1 { font-size: clamp(1.9rem, 5vw, 3.3rem); max-width: 18ch; }
 .hero .lead { margin: 20px auto 0; font-size: clamp(1.05rem, 2.2vw, 1.25rem); color: var(--ink-soft); max-width: 46ch; }
-.cta { margin-top: 28px; display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
+.cta { margin-top: 28px; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 12px; }
 .fine { margin-top: 18px; margin-inline: auto; font-size: .9rem; color: var(--ink-mute); max-width: 52ch; }
 
 
@@ -151,8 +151,12 @@ section.band { padding-block: clamp(44px, 8vw, 96px); }
 
 /* Telegram contact: a paper plane circles the button in a loop. */
 .tg-wrap { position: relative; display: inline-block; padding: 14px 18px; margin-top: 6px; }
-.btn.tg { gap: 10px; }
-.tg-ico { width: 22px; height: 22px; fill: #2aabee; flex: none; }
+.btn.tg { position: relative; overflow: hidden; gap: 12px; min-height: 56px; padding: 0 24px 0 8px; border: 1px solid rgba(255, 255, 255, .35); color: #fff; background: linear-gradient(180deg, #2fa6dd, #167aad); box-shadow: 0 12px 30px -10px rgba(34, 158, 217, .85), inset 0 1px 0 rgba(255, 255, 255, .45); }
+.btn.tg::after { content: ""; position: absolute; inset: 0; background: linear-gradient(105deg, transparent 35%, rgba(255, 255, 255, .38) 50%, transparent 65%); transform: translateX(-120%); animation: sweep 4.5s ease-in-out 1.5s infinite; }
+.tg-badge { flex: none; width: 40px; height: 40px; display: grid; place-items: center; border-radius: 50%; background: #fff; box-shadow: 0 2px 8px rgba(0, 40, 70, .3); }
+.tg-badge svg { width: 22px; height: 22px; fill: #1d8cc4; transform: translate(-1px, 1px) rotate(-8deg); }
+@keyframes sweep { 0%, 60% { transform: translateX(-120%); } 100% { transform: translateX(120%); } }
+@media (prefers-reduced-motion: reduce) { .btn.tg::after { animation: none; display: none; } }
 .orbit { position: absolute; left: 0; top: 0; z-index: 2; pointer-events: none; offset-path: inset(0 round 44px); offset-rotate: auto; offset-anchor: 50% 50%; animation: orbit 5.5s linear infinite; }
 .orbit.plane { width: 26px; height: 26px; filter: drop-shadow(0 0 8px rgba(42, 171, 238, .8)); }
 .orbit.plane svg { width: 100%; height: 100%; fill: #2aabee; transform: rotate(26deg); }
