@@ -3,6 +3,7 @@ import useSWR from "swr";
 import { fetcher } from "../lib/api";
 import { Icon, Wand, type IconName } from "./icons";
 import { useI18n } from "../i18n";
+import { MagicDude } from "./MagicDude";
 import { useTheme } from "../lib/theme";
 import type { Fleet } from "../lib/types";
 
@@ -41,6 +42,7 @@ export function Shell({ active, children }: { active: string; children: ReactNod
         <Toggles />
       </header>
       <main className="view" id="view">{children}</main>
+      <MagicDude />
       <nav className="tabbar" aria-label="Main">
         {TABS.map(([key, icon]) => (
           <a key={key} className="tab" href={"#/" + key} aria-current={key === active ? "page" : undefined}>

@@ -115,6 +115,7 @@ const extra = {
     "rv.title": "Revenue", "rv.back": "Home",
     "more.title": "Account", "more.signedIn": "Signed in as", "more.legacy": "Open the previous app",
     "soon.title": "This page is being rebuilt", "soon.body": "Use the previous app for now. It will move here soon.", "soon.open": "Open previous app",
+    "md.sub": "Advice only. It never changes your network.", "md.hello": "Ask about your devices, vouchers or Jellyfin setup.", "md.p1": "How are my devices doing?", "md.p2": "Where do I add the Jellyfin library?", "md.p3": "Where do I connect the gateway?", "md.you": "You", "md.thinking": "Thinking…", "md.ask": "What can I help with?", "md.note": "Advice only. Nothing is changed.", "md.send": "Send", "md.close": "Close Magic Dude", "md.empty": "No answer yet. Please ask again.", "md.locked": "Magic Dude needs an unlock key. Ask your owner or admin.", "md.limit": "The AI usage limit is full. Try again later.", "md.fail": "No answer right now. Please try again. Nothing was changed.", "md.failNote": "The question could not be sent.",
   },
   my: {
     "site.pinHelp": "မြေပုံပေါ်တွင် နှိပ်၍ pin ထားပြီး ဆွဲ၍ ချိန်ညှိပါ။ ကိုဩဒိနိတ်များ အလိုလို ဖြည့်သည်။ ထိန်းသိမ်းရန် ဆိုက်ကို သိမ်းပါ။", "site.clearPin": "Pin ဖယ်မည်", "site.mapCredit": "မြေပုံ tile များသည် OpenFreeMap မှ လာသည်။ ဆိုက်အမည်နှင့် Router အချက်အလက်များသည် Mega Magic တွင်သာ ရှိသည်။",
@@ -231,6 +232,7 @@ const extra = {
     "rv.title": "ဝင်ငွေ", "rv.back": "ပင်မ",
     "more.title": "အကောင့်", "more.signedIn": "ဝင်ထားသူ", "more.legacy": "ယခင်အက်ပ်ကို ဖွင့်မည်",
     "soon.title": "ဤစာမျက်နှာကို ပြန်လည်တည်ဆောက်နေသည်", "soon.body": "ယခုအချိန်တွင် ယခင်အက်ပ်ကို သုံးပါ။ မကြာမီ ဤနေရာသို့ ရောက်မည်။", "soon.open": "ယခင်အက်ပ်ကို ဖွင့်မည်",
+    "md.sub": "အကြံပေးသီးသန့်ပါ။ သင့်ကွန်ရက်ကို မပြင်ပါ။", "md.hello": "သင့်စက်များ၊ ဘောက်ချာများ သို့မဟုတ် Jellyfin ဆက်တင်အကြောင်း မေးနိုင်ပါတယ်။", "md.p1": "စက်တွေ အခြေအနေ ဘယ်လိုလဲ?", "md.p2": "Jellyfin library ဘယ်မှာ ထည့်ရမလဲ?", "md.p3": "Gateway ဘယ်မှာ ချိတ်ရမလဲ?", "md.you": "သင်", "md.thinking": "စဉ်းစားနေပါတယ်…", "md.ask": "ဘာကူညီပေးရမလဲ?", "md.note": "အကြံပေးသီးသန့်ပါ။ ဘာမှ မပြင်ပါဘူး။", "md.send": "ပို့မယ်", "md.close": "Magic Dude ပိတ်မည်", "md.empty": "အဖြေ မရသေးဘူး။ ပြန်မေးပေးပါနော်။", "md.locked": "Magic Dude သုံးဖို့ unlock key လိုပါတယ်။ Owner ဒါမှမဟုတ် Admin ကို မေးပေးပါနော်။", "md.limit": "AI အသုံးပြုမှု ကန့်သတ်ချက် ပြည့်နေပါတယ်။ ခဏနေရင် ပြန်မေးပေးပါနော်။", "md.fail": "လောလောဆယ် အဖြေ မပေးနိုင်သေးဘူး။ ပြန်ကြိုးစားပေးပါနော်။ ဘာမှ မပြင်ထားပါဘူး။", "md.failNote": "မေးခွန်း ပို့ခြင်း မအောင်မြင်ပါ။",
   },
 } satisfies Record<"en" | "my", Record<string, string>>;
 export default extra;

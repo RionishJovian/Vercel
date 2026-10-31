@@ -200,3 +200,14 @@ label.pill input[type="file"] { display: none; }
 .site-pin span { width: 16px; height: 16px; border-radius: 50%; border: 2px solid #fff; background: #8aa89c; box-shadow: 0 2px 6px rgba(0,0,0,.4); }
 .site-pin.online span { background: #1fae83; } .site-pin.offline span { background: #e0626a; }
 .site-pin.is-selected strong { background: #146b52; color: #fff; }
+
+/* Magic Dude: floating advice assistant, sits above the tab bar on phones and beside the rail on desktop. */
+.md-fab { position: fixed; right: var(--gutter); bottom: calc(var(--tabbar-h) + 34px + env(safe-area-inset-bottom)); z-index: 35; display: inline-flex; align-items: center; gap: 8px; min-height: 48px; padding: 0 16px 0 8px; border-radius: 999px; border: 1px solid var(--edge); background: var(--glass-solid); font-weight: 650; box-shadow: var(--shadow); }
+.md-fab img, .md-panel img { border-radius: 50%; object-fit: cover; }
+.md-panel { position: fixed; z-index: 40; right: var(--gutter); left: var(--gutter); bottom: calc(var(--tabbar-h) + 34px + env(safe-area-inset-bottom)); max-height: min(70dvh, 560px); display: flex; flex-direction: column; gap: 12px; padding: 16px; background: var(--glass-solid); }
+.md-list { flex: 1; min-height: 120px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+.md-msg { padding: 10px 12px; border-radius: var(--r-row); border: 1px solid var(--edge-soft); background: var(--glass); max-width: 92%; }
+.md-msg.user { align-self: flex-end; background: var(--glass-strong); }
+.md-msg p { white-space: pre-wrap; overflow-wrap: anywhere; }
+.md-q { padding: 10px 14px; resize: none; }
+@media (min-width: 900px) { .md-fab { bottom: 24px; right: 32px; } .md-panel { left: auto; width: 400px; right: 32px; bottom: 84px; } }
