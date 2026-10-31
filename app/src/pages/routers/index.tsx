@@ -40,7 +40,7 @@ export function Routers({ sub, params }: { sub: string; params: URLSearchParams 
           </a>
         ))}
       </div>
-      <section className="glass pad stack"><h2>{t("r.tools")}</h2><p className="soft small">{t("r.toolsHelp")}</p><a className="btn quiet" href="/app.html#gateways">{t("c.openLegacy")}</a></section>
+      <section className="glass pad stack"><h2>{t("r.tools")}</h2><p className="soft small">{t("r.toolsHelp")}</p><div className="scroll-x"><a className="pill" href="#/hub">{t("hub.title")}</a><a className="pill" href="#/network">{t("title.network")}</a><a className="pill" href="#/topology">{t("tp.title")}</a></div></section>
     </>
   );
 }
