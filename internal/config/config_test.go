@@ -52,8 +52,8 @@ func TestLoad_provisionerApplierDefaultsOff(t *testing.T) {
 	if ap.Port != 22 {
 		t.Fatalf("applier port default = %d, want 22", ap.Port)
 	}
-	if !ap.InsecureIgnoreHostKey {
-		t.Fatal("lab default expects insecure_ignore_host_key=true")
+	if ap.InsecureIgnoreHostKey {
+		t.Fatal("insecure_ignore_host_key must default to false so SSH host keys are verified")
 	}
 	if ap.AllowEmptyPassword {
 		t.Fatal("allow_empty_password must default to false")
@@ -164,6 +164,22 @@ func TestValidateProductionAcceptsHardenedConfig(t *testing.T) {
 	}
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("hardened production config rejected: %v", err)
+	}
+}
+
+func TestValidateProductionRejectsIgnoredSSHHostKey(t *testing.T) {
+	cfg := &Config{
+		Environment: "prod",
+		Database:    DatabaseConfig{Password: "unique-database-password-2026", RLSEnforce: true},
+		Security: SecurityConfig{
+			JWTSecret: "unique-jwt-secret-at-least-32-bytes-long",
+			AESGCMKey: "unique-aes-key-at-least-32-bytes-long",
+		},
+	}
+	cfg.Provisioner.Applier.InsecureIgnoreHostKey = true
+	err := cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "insecure_ignore_host_key") {
+		t.Fatalf("production must refuse an ignored SSH host key, got %v", err)
 	}
 }
 

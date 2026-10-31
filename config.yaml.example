@@ -175,7 +175,7 @@ provisioner:
     user: ""
     password: ""
     private_key_path: ""
-    insecure_ignore_host_key: true   # disposable lab only; never fleet control
+    insecure_ignore_host_key: false  # leave false; true is for a disposable lab only and production refuses to start with it
     allow_empty_password: false      # true only for a disposable lab (admin/empty)
     timeout: 10s
     # MUST name an interface that exists on THIS host. On the single-instance
