@@ -4,7 +4,7 @@ import { useI18n } from "../i18n";
 
 /** Pages that live outside the five main tabs. Platform tools show only to the platform operator. */
 const LINKS: Array<{ href: string; key: string; dev?: boolean }> = [
-  { href: "#/revenue", key: "title.revenue" }, { href: "#/guests", key: "gu.title" }, { href: "#/fleet", key: "fl.title" },
+  { href: "#/revenue", key: "title.revenue" }, { href: "#/sites", key: "title.sites" }, { href: "#/hub", key: "hub.title" }, { href: "#/guests", key: "gu.title" }, { href: "#/fleet", key: "fl.title" },
   { href: "#/store", key: "title.store" }, { href: "#/platform", key: "title.platform", dev: true },
 ];
 

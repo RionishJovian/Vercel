@@ -17,6 +17,8 @@ import { Store } from "./pages/Store";
 import { Platform } from "./pages/Platform";
 import { Fleet } from "./pages/Fleet";
 import { Guests } from "./pages/Guests";
+import { Sites } from "./pages/Sites";
+import { Hub } from "./pages/hub";
 import { Skeleton } from "./components/Skeleton";
 
 type Auth = { state: "loading" } | { state: "out"; notice?: string } | { state: "in"; me: Me };
@@ -44,6 +46,8 @@ export function App() {
     case "jellyfin": page = <Jellyfin sub={route.sub} />; break;
     case "fleet": page = <Fleet />; tab = "more"; break;
     case "guests": page = <Guests me={me} />; tab = "more"; break;
+    case "sites": page = <Sites me={me} />; tab = "more"; break;
+    case "hub": page = <Hub me={me} />; tab = "more"; break;
     case "store": page = <Store me={me} />; tab = "more"; break;
     case "platform": page = <Platform me={me} />; tab = "more"; break;
     case "vouchers": page = <Vouchers sub={route.sub} />; break;
