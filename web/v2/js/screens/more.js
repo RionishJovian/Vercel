@@ -16,7 +16,11 @@ export default {
       business.company_name ? h("p", { class: "soft small" }, business.company_name) : null,
       user.user_role ? h("span", { class: "chip" }, t("m.role") + ": " + user.user_role) : null));
     out.append(h("section", { class: "glass" },
-      h("h2", { class: "num" }, t("m.store")), h("p", { class: "soft small" }, t("m.storeSoon"))));
+      h("h2", { class: "num" }, t("m.store")), h("p", { class: "soft small" }, t("m.storeHelp")),
+      h("a", { class: "pill on", href: "#/store" }, t("m.openStore"))));
+    if (user.user_role === "DEVELOPER") {
+      out.append(h("section", { class: "glass" }, h("h2", { class: "num" }, t("title.platform")), h("a", { class: "pill on", href: "#/platform" }, t("m.openPlatform"))));
+    }
     out.append(h("button", { class: "pill danger", type: "button", onclick: async () => {
       try { await api.post("/auth/logout", {}); } catch (_) { /* session may already be gone */ }
       ctx.signOut("");
