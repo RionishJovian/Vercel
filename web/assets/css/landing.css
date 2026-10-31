@@ -88,6 +88,27 @@ img { max-width: 100%; display: block; }
 
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
 
+/* Logo stage: the mark floats over a soft glow, signal rings leave the Wi-Fi arcs and the wand tip twinkles. */
+.logo-stage { position: relative; width: clamp(170px, 42vw, 260px); aspect-ratio: 1; margin: 0 auto clamp(8px, 2vw, 20px); }
+.logo-stage .mark { position: relative; z-index: 2; width: 100%; height: 100%; object-fit: contain; animation: mark-in 1.3s var(--ease-out) both, float 7s ease-in-out 1.3s infinite; filter: drop-shadow(0 18px 30px color-mix(in srgb, var(--jade) 28%, transparent)); }
+.logo-stage .glow { position: absolute; inset: -30%; z-index: 0; border-radius: 50%; background: radial-gradient(closest-side, color-mix(in srgb, var(--jade) 34%, transparent), transparent 72%); animation: glow 5.5s ease-in-out infinite; }
+.logo-stage .ring { position: absolute; z-index: 1; left: 47%; top: 62%; width: 100%; aspect-ratio: 1; margin: -50% 0 0 -50%; border-radius: 50%; border: 1.5px solid var(--jade); opacity: 0; animation: ring 5.4s cubic-bezier(.2, .6, .3, 1) infinite; }
+.logo-stage .ring:nth-of-type(2) { animation-delay: 1.8s; }
+.logo-stage .ring:nth-of-type(3) { animation-delay: 3.6s; }
+.logo-stage .spark { position: absolute; z-index: 3; width: 14px; aspect-ratio: 1; background: #eafff6; clip-path: polygon(50% 0, 60% 40%, 100% 50%, 60% 60%, 50% 100%, 40% 60%, 0 50%, 40% 40%); filter: drop-shadow(0 0 6px var(--jade)); opacity: 0; animation: twinkle 3.2s ease-in-out infinite; }
+[data-theme="day"] .logo-stage .spark { background: #ffffff; filter: drop-shadow(0 0 5px var(--jade-deep)); }
+.sp1 { left: 85%; top: 27%; width: 26px; animation-delay: 1.2s; }
+.sp2 { left: 96%; top: 14%; width: 12px; animation-delay: 1.9s; }
+.sp3 { left: 74%; top: 10%; width: 10px; animation-delay: 2.6s; }
+.sp4 { left: 99%; top: 40%; width: 9px; animation-delay: 3.1s; }
+.sp5 { left: 66%; top: 24%; width: 8px; animation-delay: 2.2s; }
+@keyframes mark-in { from { opacity: 0; transform: scale(.84) translateY(12px); filter: blur(10px) drop-shadow(0 0 0 transparent); } to { opacity: 1; transform: none; } }
+@keyframes float { 50% { transform: translateY(-8px) rotate(-1.2deg); } }
+@keyframes glow { 50% { opacity: .55; transform: scale(1.08); } }
+@keyframes ring { 0% { transform: scale(.25); opacity: 0; } 12% { opacity: .5; } 100% { transform: scale(1.5); opacity: 0; } }
+@keyframes twinkle { 0%, 55%, 100% { opacity: 0; transform: scale(.3) rotate(0); } 70% { opacity: 1; transform: scale(1) rotate(45deg); } 85% { opacity: .5; transform: scale(.6) rotate(90deg); } }
+@media (prefers-reduced-motion: reduce) { .logo-stage .mark, .logo-stage .glow, .logo-stage .ring, .logo-stage .spark { animation: none; } .logo-stage .mark { opacity: 1; } .logo-stage .ring, .logo-stage .spark { display: none; } }
+
 /* Sections */
 section.band { padding-block: clamp(44px, 8vw, 96px); }
 .band h2 { font-size: clamp(1.7rem, 4.2vw, 2.7rem); max-width: 20ch; }
