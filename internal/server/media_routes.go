@@ -100,7 +100,9 @@ func registerMediaRoutes(r *gin.Engine, service *auth.Service, db *database.DB, 
 	player.GET("/:id/:passId/catalog/:library", playback.Catalog)
 	player.GET("/:id/:passId/stream/:library/:item", playback.Stream)
 	guest := r.Group("/api/v1/media-guest", auth.BoundedPortalRateLimit(), auth.CookieOrigin())
+	guest.POST("/:id/checkout", purchases.Checkout)
 	guest.GET("/:id/passes/:passId", purchases.Status)
+	guest.POST("/:id/passes/:passId/receipt", purchases.Receipt)
 	connectorSecurity := func(c *gin.Context) {
 		if c.GetHeader("Origin") != "" {
 			c.AbortWithStatus(403)
