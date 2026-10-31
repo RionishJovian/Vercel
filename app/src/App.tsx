@@ -14,7 +14,7 @@ import { Vouchers } from "./pages/vouchers";
 import { Routers } from "./pages/routers";
 import { Jellyfin } from "./pages/Jellyfin";
 import { Store } from "./pages/Store";
-import { Platform } from "./pages/Platform";
+import { Platform } from "./pages/platform";
 import { Fleet } from "./pages/Fleet";
 import { Guests } from "./pages/Guests";
 import { Sites } from "./pages/Sites";
@@ -83,7 +83,7 @@ export function App() {
     case "team": page = <Team />; tab = "more"; break;
     case "hub": page = <Hub me={me} />; tab = "more"; break;
     case "store": page = <Store me={me} />; tab = "more"; break;
-    case "platform": page = <Platform me={me} />; tab = "more"; break;
+    case "platform": page = <Platform me={me} sub={route.sub} />; tab = "more"; break;
     case "vouchers": page = <Vouchers sub={route.sub} />; break;
     case "more": page = <More me={me} onSignedOut={signedOut} />; break;
     case "home": page = <Home me={me} />; break;

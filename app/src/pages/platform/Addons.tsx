@@ -1,10 +1,10 @@
 import { useState, type FormEvent } from "react";
 import useSWR from "swr";
-import { api, ApiError, fetcher, isUnauthorized } from "../lib/api";
-import { asArray, mmk, type Me } from "../lib/types";
-import { useI18n } from "../i18n";
-import { BackLink, Field, Note } from "../components/ui";
-import { Skeleton } from "../components/Skeleton";
+import { api, ApiError, fetcher, isUnauthorized } from "../../lib/api";
+import { asArray, mmk, type Me } from "../../lib/types";
+import { useI18n } from "../../i18n";
+import { Field, Note } from "../../components/ui";
+import { Skeleton } from "../../components/Skeleton";
 
 interface PReq { id: string; business_id: string; company_name?: string; name_en?: string; bank_reference: string; price_mmk: number }
 interface PAddon { id: string; addon_key: string; name_en: string; active: boolean; price_mmk: number }
@@ -58,20 +58,18 @@ function NewAddon({ onDone }: { onDone: () => void }) {
   );
 }
 
-export function Platform({ me }: { me: Me }) {
+export function Addons({ me }: { me: Me }) {
   const { t } = useI18n();
   const isDev = me.user?.user_role === "DEVELOPER";
   const reqs = useSWR<{ requests?: PReq[] }>(isDev ? "/platform/store/requests?status=pending" : null, fetcher, { shouldRetryOnError: false });
   const adds = useSWR<{ addons?: PAddon[] }>(isDev ? "/platform/store/addons" : null, fetcher, { shouldRetryOnError: false });
-  const back = <BackLink href="#/more">{t("tab.more")}</BackLink>;
-  if (!isDev) return <>{back}<Note kind="warn">{t("pf.denied")}</Note></>;
-  if (reqs.isLoading || adds.isLoading) return <>{back}<Skeleton h={300} /></>;
-  if (reqs.error || adds.error) return <>{back}<Note kind="bad">{t("st.unavailable")}</Note></>;
+  if (!isDev) return <Note kind="warn">{t("pf.denied")}</Note>;
+  if (reqs.isLoading || adds.isLoading) return <Skeleton h={300} />;
+  if (reqs.error || adds.error) return <Note kind="bad">{t("st.unavailable")}</Note>;
   const pending = asArray<PReq>(reqs.data?.requests), addons = asArray<PAddon>(adds.data?.addons);
   const refresh = () => { void reqs.mutate(); void adds.mutate(); };
   return (
     <>
-      {back}<h1>{t("title.platform")}</h1>
       <section className="glass pad stack"><h2>{t("pf.pending")}</h2>{pending.length ? pending.map((r) => <Pending key={r.id} r={r} onDone={refresh} />) : <p className="soft small">{t("pf.none")}</p>}</section>
       <section className="glass pad stack"><h2>{t("pf.catalog")}</h2>
         {addons.map((a) => <div className="row small" key={a.id}><span>{a.name_en} <span className="soft">{a.addon_key}</span></span><span className={"chip " + (a.active ? "ok" : "")}>{a.active ? t("pf.active") : t("pf.hidden")} {mmk(a.price_mmk)}</span></div>)}

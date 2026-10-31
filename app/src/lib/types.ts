@@ -1,4 +1,4 @@
-export interface Me { user?: { email?: string; full_name?: string; user_role?: string } }
+export interface Me { user?: { user_id?: string; email?: string; full_name?: string; user_role?: string }; business?: { business_id?: string; company_name?: string } }
 export interface Fleet { overall_state?: "up" | "stale" | "offline"; up?: number; total_peers?: number }
 export interface Router { device_id: string; hardware_name?: string; deployment_layer?: string }
 export interface VoucherReport {

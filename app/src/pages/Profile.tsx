@@ -110,7 +110,7 @@ export function ProfilePage() {
       <form className="glass pad stack" onSubmit={changePassword}>
         <h2>{t("pf.password")}</h2><p className="soft small">{t("pf.passwordHint")}</p>
         <Field label={t("pf.current")} htmlFor="pf-cur"><input className="input" id="pf-cur" name="current" type="password" autoComplete="current-password" required /></Field>
-        <Field label={t("pf.new")} htmlFor="pf-new"><input className="input" id="pf-new" name="next" type="password" autoComplete="new-password" minLength={8} maxLength={128} required /></Field>
+        <Field label={t("pf.newPw")} htmlFor="pf-new"><input className="input" id="pf-new" name="next" type="password" autoComplete="new-password" minLength={8} maxLength={128} required /></Field>
         {out("password")}<button className="btn quiet" type="submit">{t("pf.changePw")}</button>
       </form>
 

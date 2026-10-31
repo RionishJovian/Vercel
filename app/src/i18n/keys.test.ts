@@ -11,6 +11,11 @@ const en = new Set([...Object.keys(base.en), ...Object.keys(extra.en)]);
 const my = new Set([...Object.keys(base.my), ...Object.keys(extra.my)]);
 
 describe("i18n keys", () => {
+  // A key reused with a different meaning silently renames an older screen's label.
+  it("never override an existing label with different text", () => {
+    const clashes = Object.keys(extra.en).filter((k) => (base.en as Record<string, string>)[k] !== undefined && (base.en as Record<string, string>)[k] !== (extra.en as Record<string, string>)[k]);
+    expect(clashes).toEqual([]);
+  });
   const used = new Set<string>();
   for (const f of sources(join(__dirname, ".."))) {
     const s = readFileSync(f, "utf8");
