@@ -1,6 +1,8 @@
 import { api } from "./api.js";
 import { h, icon, clear } from "./dom.js";
 import { t, getLang, setLang, onLang } from "./i18n.js";
+import { statusDot, startStatus, stopStatus } from "./status.js";
+import { installClickFeel } from "./feedback.js";
 import signin from "./screens/signin.js";
 import home from "./screens/home.js";
 import router from "./screens/router.js";
@@ -31,11 +33,13 @@ function langToggle() {
 
 async function boot() {
   try { me = await api.get("/me"); } catch (_) { me = null; }
+  if (me) startStatus(); else stopStatus();
   draw();
 }
 
 function signOutToLogin(message) {
   me = null;
+  stopStatus();
   notice = message || "";
   draw();
 }
@@ -51,7 +55,7 @@ function draw() {
   const view = h("main", { class: "view", id: "view", "aria-live": "polite" }, h("div", { class: "spinner", role: "status", "aria-label": t("c.loading") }));
   const shell = h("div", { class: "shell" },
     h("header", { class: "topbar" },
-      h("div", { class: "topbar-title" }, h("span", { class: "dot", "aria-hidden": "true" }), h("span", null, t(screen.titleKey))),
+      h("div", { class: "topbar-title" }, statusDot(), h("span", null, t(screen.titleKey))),
       langToggle()),
     view,
     h("nav", { class: "tabbar", "aria-label": "Main" },
@@ -76,4 +80,5 @@ function draw() {
 
 window.addEventListener("hashchange", () => { if (me) { window.scrollTo(0, 0); draw(); } });
 onLang(() => draw());
+installClickFeel();
 boot();

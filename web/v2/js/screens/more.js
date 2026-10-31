@@ -1,6 +1,7 @@
 import { api } from "../api.js";
 import { h } from "../dom.js";
 import { t } from "../i18n.js";
+import { clickOn, setClick } from "../feedback.js";
 
 export default {
   titleKey: "title.more",
@@ -21,6 +22,9 @@ export default {
     if (user.user_role === "DEVELOPER") {
       out.append(h("section", { class: "glass" }, h("h2", { class: "num" }, t("title.platform")), h("a", { class: "pill on", href: "#/platform" }, t("m.openPlatform"))));
     }
+    const click = h("button", { class: "pill", type: "button", "aria-pressed": String(clickOn()) }, clickOn() ? t("m.clickOn") : t("m.clickOff"));
+    click.addEventListener("click", () => { const on = !clickOn(); setClick(on); click.setAttribute("aria-pressed", String(on)); click.textContent = on ? t("m.clickOn") : t("m.clickOff"); });
+    out.append(h("section", { class: "glass" }, h("h2", { class: "num" }, t("m.clickTitle")), h("p", { class: "soft small" }, t("m.clickHelp")), click));
     out.append(h("button", { class: "pill danger", type: "button", onclick: async () => {
       try { await api.post("/auth/logout", {}); } catch (_) { /* session may already be gone */ }
       ctx.signOut("");
