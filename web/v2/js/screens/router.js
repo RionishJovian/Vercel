@@ -1,6 +1,7 @@
 import { api } from "../api.js";
 import { h, asArray } from "../dom.js";
 import { t } from "../i18n.js";
+import renderMap from "./map.js";
 
 const LEGACY = "/app.html";
 
@@ -13,10 +14,19 @@ function lastSeen(value) {
 export default {
   titleKey: "title.router",
   tab: "router",
-  async render() {
+  async render(ctx) {
     const res = await api.get("/routers");
     const list = asArray(res && res.routers);
-    const out = h("div", { class: "stack" });
+    const onMap = ctx.sub === "map";
+    const nav = h("div", { class: "tabs-ws" },
+      h("a", { href: "#/router", "aria-current": onMap ? null : "page" }, t("r.ws.list")),
+      h("a", { href: "#/router/map", "aria-current": onMap ? "page" : null }, t("r.ws.map")));
+    if (onMap) {
+      const gateways = list.filter((d) => d.deployment_layer === "MAIN_GATEWAY");
+      if (!gateways.length) return h("div", { class: "stack" }, nav, h("div", { class: "note warn" }, t("v.noGateway")));
+      return h("div", { class: "stack" }, nav, await renderMap(ctx, gateways));
+    }
+    const out = h("div", { class: "stack" }, nav);
     if (!list.length) out.append(h("div", { class: "note" }, t("r.empty")));
     for (const d of list) {
       out.append(h("section", { class: "glass" },

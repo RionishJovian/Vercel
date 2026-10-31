@@ -103,3 +103,9 @@ select.input{appearance:none;background-image:linear-gradient(45deg,transparent 
   .print-root .card{border:1px dashed #000;border-radius:6px;padding:10px;color:#000;break-inside:avoid;display:flex;flex-direction:column;gap:2px;font-size:12px}
   .print-root .card b{font:700 18px/1.3 var(--mono);letter-spacing:.08em}
 }
+
+/* map nodes */
+.mapnode{display:flex;flex-direction:column;gap:2px;text-align:left;border-radius:16px;padding:10px 12px;min-height:56px;color:var(--ink);border:1px solid var(--line)}
+.mapnode.router{border-color:#8C86E0;background:rgba(120,110,220,.28)}
+.mapnode.dev{background:rgba(143,184,156,.14);border-color:var(--sage);width:100%}
+.mapnode[aria-pressed="true"]{box-shadow:0 0 0 3px rgba(190,230,205,.85)}
