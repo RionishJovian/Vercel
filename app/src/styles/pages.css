@@ -86,3 +86,29 @@
 .gp-frame { display: block; width: 100%; height: 560px; border: 0; border-radius: 30px; background: #051b22; }
 .input.colour { padding: 6px; }
 @media (min-width: 900px) { .gp-layout { grid-template-columns: 380px 1fr; align-items: start; } .gp-preview { position: sticky; top: 76px; } }
+
+/* Routers */
+.router-grid { display: grid; gap: 14px; }
+.router-card { display: flex; flex-direction: column; gap: 10px; transition: transform var(--t-base) var(--ease-out), border-color var(--t-fast); }
+.router-card:hover { transform: translateY(-2px); border-color: var(--edge); }
+.portstrip { display: flex; gap: 6px; padding: 12px; border-radius: 14px; background: color-mix(in srgb, var(--glass-solid) 70%, transparent); border: 1px solid var(--edge-soft); overflow-x: auto; }
+.portstrip i { flex: none; width: 22px; height: 18px; border-radius: 4px; border: 1px solid var(--edge); background: var(--glass); }
+.portstrip i.up { background: var(--ok); border-color: var(--ok); box-shadow: 0 0 10px var(--ok); }
+.portstrip i.down { background: color-mix(in srgb, var(--warn) 55%, transparent); border-color: var(--warn); }
+.portstrip i.off { background: color-mix(in srgb, var(--bad) 45%, transparent); border-color: var(--bad); }
+.map-layout { display: grid; gap: 14px; }
+.mapnode { display: flex; align-items: center; justify-content: space-between; gap: 12px; text-align: left; width: 100%; padding: 12px 14px; border-radius: var(--r-row); border: 1px solid var(--edge-soft); background: var(--glass); color: var(--ink); }
+.mapnode.router { border-color: var(--jade); background: color-mix(in srgb, var(--jade) 14%, var(--glass)); }
+.mapnode.dev { flex-direction: column; align-items: flex-start; gap: 2px; }
+.mapnode[aria-pressed="true"] { border-color: var(--jade); box-shadow: 0 0 0 2px color-mix(in srgb, var(--jade) 35%, transparent); }
+.branch { display: grid; gap: 8px; }
+.leaf { padding-left: 16px; border-left: 2px solid var(--edge); }
+@media (min-width: 700px) { .router-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (min-width: 900px) { .map-layout { grid-template-columns: 1.4fr 1fr; align-items: start; } .inspector { position: sticky; top: 76px; } }
+
+/* Store, Platform, pairing */
+.store-grid { display: grid; gap: 14px; }
+.price { font-size: 1.5rem; }
+.rq { padding-top: 12px; border-top: 1px solid var(--edge-soft); }
+.pair-code { font-size: clamp(2rem, 9vw, 2.8rem); font-weight: 700; letter-spacing: .12em; padding: 14px; text-align: center; border-radius: var(--r-row); border: 1px dashed var(--edge); }
+@media (min-width: 700px) { .store-grid { grid-template-columns: repeat(2, 1fr); } }
