@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import useSWR from "swr";
 import { api, ApiError, fetcher, isUnauthorized } from "../lib/api";
-import { asArray } from "../lib/types";
+import { asArray, type Me } from "../lib/types";
 import { useI18n } from "../i18n";
 import { Note, WorkspaceTabs } from "../components/ui";
 import { Skeleton } from "../components/Skeleton";
+import { JellyfinDesign } from "./jellyfin/JellyfinDesign";
 
 const PARTS = ["dash", "vouchers", "guest"] as const;
 type Part = (typeof PARTS)[number];
@@ -111,7 +112,7 @@ function Dashboard() {
   );
 }
 
-export function Jellyfin({ sub }: { sub: string }) {
+export function Jellyfin({ sub, me }: { sub: string; me: Me }) {
   const { t } = useI18n();
   const part: Part = (PARTS as readonly string[]).includes(sub) ? (sub as Part) : "dash";
   return (
@@ -121,7 +122,7 @@ export function Jellyfin({ sub }: { sub: string }) {
       {part === "dash" ? <Dashboard /> : part === "vouchers" ? (
         <section className="glass pad stack"><h2>{t("j.notReady")}</h2><p className="soft">{t("j.notReadyBody")}</p></section>
       ) : (
-        <section className="glass pad stack"><h2>{t("j.ws.guest")}</h2><p className="soft">{t("j.dashHelp")}</p><a className="btn quiet" href="/app.html#jellyfin-portal">{t("c.openLegacy")}</a></section>
+        <JellyfinDesign me={me} />
       )}
     </>
   );

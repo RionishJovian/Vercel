@@ -60,7 +60,7 @@ export function App() {
   switch (route.name) {
     case "revenue": page = <Revenue />; tab = "home"; break;
     case "router": page = <Routers sub={route.sub} params={route.params} />; break;
-    case "jellyfin": page = <Jellyfin sub={route.sub} />; break;
+    case "jellyfin": page = <Jellyfin sub={route.sub} me={me} />; break;
     case "fleet": page = <Fleet />; tab = "more"; break;
     case "guests": page = <Guests me={me} />; tab = "more"; break;
     case "sites": page = <Sites me={me} />; tab = "more"; break;

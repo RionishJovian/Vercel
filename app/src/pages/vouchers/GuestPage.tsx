@@ -5,6 +5,7 @@ import { asArray } from "../../lib/types";
 import { useI18n } from "../../i18n";
 import { Field, Note } from "../../components/ui";
 import { Skeleton } from "../../components/Skeleton";
+import { GuestDeploy } from "./GuestDeploy";
 
 interface Plan { key: string; label: string; minutes: number; amount: number; data_mb: number }
 interface Config {
@@ -125,7 +126,8 @@ export function GuestPage() {
         <p className="soft small" role="status">{note}</p>
       </section>
 
-      <form className="stack gp-form" onSubmit={save}>
+      <div className="stack gp-form">
+      <form className="stack" onSubmit={save}>
         <p className="soft small">{t("g.hint")}</p>
         <Section title={t("g.brand")}>
           {text("name", t("g.name"), { maxLength: 120 })}{text("welcome", t("g.welcome"), { maxLength: 240 })}{text("terms", t("g.terms"), { maxLength: 500 })}
@@ -162,8 +164,9 @@ export function GuestPage() {
         </section>
         {msg}
         <button className="btn" type="submit" disabled={busy}>{t("g.save")}</button>
-        <a className="btn quiet" href="/app.html#portal">{t("g.deploy")}</a>
       </form>
+      <GuestDeploy />
+      </div>
     </div>
   );
 }
