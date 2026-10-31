@@ -52,6 +52,16 @@ export default async function guestPage() {
   const plansBox = h("div", { class: "stack" });
   const msg = h("div", { class: "stack" });
   const frame = h("iframe", { class: "gp-frame", sandbox: "allow-scripts", title: t("g.preview") });
+  // The hosted payment page is a second guest screen (plans, bank details, MMQR). It is the production page in preview mode.
+  const hosted = h("iframe", { class: "gp-frame", src: "/portal.html?preview=1", title: t("g.previewHosted"), hidden: true });
+  let dest = "router";
+  const pick = (value, label) => h("button", { class: "pill", type: "button", "aria-pressed": "false", onclick: () => { dest = value; syncDest(); refreshPreview(); } }, label);
+  const destRouter = pick("router", t("g.destRouter")), destHosted = pick("hosted", t("g.destHosted"));
+  const syncDest = () => {
+    frame.hidden = dest !== "router"; hosted.hidden = dest !== "hosted";
+    destRouter.classList.toggle("on", dest === "router"); destHosted.classList.toggle("on", dest === "hosted");
+    destRouter.setAttribute("aria-pressed", String(dest === "router")); destHosted.setAttribute("aria-pressed", String(dest === "hosted"));
+  };
   const previewNote = h("p", { class: "soft small", role: "status" });
   const save = h("button", { class: "btn", type: "submit" }, t("g.save"));
 
@@ -77,7 +87,16 @@ export default async function guestPage() {
       consent_required: !!cfg.consent_required, consent_text: cfg.consent_text || "", preview_sample: !has,
     };
   };
+  const pushHosted = () => {
+    if (hosted.contentWindow && hosted.isConnected) hosted.contentWindow.postMessage({ type: "mm-portal-preview", config: draft(), lang: getLang() === "my" ? "my" : "en" }, location.origin);
+  };
+  const onReady = (ev) => {
+    if (!hosted.isConnected) { window.removeEventListener("message", onReady); return; }
+    if (ev.origin === location.origin && ev.data && ev.data.type === "mm-portal-preview-ready") pushHosted();
+  };
+  window.addEventListener("message", onReady);
   const refreshPreview = () => {
+    if (dest === "hosted") { previewNote.textContent = t("g.previewHostedNote"); pushHosted(); return; }
     const mine = ++rev;
     clearTimeout(timer);
     previewNote.textContent = t("g.previewLoading");
@@ -132,11 +151,12 @@ export default async function guestPage() {
     msg, save);
   form.addEventListener("input", refreshPreview);
   form.addEventListener("change", refreshPreview);
+  syncDest();
   refreshPreview();
 
   return h("div", { class: "stack" },
     h("p", { class: "soft small" }, t("g.hint")),
-    h("section", { class: "glass stack" }, h("h2", { class: "num" }, t("g.preview")), frame, previewNote),
+    h("section", { class: "glass stack" }, h("h2", { class: "num" }, t("g.preview")), h("div", { class: "row wrap" }, destRouter, destHosted), frame, hosted, previewNote),
     form,
     h("a", { class: "pill", href: "/app.html#portal" }, t("g.deploy")));
 }
