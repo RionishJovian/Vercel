@@ -6,11 +6,8 @@ import security-headers.caddy
     header @html Cache-Control "no-cache"
     encode gzip
     root * /srv
-    # The React app at /v2/ is the console. Old app.html links land there; the file stays in the image for rollback at /app.html?legacy=1.
-    @oldapp {
-        path /app.html
-        not query legacy=1
-    }
+    # Old bookmarks to the retired console land on the React app at /v2/.
+    @oldapp path /app.html
     redir @oldapp /v2/ 302
     # Serve the React app's index for the directory URL instead of the landing fallback.
     @v2root path /v2 /v2/

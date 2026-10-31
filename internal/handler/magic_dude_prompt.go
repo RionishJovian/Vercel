@@ -7,7 +7,7 @@ import (
 	"mega-magic/internal/model"
 )
 
-// Keep these labels and role restrictions aligned with workspaceAllowed in app.html.
+// Keep these labels and role restrictions aligned with the app navigation (app/src/pages/More.tsx).
 func magicDudeSystemPrompt(role model.UserRole, snapshot string) string {
 	var guide strings.Builder
 	guide.WriteString("Available app navigation (exact sidebar labels):\n" +

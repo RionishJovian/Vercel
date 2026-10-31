@@ -7,8 +7,7 @@ RUN npm run build
 
 FROM caddy:2.10-alpine
 COPY web /srv
-# The React app is served at /v2/ and replaces the older vanilla /v2 files.
-RUN rm -rf /srv/v2
+# The React app is the console, served at /v2/.
 COPY --from=app /app/dist /srv/v2
 COPY deploy/Caddyfile.go-staging /etc/caddy/Caddyfile
 COPY deploy/security-headers.caddy /etc/caddy/security-headers.caddy

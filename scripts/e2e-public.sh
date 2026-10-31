@@ -101,7 +101,7 @@ if [[ "$MODE" == "dry" ]]; then
   printf '  6. GET  /api/v1/security/posture -> 200 (posture)\n'
   printf '  7. GET  /api/v1/team           -> 200 (team[])\n'
   printf '  8. GET  /api/v1/routers        -> 200; then backups list for first device\n'
-  printf '  9. node --check inline JS on /portal.html (and /app.html if served)\n'
+  printf '  9. node --check inline JS on /portal.html \n'
   printf '\nNo requests made (dry-run).\n'
   exit 0
 fi
@@ -113,7 +113,7 @@ expect GET / "$TMP/home.html" 200 - || true
 # ---- 9. inline JS (public, do early) --------------------------------------
 step "inline JS syntax"
 check_js_seen=0
-for p in /portal.html /app.html; do
+for p in /portal.html; do
   if check_inline_js "$p"; then check_js_seen=1; fi
 done
 [[ "$check_js_seen" == "1" ]] || die "no portal/app page served inline JS to check"
