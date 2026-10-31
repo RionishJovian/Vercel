@@ -1,3 +1,7 @@
+# Console frontend — owner decision 2026-11-01
+
+The console is the React app in `app/`, served at `/v2/`. The old `web/app.html`, the vanilla `web/v2` and their UI tests were removed; `/app.html` redirects to `/v2/`. `web/` now holds only the landing, pricing, sign-in and guest portal pages plus shared assets. Older notes below that name `web/app.html` are historical. Several `web/assets/js` and `css` files were used only by the old console and are now unused.
+
 # Default app workspace — owner decision 2026-10-28
 
 The owner requested consolidation into one current local workspace and removal of the older app workspaces. This section supersedes conflicting repository names, source paths, continuation instructions and historical defaults below.

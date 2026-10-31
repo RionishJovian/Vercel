@@ -8,7 +8,7 @@
     "build": "node scripts/prepare-vercel-build.mjs",
     "preview": "vite preview",
     "test:sites": "node --test tests/sites-worker.test.mjs",
-    "test:critical-ui": "node --experimental-vm-modules --test scripts/test-*-ui.mjs scripts/test-workspace-consistency.mjs scripts/test-audit-fixes.mjs scripts/test-network-workspaces.mjs scripts/test-network-layout.mjs",
+    "test:critical-ui": "node --experimental-vm-modules --test scripts/test-*-ui.mjs scripts/test-network-layout.mjs",
     "test:api": "python3 -m unittest discover -s tests -p 'test_*.py' -v",
     "build:sites": "vite build && node scripts/prepare-sites-build.mjs",
     "test:vercel": "node --test deploy/vercel/proxy.test.js",
