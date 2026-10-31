@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"mega-magic/internal/accountpass"
 	"time"
@@ -56,6 +57,21 @@ func AccountPassStatusTXN(tx *sql.Tx, businessID, userID string, enabled, operat
 	if enabled && !status.Authorized {
 		status.Access = false
 		status.State = "authorized_login_required"
+	}
+	if enabled && status.Authorized && !status.Access && status.State == "pass_required" {
+		// Only logins without access pay for this lookup. The table is optional so a
+		// release can ship before the trial migration is applied.
+		var present bool
+		if e := tx.QueryRow(`SELECT to_regclass('public.app_account_trials') IS NOT NULL`).Scan(&present); e != nil {
+			return accountpass.Status{}, e
+		}
+		if present {
+			var trialEnd sql.NullTime
+			if e := tx.QueryRow(`SELECT expires_at FROM app_account_trials WHERE user_id=$1 AND business_id=$2`, userID, businessID).Scan(&trialEnd); e != nil && !errors.Is(e, sql.ErrNoRows) {
+				return accountpass.Status{}, e
+			}
+			status = accountpass.ApplyTrial(status, now, pointer(trialEnd))
+		}
 	}
 	status.Kind = "none"
 	if plan.Valid {

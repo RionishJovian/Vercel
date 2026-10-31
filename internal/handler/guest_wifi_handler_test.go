@@ -107,6 +107,8 @@ func setupHarness(base string) {
 		"20260926_guest_wifi_schema.sql",
 		"20261024020000_guest_purchase_terms.sql",
 		"20261024030000_app_account_passes.sql",
+		"20261101090000_account_trials.sql",
+		"20260930220000_auth_sessions.sql",
 		"20261024040000_individual_pass_rollout.sql",
 		"20261029090000_account_pass_checkout.sql",
 		"20261024070000_management_address_migration.sql",

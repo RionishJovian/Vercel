@@ -211,3 +211,4 @@ label.pill input[type="file"] { display: none; }
 .md-msg p { white-space: pre-wrap; overflow-wrap: anywhere; }
 .md-q { padding: 10px 14px; resize: none; }
 @media (min-width: 900px) { .md-fab { bottom: 24px; right: 32px; } .md-panel { left: auto; width: 400px; right: 32px; bottom: 84px; } }
+.signin-create { text-align: center; margin-top: 4px; }

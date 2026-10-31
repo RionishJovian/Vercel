@@ -21,6 +21,7 @@ const (
 // AuthHandler handles authentication endpoints
 type AuthHandler struct {
 	IndividualPassesEnabled    bool
+	RegistrationClosed         bool
 	SubscriptionOnly           bool
 	SubscriptionExistingPolicy string
 	userRepo                   *database.UserRepository
@@ -39,6 +40,10 @@ func NewAuthHandler(userRepo *database.UserRepository, authService *auth.Service
 
 // Register creates a new tenant (business) with an owner user
 func (h *AuthHandler) Register(c *gin.Context) {
+	if h.RegistrationClosed {
+		c.JSON(http.StatusForbidden, gin.H{"error": "registration is closed"})
+		return
+	}
 	var req model.RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -144,6 +149,19 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		})
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to initialize trial"})
+			return
+		}
+	}
+
+	// Individual passes: a new login gets one seven-day trial. The trigger on users
+	// has already made this owner the business's authorized login.
+	if h.IndividualPassesEnabled && !h.SubscriptionOnly {
+		err := database.WithTenant(tx, business.BusinessID, func() error {
+			_, e := tx.Exec(`INSERT INTO app_account_trials(user_id,business_id,started_at,expires_at) VALUES ($1,$2,now(),now()+interval '7 days')`, user.UserID, business.BusinessID)
+			return e
+		})
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to start trial"})
 			return
 		}
 	}

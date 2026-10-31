@@ -79,7 +79,9 @@ type GuestWifiConfig struct {
 // the plan -> duration source (plan.<planKey>.duration_minutes); a plan with no
 // duration FAILS CLOSED at request time.
 type BillingConfig struct {
-	IndividualPassesEnabled  bool                  `mapstructure:"individual_passes_enabled"`
+	IndividualPassesEnabled bool `mapstructure:"individual_passes_enabled"`
+	// SelfRegistrationEnabled keeps POST /auth/register open; false closes it.
+	SelfRegistrationEnabled  bool                  `mapstructure:"self_registration_enabled"`
 	SubscriptionOnly         bool                  `mapstructure:"subscription_only"`
 	ExistingAccountPolicy    string                `mapstructure:"existing_account_policy"`
 	ReceiptDir               string                `mapstructure:"receipt_dir"`
@@ -492,6 +494,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("database.password", defaultDatabasePassword)
 	v.SetDefault("billing.receipt_dir", "./data/receipts")
 	v.SetDefault("billing.subscription_only", false)
+	v.SetDefault("billing.self_registration_enabled", true)
 	v.SetDefault("billing.existing_account_policy", "require_payment")
 	v.SetDefault("billing.quota_enforcement_interval", "60s")
 	v.SetDefault("billing.telegram.enabled", false)

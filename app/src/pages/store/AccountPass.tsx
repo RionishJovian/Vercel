@@ -6,7 +6,7 @@ import { useI18n } from "../../i18n";
 import { Note } from "../../components/ui";
 import { Skeleton } from "../../components/Skeleton";
 
-export interface Pass { state?: string; kind?: string; authorized_login?: boolean; activated_at?: string; expires_at?: string; transition_expires_at?: string }
+export interface Pass { state?: string; kind?: string; authorized_login?: boolean; activated_at?: string; expires_at?: string; transition_expires_at?: string; trial_expires_at?: string }
 interface Renewal { id?: string; plan: string; status: string; created_at?: string; amount_mmk?: number; bank_reference?: string; idempotency_key?: string }
 interface Bank { id: string; bank_name?: string; holder_name?: string; account_number?: string }
 interface Options { available?: boolean; plans?: Record<string, { amount_mmk?: number }>; bank_accounts?: Bank[] }
@@ -87,7 +87,7 @@ export function AccountPass({ me, pass, onRefresh }: { me: Me; pass: Pass; onRef
         <h2>{t("ap.title")}</h2>
         <p><b>{t("ap.s." + (pass.state ?? "unknown"))}</b></p>
         {exempt ? <p className="soft small">{t("ap.noPassNeeded")}</p> : (
-          <p className="soft small">{t("ap.activation")}: {pass.activated_at ? when(pass.activated_at) : t("ap.notActivated")}<br />{t("ap.expiry")}: {pass.expires_at ? when(pass.expires_at) : t("ap.notRecorded")}{pass.transition_expires_at ? <><br />{t("ap.transitionEnds")}: {when(pass.transition_expires_at)}</> : null}</p>
+          <p className="soft small">{t("ap.activation")}: {pass.activated_at ? when(pass.activated_at) : t("ap.notActivated")}<br />{t("ap.expiry")}: {pass.expires_at ? when(pass.expires_at) : t("ap.notRecorded")}{pass.transition_expires_at ? <><br />{t("ap.transitionEnds")}: {when(pass.transition_expires_at)}</> : null}{pass.trial_expires_at ? <><br />{t("ap.trialEnds")}: {when(pass.trial_expires_at)}</> : null}</p>
         )}
         <p className="soft small">{t("ap.features")}</p><p className="soft small">{t("ap.expiryNote")}</p>
         <button className="pill" type="button" onClick={onRefresh}>{t("net.refresh")}</button>
