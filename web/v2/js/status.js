@@ -35,7 +35,16 @@ async function check() {
 }
 
 export function statusDot() {
-  const d = h("span", { class: "dot", "aria-hidden": "true" });
+  const d = h("span", { class: "dot wand", "aria-hidden": "true" });
+  const NS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("viewBox", "0 0 32 32");
+  const mk = (tag, attrs) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); return e; };
+  svg.append(
+    mk("line", { class: "stick", x1: "6", y1: "27", x2: "20", y2: "13" }),
+    mk("line", { class: "band", x1: "17", y1: "16", x2: "20", y2: "13" }),
+    mk("path", { class: "tip", d: "M23 3 L24.7 9.3 L31 11 L24.7 12.7 L23 19 L21.3 12.7 L15 11 L21.3 9.3 Z" }));
+  d.append(svg, h("span", { class: "orbit" }, h("i"), h("i"), h("i")));
   dots.add(d);
   paint();
   return d;

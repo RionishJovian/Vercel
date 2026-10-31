@@ -1,7 +1,8 @@
-// Click feel: a short mechanical "thock" plus a tiny haptic tick on press.
-// Sound is synthesized (no audio files) and can be switched off in More.
+// Click feel: a native-feeling haptic tick on press.
+// iPhone (iOS 18+ Safari): toggling a hidden <input switch> fires the system haptic.
+// Android: navigator.vibrate. Nothing plays if the device has no haptics.
 const KEY = "mm2_click";
-let ctx = null;
+let label = null;
 
 export function clickOn() {
   try { return localStorage.getItem(KEY) !== "off"; } catch (_) { return true; }
@@ -10,26 +11,23 @@ export function setClick(on) {
   try { localStorage.setItem(KEY, on ? "on" : "off"); } catch (_) { /* private mode */ }
 }
 
-function thock() {
-  try {
-    const AC = window.AudioContext || window.webkitAudioContext;
-    if (!AC) return;
-    ctx = ctx || new AC();
-    if (ctx.state === "suspended") ctx.resume();
-    const t = ctx.currentTime;
-    // Low body: quick pitch drop, like a cushioned key bottoming out.
-    const o = ctx.createOscillator(), g = ctx.createGain();
-    o.type = "sine"; o.frequency.setValueAtTime(190, t); o.frequency.exponentialRampToValueAtTime(80, t + 0.05);
-    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.16, t + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.07);
-    o.connect(g).connect(ctx.destination); o.start(t); o.stop(t + 0.08);
-    // Soft click on top: a few ms of filtered noise.
-    const n = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.02), ctx.sampleRate);
-    const d = n.getChannelData(0);
-    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
-    const s = ctx.createBufferSource(), f = ctx.createBiquadFilter(), ng = ctx.createGain();
-    s.buffer = n; f.type = "bandpass"; f.frequency.value = 2600; f.Q.value = 0.8; ng.gain.value = 0.09;
-    s.connect(f).connect(ng).connect(ctx.destination); s.start(t);
-  } catch (_) { /* audio blocked: stay silent */ }
+function ensureSwitch() {
+  if (label) return label;
+  label = document.createElement("label");
+  label.setAttribute("aria-hidden", "true");
+  label.style.cssText = "position:fixed;left:0;top:0;width:1px;height:1px;opacity:0;pointer-events:none;overflow:hidden";
+  const input = document.createElement("input");
+  input.type = "checkbox";
+  input.setAttribute("switch", "");
+  input.tabIndex = -1;
+  label.append(input);
+  document.body.append(label);
+  return label;
+}
+
+function tick() {
+  if (navigator.vibrate) { navigator.vibrate(8); return; }
+  try { ensureSwitch().click(); } catch (_) { /* no haptics available */ }
 }
 
 export function installClickFeel() {
@@ -37,7 +35,6 @@ export function installClickFeel() {
     if (!clickOn() || e.button > 0) return;
     const el = e.target.closest && e.target.closest("button,.pill,.btn,.tab,.lang button,a.pill");
     if (!el || el.disabled || el.getAttribute("aria-disabled") === "true") return;
-    thock();
-    if (navigator.vibrate) navigator.vibrate(6);
+    tick();
   }, { passive: true });
 }

@@ -172,3 +172,50 @@ body{background:
 .chip.warn::before{background:var(--amber);box-shadow:0 0 8px var(--warn-glow)}
 .chip.bad::before{background:#F27A84;box-shadow:0 0 8px var(--bad-glow)}
 @media (prefers-reduced-motion:reduce){.dot::after{animation:none}.pill,.btn,.tab,.lang button{transition:none}}
+
+/* ---- Midnight forest: deep green gradient, liquid-glass tab bar, wand status ---- */
+html{background:#04120F}
+body{background:
+  radial-gradient(110% 40% at 80% -6%,rgba(40,130,95,.34),rgba(0,0,0,0) 64%),
+  radial-gradient(90% 36% at 0% 104%,rgba(24,96,74,.30),rgba(0,0,0,0) 62%),
+  linear-gradient(180deg,#0C2E25 0%,#08201B 42%,#05140F 78%,#030C0B 100%)}
+.topbar{background:rgba(7,30,25,.66);box-shadow:inset 0 -1px 0 rgba(160,230,195,.10)}
+.glass{background:linear-gradient(180deg,rgba(150,225,190,.12) 0%,rgba(150,225,190,.045) 40%,rgba(150,225,190,.03) 100%);
+  border-color:rgba(140,205,170,.30);box-shadow:inset 0 1px 0 rgba(200,255,225,.20),inset 0 -14px 26px rgba(0,20,16,.30),0 12px 28px rgba(0,10,8,.38)}
+.tile{background:linear-gradient(180deg,rgba(150,225,190,.08),rgba(2,20,16,.55));border-color:rgba(140,205,170,.24);box-shadow:inset 0 1px 0 rgba(200,255,225,.12)}
+.pill{background:linear-gradient(180deg,rgba(170,240,205,.16),rgba(170,240,205,.04));border-color:rgba(150,215,180,.42)}
+.pill.on,.pill[aria-current="page"],.btn{background:linear-gradient(180deg,rgba(255,255,255,.42) 0,rgba(255,255,255,0) 52%),linear-gradient(180deg,#8EDDB0,#33A27A);box-shadow:inset 0 1px 0 rgba(255,255,255,.6),inset 0 -3px 0 rgba(0,70,52,.4),0 4px 0 #166A50,0 8px 16px rgba(20,120,90,.3)}
+.btn{box-shadow:inset 0 1px 0 rgba(255,255,255,.6),inset 0 -3px 0 rgba(0,70,52,.4),0 5px 0 #166A50,0 10px 20px rgba(20,120,90,.32)}
+.lang button[aria-pressed="true"]{background:linear-gradient(180deg,#A6EAC4,#3FB488)}
+.chip{background:linear-gradient(180deg,rgba(150,225,190,.12),rgba(2,20,16,.5));border-color:rgba(140,205,170,.4)}
+
+/* Liquid-glass tab bar: see-through, strong blur, bright rim. */
+.tabbar{background:linear-gradient(180deg,rgba(255,255,255,.14),rgba(255,255,255,.05));
+  -webkit-backdrop-filter:blur(26px) saturate(190%);backdrop-filter:blur(26px) saturate(190%);
+  border:1px solid rgba(255,255,255,.26);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.45),inset 0 -1px 0 rgba(255,255,255,.08),inset 0 0 18px rgba(255,255,255,.06),0 14px 34px rgba(0,8,6,.5)}
+.tab[aria-current="page"]{background:linear-gradient(180deg,rgba(255,255,255,.26),rgba(255,255,255,.09));box-shadow:inset 0 1px 0 rgba(255,255,255,.5),0 2px 8px rgba(0,10,8,.3)}
+
+/* Wand status: the wand tip glows in the status colour, stars orbit and twinkle. */
+.dot.wand{width:34px;height:34px;border-radius:0;background:none;box-shadow:none;color:var(--ok);overflow:visible}
+.dot.wand::after{display:none}
+.dot.wand[data-state="warn"]{color:var(--amber);background:none;box-shadow:none}
+.dot.wand[data-state="bad"]{color:#F27A84;background:none;box-shadow:none}
+.dot.wand[data-state="idle"]{color:#9BB5AB;background:none}
+.wand svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible;filter:drop-shadow(0 0 5px currentColor)}
+.wand .stick{stroke:#E9D9B0;stroke-width:3.2;stroke-linecap:round}
+.wand .band{stroke:currentColor;stroke-width:3.2;stroke-linecap:round}
+.wand .tip{fill:currentColor;transform-box:fill-box;transform-origin:center;animation:tip-glow 1.8s ease-in-out infinite}
+.wand .orbit{position:absolute;left:68%;top:26%;width:0;height:0;animation:orbit 3.6s linear infinite}
+.wand .orbit i{position:absolute;left:-4px;top:-4px;width:8px;height:8px;background:currentColor;opacity:.9;
+  clip-path:polygon(50% 0,62% 38%,100% 50%,62% 62%,50% 100%,38% 62%,0 50%,38% 38%);animation:twinkle 1.2s ease-in-out infinite}
+.wand .orbit i:nth-child(1){transform:translate(0,-15px)}
+.wand .orbit i:nth-child(2){transform:translate(13px,7px) scale(.75);animation-delay:.4s}
+.wand .orbit i:nth-child(3){transform:translate(-13px,7px) scale(.6);animation-delay:.8s}
+.dot.wand[data-state="bad"] .orbit{animation-duration:1.6s}
+.dot.wand[data-state="idle"] .orbit{animation:none}
+.dot.wand[data-state="idle"] .orbit i{animation:none;opacity:.35}
+@keyframes orbit{to{transform:rotate(360deg)}}
+@keyframes twinkle{0%,100%{opacity:.25}50%{opacity:1}}
+@keyframes tip-glow{0%,100%{transform:scale(.85)}50%{transform:scale(1.2)}}
+@media (prefers-reduced-motion:reduce){.wand .orbit,.wand .orbit i,.wand .tip{animation:none}}
