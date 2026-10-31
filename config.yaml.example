@@ -36,6 +36,9 @@ database:
 billing:
   # Enable only after the individual-pass migration and once-only 7-day rollout.
   individual_passes_enabled: false
+  # POST /auth/register stays open by default; with individual passes a new login gets one 7-day trial
+  # (apply migrations/20261101090000_account_trials.sql first). Set false to close sign-ups.
+  self_registration_enabled: true
   # Enable only after the one-time transition-trial migration and verified rollout.
   subscription_only: false
   existing_account_policy: require_payment

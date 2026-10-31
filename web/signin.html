@@ -43,7 +43,7 @@
   <main class="wrap auth">
     <div class="glass auth-card">
       <img class="logo" src="/assets/images/mikromagic-mark-20260930.png" alt="" width="72" height="72">
-      <h1><span lang="en">Sign in</span><span lang="my">ဝင်မည်</span></h1>
+      <h1 id="title"><span lang="en">Sign in</span><span lang="my">ဝင်မည်</span></h1>
       <div id="alert" class="alert" role="alert" hidden></div>
       <form id="login-form">
         <div class="field">
@@ -58,7 +58,28 @@
         </div>
         <button class="btn primary" type="submit" id="submit"><span lang="en">Sign in</span><span lang="my">ဝင်မည်</span></button>
       </form>
-      <p class="divider"><span lang="en">Need an account?</span><span lang="my">အကောင့် လိုပါသလား?</span></p>
+      <form id="register-form" hidden>
+        <p class="trial"><span lang="en">Free for 7 days. No payment needed to start.</span><span lang="my">၇ ရက် အခမဲ့။ စတင်ရန် ငွေပေးရန် မလိုပါ။</span></p>
+        <div class="field">
+          <label for="r-company"><span lang="en">Business name</span><span lang="my">လုပ်ငန်းအမည်</span></label>
+          <input class="input" id="r-company" type="text" maxlength="255" autocomplete="organization" required>
+        </div>
+        <div class="field">
+          <label for="r-name"><span lang="en">Your name</span><span lang="my">သင့်အမည်</span></label>
+          <input class="input" id="r-name" type="text" maxlength="255" autocomplete="name" required>
+        </div>
+        <div class="field">
+          <label for="r-email"><span lang="en">Email</span><span lang="my">အီးမေးလ်</span></label>
+          <input class="input" id="r-email" type="email" autocomplete="email" required>
+        </div>
+        <div class="field">
+          <label for="r-password"><span lang="en">Password (8 or more characters)</span><span lang="my">စကားဝှက် (စာလုံး ၈ လုံးနှင့်အထက်)</span></label>
+          <input class="input" id="r-password" type="password" minlength="8" autocomplete="new-password" required>
+        </div>
+        <button class="btn primary" type="submit" id="r-submit"><span lang="en">Create account</span><span lang="my">အကောင့် ဖွင့်မည်</span></button>
+      </form>
+      <button type="button" class="swap" id="swap"><span class="to-register"><span lang="en">New here? Create an account</span><span lang="my">အသစ်လား? အကောင့် ဖွင့်မည်</span></span><span class="to-login" hidden><span lang="en">Have an account? Sign in</span><span lang="my">အကောင့်ရှိပြီလား? ဝင်မည်</span></span></button>
+      <p class="divider"><span lang="en">Need help?</span><span lang="my">အကူအညီ လိုပါသလား?</span></p>
       <div class="tg-wrap"><i class="orbit o4" aria-hidden="true"></i><i class="orbit o3" aria-hidden="true"></i><i class="orbit o2" aria-hidden="true"></i><i class="orbit plane" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.5.71L12.6 16.3l-1.99 1.93c-.23.23-.42.42-.83.42z"/></svg></i><a class="btn tg" href="https://t.me/nish2769" target="_blank" rel="noopener noreferrer"><span class="tg-badge"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.5.71L12.6 16.3l-1.99 1.93c-.23.23-.42.42-.83.42z"/></svg></span><span lang="en">Contact us on Telegram</span><span lang="my">Telegram တွင် ဆက်သွယ်ရန်</span></a></div>
     </div>
   </main>
@@ -66,23 +87,66 @@
   <script src="/assets/js/api.js" defer></script>
   <script src="/assets/js/site.js"></script>
   <script>
-    document.getElementById("login-form").addEventListener("submit", async function (e) {
+    var alertBox = document.getElementById("alert");
+    var loginForm = document.getElementById("login-form");
+    var registerForm = document.getElementById("register-form");
+    var title = document.getElementById("title");
+    var swap = document.getElementById("swap");
+    function setMode(register) {
+      loginForm.hidden = register; registerForm.hidden = !register; alertBox.hidden = true;
+      swap.querySelector(".to-register").hidden = register; swap.querySelector(".to-login").hidden = !register;
+      title.innerHTML = register ? '<span lang="en">Create account</span><span lang="my">အကောင့် ဖွင့်မည်</span>' : '<span lang="en">Sign in</span><span lang="my">ဝင်မည်</span>';
+      try { history.replaceState(null, "", register ? "?register=1" : location.pathname); } catch (e) {}
+      (register ? document.getElementById("r-company") : document.getElementById("email")).focus();
+    }
+    swap.addEventListener("click", function () { setMode(registerForm.hidden); });
+    if (/[?&]register=1/.test(location.search)) setMode(true);
+    function fail(text) { alertBox.hidden = false; alertBox.textContent = text; }
+
+    loginForm.addEventListener("submit", async function (e) {
       e.preventDefault();
-      var alertBox = document.getElementById("alert");
       var submit = document.getElementById("submit");
-      alertBox.hidden = true;
-      submit.disabled = true;
+      alertBox.hidden = true; submit.disabled = true;
       submit.textContent = mmT("Signing in…", "ဝင်နေသည်…");
       try {
         await MM.post("/auth/login", { email: document.getElementById("email").value.trim(), password: document.getElementById("password").value });
         location.href = "/v2/";
       } catch (err) {
-        alertBox.hidden = false;
-        alertBox.textContent = err.message === "network-unreachable"
+        fail(err.message === "network-unreachable"
           ? mmT("Could not reach the server. Try again.", "server သို့ မချိတ်ဆက်နိုင်ပါ။ ပြန်ကြိုးစားပါ။")
-          : mmT("Sign-in failed: ", "ဝင်ခြင်း မအောင်မြင်ပါ - ") + err.message;
+          : mmT("Sign-in failed: ", "ဝင်ခြင်း မအောင်မြင်ပါ - ") + err.message);
         submit.disabled = false;
         submit.textContent = mmT("Sign in", "ဝင်မည်");
+      }
+    });
+
+    registerForm.addEventListener("submit", async function (e) {
+      e.preventDefault();
+      var submit = document.getElementById("r-submit");
+      var password = document.getElementById("r-password").value;
+      alertBox.hidden = true;
+      if (password.length < 8) { fail(mmT("The password needs 8 or more characters.", "စကားဝှက်သည် စာလုံး ၈ လုံးနှင့်အထက် ရှိရမည်။")); return; }
+      submit.disabled = true;
+      submit.textContent = mmT("Creating…", "ဖန်တီးနေသည်…");
+      try {
+        await MM.post("/auth/register", {
+          company_name: document.getElementById("r-company").value.trim(),
+          full_name: document.getElementById("r-name").value.trim(),
+          email: document.getElementById("r-email").value.trim(),
+          password: password
+        });
+        location.href = "/v2/";
+      } catch (err) {
+        var msg;
+        if (err.message === "network-unreachable") msg = mmT("Could not reach the server. Try again.", "server သို့ မချိတ်ဆက်နိုင်ပါ။ ပြန်ကြိုးစားပါ။");
+        else if (err.status === 409) msg = mmT("This email is already registered. Sign in instead.", "ဤအီးမေးလ်ကို စာရင်းသွင်းပြီးသား ဖြစ်သည်။ ဝင်ရန် ရွှေ့ပါ။");
+        else if (err.status === 403) msg = mmT("Registration is closed right now. Contact us on Telegram.", "ယခု စာရင်းသွင်းခြင်း ပိတ်ထားသည်။ Telegram တွင် ဆက်သွယ်ပါ။");
+        else if (err.status === 429) msg = mmT("Too many attempts. Wait a minute and try again.", "ကြိုးစားမှု များလွန်းသည်။ ခဏစောင့်ပြီး ပြန်ကြိုးစားပါ။");
+        else if (err.status === 400) msg = mmT("Check your details. Use a valid email and a password of 8 or more characters.", "အချက်အလက်များကို စစ်ပါ။ မှန်ကန်သော အီးမေးလ်နှင့် စာလုံး ၈ လုံးနှင့်အထက် စကားဝှက် ထည့်ပါ။");
+        else msg = mmT("Could not create the account. Try again.", "အကောင့် မဖန်တီးနိုင်ပါ။ ပြန်ကြိုးစားပါ။");
+        fail(msg);
+        submit.disabled = false;
+        submit.textContent = mmT("Create account", "အကောင့် ဖွင့်မည်");
       }
     });
   </script>

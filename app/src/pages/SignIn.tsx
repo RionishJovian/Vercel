@@ -27,6 +27,7 @@ export function SignIn({ notice, onDone }: { notice?: string; onDone: () => void
         {error ? <p className="note bad" role="alert">{error}</p> : null}
         <button className="btn" type="submit" disabled={busy}>{busy ? t("s.working") : t("s.submit")}</button>
       </form>
+      <p className="signin-create"><a className="link" href="/signin.html?register=1">{t("s.create")}</a></p>
     </div>
   );
 }

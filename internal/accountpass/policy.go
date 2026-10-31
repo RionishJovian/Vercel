@@ -48,6 +48,7 @@ type Status struct {
 	ActivatedAt         *time.Time `json:"activated_at,omitempty"`
 	ExpiresAt           *time.Time `json:"expires_at,omitempty"`
 	TransitionExpiresAt *time.Time `json:"transition_expires_at,omitempty"`
+	TrialExpiresAt      *time.Time `json:"trial_expires_at,omitempty"`
 	CapacityExempt      bool       `json:"capacity_exempt"`
 	CapacityScope       string     `json:"capacity_scope"`
 	RouterLimit         int        `json:"router_limit"`
@@ -89,6 +90,22 @@ func Evaluate(now time.Time, enabled, operator bool, start, end, revoked, transi
 		s.Mode = "legacy_account_pass"
 		s.Access = true
 	}
+	return s
+}
+
+// TrialDuration is the access period granted once to a self-registered login.
+const TrialDuration = 7 * 24 * time.Hour
+
+// ApplyTrial grants access while a self-registration trial is running. It never
+// overrides an active pass, a revoked pass, the platform exemption or a login
+// that is not the authorized one, and it does nothing when passes are not enforced.
+func ApplyTrial(s Status, now time.Time, trialEnd *time.Time) Status {
+	if trialEnd == nil || !s.Enforced || !s.Authorized || s.Access || s.State != "pass_required" || !trialEnd.After(now) {
+		return s
+	}
+	s.State = "trial"
+	s.Access = true
+	s.TrialExpiresAt = trialEnd
 	return s
 }
 
