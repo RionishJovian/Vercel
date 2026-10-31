@@ -10,6 +10,7 @@ import { Home } from "./pages/Home";
 import { Revenue } from "./pages/Revenue";
 import { More } from "./pages/More";
 import { Soon } from "./pages/Soon";
+import { Vouchers } from "./pages/vouchers";
 import { Skeleton } from "./components/Skeleton";
 
 type Auth = { state: "loading" } | { state: "out"; notice?: string } | { state: "in"; me: Me };
@@ -33,9 +34,10 @@ export function App() {
   let page: React.ReactNode, tab = route.name;
   switch (route.name) {
     case "revenue": page = <Revenue />; tab = "home"; break;
+    case "vouchers": page = <Vouchers sub={route.sub} />; break;
     case "more": page = <More me={me} onSignedOut={signedOut} />; break;
     case "home": page = <Home me={me} />; break;
-    default: page = <Soon legacy={"#" + route.name} />; if (!["router", "vouchers", "jellyfin"].includes(route.name)) tab = "more";
+    default: page = <Soon legacy={"#" + route.name} />; if (!["router", "jellyfin"].includes(route.name)) tab = "more";
   }
   return <Shell active={tab}>{page}</Shell>;
 }

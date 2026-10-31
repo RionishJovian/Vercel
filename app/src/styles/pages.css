@@ -67,3 +67,22 @@
   .instrument { padding: 40px 32px 30px; }
   .ring { width: 280px !important; height: 280px !important; }
 }
+
+/* Voucher tickets: a notched stub shape, so stock reads as tickets rather than generic cards. */
+.tickets { display: grid; gap: 14px; }
+.ticket { position: relative; display: grid; border-radius: 22px; border: 1px solid var(--edge); background: var(--glass); overflow: hidden; box-shadow: inset 0 1px 0 var(--shine); }
+.ticket-main { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 18px 20px 16px; }
+.ticket-stub { position: relative; display: grid; gap: 10px; padding: 16px 20px 18px; border-top: 2px dashed var(--edge); background: var(--glass-strong); }
+.ticket-stub::before, .ticket-stub::after { content: ""; position: absolute; top: -11px; width: 20px; height: 20px; border-radius: 50%; background: var(--bg-1); border: 1px solid var(--edge); }
+.ticket-stub::before { left: -11px; } .ticket-stub::after { right: -11px; }
+.bar { height: 10px; border-radius: 999px; background: var(--edge-soft); overflow: hidden; }
+.bar i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--jade-deep), var(--jade)); transition: width 1s var(--ease-out); }
+.code { letter-spacing: .08em; }
+@media (min-width: 700px) { .tickets { grid-template-columns: repeat(2, 1fr); } }
+
+/* Guest page editor: the phone preview is the star; the form scrolls beside it on wide screens. */
+.gp-layout { display: grid; gap: 18px; }
+.phone { width: min(100%, 330px); margin: 0 auto; padding: 10px; border-radius: 40px; border: 1px solid var(--edge); background: var(--glass-strong); box-shadow: var(--shadow), inset 0 1px 0 var(--shine); }
+.gp-frame { display: block; width: 100%; height: 560px; border: 0; border-radius: 30px; background: #051b22; }
+.input.colour { padding: 6px; }
+@media (min-width: 900px) { .gp-layout { grid-template-columns: 380px 1fr; align-items: start; } .gp-preview { position: sticky; top: 76px; } }
