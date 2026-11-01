@@ -246,7 +246,7 @@ const voucherGuardSourceExpiry = `:local mmGuardVersion "mega-magic:voucher-guar
 // either permission is a drift and is rejected.
 func policyAllowsReadWrite(policy string) bool {
 	read, write := false, false
-	for _, p := range strings.FieldsFunc(policy, func(r rune) bool { return r == ',' || r == ';' || r == ' ' || r == '\t' }) {
+	for _, p := range strings.FieldsFunc(policy, func(r rune) bool { return r == ',' || r == ';' || r == ' ' || r == '\t' || r == '\n' || r == '\r' }) {
 		switch strings.TrimSpace(p) {
 		case "read":
 			read = true
