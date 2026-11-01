@@ -125,7 +125,7 @@ func (GuestVoucherBatchRepository) ItemsTXN(tx *sql.Tx, businessID, batchID stri
 // ClaimTXN fences concurrent HTTP retries. Router retries are idempotent even if
 // an old disconnected worker finishes remotely after its lease has elapsed.
 func (GuestVoucherBatchRepository) ClaimTXN(tx *sql.Tx, businessID, batchID, token string) (bool, error) {
-	r, err := tx.Exec(`UPDATE guest_voucher_issue_batches SET lease_token=$3,lease_until=clock_timestamp()+interval '90 seconds',updated_at=clock_timestamp()
+	r, err := tx.Exec(`UPDATE guest_voucher_issue_batches SET lease_token=$3,lease_until=clock_timestamp()+interval '5 minutes',updated_at=clock_timestamp()
  WHERE business_id=$1 AND id=$2 AND (lease_until IS NULL OR lease_until<=clock_timestamp())
  AND EXISTS(SELECT 1 FROM guest_voucher_issue_items WHERE business_id=$1 AND batch_id=$2 AND install_state<>'verified')`, businessID, batchID, token)
 	if err != nil {
