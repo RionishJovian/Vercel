@@ -1,4 +1,5 @@
 import { asArray } from "../../lib/types";
+import { isHapAx2 } from "../../lib/deviceImage";
 
 // Read-only projection of what a gateway reported. A forwarding entry is not proof of a direct cable,
 // so nothing here invents a switch, a hop or an online state.
@@ -57,7 +58,7 @@ export function project(device: GatewayRef, inv: ObsInventory = {}, labels: Labe
   const board = inv.health?.["board-name"] || device.device_model || "";
   const read = !!inv.observed_at && !!(inv.health?.version || Object.values(inv.available ?? {}).some(Boolean));
   return {
-    root: { id: device.device_id, name: device.hardware_name || "RouterBOARD", ip: "", model: board, kind: "router", image: /hAP\s*ax(?:\^?2|²)/i.test(board + " " + device.hardware_name) ? "hap-ax2.webp" : "switch.svg", state: read ? "Management reachable" : "Not read", sources: ["Pinned management connection"], ports: [], connection: "", direct: true, upstream: false },
+    root: { id: device.device_id, name: device.hardware_name || "RouterBOARD", ip: "", model: board, kind: "router", image: isHapAx2(board + " " + device.hardware_name) ? "hap-ax2.webp" : "switch.svg", state: read ? "Management reachable" : "Not read", sources: ["Pinned management connection"], ports: [], connection: "", direct: true, upstream: false },
     devices: all, observedAt: inv.observed_at,
     unavailable: Object.entries(inv.available ?? {}).filter(([, ok]) => !ok).map(([k]) => k),
   };
