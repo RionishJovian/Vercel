@@ -23,13 +23,14 @@ export function Network({ me, sub }: { me: Me; sub: string }) {
   const [id, setId] = useState(read());
   useEffect(() => { if (gateways.length && !gateways.some((g) => g.device_id === id)) setId(gateways.length === 1 ? gateways[0].device_id : ""); }, [gateways, id]);
   const pickRouter = (v: string) => { setId(v); try { if (v) sessionStorage.setItem(KEY, v); } catch { /* ignore */ } };
-  const back = <BackLink href="#/more">{t("tab.more")}</BackLink>;
+  const back = <BackLink href="#/router">{t("title.router")}</BackLink>;
   if (isLoading) return <>{back}<Skeleton h={300} /></>;
-  if (error) return <>{back}<Note kind="bad">{t("c.loadFailed")}</Note></>;
 
   const isNew = sub === "new";
   const ws = (workspaces as readonly string[]).includes(sub) ? (sub as Workspace) : null;
   const router = gateways.find((g) => g.device_id === id);
+  // Why the forms are locked, when they are. They are always shown either way.
+  const reason = error ? t("c.loadFailed") : !gateways.length ? t("net.noRouterBanner") : !router ? t("net.pickOnce") : undefined;
   return (
     <>
       {back}<h1>{isNew ? t("nw.title") : ws ? workspaceInfo[ws][0] : t("net.title")}</h1>
@@ -37,15 +38,13 @@ export function Network({ me, sub }: { me: Me; sub: string }) {
       {gateways.length > 1 && <label className="field"><span>{t("net.working")}</span><select className="input" value={id} onChange={(e) => pickRouter(e.target.value)}><option value="">{t("net.chooseRouter")}</option>{gateways.map((g) => <option key={g.device_id} value={g.device_id}>{g.hardware_name}</option>)}</select></label>}
       {gateways.length === 1 && <p className="soft small">{gateways[0].hardware_name}</p>}
       {isNew ? (
-        !gateways.length ? <Note>{t("net.noRouter")} <a className="link" href="#/hub">{t("hub.title")}</a></Note> : !router ? <Note>{t("net.pickOnce")}</Note> : <Wizard key={router.device_id} router={router} canEdit={canEdit} />
+        <Wizard key={router?.device_id ?? "none"} router={router} canEdit={canEdit} reason={reason} />
       ) : !ws ? (
-        <div className="stack"><a className="rowitem menu-link" href="#/network/new"><span className="stack" style={{ gap: 2 }}><b>{t("nw.title")}</b><span className="soft small">{t("nw.menuHelp")}</span></span><span aria-hidden="true" className="soft">›</span></a>{workspaces.map((k) => <a key={k} className="rowitem menu-link" href={"#/network/" + k}><span className="stack" style={{ gap: 2 }}><b>{workspaceInfo[k][0]}</b><span className="soft small">{workspaceInfo[k][1]}</span></span><span aria-hidden="true" className="soft">›</span></a>)}</div>
+        <div className="stack">{reason && <Note kind="bad">{reason}</Note>}<a className="rowitem menu-link" href="#/network/new"><span className="stack" style={{ gap: 2 }}><b>{t("nw.title")}</b><span className="soft small">{t("nw.menuHelp")}</span></span><span aria-hidden="true" className="soft">›</span></a>{workspaces.map((k) => <a key={k} className="rowitem menu-link" href={"#/network/" + k}><span className="stack" style={{ gap: 2 }}><b>{workspaceInfo[k][0]}</b><span className="soft small">{workspaceInfo[k][1]}</span></span><span aria-hidden="true" className="soft">›</span></a>)}</div>
       ) : (
         <>
           <div className="scroll-x">{workspaces.map((k) => <a key={k} className="pill" href={"#/network/" + k} aria-current={k === ws ? "page" : undefined}>{workspaceInfo[k][0]}</a>)}</div>
-          {!gateways.length ? <Note>{t("net.noRouter")} <a className="link" href="#/hub">{t("hub.title")}</a></Note>
-            : !router ? <Note>{t("net.pickOnce")}</Note>
-            : <NetworkEditor key={router.device_id + ws} workspace={ws} router={router} canEdit={canEdit} />}
+          <NetworkEditor key={(router?.device_id ?? "none") + ws} workspace={ws} router={router} canEdit={canEdit} reason={reason} />
         </>
       )}
     </>

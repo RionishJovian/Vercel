@@ -64,7 +64,7 @@ export function App() {
     case "fleet": page = <Fleet />; tab = "more"; break;
     case "guests": page = <Guests me={me} />; tab = "more"; break;
     case "sites": page = <Sites me={me} />; tab = "more"; break;
-    case "network": page = <Network me={me} sub={route.sub} />; tab = "more"; break;
+    case "network": page = <Network me={me} sub={route.sub} />; tab = "router"; break;
     case "incidents": page = <Incidents me={me} />; tab = "more"; break;
     case "events": page = <Events />; tab = "more"; break;
     case "security": page = <Security />; tab = "more"; break;
