@@ -72,7 +72,7 @@ export interface Inventory {
   interfaces?: Array<{ name: string; type: string; running?: boolean }>;
   available?: Record<string, boolean>;
   objects?: Record<string, NetObject[]>;
-  write_enabled?: boolean; wifi_write_enabled?: boolean; address_write_enabled?: boolean;
+  write_enabled?: boolean; wifi_write_enabled?: boolean; address_write_enabled?: boolean; address_preview_only?: boolean;
 }
 export const objectsOf = (inv: Inventory, key: string): NetObject[] => inv.objects?.[key] ?? [];
 export const labelOf = (o: NetObject) => o.values.name || o.values["service-name"] || o.values.address || o.id;

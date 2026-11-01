@@ -407,6 +407,7 @@ func (h *RouterHandler) GetRouterObservations(c *gin.Context) {
 	inventory.WriteEnabled = false
 	inventory.WiFiWriteEnabled = false
 	inventory.AddressWriteEnabled = false
+	inventory.AddressPreviewOnly = false
 	c.JSON(200, gin.H{"inventory": inventory})
 }
 

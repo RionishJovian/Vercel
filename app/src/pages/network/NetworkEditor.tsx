@@ -214,6 +214,7 @@ export function NetworkEditor({ workspace, router, canEdit, reason }: { workspac
         {blocked ? <Note>{blocked}</Note> : (
           <>
             {writeHold && <Note kind="warn">{writeHold}</Note>}
+            {!writeHold && (task === "ip_address" || task === "vlan") && inv.address_preview_only === true && <Note kind="warn">{t("net.addressPreview")}</Note>}
             <fieldset className="nolock" disabled={offline || !!writeHold}>
               <TaskForm key={task} kind={task} inv={inv} defaults={defaults} routerId={routerId} routerName={router?.hardware_name ?? ""} locked={locked || offline || !!writeHold} setLocked={setLocked} />
             </fieldset>

@@ -27,10 +27,12 @@ type NetworkInventory struct {
 	WriteEnabled     bool              `json:"write_enabled"`
 	WiFiWriteEnabled bool              `json:"wifi_write_enabled"`
 	// AddressWriteEnabled gates the free-form IP address and VLAN operations.
-	AddressWriteEnabled bool                       `json:"address_write_enabled"`
-	Interfaces          []GatewayInterface         `json:"interfaces"`
-	Objects             map[string][]NetworkObject `json:"objects"`
-	Available           map[string]bool            `json:"available"`
+	AddressWriteEnabled bool `json:"address_write_enabled"`
+	// AddressPreviewOnly means plans can be previewed against the router but never applied.
+	AddressPreviewOnly bool                       `json:"address_preview_only"`
+	Interfaces         []GatewayInterface         `json:"interfaces"`
+	Objects            map[string][]NetworkObject `json:"objects"`
+	Available          map[string]bool            `json:"available"`
 }
 type NetworkRequest struct {
 	Kind         string            `json:"kind"`
