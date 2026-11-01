@@ -285,16 +285,42 @@ func (a *DeviceApplier) ReadNetwork(ctx context.Context, businessID, deviceID st
 			networkPending.Delete(businessID + ":" + deviceID)
 		}
 	}
+	keys := []string{}
 	for key := range networkMenus {
-		if key == "ssh_sessions" || key == "wg_peers" {
+		if key != "ssh_sessions" && key != "wg_peers" {
+			keys = append(keys, key)
+		}
+	}
+	sort.Strings(keys)
+	type read struct {
+		objects []NetworkObject
+		err     error
+	}
+	reads := make([]read, len(keys))
+	// Each read is a separate router command. Where the runner allows it they run a
+	// few at a time, so the page waits for the slowest rounds, not the sum.
+	workers := 1
+	if c, ok := r.(interface{ ConcurrentSafe() bool }); ok && c.ConcurrentSafe() {
+		workers = networkReadWorkers
+	}
+	var wg sync.WaitGroup
+	slots := make(chan struct{}, workers)
+	for i, key := range keys {
+		wg.Add(1)
+		slots <- struct{}{}
+		go func() {
+			defer wg.Done()
+			defer func() { <-slots }()
+			reads[i].objects, reads[i].err = readNetworkObjects(ctx, r, key)
+		}()
+	}
+	wg.Wait()
+	for i, key := range keys {
+		result.Available[key] = reads[i].err == nil
+		if reads[i].err != nil {
 			continue
 		}
-		objects, err := readNetworkObjects(ctx, r, key)
-		result.Available[key] = err == nil
-		if err != nil {
-			continue
-		}
-		for _, object := range objects {
+		for _, object := range reads[i].objects {
 			for field := range object.Values {
 				if networkSecret(field) {
 					if object.Values[field] != "" {
@@ -304,10 +330,13 @@ func (a *DeviceApplier) ReadNetwork(ctx context.Context, businessID, deviceID st
 				}
 			}
 		}
-		result.Objects[key] = objects
+		result.Objects[key] = reads[i].objects
 	}
 	return result, nil
 }
+
+// networkReadWorkers bounds the simultaneous router sessions of one inventory read.
+const networkReadWorkers = 4
 
 type networkStep struct {
 	Key, ID, SelectorField, SelectorValue, Label string

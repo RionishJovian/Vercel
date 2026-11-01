@@ -175,7 +175,7 @@ func NewDeviceProber(src TargetSource, timeout time.Duration, factory RunnerFact
 		timeout = 10 * time.Second
 	}
 	if factory == nil {
-		factory = func(c SSHConfig) CommandRunner { return NewSSHTransport(c) }
+		factory = func(c SSHConfig) CommandRunner { return NewReusingSSHTransport(c) }
 	}
 	return &DeviceProber{
 		src:     src,
@@ -230,7 +230,7 @@ func NewDeviceApplier(src TargetSource, timeout time.Duration, factory RunnerFac
 		timeout = 10 * time.Second
 	}
 	if factory == nil {
-		factory = func(c SSHConfig) CommandRunner { return NewSSHTransport(c) }
+		factory = func(c SSHConfig) CommandRunner { return NewReusingSSHTransport(c) }
 	}
 	if strings.TrimSpace(iface) == "" {
 		iface = DefaultInterface
