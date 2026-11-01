@@ -80,3 +80,11 @@ func TestGuardScriptsNeverOrderStringsWithComparisonOperators(t *testing.T) {
 		}
 	}
 }
+
+func TestParseUptimeSecondsHandlesDaysAndWeeks(t *testing.T) {
+	for in, want := range map[string]int{"1d": 86400, "1w": 604800, "1w2d3h4m5s": 604800 + 2*86400 + 3*3600 + 4*60 + 5, "1h": 3600, "30m": 1800, "0s": 0} {
+		if got := parseUptimeSeconds(in); got != want {
+			t.Errorf("parseUptimeSeconds(%q) = %d, want %d", in, got, want)
+		}
+	}
+}

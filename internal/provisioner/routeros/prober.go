@@ -257,7 +257,7 @@ func parseUptimeSeconds(s string) int {
 	return parseDurationSeconds(s)
 }
 
-// parseDurationSeconds handles RouterOS compact durations like 1h / 2h30m / 45s.
+// parseDurationSeconds handles RouterOS compact durations like 1w2d / 1d / 1h / 2h30m / 45s.
 func parseDurationSeconds(s string) int {
 	var total int
 	num := 0
@@ -267,6 +267,12 @@ func parseDurationSeconds(s string) int {
 		case r >= '0' && r <= '9':
 			num = num*10 + int(r-'0')
 			haveNum = true
+		case r == 'w':
+			total += num * 604800
+			num, haveNum = 0, false
+		case r == 'd':
+			total += num * 86400
+			num, haveNum = 0, false
 		case r == 'h':
 			total += num * 3600
 			num, haveNum = 0, false
