@@ -19,6 +19,12 @@ func parseValueList(out string) map[string]string {
 	}
 	m := map[string]string{}
 	for _, line := range strings.Split(out, "\n") {
+		// RouterOS prints an item's comment as ";;; text", which may itself
+		// contain colons (our ownership marker does).
+		if t := strings.TrimSpace(line); strings.HasPrefix(t, ";;;") {
+			m["comment"] = strings.TrimSpace(strings.TrimPrefix(t, ";;;"))
+			continue
+		}
 		i := strings.Index(line, ":")
 		if i < 0 {
 			continue
