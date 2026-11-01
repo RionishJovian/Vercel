@@ -77,6 +77,7 @@ function TaskForm({ kind, inv, defaults, routerId, routerName, locked, setLocked
 
   async function preview(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (!routerId) return;
     const mine = ++stamp.current;
     setReview(null); setConsent(false); setStatus(t("net.reviewing"));
     try {
@@ -86,7 +87,7 @@ function TaskForm({ kind, inv, defaults, routerId, routerName, locked, setLocked
     } catch (err) { if (isUnauthorized(err)) throw err; if (mine === stamp.current) setStatus(`${t("net.reviewFail")} ${errMsg(err)}`); }
   }
   async function apply() {
-    if (locked || !review) return;
+    if (locked || !review || !routerId) return;
     const request = { kind, id: selected?.id ?? "", values, confirmation: review.confirmation };
     setLocked(true); setReview(null); setConsent(false); setStatus(t("net.applying")); const mine = ++stamp.current;
     try {
@@ -139,58 +140,75 @@ function TaskForm({ kind, inv, defaults, routerId, routerName, locked, setLocked
   );
 }
 
-export function NetworkEditor({ workspace, router, canEdit }: { workspace: Workspace; router: RouterRow; canEdit: boolean }) {
+const EMPTY_INVENTORY: Inventory = { interfaces: [], available: {}, objects: {}, write_enabled: false };
+
+/**
+ * Every task stays visible. With no router, or one that cannot be read, the forms
+ * are shown locked under a clear banner, so nothing is hidden and nothing can be
+ * applied. `reason` overrides the banner when the caller already knows why.
+ */
+export function NetworkEditor({ workspace, router, canEdit, reason }: { workspace: Workspace; router?: RouterRow; canEdit: boolean; reason?: string }) {
   const { t } = useI18n();
   const kinds = choices[workspace];
-  const [load, setLoad] = useState<{ kind: "loading" } | { kind: "error"; err: unknown } | { kind: "ready"; inv: Inventory; defaults: Record<string, string> }>({ kind: "loading" });
+  const [load, setLoad] = useState<{ kind: "loading" } | { kind: "error"; err: unknown } | { kind: "ready"; inv: Inventory; defaults: Record<string, string> }>(router ? { kind: "loading" } : { kind: "error", err: null });
   const [task, setTask] = useState(kinds[0]);
   const [locked, setLocked] = useState(false);
   const rev = useRef(0);
   useEffect(() => { setTask(choices[workspace][0]); }, [workspace]);
 
+  const routerId = router?.device_id ?? "";
   const reload = useCallback(async () => {
+    if (!routerId) { setLoad({ kind: "error", err: null }); return; }
     const mine = ++rev.current;
     setLoad({ kind: "loading" });
     try {
-      const data = await api.get<{ inventory: Inventory }>(`/routers/${encodeURIComponent(router.device_id)}/network/inventory`);
+      const data = await api.get<{ inventory: Inventory }>(`/routers/${encodeURIComponent(routerId)}/network/inventory`);
       let defaults: Record<string, string> = {};
-      if (workspace === "pppoe") { try { defaults = (await api.get<{ defaults?: Record<string, string> }>(`/routers/${encodeURIComponent(router.device_id)}/gateway/defaults`)).defaults ?? {}; } catch { /* never invent an unchecked address */ } }
+      if (workspace === "pppoe") { try { defaults = (await api.get<{ defaults?: Record<string, string> }>(`/routers/${encodeURIComponent(routerId)}/gateway/defaults`)).defaults ?? {}; } catch { /* never invent an unchecked default */ } }
       if (mine === rev.current) setLoad({ kind: "ready", inv: data.inventory, defaults });
     } catch (err) { if (isUnauthorized(err)) throw err; if (mine === rev.current) setLoad({ kind: "error", err }); }
-  }, [router.device_id, workspace]);
+  }, [routerId, workspace]);
   useEffect(() => { void reload(); }, [reload]);
 
   const [name, lead] = workspaceInfo[workspace];
   if (load.kind === "loading") return <Skeleton h={300} />;
-  if (load.kind === "error") {
-    const needs = load.err instanceof ApiError && (load.err.data as { code?: string } | null)?.code === "router_management_required";
-    return (
-      <div className="stack">
-        <Note kind="warn">{needs ? t("net.connectFirst") : t("net.readFail")} {errMsg(load.err)}</Note>
-        <div className="row" style={{ justifyContent: "flex-start" }}>{needs && <a className="pill on" href="#/hub">{t("hub.title")}</a>}<button className="pill" type="button" onClick={() => void reload()}>{t("net.refresh")}</button></div>
-      </div>
-    );
-  }
-  const { inv, defaults } = load, s = schema[task];
+  const offline = load.kind === "error";
+  const inv = load.kind === "ready" ? load.inv : EMPTY_INVENTORY, defaults = load.kind === "ready" ? load.defaults : {};
+  const s = schema[task];
+  const needsHub = !router || (load.kind === "error" && load.err instanceof ApiError && (load.err.data as { code?: string } | null)?.code === "router_management_required");
+  const banner = !offline ? "" : reason ? reason : !router ? t("net.noRouterBanner") : needsHub ? t("net.connectFirst") : `${t("net.offlineBanner")} ${errMsg(load.err)}`;
   // Mirror the server's gates so an unsupported change is never offered.
-  const blocked = s.readOnly ? descriptions[task] : !canEdit ? t("net.needAdmin") : inv.write_enabled !== true ? t("net.writesOff")
+  const blocked = offline ? "" : s.readOnly ? descriptions[task] : !canEdit ? t("net.needAdmin") : inv.write_enabled !== true ? t("net.writesOff")
     : (task === "wifi" || task === "wireless") && inv.wifi_write_enabled !== true ? t("net.wifiOff") : s.menu && !inv.available?.[s.menu] ? t("net.menuUnsupported") : "";
   return (
     <div className="stack">
+      {offline && (
+        <div className="stack">
+          <Note kind="bad">{banner}</Note>
+          <div className="row" style={{ justifyContent: "flex-start" }}>
+            {needsHub && <a className="pill on" href="#/hub">{t("hub.title")}</a>}
+            {router && <button className="pill" type="button" onClick={() => void reload()}>{t("net.refresh")}</button>}
+          </div>
+        </div>
+      )}
       <details className="glass pad"><summary>{t("net.about")}</summary><p className="soft small">{lead} {t("net.reviewRequired")}</p></details>
-      <div className="row"><div className="stack" style={{ gap: 2 }}><b>{t("net.loaded")}</b><span className="soft small">{(inv.interfaces ?? []).length} {t("net.interfaces")}. {t("net.openingSafe")}</span></div><button className="pill" type="button" disabled={locked} onClick={() => void reload()}>{t("net.refresh")}</button></div>
+      {!offline && <div className="row"><div className="stack" style={{ gap: 2 }}><b>{t("net.loaded")}</b><span className="soft small">{(inv.interfaces ?? []).length} {t("net.interfaces")}. {t("net.openingSafe")}</span></div><button className="pill" type="button" disabled={locked} onClick={() => void reload()}>{t("net.refresh")}</button></div>}
       <div className="tasks" role="group" aria-label={name}>
         {kinds.map((k) => (
           <button type="button" className="task" key={k} aria-pressed={k === task} disabled={locked} onClick={() => setTask(k)}>
             <b>{schema[k].title}</b><span className="soft small">{descriptions[k]}</span>
-            <span className="mute small">{schema[k].menu ? `${objectsOf(inv, schema[k].menu!).length} ${t("net.records")}` : t("net.wizard")}</span>
+            {!offline && <span className="mute small">{schema[k].menu ? `${objectsOf(inv, schema[k].menu!).length} ${t("net.records")}` : t("net.wizard")}</span>}
           </button>
         ))}
       </div>
       <section className="stack" aria-live="polite">
-        <CurrentSettings inv={inv} kind={task} />
+        {!offline && <CurrentSettings inv={inv} kind={task} />}
         <h3>{s.title}</h3><p className="soft small">{descriptions[task]}</p>
-        {blocked ? <Note>{blocked}</Note> : <TaskForm key={task} kind={task} inv={inv} defaults={defaults} routerId={router.device_id} routerName={router.hardware_name ?? ""} locked={locked} setLocked={setLocked} />}
+        {blocked ? <Note>{blocked}</Note> : (
+          <fieldset className="nolock" disabled={offline}>
+            <TaskForm key={task} kind={task} inv={inv} defaults={defaults} routerId={routerId} routerName={router?.hardware_name ?? ""} locked={locked || offline} setLocked={setLocked} />
+          </fieldset>
+        )}
       </section>
     </div>
   );

@@ -5,10 +5,28 @@ import { useI18n } from "../../i18n";
 import { Note, WorkspaceTabs, BackLink } from "../../components/ui";
 import { Skeleton } from "../../components/Skeleton";
 import { deviceImage } from "../../lib/deviceImage";
+import { Icon, type IconName } from "../../components/icons";
+import { workspaceInfo, workspaces, type Workspace } from "../network/schema";
 import { Detail } from "./Detail";
 import { NetworkMap } from "./NetworkMap";
 
 export interface RouterRow extends Router { is_online?: boolean; transport?: string; last_seen_at?: string }
+
+const NET_ICONS: Record<Workspace, IconName> = { wan: "globe", ip: "nodes", existing: "device", protection: "shield", qos: "pulse", wifi: "link", pppoe: "users" };
+
+/** Internet setup is a first-class part of the Router tab, not buried under More. */
+function InternetSetup() {
+  const { t } = useI18n();
+  return (
+    <section className="stack" aria-labelledby="net-setup">
+      <h2 id="net-setup">{t("title.network")}</h2>
+      <nav className="tiles">
+        <a className="tile" href="#/network/new"><span className="tile-ico"><Icon name="pin" /></span><b>{t("nw.title")}</b></a>
+        {workspaces.map((k) => <a key={k} className="tile" href={"#/network/" + k}><span className="tile-ico"><Icon name={NET_ICONS[k]} /></span><b>{workspaceInfo[k][0]}</b></a>)}
+      </nav>
+    </section>
+  );
+}
 
 export function Routers({ sub, params }: { sub: string; params: URLSearchParams }) {
   const { t } = useI18n();
@@ -19,7 +37,7 @@ export function Routers({ sub, params }: { sub: string; params: URLSearchParams 
   const onMap = sub === "map";
   if (sub && !onMap) return <><BackLink href="#/router">{t("r.ws.list")}</BackLink><Detail id={sub} router={list.find((d) => d.device_id === sub)} /></>;
 
-  const tabs = <WorkspaceTabs items={[{ href: "#/router", label: t("r.ws.list"), current: !onMap }, { href: "#/router/map", label: t("r.ws.map"), current: onMap }]} />;
+  const tabs = <WorkspaceTabs items={[{ href: "#/router", label: t("r.ws.list"), current: !onMap }, { href: "#/router/map", label: t("r.ws.map"), current: onMap }, { href: "#/network", label: t("title.network"), current: false }]} />;
   if (onMap) {
     const gateways = list.filter((d) => d.deployment_layer === "MAIN_GATEWAY");
     return <>{tabs}{gateways.length ? <NetworkMap gateways={gateways} selected={params.get("id")} /> : <Note kind="warn">{t("v.noGateway")}</Note>}</>;
@@ -44,6 +62,7 @@ export function Routers({ sub, params }: { sub: string; params: URLSearchParams 
           </a>
         ))}
       </div>
+      <InternetSetup />
       <section className="glass pad stack"><h2>{t("r.tools")}</h2><p className="soft small">{t("r.toolsHelp")}</p><div className="scroll-x"><a className="pill" href="#/hub">{t("hub.title")}</a><a className="pill" href="#/network">{t("title.network")}</a><a className="pill" href="#/topology">{t("tp.title")}</a></div></section>
     </>
   );

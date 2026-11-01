@@ -13,15 +13,16 @@ const LAN_TYPES = ["ether", "bridge", "bond", "vlan", "wlan", "wifi", "wireless"
 const errText = (e: unknown) => (e as { data?: { error?: string } } | null)?.data?.error || (e instanceof Error ? e.message : "") || "failed";
 
 /** Creates a separate customer LAN with DHCP and an optional Hotspot. It never touches the uplink, default route or management. */
-export function Wizard({ router, canEdit }: { router: RouterRow; canEdit: boolean }) {
+export function Wizard({ router, canEdit, reason }: { router?: RouterRow; canEdit: boolean; reason?: string }) {
   const { t } = useI18n();
-  const [load, setLoad] = useState<{ k: "loading" } | { k: "error"; msg: string } | { k: "ready"; ifaces: Iface[]; d: Defaults }>({ k: "loading" });
+  const [load, setLoad] = useState<{ k: "loading" } | { k: "error"; msg: string } | { k: "ready"; ifaces: Iface[]; d: Defaults }>(router ? { k: "loading" } : { k: "error", msg: "" });
   const [approved, setApproved] = useState<Approved | null>(null), [status, setStatus] = useState<{ kind: "" | "ok" | "warn"; text: string }>({ kind: "", text: "" });
   const [busy, setBusy] = useState(false), [applying, setApplying] = useState(false);
   const form = useRef<HTMLFormElement>(null);
-  const base = `/routers/${encodeURIComponent(router.device_id)}/gateway/`;
+  const base = router ? `/routers/${encodeURIComponent(router.device_id)}/gateway/` : "";
 
   useEffect(() => {
+    if (!base) { setLoad({ k: "error", msg: "" }); return; }
     let live = true; setLoad({ k: "loading" });
     Promise.all([api.get<{ interfaces?: Iface[] }>(base + "interfaces"), api.get<{ defaults?: Defaults }>(base + "defaults")])
       .then(([i, d]) => { if (live) setLoad({ k: "ready", ifaces: asArray<Iface>(i.interfaces), d: d.defaults ?? {} }); })
@@ -31,8 +32,10 @@ export function Wizard({ router, canEdit }: { router: RouterRow; canEdit: boolea
 
   if (!canEdit) return <Note>{t("nw.needAdmin")}</Note>;
   if (load.k === "loading") return <Skeleton h={320} />;
-  if (load.k === "error") return <Note kind="warn">{t("nw.readFail")} {load.msg}</Note>;
-  const { ifaces, d } = load;
+  // Nothing is hidden: with no router, or one that cannot be read, the whole form
+  // is shown locked under a banner and cannot be submitted.
+  const offline = load.k === "error" ? (reason || (!router ? t("net.noRouterBanner") : `${t("nw.readFail")} ${load.msg}`)) : "";
+  const ifaces = load.k === "ready" ? load.ifaces : [], d: Defaults = load.k === "ready" ? load.d : {};
   const opt = (list: Iface[]) => [<option key="" value="">{t("nw.chooseIface")}</option>, ...list.map((i) => <option key={i.name} value={i.name}>{i.name} · {i.type || "interface"}{i.running ? ` · ${t("net.running")}` : ""}</option>)];
   const payload = () => {
     const f = new FormData(form.current!), s = (k: string) => String(f.get(k) ?? "").trim();
@@ -42,7 +45,7 @@ export function Wizard({ router, canEdit }: { router: RouterRow; canEdit: boolea
 
   async function preview(e: FormEvent) {
     e.preventDefault();
-    if (applying || busy || !form.current?.reportValidity()) return;
+    if (offline || !router || applying || busy || !form.current?.reportValidity()) return;
     setApproved(null); setBusy(true); setStatus({ kind: "", text: t("nw.checking") });
     try {
       const request = payload();
@@ -52,7 +55,7 @@ export function Wizard({ router, canEdit }: { router: RouterRow; canEdit: boolea
     setBusy(false);
   }
   async function apply() {
-    if (applying || !approved || !window.confirm(`${t("nw.confirm")} ${router.hardware_name ?? ""}`)) return;
+    if (offline || !router || applying || !approved || !window.confirm(`${t("nw.confirm")} ${router.hardware_name ?? ""}`)) return;
     const request = { ...approved.request, confirmation: approved.confirmation };
     setApproved(null); setApplying(true); setStatus({ kind: "", text: t("nw.applying") });
     try {
@@ -70,8 +73,14 @@ export function Wizard({ router, canEdit }: { router: RouterRow; canEdit: boolea
 
   return (
     <form ref={form} className="stack nwform" onSubmit={preview} onInput={invalidate} onChange={invalidate}>
+      {offline && (
+        <div className="stack">
+          <Note kind="bad">{offline}</Note>
+          <div className="row" style={{ justifyContent: "flex-start" }}><a className="pill on" href="#/hub">{t("hub.title")}</a></div>
+        </div>
+      )}
       <p className="soft small">{t("nw.lead")}</p>
-      <fieldset className="glass pad stack fs" disabled={applying}>
+      <fieldset className="glass pad stack fs" disabled={applying || !!offline}>
         <legend>{t("nw.networkName")}</legend>
         <label className="field"><span>{t("nw.name")}</span><input className="input" name="name" required maxLength={24} pattern="[A-Za-z0-9][A-Za-z0-9_\-]*" defaultValue={d.name || "guest-lan"} /></label>
         <label className="field"><span>{t("nw.uplink")}</span><select className="input" name="wan_interface" required>{opt(ifaces.filter((i) => i.type !== "loopback"))}</select></label>
@@ -80,7 +89,7 @@ export function Wizard({ router, canEdit }: { router: RouterRow; canEdit: boolea
         <label className="field"><span>{t("nw.vlan")}</span><input className="input" name="vlan_id" type="number" min={0} max={4094} defaultValue={0} /></label>
         <p className="soft small">{t("nw.vlanHelp")}</p>
       </fieldset>
-      <fieldset className="glass pad stack fs" disabled={applying}>
+      <fieldset className="glass pad stack fs" disabled={applying || !!offline}>
         <legend>{t("nw.addresses")}{d.gateway_cidr ? ` · ${d.gateway_cidr} (${t("nw.suggested")})` : ""}</legend>
         <p className="soft small">{t("nw.addrHelp")}</p>
         <label className="field"><span>{t("nw.gateway")}</span><input className="input" name="gateway_cidr" required defaultValue={d.gateway_cidr || ""} placeholder="192.168.50.1/24" /></label>
@@ -90,18 +99,18 @@ export function Wizard({ router, canEdit }: { router: RouterRow; canEdit: boolea
         </div>
         <label className="field"><span>{t("nw.dns")}</span><input className="input" name="dns_servers" required defaultValue="1.1.1.1, 8.8.8.8" /></label>
       </fieldset>
-      <fieldset className="glass pad stack fs" disabled={applying}>
+      <fieldset className="glass pad stack fs" disabled={applying || !!offline}>
         <legend>{t("nw.hotspotTitle")}</legend>
         <label className="check"><span>{t("nw.hotspot")}</span><input type="checkbox" name="hotspot" defaultChecked /></label>
         <label className="field"><span>{t("nw.radius")}</span><input className="input" name="radius_address" placeholder="10.0.0.10" autoComplete="off" /></label>
         <label className="field"><span>{t("nw.radiusSecret")}</span><input className="input" name="radius_secret" type="password" minLength={8} maxLength={128} autoComplete="new-password" /></label>
         <p className="soft small">{t("nw.radiusHelp")}</p>
       </fieldset>
-      <button className="btn" type="submit" disabled={busy || applying}>{t("nw.preview")}</button>
+      <button className="btn" type="submit" disabled={busy || applying || !!offline}>{t("nw.preview")}</button>
       {status.text && <p className={"note " + status.kind} role="status" aria-live="polite">{status.text}</p>}
       {approved && (
         <div className="glass pad stack" role="region" aria-label={t("net.reviewTitle")}>
-          <h3>{t("nw.reviewFor")} {router.hardware_name}</h3>
+          <h3>{t("nw.reviewFor")} {router?.hardware_name}</h3>
           <ol className="steps">{approved.steps.map((s, i) => <li key={i}>{s}</li>)}</ol>
           <p className="soft small">{t("nw.notReplaced")}</p>
           <button className="btn" type="button" disabled={applying} onClick={() => void apply()}>{t("nw.apply")}</button>

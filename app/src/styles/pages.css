@@ -355,3 +355,6 @@ a.rowitem:hover { border-color: var(--jade); transform: translateX(2px); }
 :root[data-theme="day"] .moredet summary { color: var(--jade-deep); }
 .moredet[open] summary { margin-bottom: 6px; }
 .pf-id > .stack { padding-top: 42px; min-width: 0; }
+
+/* A locked form group keeps its layout: the fieldset only carries the disabled state. */
+fieldset.nolock { border: 0; padding: 0; margin: 0; min-width: 0; }
