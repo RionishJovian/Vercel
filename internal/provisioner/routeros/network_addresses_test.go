@@ -2,6 +2,7 @@ package routeros
 
 import (
 	"context"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -583,4 +584,153 @@ func TestDeleteUndoRestoresTheSameRecord(t *testing.T) {
 	if !strings.Contains(networkWriteCommand(step, true), ":if ([:len [/interface vlan find where name=") {
 		t.Fatal("the router-side undo must be conditional")
 	}
+}
+
+// A customer network exactly as Create customer network builds it, on a VLAN.
+func shopFixture() *networkRunner {
+	r := addressFixture()
+	r.ifaces["mm-shop-vlan"] = "vlan"
+	r.objects["vlans"]["*70"] = map[string]string{"name": "mm-shop-vlan", "vlan-id": "300", "interface": "ether3", "comment": "", "disabled": "no"}
+	r.objects["addresses"]["*71"] = map[string]string{"address": "192.168.99.1/24", "interface": "mm-shop-vlan", "comment": "mm-shop", "disabled": "no", "dynamic": "no"}
+	r.objects["pools"]["*72"] = map[string]string{"name": "mm-shop", "ranges": "192.168.99.10-192.168.99.200"}
+	r.objects["dhcp_networks"]["*73"] = map[string]string{"address": "192.168.99.0/24", "gateway": "192.168.99.1", "dns-server": "1.1.1.1,8.8.8.8", "comment": "mm-shop"}
+	r.objects["dhcp"]["*74"] = map[string]string{"name": "mm-shop", "interface": "mm-shop-vlan", "address-pool": "mm-shop", "lease-time": "1h", "disabled": "no"}
+	r.objects["nat"]["*75"] = map[string]string{"chain": "srcnat", "action": "masquerade", "src-address": "192.168.99.0/24", "out-interface": "ether1", "comment": "mm-shop", "disabled": "no"}
+	return r
+}
+
+func snapshotRows(r *networkRunner) map[string][]string {
+	out := map[string][]string{}
+	for key, rows := range r.objects {
+		for _, row := range rows {
+			keys := make([]string, 0, len(row))
+			for k, v := range row {
+				if (k == "dynamic" && v == "no") || v == "" {
+					continue // the router sets these itself on a new record
+				}
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			line := ""
+			for _, k := range keys {
+				line += k + "=" + row[k] + ";"
+			}
+			out[key] = append(out[key], line)
+		}
+		sort.Strings(out[key])
+	}
+	return out
+}
+
+func TestRemovingACustomerNetwork(t *testing.T) {
+	req := removal("remove_network", "*74")
+	t.Run("lists every piece in reverse creation order and removes them all", func(t *testing.T) {
+		r := shopFixture()
+		review, err := preview(t, r, req)
+		if err != nil || len(review.Steps) != 6 {
+			t.Fatalf("%+v %v", review, err)
+		}
+		joined := strings.Join(review.Steps, "|")
+		order := []string{"masquerade", "DHCP service", "client gateway", "address pool", "gateway address", "VLAN mm-shop-vlan"}
+		last := -1
+		for _, want := range order {
+			i := strings.Index(joined, want)
+			if i <= last {
+				t.Fatalf("%q is out of order or missing in %s", want, joined)
+			}
+			last = i
+		}
+		applyOK(t, r, req)
+		for _, id := range []string{"*70", "*71"} {
+			if _, still := r.objects["vlans"][id]; still {
+				t.Fatalf("%s still there", id)
+			}
+		}
+		if len(r.objects["dhcp"]) != 1 || len(r.objects["nat"]) != 0 || len(r.objects["pools"]) != 1 || len(r.objects["dhcp_networks"]) != 0 || r.guard {
+			t.Fatalf("not fully removed: %v", snapshotRows(r))
+		}
+	})
+	t.Run("a leftover setup guard is removed too", func(t *testing.T) {
+		r := shopFixture()
+		r.objects["filters"]["*76"] = map[string]string{"chain": "forward", "action": "drop", "in-interface": "mm-shop-vlan", "comment": "mm-shop-setup", "disabled": "no"}
+		applyOK(t, r, req)
+		if len(r.objects["filters"]) != 0 {
+			t.Fatal("the setup guard must go")
+		}
+	})
+	t.Run("the router-side undo puts back exactly what was removed", func(t *testing.T) {
+		r := shopFixture()
+		before := snapshotRows(r)
+		steps, _, err := buildNetworkPlan(context.Background(), r, req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		applyOK(t, r, req)
+		ctx := context.Background()
+		for i := len(steps) - 1; i >= 0; i-- { // the guard script runs in this order
+			if err := networkWrite(ctx, r, steps[i], true); err != nil {
+				t.Fatalf("restore %s: %v", steps[i].Key, err)
+			}
+			if err := networkVerify(ctx, r, steps[i], true); err != nil {
+				t.Fatalf("verify %s: %v", steps[i].Key, err)
+			}
+		}
+		after := snapshotRows(r)
+		for key, rows := range before {
+			if strings.Join(rows, "\n") != strings.Join(after[key], "\n") {
+				t.Fatalf("%s differs after undo:\nbefore %v\nafter  %v", key, rows, after[key])
+			}
+		}
+	})
+	t.Run("refusals", func(t *testing.T) {
+		for name, mutate := range map[string]func(r *networkRunner){
+			"a Hotspot": func(r *networkRunner) {
+				r.objects["hotspots"]["*80"] = map[string]string{"name": "mm-shop", "interface": "mm-shop-vlan", "profile": "mm-shop", "address-pool": "mm-shop", "disabled": "no"}
+			},
+			"a Hotspot only on the port": func(r *networkRunner) {
+				r.objects["hotspots"]["*87"] = map[string]string{"name": "portal", "interface": "mm-shop-vlan", "profile": "p", "address-pool": "x", "disabled": "no"}
+			},
+			"a RADIUS entry": func(r *networkRunner) { r.radius = true },
+			"a static reservation": func(r *networkRunner) {
+				r.objects["leases"]["*81"] = map[string]string{"address": "192.168.99.50", "mac-address": "AA:BB:CC:DD:EE:FF", "server": "mm-shop", "comment": "", "disabled": "no", "dynamic": "no"}
+			},
+			"another address on port": func(r *networkRunner) {
+				r.objects["addresses"]["*82"] = map[string]string{"address": "10.55.0.1/24", "interface": "mm-shop-vlan", "comment": "", "disabled": "no", "dynamic": "no"}
+			},
+			"the internet uplink": func(r *networkRunner) {
+				r.objects["dhcp_clients"]["*83"] = map[string]string{"interface": "mm-shop-vlan", "gateway": "", "add-default-route": "yes", "disabled": "no"}
+			},
+			"a second DHCP service": func(r *networkRunner) {
+				r.objects["dhcp"]["*84"] = map[string]string{"name": "other", "interface": "mm-shop-vlan", "address-pool": "x", "lease-time": "1h", "disabled": "no"}
+			},
+			"a duplicated NAT rule": func(r *networkRunner) {
+				r.objects["nat"]["*85"] = map[string]string{"chain": "srcnat", "action": "masquerade", "src-address": "192.168.99.0/24", "out-interface": "ether1", "comment": "mm-shop", "disabled": "no"}
+			},
+			"a missing address": func(r *networkRunner) { delete(r.objects["addresses"], "*71") },
+			"a shared pool": func(r *networkRunner) {
+				r.objects["dhcp"]["*86"] = map[string]string{"name": "x", "interface": "ether4", "address-pool": "mm-shop", "lease-time": "1h", "disabled": "no"}
+			},
+		} {
+			r := shopFixture()
+			mutate(r)
+			if _, err := preview(t, r, req); err == nil {
+				t.Errorf("must refuse a network with %s", name)
+			}
+		}
+	})
+	t.Run("a DHCP service the wizard did not create is never removed", func(t *testing.T) {
+		r := shopFixture()
+		if _, err := preview(t, r, removal("remove_network", "*40")); err == nil { // dhcp1 on the customer bridge
+			t.Fatal("must refuse a service that is not mm-named")
+		}
+	})
+	t.Run("needs a record and takes no other input", func(t *testing.T) {
+		r := shopFixture()
+		if _, err := preview(t, r, removal("remove_network", "")); err == nil {
+			t.Fatal("a record is required")
+		}
+		if _, err := preview(t, r, NetworkRequest{Kind: "remove_network", ID: "*74", Values: map[string]string{"x": "y"}}); err == nil {
+			t.Fatal("values are not accepted")
+		}
+	})
 }

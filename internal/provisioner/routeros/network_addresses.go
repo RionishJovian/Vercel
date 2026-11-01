@@ -563,3 +563,144 @@ func buildRemovePlan(ctx context.Context, r CommandRunner, request NetworkReques
 	keep := map[string]string{"name": name, "interface": before["interface"], "vlan-id": before["vlan-id"], "comment": networkOwnedMark, "disabled": before["disabled"]}
 	return []networkStep{{Key: "vlans", ID: request.ID, Remove: true, SelectorField: "name", SelectorValue: name, Label: "Delete VLAN " + name + " (ID " + before["vlan-id"] + ")", Before: keep}}, warnings, nil
 }
+
+var networkOwnedNetworkName = regexp.MustCompile(`^mm-[A-Za-z0-9_-]{1,24}$`)
+
+// buildRemoveNetworkPlan deletes a customer network created by Create customer
+// network (everything named mm-<name>): NAT, DHCP service, DHCP network, address
+// pool, gateway address, any leftover setup guard and its VLAN, in the reverse of
+// creation order. It is deliberately limited to networks it can put back exactly:
+// a Hotspot, static reservations, other addresses or bridge members on the port,
+// anything ambiguous, or a port that carries the uplink all stop it.
+func buildRemoveNetworkPlan(ctx context.Context, r CommandRunner, request NetworkRequest) ([]networkStep, []string, error) {
+	if len(request.Values) != 0 || !networkIDPattern.MatchString(request.ID) {
+		return nil, nil, fmt.Errorf("choose the customer network to remove")
+	}
+	server, err := networkReadOne(ctx, r, "dhcp", request.ID, map[string]string{"name": "", "interface": "", "address-pool": "", "lease-time": "", "disabled": ""})
+	if err != nil {
+		return nil, nil, err
+	}
+	name, iface := server["name"], server["interface"]
+	if !networkOwnedNetworkName.MatchString(name) {
+		return nil, nil, fmt.Errorf("this DHCP service was not created by Create customer network, so it is not removed here")
+	}
+	kind, err := networkInterfaceType(ctx, r, iface)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !strings.Contains(networkLANTypes, " "+kind+" ") || strings.HasPrefix(iface, "mmh-") {
+		return nil, nil, fmt.Errorf("%s (%s) is protected, so its network is not removed here", iface, kind)
+	}
+	up, err := networkUplinkInterfaces(ctx, r)
+	if err != nil {
+		return nil, nil, err
+	}
+	if up[iface] {
+		return nil, nil, fmt.Errorf("%s carries your internet uplink; its network is protected", iface)
+	}
+	count := func(menu, where string) (int, error) {
+		return networkCount(ctx, r, menu+" print count-only where "+where)
+	}
+	for _, probe := range []struct{ menu, where, why string }{
+		{"/ip hotspot", "interface=" + routerOSQuoted(iface), "has a Hotspot (guest portal); removing Hotspot networks is not supported yet because the portal cannot be restored exactly"},
+		{"/ip hotspot", "name=" + routerOSQuoted(name), "has a Hotspot (guest portal); removing Hotspot networks is not supported yet because the portal cannot be restored exactly"},
+		{"/ip hotspot profile", "name=" + routerOSQuoted(name), "has a Hotspot login profile; removing Hotspot networks is not supported yet"},
+		{"/radius", "comment=" + routerOSQuoted(name), "has a RADIUS entry whose secret cannot be restored"},
+		{"/interface bridge port", "interface=" + routerOSQuoted(iface), "is a bridge member"},
+		{"/interface pppoe-server server", "interface=" + routerOSQuoted(iface), "serves PPPoE subscribers"},
+		{"/ip dhcp-server lease", "server=" + routerOSQuoted(name) + " dynamic=no", "has static DHCP reservations; remove them first"},
+	} {
+		n, e := count(probe.menu, probe.where)
+		if e != nil {
+			return nil, nil, e
+		}
+		if n > 0 {
+			return nil, nil, fmt.Errorf("%s %s", name, probe.why)
+		}
+	}
+	// Nothing else may depend on the port or the pool.
+	if n, e := count("/ip dhcp-server", "address-pool="+routerOSQuoted(name)); e != nil || n != 1 {
+		return nil, nil, fmt.Errorf("the address pool %s is shared or missing; it is not removed here", name)
+	}
+	other, err := count("/ip dhcp-server", "interface="+routerOSQuoted(iface))
+	if err != nil || other != 1 {
+		return nil, nil, fmt.Errorf("%s has more than one DHCP service; it is not removed here", iface)
+	}
+	addresses, err := count("/ip address", "interface="+routerOSQuoted(iface))
+	if err != nil {
+		return nil, nil, err
+	}
+	owned := func(menu, key, field, value string, required bool) (string, error) {
+		n, e := count(menu, field+"="+routerOSQuoted(value))
+		if e != nil {
+			return "", e
+		}
+		if n > 1 || (required && n != 1) {
+			return "", fmt.Errorf("%s: expected exactly one %s record, found %d", name, key, n)
+		}
+		if n == 0 {
+			return "", nil
+		}
+		out, e := r.Run(ctx, `:put [`+menu+` find where `+field+`=`+routerOSQuoted(value)+`]`)
+		id := strings.TrimSpace(out)
+		if e != nil || !networkIDPattern.MatchString(id) {
+			return "", fmt.Errorf("%s: could not identify the %s record", name, key)
+		}
+		return id, nil
+	}
+	type part struct {
+		key, menu, field, value, label string
+		required                       bool
+		fields                         []string
+	}
+	vlan := name + "-vlan"
+	parts := []part{
+		{"nat", "/ip firewall nat", "comment", name, "Delete masquerade for the customer network", false, []string{"chain", "action", "src-address", "out-interface", "comment", "disabled"}},
+		{"dhcp", "/ip dhcp-server", "name", name, "Delete DHCP service on " + iface, true, []string{"name", "interface", "address-pool", "lease-time", "disabled"}},
+		{"dhcp_networks", "/ip dhcp-server network", "comment", name, "Delete client gateway and DNS settings", true, []string{"address", "gateway", "dns-server", "comment"}},
+		{"pools", "/ip pool", "name", name, "Delete address pool", true, []string{"name", "ranges"}},
+		{"addresses", "/ip address", "comment", name, "Delete gateway address", true, []string{"address", "interface", "comment", "disabled"}},
+		{"filters", "/ip firewall filter", "comment", name + "-setup", "Delete leftover setup traffic guard", false, []string{"chain", "action", "in-interface", "comment", "disabled"}},
+	}
+	if iface == vlan {
+		parts = append(parts, part{"vlans", "/interface vlan", "name", vlan, "Delete VLAN " + vlan, true, []string{"name", "vlan-id", "interface", "comment", "disabled"}})
+	}
+	steps := []networkStep{}
+	for _, p := range parts {
+		id, e := owned(p.menu, p.key, p.field, p.value, p.required)
+		if e != nil {
+			return nil, nil, e
+		}
+		if id == "" {
+			continue
+		}
+		wanted := map[string]string{}
+		for _, f := range p.fields {
+			wanted[f] = ""
+		}
+		before, e := networkReadOne(ctx, r, p.key, id, wanted)
+		if e != nil {
+			return nil, nil, e
+		}
+		keep := map[string]string{}
+		for f, v := range before {
+			if v != "" || f == "disabled" {
+				keep[f] = v
+			}
+		}
+		if p.key == "addresses" {
+			if before["interface"] != iface {
+				return nil, nil, fmt.Errorf("%s: the gateway address is on %s, not %s; it is not removed here", name, before["interface"], iface)
+			}
+			if addresses != 1 {
+				return nil, nil, fmt.Errorf("%s has other addresses; they would be stranded, so it is not removed here", iface)
+			}
+		}
+		steps = append(steps, networkStep{Key: p.key, ID: id, Remove: true, SelectorField: p.field, SelectorValue: p.value, Label: p.label, Before: keep})
+	}
+	warnings := []string{"This removes the whole customer network " + name + ". Devices on it lose their addresses and internet. The router puts every piece back within three minutes if anything goes wrong, and a full copy of its settings is saved first."}
+	if n, e := count("/ip dhcp-server lease", "server="+routerOSQuoted(name)); e == nil && n > 0 {
+		warnings = append(warnings, strconv.Itoa(n)+" device(s) currently hold an address on this network.")
+	}
+	return steps, warnings, nil
+}

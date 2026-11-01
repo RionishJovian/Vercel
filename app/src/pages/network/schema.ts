@@ -19,6 +19,7 @@ export const schema: Record<string, Schema> = {
   wifi: { title: "Wi-Fi SSIDs", menu: "wifi", fields: [["ssid", "Wi-Fi network name"], ["country", "Actual installation country"], ["password", "New Wi-Fi password", "password"], ["disabled", "Radio state", "state"]] },
   wireless: { title: "Legacy Wi-Fi SSIDs", menu: "wireless", fields: [["ssid", "Wi-Fi network name"], ["country", "Actual installation country"], ["password", "New Wi-Fi password", "password"], ["disabled", "Radio state", "state"]] },
   dhcp: { title: "DHCP services", menu: "dhcp", fields: [["address-pool", "Client address pool", "record", "pools"], ["lease-time", "Lease duration (e.g. 1h)"], ["disabled", "Service state", "state"]] },
+  remove_network: { title: "Remove customer network", menu: "dhcp", fields: [] },
   pool: { title: "Address pools", menu: "pools", fields: [["ranges", "First-last client address"]] },
   dhcp_network: { title: "Client gateway and DNS", menu: "dhcp_networks", fields: [["gateway", "Client gateway"], ["dns-server", "Client DNS servers"]] },
   hotspot: { title: "Hotspot services", menu: "hotspots", fields: [["profile", "Hotspot profile", "record", "hotspot_profiles"], ["disabled", "Service state", "state"]] },
@@ -34,7 +35,7 @@ export type Workspace = (typeof workspaces)[number];
 export const choices: Record<Workspace, string[]> = {
   protection: ["firewall", "shield"], qos: ["fairshare", "queue"], ip: ["ip_address", "routes", "dhcp", "pool", "dhcp_network", "lease"], vlan: ["vlan"],
   wan: ["wan", "pppoe_client"], pppoe: ["pppoe_server", "pppoe_service", "subscriber", "ppp_profile"], wifi: ["wifi", "wireless"],
-  existing: ["dhcp", "pool", "dhcp_network", "hotspot", "hotspot_profile", "lease", "queue"],
+  existing: ["dhcp", "pool", "dhcp_network", "hotspot", "hotspot_profile", "lease", "queue", "remove_network"],
 };
 export const workspaceInfo: Record<Workspace, [string, string]> = {
   protection: ["Protection", "Manage router protection and review portal exemptions."],
@@ -55,6 +56,7 @@ export const descriptions: Record<string, string> = {
   vlan: "Create a tagged VLAN on a port, bridge or bond. Changing the ID or port of a VLAN in use cuts off everything on it, so it waits for you to press Keep and reverts by itself in 5 minutes otherwise. Give it an address here or use Create customer network.",
   routes: "Inspect routes and priorities. Use Internet connections for reviewed dual-uplink changes.",
   wan: "Keep a backup ISP ready or distribute connections across two ISPs.", pppoe_client: "Connect an ISP that gave you a PPPoE username and password.",
+  remove_network: "Delete a customer network made by Create customer network: its DHCP service, address pool, gateway address, NAT and VLAN. Networks with a Hotspot are not removed here.",
   pppoe_server: "Set up internet service for your wired subscribers.", pppoe_service: "Change the plan or state of an existing subscriber service.",
   subscriber: "Create or manage a customer login.", ppp_profile: "Set address allocation and speeds for a subscriber plan.",
   wifi: "Change the name and password of an onboard Wi-Fi network.", wireless: "Manage radios using the older RouterOS wireless driver.",
@@ -87,6 +89,7 @@ export function listFor(inv: Inventory, kind: string): NetObject[] {
   if (kind === "shield") list = list.filter((o) => o.values.type === "bypassed" && !yes(o.values.disabled) && !/^mm-/i.test(o.values.comment || ""));
   if (kind === "fairshare") list = list.filter((o) => o.values.comment?.startsWith("mm-fairshare-v1:"));
   if (kind === "queue") list = list.filter((o) => !o.values.comment?.startsWith("mm-fairshare-v1:"));
+  if (kind === "remove_network") list = list.filter((o) => /^mm-[A-Za-z0-9_-]{1,24}$/.test(o.values.name || ""));
   if (kind === "lease" || kind === "ip_address") list = list.filter((o) => !yes(o.values.dynamic));
   return list;
 }
