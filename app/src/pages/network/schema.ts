@@ -25,19 +25,22 @@ export const schema: Record<string, Schema> = {
   hotspot_profile: { title: "Hotspot login profiles", menu: "hotspot_profiles", fields: [["dns-name", "Portal DNS name"], ["login-by", "Guest login", "select", [["http-chap", "Password (CHAP)"], ["http-chap,mac", "Password + MAC grace"]]], ["use-radius", "Use RADIUS", "select", [["yes", "Yes"], ["no", "No"]]]] },
   lease: { title: "Static DHCP reservations", menu: "leases", create: true, fields: [["address", "Reserved client address"], ["mac-address", "Client MAC address"], ["server", "DHCP service", "record", "dhcp"], ["disabled", "Reservation state", "state"]] },
   queue: { title: "Customer bandwidth limits", menu: "queues", create: true, fields: [["name", "Limit name"], ["target", "Client address / prefix"], ["max-limit", "Upload / download speed (e.g. 10M/20M)"], ["disabled", "Limit state", "state"]] },
+  ip_address: { title: "IP addresses", menu: "addresses", create: true, fields: [["address", "IP address with prefix (for example 192.168.50.1/24)"], ["interface", "Port or bridge", "interface"], ["disabled", "Address state", "state"]] },
+  vlan: { title: "VLANs", menu: "vlans", create: true, fields: [["name", "VLAN name"], ["interface", "Parent port or bridge", "interface"], ["vlan-id", "VLAN ID (1-4094)", "number"], ["disabled", "VLAN state", "state"]] },
 };
 
-export const workspaces = ["wan", "ip", "existing", "protection", "qos", "wifi", "pppoe"] as const;
+export const workspaces = ["wan", "ip", "vlan", "existing", "protection", "qos", "wifi", "pppoe"] as const;
 export type Workspace = (typeof workspaces)[number];
 export const choices: Record<Workspace, string[]> = {
-  protection: ["firewall", "shield"], qos: ["fairshare", "queue"], ip: ["addresses", "routes", "dhcp", "pool", "dhcp_network", "lease"],
+  protection: ["firewall", "shield"], qos: ["fairshare", "queue"], ip: ["ip_address", "routes", "dhcp", "pool", "dhcp_network", "lease"], vlan: ["vlan"],
   wan: ["wan", "pppoe_client"], pppoe: ["pppoe_server", "pppoe_service", "subscriber", "ppp_profile"], wifi: ["wifi", "wireless"],
   existing: ["dhcp", "pool", "dhcp_network", "hotspot", "hotspot_profile", "lease", "queue"],
 };
 export const workspaceInfo: Record<Workspace, [string, string]> = {
   protection: ["Protection", "Manage router protection and review portal exemptions."],
   qos: ["Fairshare QoS", "Control customer bandwidth and fair sharing."],
-  ip: ["IP and DHCP", "Inspect IP addresses and routes; manage client address allocation."],
+  ip: ["IP and DHCP", "Add and change IP addresses, inspect routes, and manage client address allocation."],
+  vlan: ["VLANs", "Create and manage tagged VLAN interfaces on a port or bridge."],
   wan: ["Internet connections", "Choose how your business connects to the internet."],
   pppoe: ["Customer internet", "Manage subscriber services, customer logins and speed plans."],
   wifi: ["Wi-Fi networks", "Manage the radios on the selected device. Remote access points need their own connected device."],
@@ -48,6 +51,8 @@ export const descriptions: Record<string, string> = {
   shield: "Review HotSpot IP-binding exemptions. Disable one unwanted bypass after review; managed grace access is protected. This does not claim to prevent every bypass method.",
   fairshare: "Share total upload/download bandwidth between client IP addresses using PCQ. Active FastTrack and overlapping queues must be reviewed first.",
   addresses: "Inspect assigned router addresses. Use Create customer network for a new LAN; existing management addresses are protected from casual edits.",
+  ip_address: "Add an IP address to a customer port or bridge, or change one that is free. Internet uplinks, the Magic Hub tunnel, automatic addresses and ports that serve customers are protected.",
+  vlan: "Create a tagged VLAN on a port, bridge or bond. A VLAN that is in use keeps its ID and port; give it an address here or use Create customer network.",
   routes: "Inspect routes and priorities. Use Internet connections for reviewed dual-uplink changes.",
   wan: "Keep a backup ISP ready or distribute connections across two ISPs.", pppoe_client: "Connect an ISP that gave you a PPPoE username and password.",
   pppoe_server: "Set up internet service for your wired subscribers.", pppoe_service: "Change the plan or state of an existing subscriber service.",
@@ -67,7 +72,7 @@ export interface Inventory {
   interfaces?: Array<{ name: string; type: string; running?: boolean }>;
   available?: Record<string, boolean>;
   objects?: Record<string, NetObject[]>;
-  write_enabled?: boolean; wifi_write_enabled?: boolean;
+  write_enabled?: boolean; wifi_write_enabled?: boolean; address_write_enabled?: boolean;
 }
 export const objectsOf = (inv: Inventory, key: string): NetObject[] => inv.objects?.[key] ?? [];
 export const labelOf = (o: NetObject) => o.values.name || o.values["service-name"] || o.values.address || o.id;
@@ -81,7 +86,7 @@ export function listFor(inv: Inventory, kind: string): NetObject[] {
   if (kind === "shield") list = list.filter((o) => o.values.type === "bypassed" && !yes(o.values.disabled) && !/^mm-/i.test(o.values.comment || ""));
   if (kind === "fairshare") list = list.filter((o) => o.values.comment?.startsWith("mm-fairshare-v1:"));
   if (kind === "queue") list = list.filter((o) => !o.values.comment?.startsWith("mm-fairshare-v1:"));
-  if (kind === "lease") list = list.filter((o) => !yes(o.values.dynamic));
+  if (kind === "lease" || kind === "ip_address") list = list.filter((o) => !yes(o.values.dynamic));
   return list;
 }
 
@@ -91,7 +96,18 @@ export function initialValues(kind: string, selected: NetObject | undefined, def
   if (!selected) Object.assign(v, { name: kind === "pppoe_server" ? "subscribers" : "customer", distance: "2", disabled: "no", dns: "1.1.1.1,8.8.8.8", rate_limit: "10M/20M", mode: "failover", gateway_cidr: defaults.gateway_cidr || "", pool_start: defaults.pool_start || "", pool_end: defaults.pool_end || "" });
   if (kind === "firewall") v.interface = v["in-interface"] || "";
   if (kind === "shield") v.disabled = "yes";
+  if ((kind === "ip_address" || kind === "vlan") && !selected) Object.assign(v, { name: "", address: "", interface: "", "vlan-id": "", disabled: "no" });
   if (kind === "fairshare") v.name = selected ? (v.name || "").replace(/^mm-fair-/, "") : "guests";
   if (kind === "wifi") { v.ssid = v["configuration.ssid"]; v.country = v["configuration.country"]; }
   return v;
+}
+
+/**
+ * The request carries only the fields the form shows. A record's other properties
+ * (comment, dynamic, ...) and the creation suggestions are never sent: the server
+ * accepts a fixed set per task and rejects anything else.
+ */
+export function payloadValues(kind: string, values: Record<string, string>): Record<string, string> {
+  const shown = schema[kind].fields.map((f) => f[0]);
+  return Object.fromEntries(shown.filter((k) => k in values).map((k) => [k, values[k]]));
 }

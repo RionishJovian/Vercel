@@ -19,6 +19,10 @@ type networkRunner struct {
 	failWrite bool
 	failPing  bool
 	guard     bool
+	// Optional realism for address/VLAN tests: interface name -> type, and bridge
+	// members. When nil, every interface exists, is an ether port and is unbridged.
+	ifaces      map[string]string
+	bridgePorts map[string]bool
 }
 
 var networkTestValues = regexp.MustCompile(`([a-zA-Z0-9_.-]+)="([^"\\]*)"`)
@@ -107,12 +111,33 @@ func (r *networkRunner) Run(_ context.Context, cmd string) (string, error) {
 		}
 	}
 	if strings.HasPrefix(cmd, "/interface bridge port print count-only where interface=") {
+		if r.bridgePorts != nil {
+			if m := networkTestValues.FindStringSubmatch(cmd); m != nil && r.bridgePorts[m[2]] {
+				return "1", nil
+			}
+		}
 		return "0", nil
 	}
 	if strings.HasPrefix(cmd, ":put [/interface get") {
+		if r.ifaces != nil {
+			if m := networkTestValues.FindStringSubmatch(cmd); m != nil {
+				if kind, ok := r.ifaces[m[2]]; ok {
+					return kind + "\n", nil
+				}
+			}
+			return "", fmt.Errorf("no such interface")
+		}
 		return "ether\n", nil
 	}
 	if strings.HasPrefix(cmd, "/interface print count-only") {
+		if r.ifaces != nil {
+			if m := networkTestValues.FindStringSubmatch(cmd); m != nil {
+				if _, ok := r.ifaces[m[2]]; ok {
+					return "1", nil
+				}
+			}
+			return "0", nil
+		}
 		return "1", nil
 	}
 	if strings.HasPrefix(cmd, "/export ") || strings.HasPrefix(cmd, "/system backup ") {

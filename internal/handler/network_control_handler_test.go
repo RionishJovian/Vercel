@@ -72,3 +72,36 @@ func TestNetworkWiFiSeparatelyHeldBeforeAnyRouterLookup(t *testing.T) {
 		}
 	}
 }
+
+func TestNetworkAddressAndVLANSeparatelyHeldBeforeAnyRouterLookup(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	t.Setenv("MM_NETWORK_CONTROLS_ENABLED", "true")
+	t.Setenv("MM_NETWORK_ADDRESS_CONTROLS_ENABLED", "")
+	h := NewSecurityHandler(nil, nil)
+	r := gin.New()
+	r.POST("/routers/:id/network/:action", func(c *gin.Context) { c.Set("business_id", "biz-1"); h.NetworkControl(c) })
+	for _, kind := range []string{"ip_address", "vlan"} {
+		for _, action := range []string{"preview", "apply"} {
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/routers/device/network/"+action, strings.NewReader(`{"kind":"`+kind+`"}`)))
+			if w.Code != http.StatusServiceUnavailable || !strings.Contains(w.Body.String(), "held until they have been tested on a router") {
+				t.Fatalf("address/VLAN hold bypassed for %s %s: %d %s", kind, action, w.Code, w.Body.String())
+			}
+		}
+	}
+	// With the switch on, the request goes on to the normal path (here it stops at the
+	// missing network controller instead of the hold), proving the hold is the only gate.
+	t.Setenv("MM_NETWORK_ADDRESS_CONTROLS_ENABLED", "true")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/routers/device/network/preview", strings.NewReader(`{"kind":"vlan"}`)))
+	if strings.Contains(w.Body.String(), "held until they have been tested") {
+		t.Fatalf("the hold still applies with the switch on: %s", w.Body.String())
+	}
+	// Other kinds are unaffected by this switch.
+	t.Setenv("MM_NETWORK_ADDRESS_CONTROLS_ENABLED", "")
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/routers/device/network/preview", strings.NewReader(`{"kind":"dhcp"}`)))
+	if strings.Contains(w.Body.String(), "held until they have been tested") {
+		t.Fatalf("the address switch must not hold unrelated operations: %s", w.Body.String())
+	}
+}

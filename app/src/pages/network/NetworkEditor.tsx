@@ -3,7 +3,7 @@ import { api, ApiError, isUnauthorized } from "../../lib/api";
 import { useI18n } from "../../i18n";
 import { Note } from "../../components/ui";
 import { Skeleton } from "../../components/Skeleton";
-import { choices, currentNames, descriptions, initialValues, isSecretField, labelOf, listFor, objectsOf, schema, workspaceInfo, type Field, type Inventory, type Workspace } from "./schema";
+import { choices, currentNames, descriptions, initialValues, isSecretField, labelOf, listFor, objectsOf, payloadValues, schema, workspaceInfo, type Field, type Inventory, type Workspace } from "./schema";
 import type { RouterRow } from "../routers";
 
 interface Review { steps: string[]; warnings: string[]; confirmation: string }
@@ -47,7 +47,10 @@ function TaskForm({ kind, inv, defaults, routerId, routerName, locked, setLocked
   const stamp = useRef(0);
   useEffect(() => { setValues(initialValues(kind, selected, defaults)); setReview(null); setConsent(false); setStatus(""); setApplied(false); stamp.current++; }, [kind, recordId, selected, defaults]);
 
-  const eligible = (inv.interfaces ?? []).filter((i) => ["ether", "bridge", "vlan", "bond", "pppoe-out"].includes(i.type));
+  const portTypes = kind === "vlan" ? ["ether", "bridge", "bond"] : kind === "ip_address" ? ["ether", "bridge", "bond", "vlan"] : ["ether", "bridge", "vlan", "bond", "pppoe-out"];
+  const eligible = (inv.interfaces ?? []).filter((i) => portTypes.includes(i.type));
+  // Fields the router cannot change on an existing record.
+  const fixed = (key: string) => !!selected && ((kind === "ip_address" && key === "interface") || (kind === "vlan" && key === "name"));
   const change = (key: string, value: string) => {
     stamp.current++; setReview(null); setConsent(false); setStatus(t("net.changed")); setApplied(false);
     setValues((v) => {
@@ -67,9 +70,9 @@ function TaskForm({ kind, inv, defaults, routerId, routerName, locked, setLocked
     if (type === "record") options = [["", t("net.chooseRecord")], ...objectsOf(inv, arg as string).map((o): [string, string] => [o.values.name, o.values.name])];
     const id = "nf-" + key;
     return options
-      ? <select className="input" id={id} name={key} required disabled={locked} value={value} onChange={(e) => change(key, e.target.value)}>{options.map(([v, label]) => <option key={v} value={v}>{label}</option>)}</select>
+      ? <select className="input" id={id} name={key} required disabled={locked || fixed(key)} value={value} onChange={(e) => change(key, e.target.value)}>{options.map(([v, label]) => <option key={v} value={v}>{label}</option>)}</select>
       : <input className="input" id={id} name={key} required disabled={locked} maxLength={128} type={type === "password" ? "password" : type === "number" ? "number" : "text"} autoComplete={type === "password" ? "new-password" : undefined}
-          readOnly={!!selected && kind === "fairshare" && ["name", "target"].includes(key)} value={type === "password" ? values[key] ?? "" : value} onChange={(e) => change(key, e.target.value)} />;
+          readOnly={(!!selected && kind === "fairshare" && ["name", "target"].includes(key)) || fixed(key)} value={type === "password" ? values[key] ?? "" : value} onChange={(e) => change(key, e.target.value)} />;
   }
   const fields = s.fields;
   const groups: Array<[string, Field[]]> = kind === "wan" ? [[t("net.g.strategy"), fields.slice(0, 1)], [t("net.g.primary"), fields.slice(1, 3)], [t("net.g.backup"), fields.slice(3)]]
@@ -81,14 +84,14 @@ function TaskForm({ kind, inv, defaults, routerId, routerName, locked, setLocked
     const mine = ++stamp.current;
     setReview(null); setConsent(false); setStatus(t("net.reviewing"));
     try {
-      const data = await api.post<{ review?: Review }>(`/routers/${encodeURIComponent(routerId)}/network/preview`, { kind, id: selected?.id ?? "", values });
+      const data = await api.post<{ review?: Review }>(`/routers/${encodeURIComponent(routerId)}/network/preview`, { kind, id: selected?.id ?? "", values: payloadValues(kind, values) });
       if (mine !== stamp.current || !data.review) return;
       setReview(data.review); setStatus("");
     } catch (err) { if (isUnauthorized(err)) throw err; if (mine === stamp.current) setStatus(`${t("net.reviewFail")} ${errMsg(err)}`); }
   }
   async function apply() {
     if (locked || !review || !routerId) return;
-    const request = { kind, id: selected?.id ?? "", values, confirmation: review.confirmation };
+    const request = { kind, id: selected?.id ?? "", values: payloadValues(kind, values), confirmation: review.confirmation };
     setLocked(true); setReview(null); setConsent(false); setStatus(t("net.applying")); const mine = ++stamp.current;
     try {
       const data = await api.post<{ result?: { verified?: boolean; backup?: string } }>(`/routers/${encodeURIComponent(routerId)}/network/apply`, request);
@@ -177,9 +180,13 @@ export function NetworkEditor({ workspace, router, canEdit, reason }: { workspac
   const s = schema[task];
   const needsHub = !router || (load.kind === "error" && load.err instanceof ApiError && (load.err.data as { code?: string } | null)?.code === "router_management_required");
   const banner = !offline ? "" : reason ? reason : !router ? t("net.noRouterBanner") : needsHub ? t("net.connectFirst") : `${t("net.offlineBanner")} ${errMsg(load.err)}`;
-  // Mirror the server's gates so an unsupported change is never offered.
-  const blocked = offline ? "" : s.readOnly ? descriptions[task] : !canEdit ? t("net.needAdmin") : inv.write_enabled !== true ? t("net.writesOff")
-    : (task === "wifi" || task === "wireless") && inv.wifi_write_enabled !== true ? t("net.wifiOff") : s.menu && !inv.available?.[s.menu] ? t("net.menuUnsupported") : "";
+  // Mirror the server's gates. Nothing is hidden: a task that cannot be applied yet
+  // still shows its form, locked, with the reason above it. Only a task with nothing
+  // to show (read-only, or unsupported on this router) is replaced by a note.
+  const writeHold = offline ? "" : !canEdit ? t("net.needAdmin") : inv.write_enabled !== true ? t("net.writesOff")
+    : (task === "wifi" || task === "wireless") && inv.wifi_write_enabled !== true ? t("net.wifiOff")
+    : (task === "ip_address" || task === "vlan") && inv.address_write_enabled !== true ? t("net.addressOff") : "";
+  const blocked = offline ? "" : s.readOnly ? descriptions[task] : s.menu && !inv.available?.[s.menu] ? t("net.menuUnsupported") : "";
   return (
     <div className="stack">
       {offline && (
@@ -205,9 +212,12 @@ export function NetworkEditor({ workspace, router, canEdit, reason }: { workspac
         {!offline && <CurrentSettings inv={inv} kind={task} />}
         <h3>{s.title}</h3><p className="soft small">{descriptions[task]}</p>
         {blocked ? <Note>{blocked}</Note> : (
-          <fieldset className="nolock" disabled={offline}>
-            <TaskForm key={task} kind={task} inv={inv} defaults={defaults} routerId={routerId} routerName={router?.hardware_name ?? ""} locked={locked || offline} setLocked={setLocked} />
-          </fieldset>
+          <>
+            {writeHold && <Note kind="warn">{writeHold}</Note>}
+            <fieldset className="nolock" disabled={offline || !!writeHold}>
+              <TaskForm key={task} kind={task} inv={inv} defaults={defaults} routerId={routerId} routerName={router?.hardware_name ?? ""} locked={locked || offline || !!writeHold} setLocked={setLocked} />
+            </fieldset>
+          </>
         )}
       </section>
     </div>

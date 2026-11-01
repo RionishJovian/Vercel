@@ -12,7 +12,7 @@ import { NetworkMap } from "./NetworkMap";
 
 export interface RouterRow extends Router { is_online?: boolean; transport?: string; last_seen_at?: string }
 
-const NET_ICONS: Record<Workspace, IconName> = { wan: "globe", ip: "nodes", existing: "device", protection: "shield", qos: "pulse", wifi: "link", pppoe: "users" };
+const NET_ICONS: Record<Workspace, IconName> = { wan: "globe", ip: "nodes", vlan: "grid", existing: "device", protection: "shield", qos: "pulse", wifi: "link", pppoe: "users" };
 
 /** Internet setup is a first-class part of the Router tab, not buried under More. */
 function InternetSetup() {
