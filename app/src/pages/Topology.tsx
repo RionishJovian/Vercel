@@ -10,7 +10,7 @@ import { project, type GatewayRef, type Graph, type Label, type ObsInventory, ty
 interface Dev extends GatewayRef { site_id?: string | null; deployment_layer?: string; category?: string }
 interface TreeNode { device?: Dev; children?: TreeNode[] }
 interface Topo { roots?: TreeNode[]; orphans?: Dev[] }
-const asset = (name: string) => `${import.meta.env.BASE_URL}topology/${name}`;
+const asset = (name: string) => `${import.meta.env.BASE_URL}${name.startsWith("models/") ? "" : "topology/"}${name}`;
 const MAX = 120;
 
 function Card({ n, root, selected, onPick }: { n: TNode; root?: boolean; selected: boolean; onPick: () => void }) {
