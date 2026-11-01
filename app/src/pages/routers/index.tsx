@@ -9,6 +9,8 @@ import { Icon, type IconName } from "../../components/icons";
 import { workspaceInfo, workspaces, type Workspace } from "../network/schema";
 import { Detail } from "./Detail";
 import { NetworkMap } from "./NetworkMap";
+import { useHubStatus } from "./hubStatus";
+import { HubChip } from "./HubChip";
 
 export interface RouterRow extends Router { is_online?: boolean; transport?: string; last_seen_at?: string }
 
@@ -28,9 +30,12 @@ function InternetSetup() {
   );
 }
 
+const seenAt = (value: string | undefined, never: string) => (value && !Number.isNaN(new Date(value).getTime()) ? new Date(value).toLocaleString() : never);
+
 export function Routers({ sub, params }: { sub: string; params: URLSearchParams }) {
   const { t } = useI18n();
   const { data, error, isLoading } = useSWR<{ routers?: RouterRow[] }>("/routers", fetcher);
+  const hub = useHubStatus(asArray<RouterRow>(data?.routers).filter((d) => d.deployment_layer === "MAIN_GATEWAY").map((d) => d.device_id));
   if (isLoading) return <Skeleton h={260} />;
   if (error) return <Note kind="bad">{t("c.loadFailed")}</Note>;
   const list = asArray<RouterRow>(data?.routers);
@@ -40,7 +45,7 @@ export function Routers({ sub, params }: { sub: string; params: URLSearchParams 
   const tabs = <WorkspaceTabs items={[{ href: "#/router", label: t("r.ws.list"), current: !onMap }, { href: "#/router/map", label: t("r.ws.map"), current: onMap }, { href: "#/network", label: t("title.network"), current: false }]} />;
   if (onMap) {
     const gateways = list.filter((d) => d.deployment_layer === "MAIN_GATEWAY");
-    return <>{tabs}{gateways.length ? <NetworkMap gateways={gateways} selected={params.get("id")} /> : <Note kind="warn">{t("v.noGateway")}</Note>}</>;
+    return <>{tabs}{gateways.length ? <NetworkMap gateways={gateways} selected={params.get("id")} hub={hub} /> : <Note kind="warn">{t("v.noGateway")}</Note>}</>;
   }
   return (
     <>
@@ -50,14 +55,14 @@ export function Routers({ sub, params }: { sub: string; params: URLSearchParams 
       <div className="router-grid">
         {list.map((d) => (
           <a className="glass pad router-card" key={d.device_id} href={"#/router/" + encodeURIComponent(d.device_id)}>
-            <div className={"rc-pic" + (d.is_online ? " on" : "")}><img src={deviceImage(d)} alt="" width={64} height={64} loading="lazy" /><i className="rc-led" aria-hidden="true" /></div>
+            <div className={"rc-pic" + (hub[d.device_id]?.state === "up" ? " on" : "")}><img src={deviceImage(d)} alt="" width={64} height={64} loading="lazy" /><i className="rc-led" aria-hidden="true" /></div>
             <div className="rc-body">
-              <div className="row"><h2>{d.hardware_name || d.device_id}</h2><span className={"chip " + (d.is_online ? "ok" : "bad")}>{d.is_online ? t("c.online") : t("c.offline")}</span></div>
+              <div className="row"><h2>{d.hardware_name || d.device_id}</h2><HubChip status={hub[d.device_id]} /></div>
               <div className="row" style={{ justifyContent: "flex-start", flexWrap: "wrap" }}>
                 <span className="chip">{d.transport === "wireguard" ? "Magic Hub" : d.transport || "—"}</span>
                 {d.deployment_layer === "MAIN_GATEWAY" && <span className="chip">Gateway</span>}
               </div>
-              <p className="soft small">{t("r.lastSeen")}: {d.last_seen_at && !Number.isNaN(new Date(d.last_seen_at).getTime()) ? new Date(d.last_seen_at).toLocaleString() : t("r.never")}</p>
+              <p className="soft small">{hub[d.device_id]?.at ? t("r.hubSeen") : t("r.lastSeen")}: {seenAt(hub[d.device_id]?.at ?? d.last_seen_at, t("r.never"))}</p>
             </div>
           </a>
         ))}

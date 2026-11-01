@@ -6,6 +6,8 @@ import { useI18n } from "../../i18n";
 import { Note } from "../../components/ui";
 import { Skeleton } from "../../components/Skeleton";
 import type { RouterRow } from ".";
+import { HubChip } from "./HubChip";
+import type { HubStatus } from "./hubStatus";
 
 type Inv = { available?: Record<string, boolean>; objects?: Record<string, Array<{ values?: Record<string, string> }>> };
 interface Dev { mac: string; name: string; ip: string; port: string; how: "" | "wifi" | "neighbor" | "learned" }
@@ -37,7 +39,7 @@ export function project(inv: Inv | undefined) {
   return { ports: [...ports.entries()].sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true })), unplaced, total: found.size };
 }
 
-export function NetworkMap({ gateways, selected }: { gateways: RouterRow[]; selected: string | null }) {
+export function NetworkMap({ gateways, selected, hub }: { gateways: RouterRow[]; selected: string | null; hub: Record<string, HubStatus> }) {
   const { t, lang } = useI18n();
   const gw = gateways.find((g) => g.device_id === selected) ?? gateways[0];
   const { data, error, isLoading } = useSWR<{ inventory?: Inv }>(`/routers/${encodeURIComponent(gw.device_id)}/network/inventory`, fetcher);
@@ -55,7 +57,7 @@ export function NetworkMap({ gateways, selected }: { gateways: RouterRow[]; sele
         <section className="glass pad stack">
           <div className="mapnode router">
             <div><b>{gw.hardware_name || "RouterBOARD"}</b><div className="soft small">{m.total} {t("map.devices")}</div></div>
-            <span className={"chip " + (gw.is_online ? "ok" : "bad")}>{gw.is_online ? t("c.online") : t("c.offline")}</span>
+            <HubChip status={hub[gw.device_id]} />
           </div>
           {m.total === 0 && <Note>{t("map.empty")}</Note>}
           {m.ports.map(([port, devs]) => (
