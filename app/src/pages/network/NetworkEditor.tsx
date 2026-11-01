@@ -7,6 +7,40 @@ import { choices, currentNames, descriptions, initialValues, isSecretField, labe
 import type { RouterRow } from "../routers";
 
 interface Review { steps: string[]; warnings: string[]; confirmation: string }
+
+/**
+ * A change that reshaped something in use is applied but not final: the router's own
+ * timer puts it back unless the owner presses Keep. The countdown is a display only;
+ * the server and the router decide what happens at the deadline.
+ */
+function PendingPanel({ routerId, revertAt, onDone }: { routerId: string; revertAt: string; onDone: (message: string) => void }) {
+  const { t } = useI18n();
+  const deadline = useMemo(() => new Date(revertAt).getTime(), [revertAt]);
+  const [now, setNow] = useState(() => Date.now()), [busy, setBusy] = useState(false), [error, setError] = useState("");
+  useEffect(() => { const id = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(id); }, []);
+  const left = Math.max(0, Math.round((deadline - now) / 1000));
+  useEffect(() => { if (left === 0) onDone(t("net.timeUp")); }, [left, onDone, t]);
+  async function decide(action: "confirm" | "revert") {
+    setBusy(true); setError("");
+    try {
+      await api.post(`/routers/${encodeURIComponent(routerId)}/network/${action}`, {});
+      onDone(action === "confirm" ? t("net.kept") : t("net.reverted"));
+    } catch (err) { if (isUnauthorized(err)) throw err; setError(errMsg(err)); }
+    finally { setBusy(false); }
+  }
+  return (
+    <div className="glass pad stack" role="region" aria-label={t("net.pendingTitle")}>
+      <h3>{t("net.pendingTitle")}</h3>
+      <p className="soft small">{t("net.pendingBody")}</p>
+      <p role="timer" aria-live="off"><b>{t("net.timeLeft")}: {Math.floor(left / 60)}:{String(left % 60).padStart(2, "0")}</b></p>
+      {error && <Note kind="bad">{error}</Note>}
+      <div className="row" style={{ justifyContent: "flex-start" }}>
+        <button className="btn" type="button" disabled={busy} onClick={() => void decide("confirm")}>{t("net.keep")}</button>
+        <button className="pill" type="button" disabled={busy} onClick={() => void decide("revert")}>{t("net.revertNow")}</button>
+      </div>
+    </div>
+  );
+}
 const errMsg = (e: unknown) => (e as { data?: { error?: string } } | null)?.data?.error || (e instanceof Error ? e.message : "") || "Request failed";
 const isOn = (v?: string) => v === "yes" || v === "true";
 
@@ -35,7 +69,7 @@ function CurrentSettings({ inv, kind }: { inv: Inventory; kind: string }) {
   );
 }
 
-function TaskForm({ kind, inv, defaults, routerId, routerName, locked, setLocked }: { kind: string; inv: Inventory; defaults: Record<string, string>; routerId: string; routerName: string; locked: boolean; setLocked: (b: boolean) => void }) {
+function TaskForm({ kind, inv, defaults, routerId, routerName, locked, setLocked, onPending }: { kind: string; inv: Inventory; defaults: Record<string, string>; routerId: string; routerName: string; locked: boolean; setLocked: (b: boolean) => void; onPending: (revertAt: string) => void }) {
   const { t } = useI18n();
   const s = schema[kind], list = useMemo(() => listFor(inv, kind), [inv, kind]);
   const [recordId, setRecordId] = useState("");
@@ -94,10 +128,11 @@ function TaskForm({ kind, inv, defaults, routerId, routerName, locked, setLocked
     const request = { kind, id: selected?.id ?? "", values: payloadValues(kind, values), confirmation: review.confirmation };
     setLocked(true); setReview(null); setConsent(false); setStatus(t("net.applying")); const mine = ++stamp.current;
     try {
-      const data = await api.post<{ result?: { verified?: boolean; backup?: string } }>(`/routers/${encodeURIComponent(routerId)}/network/apply`, request);
+      const data = await api.post<{ result?: { verified?: boolean; backup?: string; pending_confirm?: boolean; revert_at?: string } }>(`/routers/${encodeURIComponent(routerId)}/network/apply`, request);
       if (!data.result?.verified) throw new Error("Router changes were not verified");
       // Secrets never linger in the form once applied.
       setValues((v) => Object.fromEntries(Object.entries(v).map(([k, x]) => [k, isSecretField(k) ? "" : x])));
+      if (data.result.pending_confirm && data.result.revert_at) { onPending(data.result.revert_at); setStatus(t("net.heldApplied")); return; }
       if (mine === stamp.current) { setStatus(`${t("net.verified")} ${data.result.backup ?? ""}. ${t("net.testClient")}`); setApplied(true); }
     } catch (err) {
       if (isUnauthorized(err)) throw err;
@@ -156,6 +191,7 @@ export function NetworkEditor({ workspace, router, canEdit, reason }: { workspac
   const [load, setLoad] = useState<{ kind: "loading" } | { kind: "error"; err: unknown } | { kind: "ready"; inv: Inventory; defaults: Record<string, string> }>(router ? { kind: "loading" } : { kind: "error", err: null });
   const [task, setTask] = useState(kinds[0]);
   const [locked, setLocked] = useState(false);
+  const [pendingAt, setPendingAt] = useState(""), [pendingNote, setPendingNote] = useState("");
   const rev = useRef(0);
   useEffect(() => { setTask(choices[workspace][0]); }, [workspace]);
 
@@ -168,11 +204,12 @@ export function NetworkEditor({ workspace, router, canEdit, reason }: { workspac
       const data = await api.get<{ inventory: Inventory }>(`/routers/${encodeURIComponent(routerId)}/network/inventory`);
       let defaults: Record<string, string> = {};
       if (workspace === "pppoe") { try { defaults = (await api.get<{ defaults?: Record<string, string> }>(`/routers/${encodeURIComponent(routerId)}/gateway/defaults`)).defaults ?? {}; } catch { /* never invent an unchecked default */ } }
-      if (mine === rev.current) setLoad({ kind: "ready", inv: data.inventory, defaults });
+      if (mine === rev.current) { setLoad({ kind: "ready", inv: data.inventory, defaults }); setPendingAt(data.inventory.pending_confirm?.revert_at ?? ""); }
     } catch (err) { if (isUnauthorized(err)) throw err; if (mine === rev.current) setLoad({ kind: "error", err }); }
   }, [routerId, workspace]);
   useEffect(() => { void reload(); }, [reload]);
 
+  const finishPending = useCallback((message: string) => { setPendingAt(""); setPendingNote(message); void reload(); }, [reload]);
   const [name, lead] = workspaceInfo[workspace];
   if (load.kind === "loading") return <Skeleton h={300} />;
   const offline = load.kind === "error";
@@ -183,6 +220,7 @@ export function NetworkEditor({ workspace, router, canEdit, reason }: { workspac
   // Mirror the server's gates. Nothing is hidden: a task that cannot be applied yet
   // still shows its form, locked, with the reason above it. Only a task with nothing
   // to show (read-only, or unsupported on this router) is replaced by a note.
+  const waiting = !!pendingAt;
   const writeHold = offline ? "" : !canEdit ? t("net.needAdmin") : inv.write_enabled !== true ? t("net.writesOff")
     : (task === "wifi" || task === "wireless") && inv.wifi_write_enabled !== true ? t("net.wifiOff")
     : (task === "ip_address" || task === "vlan") && inv.address_write_enabled !== true ? t("net.addressOff") : "";
@@ -198,11 +236,13 @@ export function NetworkEditor({ workspace, router, canEdit, reason }: { workspac
           </div>
         </div>
       )}
+      {pendingNote && !waiting && <Note>{pendingNote}</Note>}
+      {waiting && <PendingPanel routerId={routerId} revertAt={pendingAt} onDone={finishPending} />}
       <details className="glass pad"><summary>{t("net.about")}</summary><p className="soft small">{lead} {t("net.reviewRequired")}</p></details>
-      {!offline && <div className="row"><div className="stack" style={{ gap: 2 }}><b>{t("net.loaded")}</b><span className="soft small">{(inv.interfaces ?? []).length} {t("net.interfaces")}. {t("net.openingSafe")}</span></div><button className="pill" type="button" disabled={locked} onClick={() => void reload()}>{t("net.refresh")}</button></div>}
+      {!offline && <div className="row"><div className="stack" style={{ gap: 2 }}><b>{t("net.loaded")}</b><span className="soft small">{(inv.interfaces ?? []).length} {t("net.interfaces")}. {t("net.openingSafe")}</span></div><button className="pill" type="button" disabled={locked || waiting} onClick={() => void reload()}>{t("net.refresh")}</button></div>}
       <div className="tasks" role="group" aria-label={name}>
         {kinds.map((k) => (
-          <button type="button" className="task" key={k} aria-pressed={k === task} disabled={locked} onClick={() => setTask(k)}>
+          <button type="button" className="task" key={k} aria-pressed={k === task} disabled={locked || waiting} onClick={() => setTask(k)}>
             <b>{schema[k].title}</b><span className="soft small">{descriptions[k]}</span>
             {!offline && <span className="mute small">{schema[k].menu ? `${objectsOf(inv, schema[k].menu!).length} ${t("net.records")}` : t("net.wizard")}</span>}
           </button>
@@ -215,8 +255,8 @@ export function NetworkEditor({ workspace, router, canEdit, reason }: { workspac
           <>
             {writeHold && <Note kind="warn">{writeHold}</Note>}
             {!writeHold && (task === "ip_address" || task === "vlan") && inv.address_preview_only === true && <Note kind="warn">{t("net.addressPreview")}</Note>}
-            <fieldset className="nolock" disabled={offline || !!writeHold}>
-              <TaskForm key={task} kind={task} inv={inv} defaults={defaults} routerId={routerId} routerName={router?.hardware_name ?? ""} locked={locked || offline || !!writeHold} setLocked={setLocked} />
+            <fieldset className="nolock" disabled={offline || !!writeHold || waiting}>
+              <TaskForm key={task} kind={task} inv={inv} defaults={defaults} routerId={routerId} routerName={router?.hardware_name ?? ""} locked={locked || offline || !!writeHold || waiting} setLocked={setLocked} onPending={(at) => { setPendingNote(""); setPendingAt(at); }} />
             </fieldset>
           </>
         )}

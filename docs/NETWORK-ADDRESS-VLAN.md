@@ -26,7 +26,7 @@ disable or reshape one that is unused. Nothing is deleted.
 Refused, by design (each has a test that fails if the rule is removed):
 - the Magic Hub tunnel, loopback, and any interface that is not a port, bridge, bond or VLAN
 - an internet uplink: DHCP client, PPPoE client, or the interface a default route leaves through; if this cannot be determined the change is refused
-- a port that serves customers (DHCP server, Hotspot, PPPoE service): its address cannot be changed or disabled; a VLAN in use keeps its ID and port
+- a port that serves customers (DHCP server, Hotspot, PPPoE service): its address cannot be changed or disabled
 - automatically assigned (dynamic) addresses, moving an address to another port, renaming a VLAN
 - anything outside private ranges (10/8, 172.16/12, 192.168/16), prefixes outside /8 to /30, the network and broadcast addresses, anything overlapping an existing address or static route, and the whole Hub range 10.77.0.0/24
 - a port that is a bridge member (address the bridge instead), a VLAN on a VLAN or on a tunnel, a duplicate VLAN ID on the same port, and a VLAN name already used by any interface
@@ -56,3 +56,26 @@ The existing network forms posted fields the server rejects ("unexpected network
 input"): creation suggestions and a record's other properties. Forms now send only
 the fields they show, and `contract.test.ts` checks every form against the server's
 allowed-field list read from `network_plan.go`.
+
+## Changing the ID or port of a VLAN in use (confirm or revert)
+
+A VLAN that carries an address or a service can have its ID or parent port changed.
+Its addresses and services follow it, but everything on it is cut off unless the
+switch or access point carries the new ID on the connecting port, so the change is
+never final on its own:
+
+1. Preview shows a strong warning. Apply writes the change and checks it back.
+2. The restore timer **on the router** stays armed for 5 minutes instead of being
+   cancelled. The page shows a countdown with **Keep these changes** and **Revert now**.
+3. Test with a real client. **Keep** cancels the timer on the router and checks it is
+   gone; **Revert now** writes the old values back and checks them. If nobody presses
+   anything, the router reverts by itself. If the API restarts meanwhile, the router
+   still reverts: the safe default.
+4. Keep is refused with the reason if the timer already ran (the router has returned
+   to the old settings) or if the router no longer matches the change. Keep and Revert
+   are never blocked by the write switches, so a pending change can always be resolved.
+5. Another change is refused while one is waiting. A VLAN that carries the internet
+   uplink is still refused, and the audit log records applied, kept and reverted.
+
+Not yet proven on real hardware: the router firing the timer by itself. Plan: test it on
+the disabled test VLAN with the owner's approval.
