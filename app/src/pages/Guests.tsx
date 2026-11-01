@@ -3,7 +3,7 @@ import useSWR from "swr";
 import { api, fetcher, isUnauthorized } from "../lib/api";
 import { asArray, type Me, type Router } from "../lib/types";
 import { useI18n } from "../i18n";
-import { BackLink, Note } from "../components/ui";
+import { BackLink, Note, PageHead } from "../components/ui";
 import { Skeleton } from "../components/Skeleton";
 
 interface RouterX extends Router { site_id?: string | null }
@@ -71,7 +71,7 @@ export function Guests({ me }: { me: Me }) {
   return (
     <>
       <BackLink href="#/more">{t("tab.more")}</BackLink>
-      <h1>{t("gu.title")}</h1><p className="soft">{t("gu.lead")}</p>
+      <PageHead title={t("gu.title")} help={t("gu.lead")} />
       <div className="capsules">
         <div className="capsule"><span className="soft small">{available.length < scoped.length ? t("gu.sessionsPartial") : t("gu.sessions")}</span><b className="num">{available.length ? all.length : "—"}</b></div>
         <div className="capsule"><span className="soft small">{t("gu.sources")}</span><b className="num">{available.length} / {scoped.length}</b></div>

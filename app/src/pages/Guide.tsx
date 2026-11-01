@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useI18n } from "../i18n";
-import { BackLink, Note } from "../components/ui";
+import { BackLink, Note, PageHead } from "../components/ui";
 import type { Me } from "../lib/types";
 
 type T = (key: string) => string;
@@ -36,7 +36,7 @@ export function Guide({ me }: { me: Me }) {
   return (
     <>
       <BackLink href="#/more">{t("tab.more")}</BackLink>
-      <h1>{t("gd.title")}</h1><p className="soft">{t("gd.lead")}</p>
+      <PageHead title={t("gd.title")} help={t("gd.lead")} />
       <input className="input" type="search" placeholder={t("gd.search")} aria-label={t("gd.search")} value={q} onChange={(e) => setQ(e.target.value)} />
       {!shown.length && <Note>{t("gd.none")}</Note>}
       <div className="stack">{shown.map((g) => <a key={g.href} className="rowitem menu-link" href={g.href}><span className="stack" style={{ gap: 2 }}><b>{g.title(t)}</b><span className="soft small">{g.desc(t)}</span></span><span aria-hidden="true" className="soft">›</span></a>)}</div>

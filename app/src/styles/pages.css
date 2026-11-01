@@ -306,3 +306,20 @@ label.pill input[type="file"] { display: none; }
   .fleet-hero .capsule { flex-direction: row; justify-content: space-between; align-items: center; }
   .fleet-row .signal { order: 3; flex-basis: 100%; justify-content: flex-start; }
 }
+
+/* Page head with optional Help */
+.pagehead { display: grid; gap: 10px; }
+.pagehead .row { justify-content: flex-start; gap: 14px; }
+.helpbtn { width: 32px; height: 32px; flex: none; border-radius: 50%; border: 1px solid var(--edge); background: var(--glass); color: var(--ink-soft); font: 700 .95rem var(--font-display); cursor: pointer; transition: background var(--t-fast), color var(--t-fast); }
+.helpbtn:hover, .helpbtn[aria-expanded="true"] { background: var(--jade); color: var(--on-jade); border-color: var(--jade); }
+.help-text { max-width: 62ch; padding: 12px 16px; border-radius: var(--r-row); border: 1px solid var(--edge-soft); background: var(--glass); animation: rise .35s var(--ease-out) both; }
+
+/* Jellyfin link */
+.link-hero { display: flex; align-items: center; gap: 18px; }
+.medal { position: relative; flex: none; width: 68px; height: 68px; display: grid; place-items: center; border-radius: 50%; border: 1px solid var(--edge); background: var(--glass-strong); color: var(--ink-mute); }
+.medal svg { width: 30px; height: 30px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.medal.on { color: var(--jade); border-color: var(--jade); box-shadow: 0 0 28px -4px var(--jade); }
+.medal.on::after { content: ""; position: absolute; inset: -8px; border-radius: 50%; border: 1.5px solid var(--jade); opacity: 0; animation: ls-ring 3.6s ease-out infinite; }
+:root[data-theme="day"] .medal.on { color: var(--jade-deep); }
+.rowitem { background-image: linear-gradient(180deg, rgba(255, 255, 255, .05), transparent 60%); transition: border-color var(--t-fast), transform var(--t-base) var(--ease-out); }
+a.rowitem:hover { border-color: var(--jade); transform: translateX(2px); }

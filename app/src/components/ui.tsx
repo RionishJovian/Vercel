@@ -1,5 +1,6 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Icon } from "./icons";
+import { useI18n } from "../i18n";
 
 export function Note({ kind = "", children }: { kind?: "" | "bad" | "warn" | "ok"; children: ReactNode }) {
   return <div className={"note " + kind} role={kind === "bad" ? "alert" : "status"}>{children}</div>;
@@ -15,4 +16,19 @@ export function WorkspaceTabs({ items }: { items: Array<{ href: string; label: s
 }
 export function BackLink({ href, children }: { href: string; children: ReactNode }) {
   return <a className="backlink" href={href}><Icon name="back" />{children}</a>;
+}
+
+/** Page title with optional Help: the explanation stays one tap away instead of filling the page. */
+export function PageHead({ title, help }: { title: string; help?: string }) {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  return (
+    <header className="pagehead">
+      <div className="row">
+        <h1>{title}</h1>
+        {help ? <button type="button" className="helpbtn" aria-expanded={open} aria-label={t("c.help")} onClick={() => setOpen((o) => !o)}>?</button> : null}
+      </div>
+      {help && open ? <p className="soft help-text">{help}</p> : null}
+    </header>
+  );
 }

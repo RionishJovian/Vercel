@@ -1,3 +1,4 @@
+import { Icon } from "../components/icons";
 import { useCallback, useEffect, useRef, useState } from "react";
 import useSWR from "swr";
 import { api, ApiError, fetcher, isUnauthorized } from "../lib/api";
@@ -95,7 +96,7 @@ function Dashboard() {
   return (
     <>
       <section className="glass pad stack">
-        <div className="row"><h2>{t("j.link")}</h2><span className={"chip " + (linked ? "ok" : "warn")}>{linked ? t("j.linked") : t("j.notLinked")}</span></div>
+        <div className="link-hero"><span className={"medal" + (linked ? " on" : "")}><Icon name="play" /></span><div className="stack" style={{ gap: 6 }}><h2>{t("j.link")}</h2><span className={"chip " + (linked ? "ok" : "warn")}>{linked ? t("j.linked") : t("j.notLinked")}</span></div></div>
         {linked ? (<>
           <Kv k={t("j.server")} v={c?.server_name ?? "—"} /><Kv k={t("j.lastSeen")} v={c?.last_seen_at ? new Date(c.last_seen_at).toLocaleString() : "—"} />
           <button className="pill danger" type="button" onClick={async () => { if (!window.confirm(t("j.unlinkConfirm"))) return; try { await api.del("/media/connection"); } catch { /* shown on refresh */ } void mutate(); }}>{t("j.unlink")}</button>

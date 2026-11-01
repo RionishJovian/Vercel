@@ -3,7 +3,7 @@ import useSWR from "swr";
 import { api, ApiError, fetcher, isUnauthorized } from "../lib/api";
 import { asArray, type Me } from "../lib/types";
 import { useI18n } from "../i18n";
-import { BackLink, Note } from "../components/ui";
+import { BackLink, Note, PageHead } from "../components/ui";
 import { Skeleton } from "../components/Skeleton";
 
 interface Incident { id: string; severity?: string; kind?: string; subject_label?: string; subject_id?: string; detail?: string; opened_at?: string; suggested_action?: { kind?: string } }
@@ -46,7 +46,7 @@ export function Incidents({ me }: { me: Me }) {
   }
   return (
     <>
-      {back}<h1>{t("inc.title")}</h1><p className="soft">{t("inc.lead")}</p>
+      {back}<PageHead title={t("inc.title")} help={t("inc.lead")} />
       {err && <Note kind="bad">{err}</Note>}
       {!list.length ? <Note kind="ok">{t("inc.none")}</Note> : (
         <div className="stack">

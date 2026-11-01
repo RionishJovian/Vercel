@@ -3,7 +3,7 @@ import useSWR from "swr";
 import { api, fetcher, isUnauthorized } from "../lib/api";
 import { asArray, type Router } from "../lib/types";
 import { useI18n } from "../i18n";
-import { BackLink, Note } from "../components/ui";
+import { BackLink, Note, PageHead } from "../components/ui";
 import { Skeleton } from "../components/Skeleton";
 
 interface Backup { id: string; label?: string; kind?: string; size_bytes?: number; created_at?: string }
@@ -40,7 +40,7 @@ export function Backups() {
   }
   return (
     <>
-      {back}<h1>{t("bk.title")}</h1><p className="soft">{t("bk.lead")}</p>
+      {back}<PageHead title={t("bk.title")} help={t("bk.lead")} />
       <section className="glass pad stack">
         <label className="field"><span>{t("bk.device")}</span><select className="input" value={id} onChange={(e) => { setDev(e.target.value); setRestoring(null); setMsg(null); }}>{list.map((d) => <option key={d.device_id} value={d.device_id}>{d.hardware_name || d.device_id}</option>)}</select></label>
         <button className="btn" type="button" disabled={busy || bk.data?.capture_available !== true} onClick={() => void capture()}>{t("bk.capture")}</button>

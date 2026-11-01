@@ -3,7 +3,7 @@ import useSWR from "swr";
 import { api, fetcher, isUnauthorized } from "../lib/api";
 import { asArray } from "../lib/types";
 import { useI18n } from "../i18n";
-import { BackLink, Note } from "../components/ui";
+import { BackLink, Note, PageHead } from "../components/ui";
 import { Skeleton } from "../components/Skeleton";
 
 interface Adv { id: string; title: string; fix_unavailable?: boolean }
@@ -72,7 +72,7 @@ export function Security() {
   const stat = (k: string, v?: number) => <div className="capsule" key={k}><span className="soft small">{t("sec.s." + k)}</span><b className="num">{v ?? 0}</b></div>;
   return (
     <>
-      {back}<h1>{t("sec.title")}</h1><p className="soft">{t("sec.lead")}</p>
+      {back}<PageHead title={t("sec.title")} help={t("sec.lead")} />
       {!devices.length ? <Note>{t("sec.none")}</Note> : (
         <>
           <div className="capsules wrap">{stat("affected", data.affected)}{stat("safe", data.safe)}{stat("unknown", data.unknown)}{stat("unpatchable", data.unpatchable)}{stat("exploited", data.exploited)}</div>

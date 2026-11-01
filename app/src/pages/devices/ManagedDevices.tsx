@@ -3,7 +3,7 @@ import useSWR from "swr";
 import { api, fetcher, isUnauthorized } from "../../lib/api";
 import { asArray, type Me } from "../../lib/types";
 import { useI18n } from "../../i18n";
-import { BackLink, Note } from "../../components/ui";
+import { BackLink, Note, PageHead } from "../../components/ui";
 import { Skeleton } from "../../components/Skeleton";
 import { DeviceForm, LAYERS, type DeviceRec } from "./DeviceForm";
 
@@ -52,7 +52,7 @@ export function ManagedDevices({ me }: { me: Me }) {
 
   return (
     <>
-      {back}<h1>{t("dm.title")}</h1><p className="soft">{t("dm.lead")}</p>
+      {back}<PageHead title={t("dm.title")} help={t("dm.lead")} />
       {err && <Note kind="bad">{err}</Note>}
       {canEdit && !form && <button className="btn" type="button" onClick={() => setForm({})}>{t("dm.add")}</button>}
       {form && <DeviceForm rec={form.rec} layers={form.rec ? LAYERS : DOWNSTREAM} blocked={form.rec ? undefined : exhausted} onDone={refresh} onCancel={() => setForm(null)} />}
