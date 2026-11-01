@@ -1,5 +1,17 @@
 # IP address and VLAN editing
 
+## Status (2026-11-01): enabled in production (`MM_NETWORK_ADDRESS_CONTROLS_ENABLED=true`)
+Verified on a real hAP ax3 (the owner's friend's router, with their agreement), each
+change previewed, reviewed and approved, then checked by an independent re-read of
+the router against a baseline taken before the test:
+- 22 previews: every protection fired with a clear reason on real data (uplink, Hub tunnel `wg`, bridge member, serving ports, dynamic addresses, overlap, Hub range, public, prefix, duplicate/in-use/nested VLANs).
+- 6 real applies, all verified, none rolled back: create VLAN, change its ID, enable it, add an address on it, change that address, disable the VLAN. The only router differences were the intended ones (plus the automatic connected route while the VLAN was enabled).
+- Backup before each apply, restore timer set and cancelled, readback verified.
+
+**Not yet proven on real hardware:** rollback after a real failure, and the restore timer firing when the connection drops (both covered only by the simulated-router tests). Test these on the lab hAP ax2 when it is powered.
+
+**Left on that router by the test:** disabled VLAN `mm-test-4001` (ID 4002, ether3), address `192.168.123.2/24` on it, and 6 sets of `mm-snap-...-net-20261101-...` backup/export files. The app has no delete yet.
+
 Two typed operations on the Router tab, under Internet setup: **IP and DHCP →
 IP addresses** and **VLANs**. They use the same guarded path as every other
 network change (preview, router-side backup, a restore timer that undoes the
