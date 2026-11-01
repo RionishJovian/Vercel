@@ -32,8 +32,13 @@ func (a *DeviceApplier) ProvisionVoucherLogins(ctx context.Context, businessID, 
 	if err != nil {
 		return err
 	}
-	ctx, cancel := context.WithTimeout(ctx, a.timeout)
-	defer cancel()
+	// The caller sizes the whole-batch budget (every command is its own SSH
+	// session); a.timeout only bounds callers that set no deadline.
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, a.timeout)
+		defer cancel()
+	}
 	return provisionVoucherLogins(ctx, r, logins)
 }
 
