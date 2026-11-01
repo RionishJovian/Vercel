@@ -83,6 +83,7 @@
 /* Guest page editor: the phone preview is the star; the form scrolls beside it on wide screens. */
 .gp-layout { display: grid; gap: 18px; }
 .phone { width: min(100%, 330px); margin: 0 auto; padding: 10px; border-radius: 40px; border: 1px solid var(--edge); background: var(--glass-strong); box-shadow: var(--shadow), inset 0 1px 0 var(--shine); }
+.gp-frame[hidden] { display: none; }
 .gp-frame { display: block; width: 100%; height: 560px; border: 0; border-radius: 30px; background: #051b22; }
 .input.colour { padding: 6px; }
 @media (min-width: 900px) { .gp-layout { grid-template-columns: 380px 1fr; align-items: start; } .gp-preview { position: sticky; top: 76px; } }
