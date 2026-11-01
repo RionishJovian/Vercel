@@ -112,11 +112,11 @@ func provisionVoucherLogins(ctx context.Context, r CommandRunner, logins []Vouch
 		cmd := fmt.Sprintf("/ip hotspot user add name=%s password=%s server=%s profile=%s comment=%s limit-uptime=%ds limit-bytes-total=%d",
 			routerOSQuoted(l.Code), routerOSQuoted(l.Code), routerOSQuoted(server), routerOSQuoted(voucherGuardProfile), routerOSQuoted(comment), l.Minutes*60, int64(l.DataMB)*1000000)
 		if _, err := r.Run(ctx, cmd); err != nil {
-			return fmt.Errorf("cannot create voucher login user for %s", l.VoucherID)
+			return fmt.Errorf("cannot create voucher login user for %s: %v", l.VoucherID, err)
 		}
 		out, err = r.Run(ctx, read)
 		if err != nil {
-			return fmt.Errorf("voucher login readback failed for %s", l.VoucherID)
+			return fmt.Errorf("voucher login readback failed for %s: %v", l.VoucherID, err)
 		}
 		ok, migrate, legacyWithoutAnchor := voucherLoginUserMatch(parseValueList(out), l, server)
 		_ = migrate
