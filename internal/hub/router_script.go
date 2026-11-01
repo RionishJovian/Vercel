@@ -154,14 +154,16 @@ func BuildRouterScripts(deviceID string, peer Peer) (RouterScripts, error) {
 	}
 	setup += fmt.Sprintf(":put \"Tunnel configured. Return to the app and Check Magic Hub. A handshake is not management authentication.\"\n/interface/wireguard/peers print where interface=\"%s\"\n}", name)
 	disconnect := fmt.Sprintf(`{
-# Disconnect only this enrollment. Keeps the router's interface/private key for reconnection.
+# Disconnect the tunnel of this enrollment. Keeps the router's interface/private key for reconnection.
+# A management user (mm-...), its group, SSH key and firewall rule from the one-paste setup are NOT removed;
+# remove them in WinBox if you are retiring this router.
 :local iface [/interface/wireguard find where name="%s"]
 :if ([:len $iface] != 1) do={ :error "STOP: interface missing or ambiguous" }
 :if ([/interface/wireguard get $iface comment] != "%s" || [/interface/wireguard get $iface public-key] != "%s") do={ :error "STOP: enrollment ownership mismatch" }
 /interface/wireguard/peers remove [find where interface="%s" and comment="%s" and public-key="%s"]
 /ip/route remove [find where gateway="%s" and comment="%s"]
 /ip/address remove [find where interface="%s" and comment="%s" and address="%s"]
-:put "Tunnel disconnected locally. Hub allocation and router key preserved."
+:put "Tunnel disconnected locally. Hub allocation and router key preserved. Management user, SSH key and firewall rule were not removed."
 }`, name, marker, peer.RouterPublicKey, name, marker, peer.HubPublicKey, name, marker, name, marker, peer.TunnelAddress)
 	return RouterScripts{Bootstrap: bootstrap, Setup: setup, Disconnect: disconnect}, nil
 }
