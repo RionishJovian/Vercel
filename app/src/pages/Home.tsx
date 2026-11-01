@@ -4,6 +4,7 @@ import { asArray, mmk, num, type Fleet, type Me, type Router, type VoucherReport
 import { useI18n } from "../i18n";
 import { Ring } from "../components/Ring";
 import { Skeleton } from "../components/Skeleton";
+import { useCountUp } from "../lib/useCountUp";
 
 /** Today against the owner's own 7-day daily average. Half the dial is "on pace". Returns null when there is nothing to compare. */
 export function pace(today: number, last7: number): { ratio: number; fraction: number } | null {
@@ -13,11 +14,22 @@ export function pace(today: number, last7: number): { ratio: number; fraction: n
   return { ratio, fraction: Math.min(ratio, 2) / 2 };
 }
 
+/** Stock split from the report's own counts: ready, reserved and used. Nothing is estimated. */
+function StockMeter({ rep }: { rep?: VoucherReport }) {
+  if (!rep) return null;
+  const a = num(rep.available_count) ?? 0, r = num(rep.reserved_count) ?? 0, u = num(rep.activated_count) ?? 0;
+  const total = a + r + u;
+  if (!total) return null;
+  const seg = (n: number, cls: string) => (n ? <i className={cls} style={{ flexGrow: n }} /> : null);
+  return <div className="meter slim" role="img" aria-label={`${a} / ${r} / ${u}`}>{seg(a, "s-available")}{seg(r, "s-reserved")}{seg(u, "s-activated")}</div>;
+}
+
 export function Home({ me }: { me: Me }) {
   const { t } = useI18n();
   const report = useSWR<VoucherReport>("/voucher-report", fetcher);
   const fleet = useSWR<Fleet>("/fleet/health", fetcher, { refreshInterval: 30000 });
   const routers = useSWR<{ routers?: Router[] }>("/routers", fetcher);
+  const todayShown = useCountUp(num(report.data?.activation_today));
   const name = me.user?.full_name || (me.user?.email ?? "").split("@")[0];
 
   const rep = report.data;
@@ -29,9 +41,8 @@ export function Home({ me }: { me: Me }) {
 
   return (
     <>
-      <div className="stack greet">
+      <div className="greet">
         <h1>{t("h.greet")} <span className="accent">{name}</span></h1>
-        <p className="soft">{t("home.sub")}</p>
       </div>
 
       <div className="home-grid">
@@ -43,15 +54,15 @@ export function Home({ me }: { me: Me }) {
             <>
               <Ring fraction={p ? p.fraction : 0} label={p ? `${Math.round(p.ratio * 100)}% ${t("home.pace")}` : t("home.paceNone")}>
                 <span className="mute small">{t("home.today")}</span>
-                <span className="num hero-figure">{mmk(today)}</span>
+                <span className="num hero-figure">{mmk(todayShown ?? 0)}</span>
                 <span className="mute small">{t("c.mmk")}</span>
               </Ring>
               <p className="pace">{p ? <><b className="num">{Math.round(p.ratio * 100)}%</b> {t("home.pace")}</> : t("home.paceNone")}</p>
-              <p className="soft small center">{t("h.revenueHelp")}</p>
               <div className="capsules">
                 <div className="capsule"><span className="mute small">{t("home.week")}</span><b className="num">{mmk(last7 ?? 0)}</b></div>
                 <div className="capsule"><span className="mute small">{t("home.month")}</span><b className="num">{mmk(last30 ?? 0)}</b></div>
               </div>
+              <p className="mute small center">{t("h.revenueHelp")}</p>
               <a className="btn quiet" href="#/revenue">{t("rv.open")}</a>
             </>
           )}
@@ -75,7 +86,7 @@ export function Home({ me }: { me: Me }) {
             {report.isLoading ? <Skeleton h={64} /> : (
               <>
                 <p className="num stock-figure">{rep && num(rep.available_count) !== null ? mmk(rep.available_count) : t("c.unavailable")}</p>
-                <p className="soft small">{t("home.stockHelp")}</p>
+                <StockMeter rep={rep} />
               </>
             )}
           </section>

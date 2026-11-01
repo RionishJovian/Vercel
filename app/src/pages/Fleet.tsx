@@ -4,6 +4,9 @@ import { asArray, num, type Router } from "../lib/types";
 import { useI18n } from "../i18n";
 import { BackLink, Note } from "../components/ui";
 import { Skeleton } from "../components/Skeleton";
+import { Ring } from "../components/Ring";
+import { deviceImage } from "../lib/deviceImage";
+import { useCountUp } from "../lib/useCountUp";
 
 interface Peer { device_id?: string; hardware_name?: string; state?: string }
 interface FleetData { peers?: Peer[]; total_peers?: number; up?: number; stale?: number; offline?: number; overall_state?: string }
@@ -15,6 +18,8 @@ export function Fleet() {
   const fleet = useSWR<FleetData>("/fleet/health", fetcher, { refreshInterval: 30000 });
   const routers = useSWR<{ routers?: Router[] }>("/routers", fetcher);
   const pulse = useSWR<{ open_incidents_head?: unknown[] }>("/fleet/pulse", fetcher, { shouldRetryOnError: false });
+  const availNow = (() => { const tp = num(fleet.data?.total_peers) ?? asArray(fleet.data?.peers).length; return tp ? Math.round(((num(fleet.data?.up) ?? 0) / tp) * 100) : 0; })();
+  const shownAvail = useCountUp(availNow);
   const back = <BackLink href="#/more">{t("tab.more")}</BackLink>;
   if (fleet.isLoading) return <>{back}<Skeleton h={320} /></>;
   if (fleet.error || !fleet.data) return <>{back}<Note kind="bad">{t("h.fleetFailed")}</Note></>;
@@ -27,12 +32,18 @@ export function Fleet() {
   const overall = String(f.overall_state ?? "unknown").toLowerCase();
   return (
     <>
-      {back}<h1>{t("fl.title")}</h1><p className="soft">{t("fl.lead")}</p>
-      <section className="glass pad fleet-summary">
-        <div><span className="soft small">{t("fl.availability")}</span><b className="num big">{availability}%</b><span className="soft small">{num(f.up) ?? 0} {t("c.online")}</span></div>
-        <div><span className="soft small">{t("fl.attention")}</span><b className="num big">{attention}</b><span className="soft small">{num(f.stale) ?? 0} {t("fl.stale")} · {num(f.offline) ?? 0} {t("c.offline")}</span></div>
-        <div><span className="soft small">{t("fl.incidents")}</span><b className="num big">{incidents}</b></div>
-        <div><span className="soft small">{t("fl.overall")}</span><b className={"num big tone-" + TONE[overall]}>{t("fl.state." + (overall in LEVEL ? overall : "unknown"))}</b></div>
+      {back}<h1>{t("fl.title")}</h1>
+      <section className="glass instrument fleet-hero">
+        <Ring fraction={availability / 100} label={`${availability}% ${t("fl.availability")}`}>
+          <span className="mute small">{t("fl.availability")}</span>
+          <span className="num hero-figure">{shownAvail ?? 0}%</span>
+          <span className="mute small">{num(f.up) ?? 0} / {total} {t("c.online")}</span>
+        </Ring>
+        <div className="capsules">
+          <div className="capsule"><span className="mute small">{t("fl.attention")}</span><b className="num">{attention}</b></div>
+          <div className="capsule"><span className="mute small">{t("fl.incidents")}</span><b className="num">{incidents}</b></div>
+          <div className="capsule"><span className="mute small">{t("fl.overall")}</span><b className={"tone-" + TONE[overall]}>{t("fl.state." + (overall in LEVEL ? overall : "unknown"))}</b></div>
+        </div>
       </section>
       {!peers.length && <Note>{t("fl.none")}</Note>}
       <div className="stack">
@@ -40,7 +51,8 @@ export function Fleet() {
           const state = String(p.state ?? "unknown").toLowerCase(), level = LEVEL[state] ?? 0, r = byId.get(p.device_id ?? "");
           return (
             <div className="rowitem fleet-row" key={p.device_id ?? i}>
-              <div className="stack" style={{ gap: 2 }}><b>{p.hardware_name || t("fl.unnamed")}</b><span className="soft small">{r?.deployment_layer === "MAIN_GATEWAY" ? t("fl.gateway") : t("fl.peer")}</span></div>
+              <span className={"rc-pic sm" + (state === "up" ? " on" : "")}><img src={deviceImage({ hardware_name: p.hardware_name, deployment_layer: r?.deployment_layer })} alt="" width={36} height={36} loading="lazy" /><i className="rc-led" aria-hidden="true" /></span>
+              <div className="stack" style={{ gap: 2, flex: 1, minWidth: 0 }}><b>{p.hardware_name || t("fl.unnamed")}</b><span className="soft small">{r?.deployment_layer === "MAIN_GATEWAY" ? t("fl.gateway") : t("fl.peer")}</span></div>
               <span className="signal" role="img" aria-label={`${level} / 10`}>{Array.from({ length: 10 }, (_, k) => <i key={k} className={k < level ? "on " + state : ""} />)}</span>
               <span className={"chip " + TONE[state]}>{t("fl.state." + (state in LEVEL ? state : "unknown"))}</span>
             </div>

@@ -3,7 +3,7 @@ import useSWR from "swr";
 import { api, fetcher, isUnauthorized } from "../lib/api";
 import { asArray, num, type Me } from "../lib/types";
 import { useI18n } from "../i18n";
-import { BackLink, Field, Note } from "../components/ui";
+import { BackLink, Field, Note, PageHead } from "../components/ui";
 import { Skeleton } from "../components/Skeleton";
 
 const SiteMap = lazy(() => import("../components/SiteMap"));
@@ -84,7 +84,7 @@ export function Sites({ me }: { me: Me }) {
 
   return (
     <>
-      {back}<h1>{t("title.sites")}</h1><p className="soft">{t("site.lead")}</p>
+      {back}<PageHead title={t("title.sites")} help={t("site.lead")} />
       {err && <Note kind="bad">{err}</Note>}
       {canEdit && !form && <button className="btn" type="button" onClick={() => { setCoords({ lat: "", lng: "" }); setForm({ site: null }); }}>{t("site.add")}</button>}
       {(sites.some((x) => x.latitude != null) || form) && (

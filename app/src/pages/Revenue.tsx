@@ -4,6 +4,7 @@ import { asArray, mmk, num, type VoucherReport } from "../lib/types";
 import { useI18n } from "../i18n";
 import { Icon } from "../components/icons";
 import { Skeleton } from "../components/Skeleton";
+import { useCountUp } from "../lib/useCountUp";
 import { RevenuePayments } from "./RevenuePayments";
 import type { Me } from "../lib/types";
 
@@ -15,6 +16,7 @@ const STATES = [
 export function Revenue({ me }: { me: Me }) {
   const { t } = useI18n();
   const { data: r, error, isLoading } = useSWR<VoucherReport>("/voucher-report", fetcher);
+  const todayShown = useCountUp(num(r?.activation_today));
   if (isLoading) return <Skeleton h={360} />;
   if (error || !r) return <p className="note bad" role="alert">{t("rv.failed")}</p>;
   const counts = STATES.map(([k, label, cls]) => ({ label, cls, n: num(r[k]) ?? 0 }));
@@ -23,17 +25,18 @@ export function Revenue({ me }: { me: Me }) {
   return (
     <>
       <a className="backlink" href="#/home"><Icon name="back" />{t("rv.back")}</a>
-      <div className="stack"><h1>{t("rv.title")}</h1><p className="soft">{t("rv.help")}</p></div>
+      <h1>{t("rv.title")}</h1>
 
       <section className="glass pad ledger" aria-labelledby="rv-used">
         <h2 id="rv-used" className="mute small">{t("rv.used")}</h2>
-        <p className="num ledger-figure">{mmk(num(r.activation_today) ?? 0)}<small>{t("c.mmk")}</small></p>
+        <p className="num ledger-figure">{mmk(todayShown ?? 0)}<small>{t("c.mmk")}</small></p>
         <p className="mute small">{t("h.today")}</p>
         <div className="capsules">
           <div className="capsule"><span className="mute small">{t("h.last7")}</span><b className="num">{mmk(num(r.activation_last7) ?? 0)}</b></div>
           <div className="capsule"><span className="mute small">{t("h.last30")}</span><b className="num">{mmk(num(r.activation_last30) ?? 0)}</b></div>
           <div className="capsule"><span className="mute small">{t("rv.all")}</span><b className="num">{mmk(num(r.activation_value) ?? 0)}</b></div>
         </div>
+        <p className="mute small">{t("rv.help")}</p>
         {(num(r.activation_time_unknown_count) ?? 0) > 0 ? <p className="note warn">{r.activation_time_unknown_count} {t("rv.unknown")}</p> : null}
       </section>
 

@@ -3,7 +3,7 @@ import useSWR from "swr";
 import { api, ApiError, fetcher, isUnauthorized } from "../../lib/api";
 import { asArray, type Me } from "../../lib/types";
 import { useI18n } from "../../i18n";
-import { BackLink, Field, Note } from "../../components/ui";
+import { BackLink, Field, Note, PageHead } from "../../components/ui";
 import { Skeleton } from "../../components/Skeleton";
 import { Enrollment } from "./Enrollment";
 import { Maintenance } from "./Maintenance";
@@ -139,7 +139,7 @@ export function Hub({ me }: { me: Me }) {
   const refresh = () => { void routers.mutate(); void fleet.mutate(); };
   return (
     <>
-      {back}<h1>{t("hub.title")}</h1><p className="soft">{t("hub.lead")}</p>
+      {back}<PageHead title={t("hub.title")} help={t("hub.lead")} />
       {!gateways.length && <Note>{t("hub.none")}</Note>}
       <div className="router-grid">{gateways.map((r) => <Card key={r.device_id} r={r} state={states.get(r.device_id) ?? (r.is_online ? "up" : "unknown")} canEdit={canEdit} cap={capability} openId={openId} setOpen={setOpen} onChanged={refresh} />)}</div>
       {canEdit && <AddGateway sites={sites} onDone={(id) => { refresh(); if (id) setOpen(id); }} />}

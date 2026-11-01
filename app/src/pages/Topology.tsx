@@ -3,7 +3,7 @@ import useSWR from "swr";
 import { api, fetcher, isUnauthorized } from "../lib/api";
 import { asArray } from "../lib/types";
 import { useI18n } from "../i18n";
-import { BackLink, Note } from "../components/ui";
+import { BackLink, Note, PageHead } from "../components/ui";
 import { Skeleton } from "../components/Skeleton";
 import { project, type GatewayRef, type Graph, type Label, type ObsInventory, type TNode } from "./topology/project";
 
@@ -77,7 +77,7 @@ export function Topology() {
 
   return (
     <>
-      {back}<h1>{t("tp.title")}</h1><p className="soft">{t("tp.lead")}</p>
+      {back}<PageHead title={t("tp.title")} help={t("tp.lead")} />
       <div className="glass pad stack">
         <div className="two">
           <label className="field"><span>{t("gu.site")}</span><select className="input" value={site} onChange={(e) => pickSite(e.target.value)}><option value="">{t("tp.allSites")}</option>{asArray<{ site_id: string; name: string }>(sitesRes.data?.sites).map((s) => <option key={s.site_id} value={s.site_id}>{s.name}</option>)}</select></label>

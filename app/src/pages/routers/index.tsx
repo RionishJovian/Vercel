@@ -4,6 +4,7 @@ import { asArray, type Router } from "../../lib/types";
 import { useI18n } from "../../i18n";
 import { Note, WorkspaceTabs, BackLink } from "../../components/ui";
 import { Skeleton } from "../../components/Skeleton";
+import { deviceImage } from "../../lib/deviceImage";
 import { Detail } from "./Detail";
 import { NetworkMap } from "./NetworkMap";
 
@@ -31,12 +32,15 @@ export function Routers({ sub, params }: { sub: string; params: URLSearchParams 
       <div className="router-grid">
         {list.map((d) => (
           <a className="glass pad router-card" key={d.device_id} href={"#/router/" + encodeURIComponent(d.device_id)}>
-            <div className="row"><h2>{d.hardware_name || d.device_id}</h2><span className={"chip " + (d.is_online ? "ok" : "bad")}>{d.is_online ? t("c.online") : t("c.offline")}</span></div>
-            <div className="row" style={{ justifyContent: "flex-start", flexWrap: "wrap" }}>
-              <span className="chip">{d.transport === "wireguard" ? "Magic Hub" : d.transport || "—"}</span>
-              {d.deployment_layer === "MAIN_GATEWAY" && <span className="chip">Gateway</span>}
+            <div className={"rc-pic" + (d.is_online ? " on" : "")}><img src={deviceImage(d)} alt="" width={64} height={64} loading="lazy" /><i className="rc-led" aria-hidden="true" /></div>
+            <div className="rc-body">
+              <div className="row"><h2>{d.hardware_name || d.device_id}</h2><span className={"chip " + (d.is_online ? "ok" : "bad")}>{d.is_online ? t("c.online") : t("c.offline")}</span></div>
+              <div className="row" style={{ justifyContent: "flex-start", flexWrap: "wrap" }}>
+                <span className="chip">{d.transport === "wireguard" ? "Magic Hub" : d.transport || "—"}</span>
+                {d.deployment_layer === "MAIN_GATEWAY" && <span className="chip">Gateway</span>}
+              </div>
+              <p className="soft small">{t("r.lastSeen")}: {d.last_seen_at && !Number.isNaN(new Date(d.last_seen_at).getTime()) ? new Date(d.last_seen_at).toLocaleString() : t("r.never")}</p>
             </div>
-            <p className="soft small">{t("r.lastSeen")}: {d.last_seen_at && !Number.isNaN(new Date(d.last_seen_at).getTime()) ? new Date(d.last_seen_at).toLocaleString() : t("r.never")}</p>
           </a>
         ))}
       </div>

@@ -3,7 +3,7 @@ import useSWR from "swr";
 import { fetcher } from "../lib/api";
 import { asArray } from "../lib/types";
 import { useI18n } from "../i18n";
-import { BackLink, Note } from "../components/ui";
+import { BackLink, Note, PageHead } from "../components/ui";
 import { Skeleton } from "../components/Skeleton";
 import { tone } from "./Incidents";
 
@@ -27,7 +27,7 @@ export function Events() {
   const apply = () => { setOffset(0); setF(draft); };
   return (
     <>
-      {back}<h1>{t("ev.title")}</h1><p className="soft">{t("ev.lead")}</p>
+      {back}<PageHead title={t("ev.title")} help={t("ev.lead")} />
       <form className="glass pad stack" onSubmit={(e) => { e.preventDefault(); apply(); }}>
         <div className="two">
           <label className="field"><span>{t("ev.severity")}</span><select className="input" value={draft.severity} onChange={(e) => setDraft({ ...draft, severity: e.target.value })}><option value="">{t("ev.allSeverities")}</option>{asArray<string>(data?.severities).map((s) => <option key={s}>{s}</option>)}</select></label>
