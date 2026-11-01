@@ -734,3 +734,129 @@ func TestRemovingACustomerNetwork(t *testing.T) {
 		}
 	})
 }
+
+func edit(values map[string]string) NetworkRequest {
+	return NetworkRequest{Kind: "edit_network", ID: "*74", Values: values}
+}
+
+func TestEditingACustomerNetworkAsOneUnit(t *testing.T) {
+	t.Run("changes range, DNS, lease and state together and touches nothing else", func(t *testing.T) {
+		r := shopFixture()
+		before := snapshotRows(r)
+		values := map[string]string{"pool_start": "192.168.99.20", "pool_end": "192.168.99.100", "dns": "9.9.9.9, 1.1.1.1", "lease-time": "30m", "disabled": "no"}
+		review, err := preview(t, r, edit(values))
+		if err != nil || len(review.Steps) != 3 {
+			t.Fatalf("%+v %v", review, err)
+		}
+		applyOK(t, r, edit(values))
+		if r.objects["pools"]["*72"]["ranges"] != "192.168.99.20-192.168.99.100" || r.objects["dhcp_networks"]["*73"]["dns-server"] != "9.9.9.9,1.1.1.1" || r.objects["dhcp"]["*74"]["lease-time"] != "30m" {
+			t.Fatalf("not applied: %v", snapshotRows(r))
+		}
+		after := snapshotRows(r)
+		for _, key := range []string{"addresses", "nat", "vlans", "hotspots", "filters"} {
+			if strings.Join(before[key], "\n") != strings.Join(after[key], "\n") {
+				t.Fatalf("%s must not change", key)
+			}
+		}
+		if r.guard {
+			t.Fatal("the timer must be cancelled after a verified change")
+		}
+	})
+	t.Run("a single field is enough and an unchanged form is reported as already applied", func(t *testing.T) {
+		r := shopFixture()
+		review, err := preview(t, r, edit(map[string]string{"lease-time": "2h"}))
+		if err != nil || len(review.Steps) != 1 {
+			t.Fatalf("%+v %v", review, err)
+		}
+		if _, err = preview(t, r, edit(map[string]string{"lease-time": "1h", "disabled": "no", "dns": "1.1.1.1,8.8.8.8", "pool_start": "192.168.99.10", "pool_end": "192.168.99.200"})); err == nil || !strings.Contains(err.Error(), "already applied") {
+			t.Fatalf("unchanged form: %v", err)
+		}
+	})
+	t.Run("the undo restores the previous values", func(t *testing.T) {
+		r := shopFixture()
+		req := edit(map[string]string{"pool_start": "192.168.99.30", "dns": "9.9.9.9", "lease-time": "5m", "disabled": "yes"})
+		steps, _, err := buildNetworkPlan(context.Background(), r, req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		before := snapshotRows(r)
+		applyOK(t, r, req)
+		for i := len(steps) - 1; i >= 0; i-- {
+			if err := networkWrite(context.Background(), r, steps[i], true); err != nil {
+				t.Fatal(err)
+			}
+			if err := networkVerify(context.Background(), r, steps[i], true); err != nil {
+				t.Fatal(err)
+			}
+		}
+		after := snapshotRows(r)
+		for key, rows := range before {
+			if strings.Join(rows, "\n") != strings.Join(after[key], "\n") {
+				t.Fatalf("%s differs after undo", key)
+			}
+		}
+	})
+	t.Run("a network with a Hotspot can be edited, with a warning when DHCP is turned off", func(t *testing.T) {
+		r := shopFixture()
+		r.objects["hotspots"]["*80"] = map[string]string{"name": "mm-shop", "interface": "mm-shop-vlan", "profile": "mm-shop", "address-pool": "mm-shop", "disabled": "no"}
+		review, err := preview(t, r, edit(map[string]string{"disabled": "yes"}))
+		if err != nil || !strings.Contains(strings.Join(review.Warnings, " "), "Hotspot") {
+			t.Fatalf("%+v %v", review, err)
+		}
+	})
+	t.Run("refuses a bad range, DNS, lease or state", func(t *testing.T) {
+		for name, values := range map[string]map[string]string{
+			"outside the subnet":     {"pool_end": "192.168.100.5"},
+			"includes the gateway":   {"pool_start": "192.168.99.1"},
+			"network address":        {"pool_start": "192.168.99.0"},
+			"broadcast address":      {"pool_end": "192.168.99.255"},
+			"reversed":               {"pool_start": "192.168.99.150", "pool_end": "192.168.99.20"},
+			"not an address":         {"pool_start": "abc"},
+			"bad DNS":                {"dns": "1.1.1.1, nope"},
+			"too many DNS":           {"dns": "1.1.1.1,2.2.2.2,3.3.3.3,4.4.4.4,5.5.5.5"},
+			"multicast DNS":          {"dns": "224.0.0.1"},
+			"lease too short":        {"lease-time": "10s"},
+			"lease too long":         {"lease-time": "30d"},
+			"lease nonsense":         {"lease-time": "soon"},
+			"bad state":              {"disabled": "maybe"},
+			"unexpected input":       {"address": "10.0.0.1/24"},
+			"subnet change not here": {"gateway": "192.168.99.2"},
+		} {
+			r := shopFixture()
+			if _, err := preview(t, r, edit(values)); err == nil {
+				t.Errorf("must refuse %s", name)
+			}
+		}
+	})
+	t.Run("refuses networks it cannot edit exactly", func(t *testing.T) {
+		for name, mutate := range map[string]func(r *networkRunner){
+			"several ranges": func(r *networkRunner) {
+				r.objects["pools"]["*72"]["ranges"] = "192.168.99.10-192.168.99.50,192.168.99.60-192.168.99.90"
+			},
+			"a shared pool": func(r *networkRunner) {
+				r.objects["dhcp"]["*86"] = map[string]string{"name": "x", "interface": "ether4", "address-pool": "mm-shop", "lease-time": "1h", "disabled": "no"}
+			},
+			"the internet uplink": func(r *networkRunner) {
+				r.objects["dhcp_clients"]["*83"] = map[string]string{"interface": "mm-shop-vlan", "gateway": "", "add-default-route": "yes", "disabled": "no"}
+			},
+			"a missing pool":  func(r *networkRunner) { delete(r.objects["pools"], "*72") },
+			"a missing scope": func(r *networkRunner) { delete(r.objects["dhcp_networks"], "*73") },
+			"a duplicated scope": func(r *networkRunner) {
+				r.objects["dhcp_networks"]["*88"] = map[string]string{"address": "192.168.99.0/24", "gateway": "192.168.99.1", "dns-server": "1.1.1.1", "comment": "mm-shop"}
+			},
+		} {
+			r := shopFixture()
+			mutate(r)
+			if _, err := preview(t, r, edit(map[string]string{"lease-time": "2h", "pool_start": "192.168.99.20"})); err == nil {
+				t.Errorf("must refuse %s", name)
+			}
+		}
+		r := shopFixture()
+		if _, err := preview(t, r, NetworkRequest{Kind: "edit_network", ID: "*40", Values: map[string]string{"lease-time": "2h"}}); err == nil {
+			t.Fatal("a DHCP service the wizard did not create must never be edited here")
+		}
+		if _, err := preview(t, r, NetworkRequest{Kind: "edit_network", ID: "", Values: map[string]string{"lease-time": "2h"}}); err == nil {
+			t.Fatal("a record is required")
+		}
+	})
+}
