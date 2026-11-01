@@ -51,3 +51,11 @@ func TestParseGuardValueListDetailWithFlagsHeader(t *testing.T) {
 		t.Fatalf("flags-header detail not parsed: %#v", m)
 	}
 }
+
+func TestParseValueListCommentLineKeepsColons(t *testing.T) {
+	out := ";;; mega-magic:vlogin:4886ae24\nname: WPWJGMNP\nlimit-uptime: 1h\n"
+	m := parseValueList(out)
+	if m["comment"] != "mega-magic:vlogin:4886ae24" || m["name"] != "WPWJGMNP" || m["limit-uptime"] != "1h" {
+		t.Fatalf("comment line mis-parsed: %#v", m)
+	}
+}
