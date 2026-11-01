@@ -39,3 +39,15 @@ func TestParseGuardDetailQuotedProfileScript(t *testing.T) {
 		t.Fatalf("profile not recognised: %#v", m)
 	}
 }
+
+func TestParseGuardValueListDetailWithFlagsHeader(t *testing.T) {
+	out := "Flags: X - disabled \n" +
+		" 0   name=\"mega-magic-voucher-guard-v1\" start-date=2026-11-01 start-time=12:45:07 interval=1m\n" +
+		"     on-event=\"/system script run mega-magic-voucher-guard-v1-expiry\" owner=\"mm-4fddeacf4dbf\"\n" +
+		"     policy=read,write run-count=0 next-run=2026-11-01 12:46:07\n"
+	m := parseGuardValueList(out)
+	if m["name"] != "mega-magic-voucher-guard-v1" || m["interval"] != "1m" || m["policy"] != "read,write" ||
+		m["on-event"] != "/system script run mega-magic-voucher-guard-v1-expiry" {
+		t.Fatalf("flags-header detail not parsed: %#v", m)
+	}
+}
