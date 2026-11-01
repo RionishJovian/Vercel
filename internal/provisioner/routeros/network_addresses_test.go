@@ -467,3 +467,120 @@ func TestReshapingAVLANInUseWaitsForConfirmation(t *testing.T) {
 		}
 	})
 }
+
+func removal(kind, id string) NetworkRequest { return NetworkRequest{Kind: kind, ID: id} }
+
+func TestDeletingOnlyWhatTheAppCreated(t *testing.T) {
+	mark := func(r *networkRunner, menu, id string) { r.objects[menu][id]["comment"] = networkOwnedMark }
+	t.Run("an address the app created is deleted and verified", func(t *testing.T) {
+		r := addressFixture() // *13 is 192.168.60.1/24 on ether4 with the app's comment
+		review, err := preview(t, r, removal("remove_ip_address", "*13"))
+		if err != nil || !strings.Contains(strings.Join(review.Steps, " "), "will be deleted") {
+			t.Fatalf("%+v %v", review, err)
+		}
+		applyOK(t, r, removal("remove_ip_address", "*13"))
+		if _, still := r.objects["addresses"]["*13"]; still || r.guard {
+			t.Fatal("address must be gone and the timer cancelled")
+		}
+	})
+	t.Run("an address someone else created is refused", func(t *testing.T) {
+		r := addressFixture()
+		r.objects["addresses"]["*16"] = map[string]string{"address": "10.9.0.1/24", "interface": "bond1", "comment": "", "disabled": "no", "dynamic": "no"} // otherwise unprotected
+		if _, err := preview(t, r, removal("remove_ip_address", "*16")); err == nil {
+			t.Fatal("must refuse an address without the app's mark")
+		}
+	})
+	t.Run("protected addresses stay even if marked", func(t *testing.T) {
+		for _, tc := range []struct{ name, id string }{{"Hub tunnel", "*11"}, {"dynamic", "*15"}, {"customer bridge", "*10"}} {
+			r := addressFixture()
+			mark(r, "addresses", tc.id)
+			if _, err := preview(t, r, removal("remove_ip_address", tc.id)); err == nil {
+				t.Fatalf("%s address must never be deleted", tc.name)
+			}
+		}
+		r := addressFixture()
+		mark(r, "addresses", "*12") // dynamic uplink address
+		if _, err := preview(t, r, removal("remove_ip_address", "*12")); err == nil {
+			t.Fatal("uplink address must never be deleted")
+		}
+	})
+	t.Run("an unused marked VLAN is deleted", func(t *testing.T) {
+		r := addressFixture()
+		mark(r, "vlans", "*51")
+		applyOK(t, r, removal("remove_vlan", "*51"))
+		if _, still := r.objects["vlans"]["*51"]; still {
+			t.Fatal("VLAN must be gone")
+		}
+	})
+	t.Run("a VLAN in use, unmarked, or carrying the uplink is refused", func(t *testing.T) {
+		r := addressFixture()
+		mark(r, "vlans", "*50") // vlan10 carries an address
+		if _, err := preview(t, r, removal("remove_vlan", "*50")); err == nil || !strings.Contains(err.Error(), "in use") {
+			t.Fatalf("in-use VLAN: %v", err)
+		}
+		r = addressFixture()
+		if _, err := preview(t, r, removal("remove_vlan", "*51")); err == nil {
+			t.Fatal("unmarked VLAN must be refused")
+		}
+		r = addressFixture()
+		mark(r, "vlans", "*51")
+		r.objects["dhcp_clients"]["*21"] = map[string]string{"interface": "spare20", "gateway": "", "add-default-route": "yes", "disabled": "no"}
+		if _, err := preview(t, r, removal("remove_vlan", "*51")); err == nil {
+			t.Fatal("uplink VLAN must be refused")
+		}
+	})
+	t.Run("a new VLAN carries the mark so it can be deleted later", func(t *testing.T) {
+		r := addressFixture()
+		applyOK(t, r, vlan("v30", "ether3", "30"))
+		found := false
+		for _, row := range r.objects["vlans"] {
+			if row["name"] == "v30" && row["comment"] == networkOwnedMark {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatal("created VLAN must be marked")
+		}
+	})
+	t.Run("extra input or no record is refused", func(t *testing.T) {
+		r := addressFixture()
+		if _, err := preview(t, r, NetworkRequest{Kind: "remove_vlan", ID: "*51", Values: map[string]string{"x": "y"}}); err == nil {
+			t.Fatal("values are not accepted")
+		}
+		if _, err := preview(t, r, removal("remove_vlan", "")); err == nil {
+			t.Fatal("a record is required")
+		}
+	})
+}
+
+func TestDeleteUndoRestoresTheSameRecord(t *testing.T) {
+	r := addressFixture()
+	r.objects["vlans"]["*51"]["comment"] = networkOwnedMark
+	step := networkStep{Key: "vlans", ID: "*51", Remove: true, SelectorField: "name", SelectorValue: "spare20",
+		Before: map[string]string{"name": "spare20", "interface": "ether4", "vlan-id": "20", "comment": networkOwnedMark, "disabled": "no"}}
+	ctx := context.Background()
+	if err := networkWrite(ctx, r, step, false); err != nil || networkVerify(ctx, r, step, false) != nil {
+		t.Fatal("removal must write and verify")
+	}
+	// Undoing twice (the guard may run after a rollback) must not duplicate it.
+	for i := 0; i < 2; i++ {
+		if err := networkWrite(ctx, r, step, true); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := networkVerify(ctx, r, step, true); err != nil {
+		t.Fatal(err)
+	}
+	count := 0
+	for _, row := range r.objects["vlans"] {
+		if row["name"] == "spare20" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("expected exactly one restored VLAN, got %d", count)
+	}
+	if !strings.Contains(networkWriteCommand(step, true), ":if ([:len [/interface vlan find where name=") {
+		t.Fatal("the router-side undo must be conditional")
+	}
+}

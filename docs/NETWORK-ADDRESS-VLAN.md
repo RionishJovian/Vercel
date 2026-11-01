@@ -79,3 +79,21 @@ never final on its own:
 
 Not yet proven on real hardware: the router firing the timer by itself. Plan: test it on
 the disabled test VLAN with the owner's approval.
+
+## Deleting what the app created
+
+An IP address or a VLAN can be deleted from its record page (**Delete this record**),
+with the same preview, consent and backup as any change. Only records carrying the
+app's `mega-magic` comment qualify: new addresses and, from this release, new VLANs
+are marked when created. Addresses and VLANs created earlier by a person, or by this
+app before VLANs were marked, are not deleted here (the server refuses them); remove
+those where they were made.
+
+Refused even when marked: automatic (dynamic) addresses, the Hub tunnel, addresses
+on a port that serves customers or carries the internet uplink, and a VLAN that is in
+use (it names what uses it). The router keeps a restore timer that re-creates the
+record, only if it is missing, with the same fields; the apply verifies the record is
+gone and a failed apply is rolled back and verified the same way.
+
+Still to come: removing a whole customer network in dependency order, and tidying the
+app's own old `mm-snap-*` backup files on the router.

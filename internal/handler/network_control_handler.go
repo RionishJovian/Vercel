@@ -38,7 +38,7 @@ func (h *SecurityHandler) NetworkControl(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid network request"})
 			return
 		}
-		if request.Kind == "ip_address" || request.Kind == "vlan" {
+		if request.Kind == "ip_address" || request.Kind == "vlan" || request.Kind == "remove_ip_address" || request.Kind == "remove_vlan" {
 			// "" (default) holds both actions; "preview" allows reading the router and
 			// showing the plan but never applies it; "true" allows both.
 			switch os.Getenv("MM_NETWORK_ADDRESS_CONTROLS_ENABLED") {

@@ -96,6 +96,9 @@ func networkDNS(v string) error {
 	return nil
 }
 func buildNetworkPlan(ctx context.Context, r CommandRunner, request NetworkRequest) ([]networkStep, []string, error) {
+	if request.Kind == "remove_ip_address" || request.Kind == "remove_vlan" {
+		return finishNetworkPlan(buildRemovePlan(ctx, r, request))
+	}
 	v := request.Values
 	if v == nil {
 		return nil, nil, fmt.Errorf("network settings are required")

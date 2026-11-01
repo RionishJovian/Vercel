@@ -72,7 +72,7 @@ var networkMenus = map[string]networkMenu{
 	"bindings":          {"/ip hotspot ip-binding", []string{"mac-address", "address", "server", "type", "comment", "disabled"}},
 	"queue_types":       {"/queue type", []string{"name", "kind", "pcq-rate", "pcq-classifier"}},
 	"addresses":         {"/ip address", []string{"address", "interface", "comment", "disabled", "dynamic"}},
-	"vlans":             {"/interface vlan", []string{"name", "vlan-id", "interface", "disabled"}},
+	"vlans":             {"/interface vlan", []string{"name", "vlan-id", "interface", "comment", "disabled"}},
 	"pools":             {"/ip pool", []string{"name", "ranges"}},
 	"dhcp":              {"/ip dhcp-server", []string{"name", "interface", "address-pool", "lease-time", "disabled"}},
 	"dhcp_networks":     {"/ip dhcp-server network", []string{"address", "gateway", "dns-server", "comment"}},
@@ -317,6 +317,9 @@ type networkStep struct {
 	// Hold keeps the restore timer armed after a verified apply, so a person can
 	// test a real client and then keep or revert the change.
 	Hold bool
+	// Remove deletes the record ID. Before holds everything needed to put an
+	// identical record back, which is how the guard and rollback undo it.
+	Remove bool
 }
 type networkApproval struct {
 	Business, Device, RequestHash, StateHash string
@@ -373,6 +376,13 @@ func (a *DeviceApplier) PreviewNetwork(ctx context.Context, businessID, deviceID
 	labels := []string{}
 	for _, step := range steps {
 		details := []string{}
+		if step.Remove {
+			for _, field := range networkSortedKeys(step.Before) {
+				details = append(details, field+": "+step.Before[field])
+			}
+			labels = append(labels, step.Label+" — will be deleted ("+strings.Join(details, "; ")+")")
+			continue
+		}
 		for _, field := range networkSortedKeys(step.Values) {
 			if networkSecret(field) {
 				details = append(details, field+": (value hidden)")
@@ -418,6 +428,18 @@ func networkWrite(ctx context.Context, r CommandRunner, s networkStep, restore b
 }
 func networkWriteCommand(s networkStep, restore bool) string {
 	menu := networkMenus[s.Key].path
+	if s.Remove {
+		if !restore {
+			return menu + " remove " + s.ID
+		}
+		// Re-create only if it is not there, so undoing a removal that never
+		// happened cannot create a duplicate.
+		add := menu + " add"
+		for _, field := range networkSortedKeys(s.Before) {
+			add += " " + field + "=" + routerOSQuoted(s.Before[field])
+		}
+		return ":if ([:len [" + menu + " find where " + networkStepSelector(s) + "]] = 0) do={ " + add + " }"
+	}
 	values := s.Values
 	if restore && s.ID == "" {
 		return menu + " remove [find where " + networkStepSelector(s) + "]"
@@ -449,6 +471,32 @@ func natTouched(steps []networkStep) bool {
 	return false
 }
 func networkVerify(ctx context.Context, r CommandRunner, s networkStep, restore bool) error {
+	if s.Remove {
+		if !restore {
+			out, err := r.Run(ctx, `:put [:len [`+networkMenus[s.Key].path+` find where .id=`+s.ID+`]]`)
+			if err != nil || strings.TrimSpace(out) != "0" {
+				return fmt.Errorf("removal of %s not verified", s.Key)
+			}
+			return nil
+		}
+		// The restored record has a new internal id; find it by what identifies it.
+		lookup := s
+		lookup.ID, lookup.Remove = "", false
+		id, err := networkStepID(ctx, r, lookup)
+		if err != nil {
+			return err
+		}
+		actual, err := networkReadOne(ctx, r, s.Key, id, s.Before)
+		if err != nil {
+			return err
+		}
+		for field, value := range s.Before {
+			if !networkEqual(field, actual[field], value) {
+				return fmt.Errorf("%s restore readback mismatch at %s", s.Key, field)
+			}
+		}
+		return nil
+	}
 	if restore && s.ID == "" {
 		out, err := r.Run(ctx, networkMenus[s.Key].path+" print count-only where "+networkStepSelector(s))
 		if err != nil || strings.TrimSpace(out) != "0" {

@@ -77,16 +77,16 @@ function TaskForm({ kind, inv, defaults, routerId, routerName, locked, setLocked
   const [values, setValues] = useState<Record<string, string>>(() => initialValues(kind, undefined, defaults));
   const [review, setReview] = useState<Review | null>(null);
   const [consent, setConsent] = useState(false), [status, setStatus] = useState("");
-  const [applied, setApplied] = useState(false);
+  const [applied, setApplied] = useState(false), [removing, setRemoving] = useState(false);
   const stamp = useRef(0);
-  useEffect(() => { setValues(initialValues(kind, selected, defaults)); setReview(null); setConsent(false); setStatus(""); setApplied(false); stamp.current++; }, [kind, recordId, selected, defaults]);
+  useEffect(() => { setValues(initialValues(kind, selected, defaults)); setReview(null); setConsent(false); setStatus(""); setApplied(false); setRemoving(false); stamp.current++; }, [kind, recordId, selected, defaults]);
 
   const portTypes = kind === "vlan" ? ["ether", "bridge", "bond"] : kind === "ip_address" ? ["ether", "bridge", "bond", "vlan"] : ["ether", "bridge", "vlan", "bond", "pppoe-out"];
   const eligible = (inv.interfaces ?? []).filter((i) => portTypes.includes(i.type));
   // Fields the router cannot change on an existing record.
   const fixed = (key: string) => !!selected && ((kind === "ip_address" && key === "interface") || (kind === "vlan" && key === "name"));
   const change = (key: string, value: string) => {
-    stamp.current++; setReview(null); setConsent(false); setStatus(t("net.changed")); setApplied(false);
+    stamp.current++; setReview(null); setConsent(false); setStatus(t("net.changed")); setApplied(false); setRemoving(false);
     setValues((v) => {
       const next = { ...v, [key]: value };
       if (kind === "wan" && (key === "wan1" || key === "wan2")) { const n = key.slice(-1); const c = objectsOf(inv, "dhcp_clients").find((o) => o.values.interface === value); next["gateway" + n] = c?.values.gateway || ""; }
@@ -112,20 +112,25 @@ function TaskForm({ kind, inv, defaults, routerId, routerName, locked, setLocked
   const groups: Array<[string, Field[]]> = kind === "wan" ? [[t("net.g.strategy"), fields.slice(0, 1)], [t("net.g.primary"), fields.slice(1, 3)], [t("net.g.backup"), fields.slice(3)]]
     : kind === "pppoe_server" ? [[t("net.g.service"), fields.slice(0, 2)], [t("net.g.addresses"), fields.slice(2, 5)], [t("net.g.dnsSpeed"), fields.slice(5)]] : [[selected ? t("net.g.edit") : t("net.g.new"), fields]];
 
-  async function preview(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
+  // Only records this app created can be deleted; the server enforces the same rule.
+  const deletable = !!selected && (kind === "ip_address" || kind === "vlan") && selected.values.comment === "mega-magic" && !isOn(selected.values.dynamic);
+  const wireKind = (remove: boolean) => (remove ? "remove_" + kind : kind);
+  const wireValues = (remove: boolean) => (remove ? {} : payloadValues(kind, values));
+  async function preview(e: FormEvent<HTMLFormElement>) { e.preventDefault(); await ask(false); }
+  async function ask(remove: boolean) {
     if (!routerId) return;
+    setRemoving(remove);
     const mine = ++stamp.current;
     setReview(null); setConsent(false); setStatus(t("net.reviewing"));
     try {
-      const data = await api.post<{ review?: Review }>(`/routers/${encodeURIComponent(routerId)}/network/preview`, { kind, id: selected?.id ?? "", values: payloadValues(kind, values) });
+      const data = await api.post<{ review?: Review }>(`/routers/${encodeURIComponent(routerId)}/network/preview`, { kind: wireKind(remove), id: selected?.id ?? "", values: wireValues(remove) });
       if (mine !== stamp.current || !data.review) return;
       setReview(data.review); setStatus("");
     } catch (err) { if (isUnauthorized(err)) throw err; if (mine === stamp.current) setStatus(`${t("net.reviewFail")} ${errMsg(err)}`); }
   }
   async function apply() {
     if (locked || !review || !routerId) return;
-    const request = { kind, id: selected?.id ?? "", values: payloadValues(kind, values), confirmation: review.confirmation };
+    const request = { kind: wireKind(removing), id: selected?.id ?? "", values: wireValues(removing), confirmation: review.confirmation };
     setLocked(true); setReview(null); setConsent(false); setStatus(t("net.applying")); const mine = ++stamp.current;
     try {
       const data = await api.post<{ result?: { verified?: boolean; backup?: string; pending_confirm?: boolean; revert_at?: string } }>(`/routers/${encodeURIComponent(routerId)}/network/apply`, request);
@@ -159,7 +164,10 @@ function TaskForm({ kind, inv, defaults, routerId, routerName, locked, setLocked
             </fieldset>
           ))}
           <p className="soft small">{kind === "wan" ? t("net.hint.wan") : kind === "wifi" || kind === "wireless" ? t("net.hint.wifi") : t("net.hint.default")}</p>
-          <button className="btn" type="submit" disabled={locked}>{t("net.review")}</button>
+          <div className="row" style={{ justifyContent: "flex-start" }}>
+            <button className="btn" type="submit" disabled={locked}>{t("net.review")}</button>
+            {deletable && <button className="pill" type="button" disabled={locked} onClick={() => void ask(true)}>{t("net.delete")}</button>}
+          </div>
         </form>
       )}
       {status && <p className="note" role="status" aria-live="polite">{status}</p>}
