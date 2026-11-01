@@ -94,7 +94,8 @@ function AddGateway({ sites, onDone }: { sites: Array<{ site_id: string; name: s
   const [msg, setMsg] = useState(""), [busy, setBusy] = useState(false);
   async function add(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const f = new FormData(e.currentTarget), name = String(f.get("name")).trim(), site = String(f.get("site"));
+    // React clears currentTarget once the handler yields, so keep the form for after the awaits.
+    const form = e.currentTarget, f = new FormData(form), name = String(f.get("name")).trim(), site = String(f.get("site"));
     if (!name) { setMsg(t("hub.nameNeeded")); return; }
     if (!sites.some((s) => s.site_id === site)) { setMsg(t("hub.siteNeeded")); return; }
     setBusy(true); setMsg("");
@@ -102,7 +103,7 @@ function AddGateway({ sites, onDone }: { sites: Array<{ site_id: string; name: s
       const res = await api.post<{ router?: { device_id?: string } }>("/routers", { hardware_name: name, device_model: null, deployment_layer: "MAIN_GATEWAY", management_ip: null, mac_address: null, vendor: "mikrotik", category: "gateway", transport: "tunnel" });
       const id = res.router?.device_id;
       if (id) { try { await api.put(`/vps/peers/${encodeURIComponent(id)}/site`, { site_id: site }); } catch (err) { if (isUnauthorized(err)) throw err; setMsg(errText(err, t("hub.siteFail"))); } }
-      e.currentTarget.reset(); onDone(id ?? "");
+      form.reset(); onDone(id ?? "");
     } catch (err) { if (isUnauthorized(err)) throw err; setMsg(err instanceof ApiError && err.status === 403 ? t("hub.forbidden") : errText(err, t("hub.addFail"))); }
     setBusy(false);
   }
