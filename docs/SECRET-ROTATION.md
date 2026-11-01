@@ -80,11 +80,22 @@ unset NEW_CRED NEW_JWT
 Database dumps taken before the rotation (in `/root/mm-rollout-backups/*/database.dump`) still hold the router login sealed with the **old** key. They are root-only on the server; an attacker would need both a dump and the old key. Delete old dumps on your normal retention schedule.
 
 ## 5. Recovery if the app cannot decrypt after step 2
-The data is sealed with `NEW_CRED` and the env must hold the same value. If you
-still have the shell: put `NEW_CRED` into `.env.production` and recreate the API.
-If the shell is gone, restore `$backup/database.dump` (pre-rotation data) together
-with `$backup/env.production` (old key); that returns the system to exactly how it
-was before step 2.
+The data is sealed with `NEW_CRED` and the env must hold the same value. The
+new values are also in `$app/.env.production.new`, which step 2 writes **before**
+changing any data and only renames after the commit. So, even if the shell or the
+connection is lost after `rotate -apply`: if `.env.production.new` still exists,
+run `mv .env.production.new .env.production` and recreate the API; that is the
+whole fix. Only if that file is also gone, restore `$backup/database.dump`
+(pre-rotation data) together with `$backup/env.production` (old key); that returns
+the system to exactly how it was before step 2.
+
+## Record of the first production rotation (2026-11-01)
+Applied in one session: 1 router login and 1 live enrollment re-sealed, 3 expired
+enrollments deleted, every value verified under the new key before commit. API
+down about 4 seconds (14:47:57Z to 14:48:01Z). Afterwards the sync log showed a
+connection timeout to the (offline) lab router, i.e. the app decrypted the stored
+login with the new key. The copy of the old secrets was shredded; database dumps
+taken earlier still hold the login sealed with the old key.
 
 ## What the tool guarantees
 Single transaction with both tables locked; any value the current key cannot
