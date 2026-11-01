@@ -45,7 +45,7 @@ export function Stock() {
           return (
             <article className="ticket" key={b.batch_id}>
               <div className="ticket-main">
-                <h2>{b.plan_label || "—"}</h2>
+                <div className="row tk-head"><h2>{b.plan_label || "—"}</h2><b className="num tk-pct">{pct}%</b></div>
                 <span className="chip ok">{t("v.onRouter")} <b className="num">{installed}/{total}</b></span>
               </div>
               <div className="ticket-stub">

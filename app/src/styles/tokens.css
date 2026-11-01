@@ -57,7 +57,7 @@
   --ink-soft: #2c5246;
   --ink-mute: #4a6c60;
 
-  --glass: rgba(255, 255, 255, .62);
+  --glass: rgba(255, 255, 255, .72);
   --glass-strong: rgba(255, 255, 255, .8);
   --glass-solid: #f4faf7;
   --edge: rgba(8, 60, 46, .26);
@@ -70,7 +70,7 @@
   --ok: #0b7a58;
   --warn: #8a5b00;
   --bad: #b3261e;
-  --shadow: 0 24px 60px -28px rgba(8, 60, 46, .38);
+  --shadow: 0 30px 60px -30px rgba(8, 60, 46, .5);
 }
 
 @media (prefers-reduced-transparency: reduce) {

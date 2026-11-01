@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { api, ApiError } from "../lib/api";
-import { Wand } from "../components/icons";
+import { LogoStage } from "../components/LogoStage";
 import { Toggles } from "../components/Shell";
 import { useI18n } from "../i18n";
 
@@ -19,15 +19,14 @@ export function SignIn({ notice, onDone }: { notice?: string; onDone: () => void
     <div className="signin">
       <div className="signin-tools"><Toggles /></div>
       <form className="glass signin-card" onSubmit={submit}>
-        <div className="signin-mark"><Wand state="ok" /></div>
+        <LogoStage size={150} />
         <h1>Mega Magic</h1>
-        <p className="soft">{t("home.sub")}</p>
         <label className="field"><span>{t("s.email")}</span><input className="input" name="email" type="email" autoComplete="username" required /></label>
         <label className="field"><span>{t("s.password")}</span><input className="input" name="password" type="password" autoComplete="current-password" required /></label>
         {error ? <p className="note bad" role="alert">{error}</p> : null}
         <button className="btn" type="submit" disabled={busy}>{busy ? t("s.working") : t("s.submit")}</button>
+        <p className="signin-create"><a className="link" href="/signin.html?register=1">{t("s.create")}</a></p>
       </form>
-      <p className="signin-create"><a className="link" href="/signin.html?register=1">{t("s.create")}</a></p>
     </div>
   );
 }

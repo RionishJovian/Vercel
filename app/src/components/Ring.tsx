@@ -20,10 +20,13 @@ export function Ring({ fraction, size = 232, children, label }: Props) {
         {Array.from({ length: 60 }, (_, i) => {
           const a = (i / 60) * 2 * Math.PI, long = i % 5 === 0;
           const r1 = 108, r2 = long ? 101 : 104;
-          return <line key={i} className={long ? "tick long" : "tick"} x1={110 + r1 * Math.sin(a)} y1={110 - r1 * Math.cos(a)} x2={110 + r2 * Math.sin(a)} y2={110 - r2 * Math.cos(a)} />;
+          const lit = i / 60 < shown;
+          return <line key={i} className={(long ? "tick long" : "tick") + (lit ? " lit" : "")} style={{ transitionDelay: lit ? `${Math.round((i / 60) * 1300)}ms` : "0ms" }} x1={110 + r1 * Math.sin(a)} y1={110 - r1 * Math.cos(a)} x2={110 + r2 * Math.sin(a)} y2={110 - r2 * Math.cos(a)} />;
         })}
         <circle className="track" cx="110" cy="110" r={r} />
+        <circle className="inner" cx="110" cy="110" r="78" />
         <circle className="sweep" cx="110" cy="110" r={r} stroke={`url(#${id})`} strokeDasharray={c} strokeDashoffset={c * (1 - shown)} transform="rotate(-90 110 110)" />
+        <circle className="cap" cx={110 + r * Math.sin(shown * 2 * Math.PI)} cy={110 - r * Math.cos(shown * 2 * Math.PI)} r="6" style={{ opacity: shown > 0 ? 1 : 0 }} />
       </svg>
       <div className="ring-center">{children}</div>
     </div>
