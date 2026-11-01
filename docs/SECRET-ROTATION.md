@@ -7,7 +7,7 @@ The YAML config holds empty values, and the rollout backups do not contain them.
 
 | Secret (env name) | What it protects | Effect of rotating |
 |---|---|---|
-| `SECURITY_JWT_SECRET` | Signs login tokens and the guest hotspot cookies | Everyone is signed out once (including you); guests lose their "resume" cookie and re-enter their code. No data changes. |
+| `SECURITY_JWT_SECRET` | Signs login tokens, and the key for the bank-transfer grace cookie (`__Secure-mm_guest_grace`) is derived from it | Everyone is signed out once (including you). A guest who already holds a grace cookie (they asked to pay by bank transfer within the last 30 days) would see "guest recognition could not be verified; contact the hotspot owner" if they repeat that request. Voucher codes and running guest internet are unaffected: they live on the router. No data changes. |
 | `PROVISIONER_APPLIER_CREDENTIAL_KEY` | Seals each router's stored SSH login and the short-lived Hub enrollments | Stored values must be re-sealed with the new key in one step (tool below). A mistake makes the app unable to log in to routers until fixed. |
 
 There is no old-key fallback in the app, so each secret changes in one cut-over.
