@@ -1,16 +1,14 @@
 import { type ReactNode } from "react";
-import useSWR from "swr";
-import { fetcher } from "../lib/api";
+import { useFleet } from "../lib/useFleet";
 import { Icon, Wand, type IconName } from "./icons";
 import { useI18n } from "../i18n";
 import { MagicDude } from "./MagicDude";
 import { useTheme } from "../lib/theme";
-import type { Fleet } from "../lib/types";
 
 const TABS: Array<[string, IconName]> = [["home", "home"], ["router", "router"], ["vouchers", "ticket"], ["jellyfin", "play"], ["more", "dots"]];
 
 export function useHealth(): "ok" | "warn" | "bad" | "idle" {
-  const { data, error } = useSWR<Fleet>("/fleet/health", fetcher, { refreshInterval: 30000, revalidateOnFocus: true });
+  const { data, error } = useFleet();
   if (error) return "bad";
   const s = data?.overall_state;
   return s === "up" ? "ok" : s === "stale" ? "warn" : s === "offline" ? "bad" : "idle";

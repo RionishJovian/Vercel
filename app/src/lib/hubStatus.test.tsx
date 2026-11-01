@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
-import { I18nProvider } from "../../i18n";
-import { HubChip } from "./HubChip";
+import { I18nProvider } from "../i18n";
+import { HubChip } from "../pages/routers/HubChip";
 import { hubStatusOf } from "./hubStatus";
 
 beforeEach(() => {

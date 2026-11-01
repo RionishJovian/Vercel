@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api } from "../../lib/api";
+import { api } from "./api";
 
 /**
  * Whether a router's Magic Hub tunnel has a recent handshake. This is the only live
