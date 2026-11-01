@@ -172,7 +172,14 @@ func (h *GuestVoucherHandler) installGuestVoucherBatch(c *gin.Context, biz, id s
 	}
 	// One transport session per batch. The router may have accepted some or all
 	// users before an error; retry must inspect these same UUID-owned users.
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 45*time.Second)
+	// Each router command is its own SSH session and takes a few seconds over
+	// the tunnel, so the budget grows with the batch; it must stay inside the
+	// claim lease so a slow install is never claimed by a second worker.
+	budget := 60*time.Second + time.Duration(len(specs))*15*time.Second
+	if budget > 4*time.Minute {
+		budget = 4 * time.Minute
+	}
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(c.Request.Context()), budget)
 	installErr := h.Provisioner.ProvisionVoucherLogins(ctx, biz, batch.DeviceID, specs)
 	cancel()
 	if installErr != nil {
