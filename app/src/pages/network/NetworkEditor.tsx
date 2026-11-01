@@ -165,7 +165,7 @@ function TaskForm({ kind, inv, defaults, routerId, routerName, locked, setLocked
           ))}
           <p className="soft small">{kind === "wan" ? t("net.hint.wan") : kind === "wifi" || kind === "wireless" ? t("net.hint.wifi") : t("net.hint.default")}</p>
           <div className="row" style={{ justifyContent: "flex-start" }}>
-            <button className="btn" type="submit" disabled={locked}>{t("net.review")}</button>
+            <button className="btn" type="submit" disabled={locked || (kind === "remove_network" && !selected)}>{t("net.review")}</button>
             {deletable && <button className="pill" type="button" disabled={locked} onClick={() => void ask(true)}>{t("net.delete")}</button>}
           </div>
         </form>
@@ -231,7 +231,7 @@ export function NetworkEditor({ workspace, router, canEdit, reason }: { workspac
   const waiting = !!pendingAt;
   const writeHold = offline ? "" : !canEdit ? t("net.needAdmin") : inv.write_enabled !== true ? t("net.writesOff")
     : (task === "wifi" || task === "wireless") && inv.wifi_write_enabled !== true ? t("net.wifiOff")
-    : (task === "ip_address" || task === "vlan") && inv.address_write_enabled !== true ? t("net.addressOff") : "";
+    : (task === "ip_address" || task === "vlan" || task === "remove_network") && inv.address_write_enabled !== true ? t("net.addressOff") : "";
   const blocked = offline ? "" : s.readOnly ? descriptions[task] : s.menu && !inv.available?.[s.menu] ? t("net.menuUnsupported") : "";
   return (
     <div className="stack">
@@ -262,7 +262,7 @@ export function NetworkEditor({ workspace, router, canEdit, reason }: { workspac
         {blocked ? <Note>{blocked}</Note> : (
           <>
             {writeHold && <Note kind="warn">{writeHold}</Note>}
-            {!writeHold && (task === "ip_address" || task === "vlan") && inv.address_preview_only === true && <Note kind="warn">{t("net.addressPreview")}</Note>}
+            {!writeHold && (task === "ip_address" || task === "vlan" || task === "remove_network") && inv.address_preview_only === true && <Note kind="warn">{t("net.addressPreview")}</Note>}
             <fieldset className="nolock" disabled={offline || !!writeHold || waiting}>
               <TaskForm key={task} kind={task} inv={inv} defaults={defaults} routerId={routerId} routerName={router?.hardware_name ?? ""} locked={locked || offline || !!writeHold || waiting} setLocked={setLocked} onPending={(at) => { setPendingNote(""); setPendingAt(at); }} />
             </fieldset>

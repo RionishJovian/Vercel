@@ -7,9 +7,10 @@ const router = { device_id: "683a4cee-97fb-4a88-a4b4-f142fdbdc78c", hardware_nam
 const row = (id: string, values: Record<string, string>) => ({ id, values: { disabled: "no", dynamic: "no", ...values } });
 const inventory = {
   interfaces: [{ name: "ether3", type: "ether" }, { name: "ether4", type: "ether" }],
-  available: { addresses: true, vlans: true },
+  available: { addresses: true, vlans: true, dhcp: true },
   objects: {
     addresses: [row("*1", { address: "192.168.60.1/24", interface: "ether4", comment: "mega-magic" }), row("*2", { address: "10.9.0.1/24", interface: "ether3", comment: "" }), row("*3", { address: "192.168.70.5/24", interface: "ether3", comment: "mega-magic", dynamic: "yes" })],
+    dhcp: [row("*20", { name: "mm-shop", interface: "mm-shop-vlan", "address-pool": "mm-shop", "lease-time": "1h" }), row("*21", { name: "dhcp1", interface: "bridge", "address-pool": "customers", "lease-time": "10m" })],
     vlans: [row("*7", { name: "guests100", "vlan-id": "100", interface: "ether3", comment: "mega-magic" })],
   },
   write_enabled: true, address_write_enabled: true,
@@ -75,5 +76,19 @@ describe("deleting what the app created", () => {
     await screen.findByText(/will be deleted/);
     fireEvent.change(container.querySelector('input[name="address"]')!, { target: { value: "192.168.61.1/24" } });
     expect(screen.queryByText(/will be deleted/)).toBeNull();
+  });
+
+  it("Remove customer network lists only networks the wizard made and sends remove_network", async () => {
+    const view = render(<I18nProvider><NetworkEditor workspace="existing" canEdit router={router} /></I18nProvider>);
+    const task = await waitFor(() => { const t = [...view.container.querySelectorAll(".task")].find((b) => /Remove customer network/.test(b.textContent ?? "")); if (!t) throw new Error("task not shown"); return t; });
+    fireEvent.click(task);
+    const select = await waitFor(() => { const s = view.container.querySelector("select.input") as HTMLSelectElement | null; if (!s) throw new Error("no record list"); return s; });
+    expect([...select.options].map((o) => o.textContent)).toEqual(["mm-shop"]);
+    const submit = screen.getByRole("button", { name: "Review changes" }) as HTMLButtonElement;
+    expect(submit.disabled).toBe(true);
+    fireEvent.change(select, { target: { value: "*20" } });
+    await waitFor(() => expect(submit.disabled).toBe(false));
+    fireEvent.submit(view.container.querySelector("form")!);
+    await waitFor(() => expect(posts[0]?.body).toEqual({ kind: "remove_network", id: "*20", values: {} }));
   });
 });

@@ -19,6 +19,7 @@ type networkRunner struct {
 	failWrite bool
 	failPing  bool
 	guard     bool
+	radius    bool
 	// Optional realism for address/VLAN tests: interface name -> type, and bridge
 	// members. When nil, every interface exists, is an ether port and is unbridged.
 	ifaces      map[string]string
@@ -139,6 +140,12 @@ func (r *networkRunner) Run(ctx context.Context, cmd string) (string, error) {
 			return "0", nil
 		}
 		return "1", nil
+	}
+	if strings.HasPrefix(cmd, "/radius print count-only") {
+		if r.radius {
+			return "1", nil
+		}
+		return "0", nil
 	}
 	if strings.HasPrefix(cmd, "/export ") || strings.HasPrefix(cmd, "/system backup ") {
 		return "", nil

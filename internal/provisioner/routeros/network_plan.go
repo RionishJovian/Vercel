@@ -99,6 +99,9 @@ func buildNetworkPlan(ctx context.Context, r CommandRunner, request NetworkReque
 	if request.Kind == "remove_ip_address" || request.Kind == "remove_vlan" {
 		return finishNetworkPlan(buildRemovePlan(ctx, r, request))
 	}
+	if request.Kind == "remove_network" {
+		return finishNetworkPlan(buildRemoveNetworkPlan(ctx, r, request))
+	}
 	v := request.Values
 	if v == nil {
 		return nil, nil, fmt.Errorf("network settings are required")
