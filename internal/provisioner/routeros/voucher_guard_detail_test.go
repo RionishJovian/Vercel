@@ -1,6 +1,10 @@
 package routeros
 
-import "testing"
+import (
+	"regexp"
+	"strings"
+	"testing"
+)
 
 // Real RouterOS 7.25 output for `/system script print value-list detail where name=...`.
 func TestParseGuardValueListRouterOS725ScriptDetail(t *testing.T) {
@@ -33,7 +37,7 @@ func TestParseGuardValueListKeepsOlderLayout(t *testing.T) {
 }
 
 func TestParseGuardDetailQuotedProfileScript(t *testing.T) {
-	out := "1  name=\"mega-magic-voucher-v2\" shared-users=1 on-login=\":global mmGuardLoginUser $user; /system script run mega-magic-voucher-guard-v2-login\" on-logout=\"\"\n"
+	out := "1  name=\"mega-magic-voucher-v3\" shared-users=1 on-login=\":global mmGuardLoginUser $user; /system script run mega-magic-voucher-guard-v3-login\" on-logout=\"\"\n"
 	m := parseGuardValueList(out)
 	if !voucherGuardProfileIsOurs(m) {
 		t.Fatalf("profile not recognised: %#v", m)
@@ -57,5 +61,22 @@ func TestParseValueListCommentLineKeepsColons(t *testing.T) {
 	m := parseValueList(out)
 	if m["comment"] != "mega-magic:vlogin:4886ae24" || m["name"] != "WPWJGMNP" || m["limit-uptime"] != "1h" {
 		t.Fatalf("comment line mis-parsed: %#v", m)
+	}
+}
+
+// RouterOS 7.25 has no ordering operators for strings: "a" > "9" aborts the
+// script with "cannot compare if string is more than string", which silently
+// disabled first-use stamping and elapsed-expiry on a real hAP ax2.
+func TestGuardScriptsNeverOrderStringsWithComparisonOperators(t *testing.T) {
+	bad := regexp.MustCompile(`[<>]=?\s*"|"\s*[<>]=?`)
+	for name, src := range map[string]string{"login": voucherGuardSourceLogin, "expiry": voucherGuardSourceExpiry} {
+		for i, line := range strings.Split(src, "\n") {
+			if strings.HasPrefix(strings.TrimSpace(line), "#") {
+				continue
+			}
+			if bad.MatchString(line) {
+				t.Errorf("%s script line %d orders a string: %s", name, i+1, strings.TrimSpace(line))
+			}
+		}
 	}
 }

@@ -13,15 +13,17 @@ import (
 )
 
 const (
-	voucherGuardScriptName = "mega-magic-voucher-guard-v1"
-	voucherGuardScheduler  = "mega-magic-voucher-guard-v1"
-	voucherGuardProfile    = "mega-magic-voucher-v2"
-	// v1 profile and login script called the login script through
-	// "/system script run", which does not receive the hotspot hook's $user, so
-	// first use was never stamped. They are only recognised to migrate users.
-	voucherGuardLegacyProfile = "mega-magic-voucher-v1"
-	voucherGuardLoginScript   = "mega-magic-voucher-guard-v2-login"
-	voucherGuardLoginUserVar  = "mmGuardLoginUser"
+	voucherGuardScriptName = "mega-magic-voucher-guard-v3"
+	voucherGuardScheduler  = "mega-magic-voucher-guard-v3"
+	voucherGuardProfile    = "mega-magic-voucher-v3"
+	// Earlier profiles shipped login/expiry scripts that RouterOS aborted
+	// (v1: $user is not visible to a called script; v2: ordering operators on
+	// strings are not supported), so first use was never stamped. They are only
+	// recognised so their users can migrate to the current profile.
+	voucherGuardLegacyProfileV1 = "mega-magic-voucher-v1"
+	voucherGuardLegacyProfileV2 = "mega-magic-voucher-v2"
+	voucherGuardLoginScript     = voucherGuardScriptName + "-login"
+	voucherGuardLoginUserVar    = "mmGuardLoginUser"
 	// voucherGuardOnLogin hands the hotspot hook's $user to the shared script
 	// through a global; local variables are not visible to the called script.
 	voucherGuardOnLogin     = ":global " + voucherGuardLoginUserVar + " $user; /system script run " + voucherGuardLoginScript
@@ -166,7 +168,7 @@ const voucherGuardSourceLogin = `:local mmGuardVersion "mega-magic:voucher-guard
     :if ($i = 8 or $i = 13 or $i = 18 or $i = 23) do={
       :if ($ch != "-") do={ :set validHex false; };
     } else={
-      :if (($ch < "0" or $ch > "9") and ($ch < "a" or $ch > "f") and ($ch < "A" or $ch > "F")) do={ :set validHex false; };
+      :if ([:typeof [:find "0123456789abcdefABCDEF" $ch]] = "nil") do={ :set validHex false; };
     };
   };
   :if ([:len $id] != 36 or $validHex = false) do={ :return; };
@@ -183,7 +185,7 @@ const voucherGuardSourceLogin = `:local mmGuardVersion "mega-magic:voucher-guard
   :for i from=0 to=16 do={
     :if ($i = 2 or $i = 5 or $i = 8 or $i = 11 or $i = 14) do={ :continue; };
     :local ch [:pick $mac $i ($i+1)];
-    :if (($ch < "0" or $ch > "9") and ($ch < "a" or $ch > "f") and ($ch < "A" or $ch > "F")) do={ :set validMacHex false; };
+    :if ([:typeof [:find "0123456789abcdefABCDEF" $ch]] = "nil") do={ :set validMacHex false; };
   };
   :if ($validMacHex = false) do={ :return; };
   # Validate unicast (first byte LSB = 0) and not all-zero
@@ -211,7 +213,7 @@ const voucherGuardSourceExpiry = `:local mmGuardVersion "mega-magic:voucher-guar
       :if ($i = 8 or $i = 13 or $i = 18 or $i = 23) do={
         :if ($ch != "-") do={ :set validHex false; };
       } else={
-        :if (($ch < "0" or $ch > "9") and ($ch < "a" or $ch > "f") and ($ch < "A" or $ch > "F")) do={ :set validHex false; };
+        :if ([:typeof [:find "0123456789abcdefABCDEF" $ch]] = "nil") do={ :set validHex false; };
       };
     };
     :if ([:len $id] != 36 or $validHex = false) do={ :continue; };
@@ -226,7 +228,7 @@ const voucherGuardSourceExpiry = `:local mmGuardVersion "mega-magic:voucher-guar
     :for i from=0 to=16 do={
       :if ($i = 2 or $i = 5 or $i = 8 or $i = 11 or $i = 14) do={ :continue; };
       :local ch [:pick $fu $i ($i+1)];
-      :if (($ch < "0" or $ch > "9") and ($ch < "a" or $ch > "f") and ($ch < "A" or $ch > "F")) do={ :set validMacHex false; };
+      :if ([:typeof [:find "0123456789abcdefABCDEF" $ch]] = "nil") do={ :set validMacHex false; };
     };
     :if ($validMacHex = false) do={ :continue; };
     # Validate unicast (first byte LSB = 0) and not all-zero
@@ -239,7 +241,7 @@ const voucherGuardSourceExpiry = `:local mmGuardVersion "mega-magic:voucher-guar
     :local validEpoch true;
     :for i from=0 to=9 do={
       :local digit [:pick $epochText $i ($i+1)];
-      :if ($digit < "0" or $digit > "9") do={ :set validEpoch false; };
+      :if ([:typeof [:find "0123456789" $digit]] = "nil") do={ :set validEpoch false; };
     };
     :if ($validEpoch = false) do={ :continue; };
     :local ft [:tonum $epochText];
