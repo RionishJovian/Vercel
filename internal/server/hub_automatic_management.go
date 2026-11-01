@@ -253,8 +253,9 @@ func automaticEnrollmentScript(id string, p pendingManagement) (string, error) {
 	management = strings.ReplaceAll(management, "10.77.0.9/32", p.sourceCIDR)
 	// The tunnel block's header says it never touches SSH or users; this combined
 	// paste does, so say what it really changes before the operator runs it.
-	tunnel = strings.Replace(tunnel, "# Scoped tunnel only. Does not enable SSH/REST or change WAN/LAN/firewall/users.",
-		"# Creates the Magic Hub tunnel, then a dedicated management user, its group and SSH key,\n# lets SSH in from the Hub address only, and adds one input firewall rule for it.\n# WAN, LAN and your other users are not changed.", 1)
+	const combinedNote = "# Checks this router's internet path first (changes nothing if it fails), turns on the NTP clock client\n# if it is off, creates the Magic Hub tunnel, then a dedicated management user, its group and SSH key,\n# lets SSH in from the Hub address only, and adds one input firewall rule for it.\n# WAN, LAN and your other users are not changed.\n# Do not save this into System > Scripts: it contains this router's private key."
+	tunnel = strings.Replace(tunnel, hub.QuickScopeNote, combinedNote, 1)
+	tunnel = strings.Replace(tunnel, hub.TunnelScopeNote, combinedNote, 1)
 	return strings.TrimSuffix(tunnel, "\n}") + "\n" + strings.TrimPrefix(management, "{\n"), nil
 }
 

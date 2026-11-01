@@ -69,6 +69,64 @@ func BootstrapScript(deviceID string) (string, error) {
 }`, name, name, marker, name, marker), nil
 }
 
+// Header lines other code recognises when it rewrites a tunnel script's claims.
+const (
+	TunnelScopeNote = "# Scoped tunnel only. Does not enable SSH/REST or change WAN/LAN/firewall/users."
+	QuickScopeNote  = "# Checks this router's internet path first (changes nothing if it fails), turns on the NTP clock client\n# if it is off, then creates the Magic Hub tunnel. WAN, LAN, firewall and users are not changed.\n# Do not save this into System > Scripts: it contains this router's private key."
+)
+
+// preflightBlock checks, before anything is changed, that the router has an
+// internet path. Only definitive configuration errors stop the paste; a failed
+// ping only warns because some networks drop ICMP while WireGuard still works.
+const preflightBlock = `# Pre-flight (changes nothing): the tunnel needs an internet path from this router.
+:local problems 0
+:if ([:len [/ip/route find where dst-address="0.0.0.0/0"]] = 0) do={ :put "STOP: this router has no default route, so it has no internet path."; :set problems ($problems + 1) }
+:local dup ""
+:foreach a in=[/ip/address find where !disabled] do={
+  :local addr [/ip/address get $a address]
+  :if ([:len [/ip/address find where address=$addr and !disabled]] > 1 && $addr != $dup) do={ :set dup $addr; :put ("STOP: the same address is on more than one interface: " . $addr); :set problems ($problems + 1) }
+}
+:local replies 1
+:do { :set replies [/ping 8.8.8.8 count=3] } on-error={}
+:if ($replies = 0) do={ :put "WARNING: this router got no reply from 8.8.8.8. Check its internet access; the tunnel may not connect." }
+:if ($problems > 0) do={ :error "Magic Hub NOT installed. Fix the STOP lines above, then paste again." }
+`
+
+// clockPrepBlock turns on the NTP client only when it is off: voucher first-use
+// and expiry stamps need a correct router clock. The time zone is not changed.
+const clockPrepBlock = `# Clock: voucher first-use and expiry need a correct router clock.
+:if (![/system/ntp/client get enabled]) do={
+  :put "NTP clock client was off; turning it on."
+  :do { /system/ntp/client set enabled=yes servers=time.cloudflare.com,time.google.com } on-error={
+    :do { /system/ntp/client set enabled=yes } on-error={}
+    :do { /system/ntp/client/servers add address=time.cloudflare.com } on-error={}
+    :do { /system/ntp/client/servers add address=time.google.com } on-error={}
+  }
+}
+`
+
+// clockReportBlock runs after the handshake wait, giving NTP time to correct a
+// clock that started wrong. 1735689600 is 2025-01-01, before this feature existed.
+const clockReportBlock = `:local clockNow ([:tonsec [:timestamp]] / 1000000000)
+:put ("Router clock: " . [/system/clock get date] . " " . [/system/clock get time])
+:if ($clockNow < 1735689600) do={ :put "WARNING: the router clock still looks wrong. Vouchers need a correct clock; NTP needs internet and a few minutes to correct it." }
+`
+
+// handshakeWaitBlock tells the operator whether the Hub answered, instead of
+// printing a peer that cannot have a handshake yet.
+func handshakeWaitBlock(name, host string, port int) string {
+	return fmt.Sprintf(`:put "Waiting up to 12 seconds for the Hub to answer..."
+:local waited 0
+:local shaken false
+:while ($waited < 12 && !$shaken) do={
+  :delay 1s
+  :set waited ($waited + 1)
+  :do { :if ([:typeof [/interface/wireguard/peers get [find where interface="%s"] last-handshake]] = "time") do={ :set shaken true } } on-error={}
+}
+:if ($shaken) do={ :put "Hub handshake OK: the tunnel is up." } else={ :put "No Hub handshake yet. Check this router's internet access and that UDP to %s:%d is not blocked, then use Check Magic Hub in the app." }
+`, name, host, port)
+}
+
 var endpointName = regexp.MustCompile(`^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$`)
 
 func scriptKey(value string) bool {
@@ -106,7 +164,7 @@ func BuildRouterScripts(deviceID string, peer Peer) (RouterScripts, error) {
 	bootstrap, _ := BootstrapScript(deviceID)
 	setup := fmt.Sprintf(`{
 # Magic Hub step 2. Review, then paste the entire block in WinBox New Terminal.
-# Scoped tunnel only. Does not enable SSH/REST or change WAN/LAN/firewall/users.
+%s
 :local iface [/interface/wireguard find where name="%s"]
 :if ([:len $iface] != 1) do={ :error "STOP: run step 1 first" }
 :if ([/interface/wireguard get $iface comment] != "%s") do={ :error "STOP: interface ownership mismatch" }
@@ -127,7 +185,7 @@ func BuildRouterScripts(deviceID string, peer Peer) (RouterScripts, error) {
   :if ([/ip/address get $addr comment] != "%s" || [/ip/address get $addr address] != "%s") do={ :error "STOP: existing address mismatch" }
   :if ([/ip/address get $addr disabled]) do={ :error "STOP: existing tunnel address disabled" }
 }
-`, name, marker, peer.RouterPublicKey, name, marker, peer.HubPublicKey, host, port, strings.Join(peer.AllowedIPs, ";"), name, marker, peer.TunnelAddress)
+`, TunnelScopeNote, name, marker, peer.RouterPublicKey, name, marker, peer.HubPublicKey, host, port, strings.Join(peer.AllowedIPs, ";"), name, marker, peer.TunnelAddress)
 	setup += fmt.Sprintf(`:local assigned [/ip/address find where address="%s"]
 :if ([:len $assigned] > 1) do={ :error "STOP: duplicate tunnel address" }
 :if ([:len $assigned] = 1) do={
@@ -152,7 +210,9 @@ func BuildRouterScripts(deviceID string, peer Peer) (RouterScripts, error) {
 	for _, raw := range peer.AllowedIPs {
 		setup += fmt.Sprintf(":if ([:len [/ip/route find where dst-address=\"%s\"]] = 0) do={ /ip/route add dst-address=%s gateway=\"%s\" comment=\"%s\" }\n", raw, raw, name, marker)
 	}
-	setup += fmt.Sprintf(":put \"Tunnel configured. Return to the app and Check Magic Hub. A handshake is not management authentication.\"\n/interface/wireguard/peers print where interface=\"%s\"\n}", name)
+	setup += ":put \"Tunnel configured. Return to the app and Check Magic Hub. A handshake is not management authentication.\"\n"
+	setup += handshakeWaitBlock(name, host, port)
+	setup += fmt.Sprintf("/interface/wireguard/peers print where interface=\"%s\"\n}", name)
 	disconnect := fmt.Sprintf(`{
 # Disconnect the tunnel of this enrollment. Keeps the router's interface/private key for reconnection.
 # A management user (mm-...), its group, SSH key and firewall rule from the one-paste setup are NOT removed;
@@ -200,9 +260,16 @@ func BuildQuickConnectScript(deviceID string, peer Peer, privateKey string) (str
 	if idx < 0 {
 		return "", fmt.Errorf("invalid generated setup script")
 	}
-	setup := scripts.Setup[:idx] + insert + scripts.Setup[idx:]
+	setup := scripts.Setup[:idx] + preflightBlock + clockPrepBlock + insert + scripts.Setup[idx:]
 	setup = strings.Replace(setup, "# Magic Hub step 2. Review, then paste the entire block in WinBox New Terminal.", "# Magic Hub one-paste setup. Paste the entire block in WinBox New Terminal.", 1)
 	setup = strings.Replace(setup, "STOP: run step 1 first", "STOP: Magic Hub interface creation failed", 1)
+	setup = strings.Replace(setup, TunnelScopeNote, QuickScopeNote, 1)
+	// Report the clock after the handshake wait, when NTP has had time to correct it.
+	finalPrint := "/interface/wireguard/peers print where interface=\"" + name + "\"\n}"
+	if !strings.HasSuffix(setup, finalPrint) {
+		return "", fmt.Errorf("invalid generated setup script")
+	}
+	setup = strings.TrimSuffix(setup, finalPrint) + clockReportBlock + finalPrint
 	return setup, nil
 }
 

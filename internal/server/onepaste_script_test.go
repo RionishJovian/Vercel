@@ -23,6 +23,7 @@ var (
 	knownPaths   = map[string]bool{
 		"/interface/wireguard": true, "/interface/wireguard/peers": true, "/ip/address": true, "/ip/route": true,
 		"/ip/service": true, "/ip/firewall/filter": true, "/user": true, "/user/group": true, "/user/ssh-keys": true, "/file": true,
+		"/ping": true, "/system/clock": true, "/system/ntp/client": true, "/system/ntp/client/servers": true,
 	}
 )
 
@@ -201,6 +202,45 @@ func TestOnePasteScriptsAreWellFormedRouterOS(t *testing.T) {
 	for n, line := range strings.Split(fullDisconnect, "\n") {
 		if strings.Contains(line, " remove ") && !strings.Contains(line, ":if ([:len") && !strings.Contains(line, "/user remove $account") {
 			t.Errorf("full disconnect line %d removes without checking something exists: %.80s", n+1, line)
+		}
+	}
+	// Pre-flight, clock and handshake behaviour of the one-paste scripts.
+	before := func(script, first, second string) bool {
+		i, j := strings.Index(script, first), strings.Index(script, second)
+		return i >= 0 && j >= 0 && i < j
+	}
+	for name, script := range map[string]string{"one-paste tunnel": quick, "one-paste tunnel + management": combined} {
+		if !before(script, `:error "Magic Hub NOT installed`, "/interface/wireguard add") || !before(script, `:error "Magic Hub NOT installed`, "/system/ntp/client set") {
+			t.Errorf("%s: pre-flight must run before anything is changed", name)
+		}
+		if !before(script, "/system/ntp/client set", "/interface/wireguard add") {
+			t.Errorf("%s: clock preparation should precede the tunnel", name)
+		}
+		if !strings.Contains(script, `STOP: this router has no default route`) || !strings.Contains(script, `STOP: the same address is on more than one interface`) {
+			t.Errorf("%s: missing definitive pre-flight STOP checks", name)
+		}
+		// A failed ping must only warn: some networks drop ICMP while WireGuard works.
+		if !strings.Contains(script, `WARNING: this router got no reply from 8.8.8.8`) || strings.Contains(script, `:error "STOP: this board cannot reach`) {
+			t.Errorf("%s: a failed ping must warn, not stop", name)
+		}
+		if !before(script, "Waiting up to 12 seconds", "Router clock:") {
+			t.Errorf("%s: the clock is reported after the handshake wait", name)
+		}
+		if !strings.Contains(script, "NTP clock client") || !strings.Contains(script, "Do not save this into System > Scripts") {
+			t.Errorf("%s: header must disclose the NTP change and warn about the private key", name)
+		}
+		if strings.Contains(script, "firewall and users are not changed") && strings.Contains(script, "/user add") {
+			t.Errorf("%s: header says firewall and users are untouched but the paste changes them", name)
+		}
+	}
+	for name, script := range map[string]string{"step 2 setup": scripts.Setup, "bootstrap": scripts.Bootstrap, "disconnect": fullDisconnect} {
+		if strings.Contains(script, "/system/ntp") || strings.Contains(script, "/ping") {
+			t.Errorf("%s must not run the one-paste pre-flight or change the clock", name)
+		}
+	}
+	for name, script := range map[string]string{"step 2 setup": scripts.Setup, "one-paste tunnel": quick} {
+		if !strings.Contains(script, "last-handshake") || !strings.Contains(script, "UDP to 156.67.216.128:51820 is not blocked") {
+			t.Errorf("%s must report the handshake result and name the Hub endpoint", name)
 		}
 	}
 	// The private WireGuard key may appear only in the one-paste scripts.
