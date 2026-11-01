@@ -174,5 +174,6 @@ func (a *DeviceApplier) ConfigureSecureWebFig(ctx context.Context, businessID, d
 	}
 	result.Certificate = certificate
 	result.Verified = true
+	pruneSnapshotsLater(runner)
 	return result, nil
 }

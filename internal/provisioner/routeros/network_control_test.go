@@ -20,6 +20,7 @@ type networkRunner struct {
 	failPing  bool
 	guard     bool
 	radius    bool
+	files     []string
 	// Optional realism for address/VLAN tests: interface name -> type, and bridge
 	// members. When nil, every interface exists, is an ether port and is unbridged.
 	ifaces      map[string]string
@@ -140,6 +141,20 @@ func (r *networkRunner) Run(ctx context.Context, cmd string) (string, error) {
 			return "0", nil
 		}
 		return "1", nil
+	}
+	if strings.HasPrefix(cmd, `:foreach f in=[/file find where name~"^mm-snap-"]`) {
+		return strings.Join(r.files, "\n") + "\n", nil
+	}
+	if strings.HasPrefix(cmd, `/file remove [find where name="`) {
+		name := strings.TrimSuffix(strings.TrimPrefix(cmd, `/file remove [find where name="`), `"]`)
+		kept := r.files[:0:0]
+		for _, f := range r.files {
+			if f != name {
+				kept = append(kept, f)
+			}
+		}
+		r.files = kept
+		return "", nil
 	}
 	if strings.HasPrefix(cmd, "/radius print count-only") {
 		if r.radius {
@@ -484,3 +499,5 @@ func TestNetworkWANAtomicApplyUpdateAndHealthRollback(t *testing.T) {
 		t.Fatalf("failed WAN probe did not restore prior state: %+v %v", result, e)
 	}
 }
+
+func init() { runPrune = func(f func()) { f() } } // deterministic: tests run cleanup inline
