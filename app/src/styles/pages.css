@@ -265,6 +265,9 @@ label.pill input[type="file"] { display: none; }
 .rc-pic img { width: 52px; height: 52px; object-fit: contain; opacity: .55; filter: saturate(.4); }
 :root[data-theme="night"] .rc-pic img[src$=".svg"] { filter: brightness(0) invert(.85); }
 .rc-pic.on img { opacity: 1; filter: none; }
+/* Product photos have a white studio background: show them on a light plate, never on the dark glass. */
+.rc-pic img[src$=".jpg"] { width: 100%; height: 100%; padding: 7px; box-sizing: border-box; border-radius: inherit; background: #f4f6f5; filter: none; }
+.rc-pic.sm img[src$=".jpg"] { width: 100%; height: 100%; padding: 4px; }
 :root[data-theme="night"] .rc-pic.on img[src$=".svg"] { filter: brightness(0) invert(.9); }
 .rc-led { position: absolute; right: 8px; top: 8px; width: 11px; height: 11px; border-radius: 50%; background: color-mix(in srgb, var(--bad) 70%, transparent); border: 1px solid var(--bad); }
 .rc-pic.on .rc-led { background: var(--ok); border-color: var(--ok); box-shadow: 0 0 10px var(--ok); animation: pulse 2.4s ease-in-out infinite; }
