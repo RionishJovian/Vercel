@@ -7,10 +7,12 @@ const router = { device_id: "683a4cee-97fb-4a88-a4b4-f142fdbdc78c", hardware_nam
 const row = (id: string, values: Record<string, string>) => ({ id, values: { disabled: "no", dynamic: "no", ...values } });
 const inventory = {
   interfaces: [{ name: "ether3", type: "ether" }, { name: "ether4", type: "ether" }],
-  available: { addresses: true, vlans: true, dhcp: true },
+  available: { addresses: true, vlans: true, dhcp: true, pools: true, dhcp_networks: true },
   objects: {
     addresses: [row("*1", { address: "192.168.60.1/24", interface: "ether4", comment: "mega-magic" }), row("*2", { address: "10.9.0.1/24", interface: "ether3", comment: "" }), row("*3", { address: "192.168.70.5/24", interface: "ether3", comment: "mega-magic", dynamic: "yes" })],
     dhcp: [row("*20", { name: "mm-shop", interface: "mm-shop-vlan", "address-pool": "mm-shop", "lease-time": "1h" }), row("*21", { name: "dhcp1", interface: "bridge", "address-pool": "customers", "lease-time": "10m" })],
+    pools: [row("*30", { name: "mm-shop", ranges: "192.168.99.10-192.168.99.200" })],
+    dhcp_networks: [row("*31", { address: "192.168.99.0/24", gateway: "192.168.99.1", "dns-server": "1.1.1.1,8.8.8.8", comment: "mm-shop" })],
     vlans: [row("*7", { name: "guests100", "vlan-id": "100", interface: "ether3", comment: "mega-magic" })],
   },
   write_enabled: true, address_write_enabled: true,
@@ -90,5 +92,21 @@ describe("deleting what the app created", () => {
     await waitFor(() => expect(submit.disabled).toBe(false));
     fireEvent.submit(view.container.querySelector("form")!);
     await waitFor(() => expect(posts[0]?.body).toEqual({ kind: "remove_network", id: "*20", values: {} }));
+  });
+
+  it("Edit customer network shows the network's current values and sends all five fields as one reviewed change", async () => {
+    const view = render(<I18nProvider><NetworkEditor workspace="existing" canEdit router={router} /></I18nProvider>);
+    const task = await waitFor(() => { const t = [...view.container.querySelectorAll(".task")].find((b) => /Edit customer network/.test(b.textContent ?? "")); if (!t) throw new Error("task not shown"); return t; });
+    fireEvent.click(task);
+    const select = await waitFor(() => { const s = view.container.querySelector("select.input") as HTMLSelectElement | null; if (!s) throw new Error("no record list"); return s; });
+    expect([...select.options].map((o) => o.textContent)).toEqual(["mm-shop"]);
+    fireEvent.change(select, { target: { value: "*20" } });
+    await waitFor(() => expect((view.container.querySelector('input[name="pool_start"]') as HTMLInputElement).value).toBe("192.168.99.10"));
+    expect((view.container.querySelector('input[name="pool_end"]') as HTMLInputElement).value).toBe("192.168.99.200");
+    expect((view.container.querySelector('input[name="dns"]') as HTMLInputElement).value).toBe("1.1.1.1,8.8.8.8");
+    expect((view.container.querySelector('input[name="lease-time"]') as HTMLInputElement).value).toBe("1h");
+    fireEvent.change(view.container.querySelector('input[name="lease-time"]')!, { target: { value: "2h" } });
+    fireEvent.submit(view.container.querySelector("form")!);
+    await waitFor(() => expect(posts[0]?.body).toEqual({ kind: "edit_network", id: "*20", values: { pool_start: "192.168.99.10", pool_end: "192.168.99.200", "lease-time": "2h", dns: "1.1.1.1,8.8.8.8", disabled: "no" } }));
   });
 });

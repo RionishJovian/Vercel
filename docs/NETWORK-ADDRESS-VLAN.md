@@ -117,6 +117,21 @@ Not yet proven on real hardware, and the timing is unmeasured: about 14 router
 commands in one apply, at roughly 3 seconds each over the tunnel, inside a 90 second
 limit.
 
+## Editing a customer network (stage 1)
+
+**LAN and Hotspot → Edit customer network** changes, as one reviewed change, the
+client address range, lease time, client DNS and whether DHCP is on for a network
+made by *Create customer network*. The form is pre-filled from the router. Only
+differences become steps (pool, client settings, DHCP service), each verified, with
+the usual backup, restore timer and verified rollback. The subnet, gateway, NAT and
+any Hotspot are never touched, so a Hotspot network can be edited; turning DHCP off
+on one warns that guests cannot sign in. The range must be ordered, inside the
+network and exclude the gateway, network and broadcast addresses; DNS must be 1-4
+public-style IPv4 addresses; lease time 1 minute to 7 days. Refused with a reason:
+a service not named `mm-...`, several ranges, a pool shared with another service,
+a missing or duplicated piece, and a port that carries the uplink or the Hub.
+Moving the subnet or gateway is a separate, later step (confirm-or-revert).
+
 ## Tidying old backup files on the router
 
 Every guarded change saves `mm-snap-<device>-<kind>-<time>.rsc` and `.backup` on the

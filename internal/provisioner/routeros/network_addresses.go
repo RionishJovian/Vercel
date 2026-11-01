@@ -631,22 +631,7 @@ func buildRemoveNetworkPlan(ctx context.Context, r CommandRunner, request Networ
 		return nil, nil, err
 	}
 	owned := func(menu, key, field, value string, required bool) (string, error) {
-		n, e := count(menu, field+"="+routerOSQuoted(value))
-		if e != nil {
-			return "", e
-		}
-		if n > 1 || (required && n != 1) {
-			return "", fmt.Errorf("%s: expected exactly one %s record, found %d", name, key, n)
-		}
-		if n == 0 {
-			return "", nil
-		}
-		out, e := r.Run(ctx, `:put [`+menu+` find where `+field+`=`+routerOSQuoted(value)+`]`)
-		id := strings.TrimSpace(out)
-		if e != nil || !networkIDPattern.MatchString(id) {
-			return "", fmt.Errorf("%s: could not identify the %s record", name, key)
-		}
-		return id, nil
+		return networkOwnedID(ctx, r, name, menu, key, field, value, required)
 	}
 	type part struct {
 		key, menu, field, value, label string
@@ -701,6 +686,162 @@ func buildRemoveNetworkPlan(ctx context.Context, r CommandRunner, request Networ
 	warnings := []string{"This removes the whole customer network " + name + ". Devices on it lose their addresses and internet. The router puts every piece back within three minutes if anything goes wrong, and a full copy of its settings is saved first."}
 	if n, e := count("/ip dhcp-server lease", "server="+routerOSQuoted(name)); e == nil && n > 0 {
 		warnings = append(warnings, strconv.Itoa(n)+" device(s) currently hold an address on this network.")
+	}
+	return steps, warnings, nil
+}
+
+// networkOwnedID finds the one record of a customer network's own by its exact name or
+// comment. Zero is allowed unless required; more than one is always refused.
+func networkOwnedID(ctx context.Context, r CommandRunner, network, menu, key, field, value string, required bool) (string, error) {
+	n, err := networkCount(ctx, r, menu+" print count-only where "+field+"="+routerOSQuoted(value))
+	if err != nil {
+		return "", err
+	}
+	if n > 1 || (required && n != 1) {
+		return "", fmt.Errorf("%s: expected exactly one %s record, found %d", network, key, n)
+	}
+	if n == 0 {
+		return "", nil
+	}
+	out, err := r.Run(ctx, `:put [`+menu+` find where `+field+`=`+routerOSQuoted(value)+`]`)
+	id := strings.TrimSpace(out)
+	if err != nil || !networkIDPattern.MatchString(id) {
+		return "", fmt.Errorf("%s: could not identify the %s record", network, key)
+	}
+	return id, nil
+}
+
+// buildEditNetworkPlan changes the client-facing settings of a customer network made
+// by Create customer network as one reviewed change: the DHCP range, lease time,
+// client DNS and whether DHCP is on. It never touches the subnet, the gateway, NAT or
+// a Hotspot, so a network with a Hotspot can be edited too. A pool or DHCP service
+// shared with anything else is refused.
+func buildEditNetworkPlan(ctx context.Context, r CommandRunner, request NetworkRequest) ([]networkStep, []string, error) {
+	v := request.Values
+	if !networkIDPattern.MatchString(request.ID) {
+		return nil, nil, fmt.Errorf("choose the customer network to edit")
+	}
+	server, err := networkReadOne(ctx, r, "dhcp", request.ID, map[string]string{"name": "", "interface": "", "address-pool": "", "lease-time": "", "disabled": ""})
+	if err != nil {
+		return nil, nil, err
+	}
+	name, iface := server["name"], server["interface"]
+	if !networkOwnedNetworkName.MatchString(name) || server["address-pool"] != name {
+		return nil, nil, fmt.Errorf("this DHCP service was not created by Create customer network, so it is not edited here")
+	}
+	if strings.HasPrefix(iface, "mmh-") {
+		return nil, nil, fmt.Errorf("%s is protected, so its network is not edited here", iface)
+	}
+	up, err := networkUplinkInterfaces(ctx, r)
+	if err != nil {
+		return nil, nil, err
+	}
+	if up[iface] {
+		return nil, nil, fmt.Errorf("%s carries your internet uplink; its network is protected", iface)
+	}
+	if n, e := networkCount(ctx, r, "/ip dhcp-server print count-only where address-pool="+routerOSQuoted(name)); e != nil || n != 1 {
+		return nil, nil, fmt.Errorf("the address pool %s is shared or missing; it is not edited here", name)
+	}
+	poolID, err := networkOwnedID(ctx, r, name, "/ip pool", "pools", "name", name, true)
+	if err != nil {
+		return nil, nil, err
+	}
+	netID, err := networkOwnedID(ctx, r, name, "/ip dhcp-server network", "dhcp_networks", "comment", name, true)
+	if err != nil {
+		return nil, nil, err
+	}
+	pool, err := networkReadOne(ctx, r, "pools", poolID, map[string]string{"ranges": ""})
+	if err != nil {
+		return nil, nil, err
+	}
+	scope, err := networkReadOne(ctx, r, "dhcp_networks", netID, map[string]string{"address": "", "gateway": "", "dns-server": ""})
+	if err != nil {
+		return nil, nil, err
+	}
+	steps := []networkStep{}
+	warnings := []string{"This changes how devices on " + name + " get their addresses. Devices keep the address they already have until their lease ends."}
+
+	// DHCP range.
+	if v["pool_start"] != "" || v["pool_end"] != "" {
+		ends := strings.Split(pool["ranges"], "-")
+		if len(ends) != 2 || !networkIPv4(ends[0]) || !networkIPv4(ends[1]) {
+			return nil, nil, fmt.Errorf("%s uses several address ranges; edit it where it was created", name)
+		}
+		start, end := firstNonEmpty(strings.TrimSpace(v["pool_start"]), ends[0]), firstNonEmpty(strings.TrimSpace(v["pool_end"]), ends[1])
+		if !networkIPv4(start) || !networkIPv4(end) {
+			return nil, nil, fmt.Errorf("provide IPv4 addresses for the first and last client address")
+		}
+		_, network, e := net.ParseCIDR(scope["address"])
+		gw := net.ParseIP(scope["gateway"])
+		if e != nil || network.IP.To4() == nil || gw.To4() == nil {
+			return nil, nil, fmt.Errorf("the network's address or gateway could not be read safely")
+		}
+		first, last := net.ParseIP(start), net.ParseIP(end)
+		lo, hi, host, base := gatewayIPv4Number(first), gatewayIPv4Number(last), gatewayIPv4Number(gw), gatewayIPv4Number(network.IP)
+		broadcast := base | ^gatewayIPv4Number(net.IP(network.Mask))
+		if !network.Contains(first) || !network.Contains(last) || lo > hi {
+			return nil, nil, fmt.Errorf("the client range must be ordered and inside %s", network.String())
+		}
+		if lo <= base || hi >= broadcast || (host >= lo && host <= hi) {
+			return nil, nil, fmt.Errorf("the client range must exclude the gateway, network and broadcast addresses")
+		}
+		if step, e := networkEditStep(ctx, r, "pools", poolID, "Change DHCP range of "+name, map[string]string{"ranges": start + "-" + end}); e != nil {
+			return nil, nil, e
+		} else if step != nil {
+			steps = append(steps, *step)
+			warnings = append(warnings, "Devices holding an address outside the new range keep it until their lease ends, then get one inside the range.")
+		}
+	}
+
+	// Client DNS.
+	if dns := strings.TrimSpace(v["dns"]); dns != "" {
+		list := strings.Split(dns, ",")
+		if len(list) > 4 {
+			return nil, nil, fmt.Errorf("provide 1-4 IPv4 DNS servers")
+		}
+		clean := make([]string, 0, len(list))
+		for _, item := range list {
+			ip := net.ParseIP(strings.TrimSpace(item))
+			if ip.To4() == nil || ip.IsUnspecified() || ip.IsMulticast() {
+				return nil, nil, fmt.Errorf("invalid client DNS address")
+			}
+			clean = append(clean, ip.To4().String())
+		}
+		if step, e := networkEditStep(ctx, r, "dhcp_networks", netID, "Change client DNS of "+name, map[string]string{"dns-server": strings.Join(clean, ",")}); e != nil {
+			return nil, nil, e
+		} else if step != nil {
+			steps = append(steps, *step)
+		}
+	}
+
+	// Lease time and DHCP on/off, both on the DHCP service.
+	serverValues := map[string]string{}
+	if lease := strings.TrimSpace(v["lease-time"]); lease != "" {
+		seconds, ok := networkDurationSeconds(lease)
+		if !ok || seconds < 60 || seconds > 7*24*3600 {
+			return nil, nil, fmt.Errorf("DHCP lease time must be 1 minute through 7 days")
+		}
+		serverValues["lease-time"] = lease
+	}
+	if state, given := v["disabled"]; given {
+		disabled, e := networkEnabledState(state)
+		if e != nil {
+			return nil, nil, e
+		}
+		serverValues["disabled"] = disabled
+		if disabled == "yes" && networkBool(server["disabled"]) != "yes" {
+			warnings = append(warnings, "Turning DHCP off stops new devices from getting an address on "+name+".")
+			if n, e := networkCount(ctx, r, "/ip hotspot print count-only where interface="+routerOSQuoted(iface)); e == nil && n > 0 {
+				warnings = append(warnings, name+" has a Hotspot: guests cannot sign in without an address.")
+			}
+		}
+	}
+	if len(serverValues) > 0 {
+		if step, e := networkEditStep(ctx, r, "dhcp", request.ID, "Change DHCP service of "+name, serverValues); e != nil {
+			return nil, nil, e
+		} else if step != nil {
+			steps = append(steps, *step)
+		}
 	}
 	return steps, warnings, nil
 }

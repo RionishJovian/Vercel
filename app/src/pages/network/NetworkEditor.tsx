@@ -3,7 +3,7 @@ import { api, ApiError, isUnauthorized } from "../../lib/api";
 import { useI18n } from "../../i18n";
 import { Note } from "../../components/ui";
 import { Skeleton } from "../../components/Skeleton";
-import { choices, currentNames, descriptions, initialValues, isSecretField, labelOf, listFor, objectsOf, payloadValues, schema, workspaceInfo, type Field, type Inventory, type Workspace } from "./schema";
+import { choices, currentNames, descriptions, editNetworkValues, initialValues, isSecretField, labelOf, listFor, objectsOf, payloadValues, schema, workspaceInfo, type Field, type Inventory, type Workspace } from "./schema";
 import type { RouterRow } from "../routers";
 
 interface Review { steps: string[]; warnings: string[]; confirmation: string }
@@ -74,12 +74,13 @@ function TaskForm({ kind, inv, defaults, routerId, routerName, locked, setLocked
   const s = schema[kind], list = useMemo(() => listFor(inv, kind), [inv, kind]);
   const [recordId, setRecordId] = useState("");
   const selected = list.find((o) => o.id === recordId);
-  const [values, setValues] = useState<Record<string, string>>(() => initialValues(kind, undefined, defaults));
+  const start = (record: typeof selected) => (kind === "edit_network" && record ? { ...initialValues(kind, record, defaults), ...editNetworkValues(inv, record) } : initialValues(kind, record, defaults));
+  const [values, setValues] = useState<Record<string, string>>(() => start(undefined));
   const [review, setReview] = useState<Review | null>(null);
   const [consent, setConsent] = useState(false), [status, setStatus] = useState("");
   const [applied, setApplied] = useState(false), [removing, setRemoving] = useState(false);
   const stamp = useRef(0);
-  useEffect(() => { setValues(initialValues(kind, selected, defaults)); setReview(null); setConsent(false); setStatus(""); setApplied(false); setRemoving(false); stamp.current++; }, [kind, recordId, selected, defaults]);
+  useEffect(() => { setValues(start(selected)); setReview(null); setConsent(false); setStatus(""); setApplied(false); setRemoving(false); stamp.current++; }, [kind, recordId, selected, defaults]);
 
   const portTypes = kind === "vlan" ? ["ether", "bridge", "bond"] : kind === "ip_address" ? ["ether", "bridge", "bond", "vlan"] : ["ether", "bridge", "vlan", "bond", "pppoe-out"];
   const eligible = (inv.interfaces ?? []).filter((i) => portTypes.includes(i.type));
@@ -165,7 +166,7 @@ function TaskForm({ kind, inv, defaults, routerId, routerName, locked, setLocked
           ))}
           <p className="soft small">{kind === "wan" ? t("net.hint.wan") : kind === "wifi" || kind === "wireless" ? t("net.hint.wifi") : t("net.hint.default")}</p>
           <div className="row" style={{ justifyContent: "flex-start" }}>
-            <button className="btn" type="submit" disabled={locked || (kind === "remove_network" && !selected)}>{t("net.review")}</button>
+            <button className="btn" type="submit" disabled={locked || ((kind === "remove_network" || kind === "edit_network") && !selected)}>{t("net.review")}</button>
             {deletable && <button className="pill" type="button" disabled={locked} onClick={() => void ask(true)}>{t("net.delete")}</button>}
           </div>
         </form>
@@ -231,7 +232,7 @@ export function NetworkEditor({ workspace, router, canEdit, reason }: { workspac
   const waiting = !!pendingAt;
   const writeHold = offline ? "" : !canEdit ? t("net.needAdmin") : inv.write_enabled !== true ? t("net.writesOff")
     : (task === "wifi" || task === "wireless") && inv.wifi_write_enabled !== true ? t("net.wifiOff")
-    : (task === "ip_address" || task === "vlan" || task === "remove_network") && inv.address_write_enabled !== true ? t("net.addressOff") : "";
+    : (task === "ip_address" || task === "vlan" || task === "remove_network" || task === "edit_network") && inv.address_write_enabled !== true ? t("net.addressOff") : "";
   const blocked = offline ? "" : s.readOnly ? descriptions[task] : s.menu && !inv.available?.[s.menu] ? t("net.menuUnsupported") : "";
   return (
     <div className="stack">
@@ -262,7 +263,7 @@ export function NetworkEditor({ workspace, router, canEdit, reason }: { workspac
         {blocked ? <Note>{blocked}</Note> : (
           <>
             {writeHold && <Note kind="warn">{writeHold}</Note>}
-            {!writeHold && (task === "ip_address" || task === "vlan" || task === "remove_network") && inv.address_preview_only === true && <Note kind="warn">{t("net.addressPreview")}</Note>}
+            {!writeHold && (task === "ip_address" || task === "vlan" || task === "remove_network" || task === "edit_network") && inv.address_preview_only === true && <Note kind="warn">{t("net.addressPreview")}</Note>}
             <fieldset className="nolock" disabled={offline || !!writeHold || waiting}>
               <TaskForm key={task} kind={task} inv={inv} defaults={defaults} routerId={routerId} routerName={router?.hardware_name ?? ""} locked={locked || offline || !!writeHold || waiting} setLocked={setLocked} onPending={(at) => { setPendingNote(""); setPendingAt(at); }} />
             </fieldset>
