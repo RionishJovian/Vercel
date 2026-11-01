@@ -33,7 +33,7 @@ func TestParseGuardValueListKeepsOlderLayout(t *testing.T) {
 }
 
 func TestParseGuardDetailQuotedProfileScript(t *testing.T) {
-	out := "1  name=\"mega-magic-voucher-v1\" shared-users=1 on-login=\"/system script run mega-magic-voucher-guard-v1-login\" on-logout=\"\"\n"
+	out := "1  name=\"mega-magic-voucher-v2\" shared-users=1 on-login=\":global mmGuardLoginUser $user; /system script run mega-magic-voucher-guard-v2-login\" on-logout=\"\"\n"
 	m := parseGuardValueList(out)
 	if !voucherGuardProfileIsOurs(m) {
 		t.Fatalf("profile not recognised: %#v", m)

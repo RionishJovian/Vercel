@@ -273,7 +273,7 @@ func TestVoucherGuardInstallsLoginExpiryScriptsSchedulerAndOwnedProfile(t *testi
 	// The full login source must round-trip: the fixture stores exactly the source
 	// shipped in the add command, and the verifier requires exact equality.
 	escapedLoginSource := voucherGuardSourceLogin
-	if detail := r.scripts[voucherGuardScriptName+"-login"]; !strings.Contains(detail, "source: "+escapedLoginSource) {
+	if detail := r.scripts[voucherGuardLoginScript]; !strings.Contains(detail, "source: "+escapedLoginSource) {
 		t.Fatalf("login guard script source did not round-trip: %q", detail)
 	}
 	// The full expiry source must round-trip
@@ -364,9 +364,9 @@ func TestVoucherGuardRejectsMarkerOnlyOrAlteredScript(t *testing.T) {
 		"wrong policy":   voucherGuardSourceLogin,
 	} {
 		t.Run(name, func(t *testing.T) {
-			r := &voucherGuardRunner{clock: guardCurrentClock(), scripts: map[string]string{voucherGuardScriptName + "-login": guardScriptDetail(source)}, schedulers: map[string]string{}, profiles: map[string]string{}}
+			r := &voucherGuardRunner{clock: guardCurrentClock(), scripts: map[string]string{voucherGuardLoginScript: guardScriptDetail(source)}, schedulers: map[string]string{}, profiles: map[string]string{}}
 			if name == "wrong policy" {
-				r.scripts[voucherGuardScriptName+"-login"] = strings.Replace(guardScriptDetail(source), "policy: read,write", "policy: read", 1)
+				r.scripts[voucherGuardLoginScript] = strings.Replace(guardScriptDetail(source), "policy: read,write", "policy: read", 1)
 			}
 			if err := ensureVoucherLoginGuard(context.Background(), r); !errors.Is(err, errVoucherGuardConflict) {
 				t.Fatalf("altered script accepted; err=%v", err)
@@ -394,7 +394,7 @@ func TestVoucherGuardRejectsMissingOrAlteredProfileHooks(t *testing.T) {
 
 func TestVoucherGuardNeverOverwritesForeignObjects(t *testing.T) {
 	r := &voucherGuardRunner{clock: guardCurrentClock(), scripts: map[string]string{}, schedulers: map[string]string{}, profiles: map[string]string{}}
-	r.scripts[voucherGuardScriptName+"-login"] = guardScriptDetail(`{ :log info "not ours" }`)
+	r.scripts[voucherGuardLoginScript] = guardScriptDetail(`{ :log info "not ours" }`)
 	r.scripts[voucherGuardScriptName+"-expiry"] = guardScriptDetail(`{ :log info "not ours" }`)
 	r.schedulers[voucherGuardScheduler] = guardSchedulerDetail(voucherGuardInterval, "/system script run for-a-different-guard", "read,write", false)
 	r.profiles[voucherGuardProfile] = guardProfileDetail("/system script run something-else", "/system script run something-else")
@@ -403,7 +403,7 @@ func TestVoucherGuardNeverOverwritesForeignObjects(t *testing.T) {
 		t.Fatalf("err=%v, want foreign-object conflict", err)
 	}
 	// No object may have been overwritten to force adoption.
-	if !strings.Contains(r.scripts[voucherGuardScriptName+"-login"], "not ours") {
+	if !strings.Contains(r.scripts[voucherGuardLoginScript], "not ours") {
 		t.Fatal("foreign login script was overwritten")
 	}
 	if !strings.Contains(r.scripts[voucherGuardScriptName+"-expiry"], "not ours") {
@@ -453,8 +453,8 @@ func TestVoucherGuardFirstLoginCapture(t *testing.T) {
 	// 3. Active session exists (len $a = 1) - MAC comes from active session
 	// 4. No zero-traffic check needed; on-login hook fires at actual login
 	requiredFragments := []string{
-		`$user`,          // uses RouterOS login hook $user variable
-		`[:len $c] < 54`, // exact base form check (len < 54 means no anchor)
+		`$mmGuardLoginUser`, // reads the username the profile hook passed in a global
+		`[:len $c] < 54`,    // exact base form check (len < 54 means no anchor)
 		`[/ip hotspot active find where user=$loginUser]`, // live session lookup for login user
 		`[:len $a] != 1`, // exactly one active session
 		`/ip hotspot user set $loginUser comment=($c . ";ft=" . $now . ";fu=" . $mac)`, // anchor write for login user
