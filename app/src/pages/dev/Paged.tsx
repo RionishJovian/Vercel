@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import useSWR from "swr";
 import { fetcher } from "../../lib/api";
 import { useI18n } from "../../i18n";
-import { BackLink, Note } from "../../components/ui";
+import { BackLink, Note, PageHead } from "../../components/ui";
 import { Skeleton } from "../../components/Skeleton";
 
 export type Filters = Record<string, string>;
@@ -29,7 +29,7 @@ export function usePaged<T>(path: string, initial: Filters, limit = 50) {
 
 export function Page({ title, lead, children }: { title: string; lead?: string; children: ReactNode }) {
   const { t } = useI18n();
-  return <><BackLink href="#/more">{t("tab.more")}</BackLink><h1>{title}</h1>{lead && <p className="soft">{lead}</p>}{children}</>;
+  return <><BackLink href="#/more">{t("tab.more")}</BackLink><PageHead title={title} help={lead} />{children}</>;
 }
 
 export function FilterBar({ children, onApply, onReset }: { children: ReactNode; onApply: () => void; onReset: () => void }) {
