@@ -4,15 +4,9 @@ import { asArray, type Router } from "../../lib/types";
 import { useI18n } from "../../i18n";
 import { Note, WorkspaceTabs, BackLink } from "../../components/ui";
 import { Skeleton } from "../../components/Skeleton";
+import { deviceImage } from "../../lib/deviceImage";
 import { Detail } from "./Detail";
 import { NetworkMap } from "./NetworkMap";
-
-/** The model photo when the name identifies one; otherwise a plain library symbol. Never a guess at live state. */
-function deviceImage(d: RouterRow): string {
-  const base = import.meta.env.BASE_URL + "topology/";
-  if (/hap\s*ax/i.test(d.hardware_name ?? "")) return base + "hap-ax2.webp";
-  return base + (d.deployment_layer === "MAIN_GATEWAY" ? "device.svg" : "ap.svg");
-}
 
 export interface RouterRow extends Router { is_online?: boolean; transport?: string; last_seen_at?: string }
 

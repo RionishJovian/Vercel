@@ -1,14 +1,19 @@
 import useSWR from "swr";
 import { api, fetcher } from "../lib/api";
 import type { Me } from "../lib/types";
+import { Icon, type IconName } from "../components/icons";
 import { useI18n } from "../i18n";
 
 /** Pages that live outside the five main tabs. Platform tools show only to the platform operator. */
 type Gate = "dev" | "staff" | "nopass";
-const LINKS: Array<{ href: string; key: string; dev?: boolean; gate?: Gate }> = [
-  { href: "#/revenue", key: "title.revenue" }, { href: "#/sites", key: "title.sites" }, { href: "#/hub", key: "hub.title" }, { href: "#/network", key: "title.network" }, { href: "#/topology", key: "tp.title" }, { href: "#/devices", key: "dv.title" }, { href: "#/managed-devices", key: "dm.title" }, { href: "#/guests", key: "gu.title" }, { href: "#/incidents", key: "inc.title" }, { href: "#/security", key: "sec.title" }, { href: "#/backups", key: "bk.title" }, { href: "#/events", key: "ev.title" }, { href: "#/fleet", key: "fl.title" },
-  { href: "#/store", key: "title.store" }, { href: "#/scans", key: "dev.sc.title" }, { href: "#/templates", key: "dev.tpl.title", gate: "staff" }, { href: "#/termlog", key: "dev.tl.title", gate: "staff" }, { href: "#/aiusage", key: "dev.ai.title", gate: "staff" }, { href: "#/coins", key: "dev.co.title", gate: "nopass" }, { href: "#/unlockkeys", key: "dev.uk.title", gate: "nopass" }, { href: "#/team", key: "dev.tm.title", gate: "dev" }, { href: "#/i18n", key: "dev.tr.title", gate: "dev" }, { href: "#/profile", key: "pf.title" }, { href: "#/guide", key: "gd.title" }, { href: "#/platform", key: "title.platform", dev: true },
+type Group = "business" | "operations" | "tools" | "account";
+const LINKS: Array<{ href: string; key: string; icon: IconName; group: Group; dev?: boolean; gate?: Gate }> = [
+  { href: "#/revenue", key: "title.revenue", icon: "chart", group: "business" }, { href: "#/store", key: "title.store", icon: "bag", group: "business" },
+  { href: "#/sites", key: "title.sites", icon: "pin", group: "operations" }, { href: "#/hub", key: "hub.title", icon: "link", group: "operations" }, { href: "#/network", key: "title.network", icon: "nodes", group: "operations" }, { href: "#/topology", key: "tp.title", icon: "nodes", group: "operations" }, { href: "#/devices", key: "dv.title", icon: "device", group: "operations" }, { href: "#/managed-devices", key: "dm.title", icon: "device", group: "operations" }, { href: "#/guests", key: "gu.title", icon: "users", group: "operations" }, { href: "#/fleet", key: "fl.title", icon: "pulse", group: "operations" }, { href: "#/incidents", key: "inc.title", icon: "alert", group: "operations" }, { href: "#/security", key: "sec.title", icon: "shield", group: "operations" }, { href: "#/backups", key: "bk.title", icon: "save", group: "operations" }, { href: "#/events", key: "ev.title", icon: "list", group: "operations" },
+  { href: "#/scans", key: "dev.sc.title", icon: "scan", group: "tools" }, { href: "#/templates", key: "dev.tpl.title", icon: "template", group: "tools", gate: "staff" }, { href: "#/termlog", key: "dev.tl.title", icon: "terminal", group: "tools", gate: "staff" }, { href: "#/aiusage", key: "dev.ai.title", icon: "spark", group: "tools", gate: "staff" }, { href: "#/coins", key: "dev.co.title", icon: "coins", group: "tools", gate: "nopass" }, { href: "#/unlockkeys", key: "dev.uk.title", icon: "key", group: "tools", gate: "nopass" }, { href: "#/team", key: "dev.tm.title", icon: "users", group: "tools", gate: "dev" }, { href: "#/i18n", key: "dev.tr.title", icon: "globe", group: "tools", gate: "dev" },
+  { href: "#/profile", key: "pf.title", icon: "user", group: "account" }, { href: "#/guide", key: "gd.title", icon: "book", group: "account" }, { href: "#/platform", key: "title.platform", icon: "grid", group: "account", dev: true },
 ];
+const GROUPS: Group[] = ["business", "operations", "tools", "account"];
 
 export function More({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
   const { t } = useI18n();
@@ -21,9 +26,18 @@ export function More({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
   return (
     <>
       <h1>{t("more.title")}</h1>
-      <nav className="stack" aria-label={t("more.title")}>
-        {LINKS.filter(allowed).map((l) => <a key={l.href} className="rowitem menu-link" href={l.href}><b>{t(l.key)}</b><span aria-hidden="true" className="soft">›</span></a>)}
-      </nav>
+      {GROUPS.map((g) => {
+        const items = LINKS.filter((l) => l.group === g && allowed(l));
+        if (!items.length) return null;
+        return (
+          <section className="stack" key={g} aria-label={t("more.g." + g)}>
+            <h2 className="group-title">{t("more.g." + g)}</h2>
+            <nav className="tiles">
+              {items.map((l) => <a key={l.href} className="tile" href={l.href}><span className="tile-ico"><Icon name={l.icon} /></span><b>{t(l.key)}</b></a>)}
+            </nav>
+          </section>
+        );
+      })}
       <section className="glass pad stack">
         <p className="soft small">{t("more.signedIn")}</p>
         <p><b>{me.user?.full_name || me.user?.email}</b></p>
