@@ -2,6 +2,7 @@ package routeros
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -43,6 +44,31 @@ func NewSSHTransport(cfg SSHConfig) *SSHTransport { return &SSHTransport{cfg: cf
 // failures (proven: a failing /import prints "Script Error" and exits 0), so the
 // output is also scanned for error markers.
 func (t *SSHTransport) Run(ctx context.Context, cmd string) (string, error) {
+	// RouterOS intermittently refuses or drops a new SSH handshake when a
+	// workflow opens many connections in a row. Nothing has been executed at
+	// that point, so retrying the connection (not the command) is safe.
+	const attempts = 3
+	var out string
+	var err error
+	for i := 0; i < attempts; i++ {
+		out, err = t.runOnce(ctx, cmd)
+		var ne net.Error
+		if err == nil || !errors.Is(err, errSSHConnect) || ctx.Err() != nil || (errors.As(err, &ne) && ne.Timeout()) {
+			return out, err
+		}
+		select {
+		case <-ctx.Done():
+			return out, err
+		case <-time.After(time.Duration(i+1) * 300 * time.Millisecond):
+		}
+	}
+	return out, err
+}
+
+// errSSHConnect marks dial and handshake failures: the command never ran.
+var errSSHConnect = errors.New("ssh connect")
+
+func (t *SSHTransport) runOnce(ctx context.Context, cmd string) (string, error) {
 	if t.cfg.Addr == "" {
 		return "", fmt.Errorf("routeros: empty ssh address")
 	}
@@ -58,7 +84,7 @@ func (t *SSHTransport) Run(ctx context.Context, cmd string) (string, error) {
 	d := net.Dialer{Timeout: timeout}
 	conn, err := d.DialContext(ctx, "tcp", t.cfg.Addr)
 	if err != nil {
-		return "", fmt.Errorf("routeros: dial %s: %w", t.cfg.Addr, err)
+		return "", fmt.Errorf("routeros: dial %s: %w", t.cfg.Addr, errors.Join(errSSHConnect, err))
 	}
 	defer conn.Close()
 	// Bound handshake and command I/O as well as dial. Cancellation must also
@@ -75,7 +101,7 @@ func (t *SSHTransport) Run(ctx context.Context, cmd string) (string, error) {
 
 	sconn, chans, reqs, err := ssh.NewClientConn(conn, t.cfg.Addr, ccfg)
 	if err != nil {
-		return "", fmt.Errorf("routeros: ssh handshake %s: %w", t.cfg.Addr, err)
+		return "", fmt.Errorf("routeros: ssh handshake %s: %w", t.cfg.Addr, errors.Join(errSSHConnect, err))
 	}
 	client := ssh.NewClient(sconn, chans, reqs)
 	defer client.Close()
