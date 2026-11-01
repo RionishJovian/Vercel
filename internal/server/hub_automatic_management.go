@@ -21,6 +21,7 @@ import (
 	"golang.org/x/crypto/ssh"
 	"mega-magic/internal/database"
 	"mega-magic/internal/handler"
+	"mega-magic/internal/hub"
 	"mega-magic/internal/provisioner/routeros"
 )
 
@@ -390,8 +391,7 @@ func newPendingManagement(biz, id, routerKey, tunnelScript, sourceCIDR string) (
 	if _, err := rand.Read(proof); err != nil {
 		return pendingManagement{}, err
 	}
-	hash := sha256.Sum256([]byte(biz + "/" + id))
-	p := pendingManagement{private: string(pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(private)})), public: strings.TrimSpace(string(ssh.MarshalAuthorizedKey(pub))), proof: hex.EncodeToString(proof), user: fmt.Sprintf("mm-%x", hash[:6]), routerKey: routerKey, expires: time.Now().Add(30 * time.Minute)}
+	p := pendingManagement{private: string(pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(private)})), public: strings.TrimSpace(string(ssh.MarshalAuthorizedKey(pub))), proof: hex.EncodeToString(proof), user: hub.ManagementUserName(biz, id), routerKey: routerKey, expires: time.Now().Add(30 * time.Minute)}
 	p.tunnelScript = tunnelScript
 	p.sourceCIDR = sourceCIDR
 	return p, nil

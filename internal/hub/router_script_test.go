@@ -107,3 +107,18 @@ func TestQuickConnectKeepsPrivateKeyOnlyInOnePasteScript(t *testing.T) {
 		t.Fatal("mismatched private key accepted")
 	}
 }
+
+func TestDisconnectScriptRejectsUnsafeManagementUser(t *testing.T) {
+	good := ManagementUserName("biz", "gateway")
+	if _, err := BuildDisconnectScript("gateway", scriptFixture(), good); err != nil {
+		t.Fatal(err)
+	}
+	for _, bad := range []string{"", "admin", "mm-xyz", `mm-0123456789ab"; /system reset-configuration; "`, "mm-0123456789AB", "mm-0123456789abc"} {
+		if _, err := BuildDisconnectScript("gateway", scriptFixture(), bad); err == nil {
+			t.Errorf("accepted unsafe management user %q", bad)
+		}
+	}
+	if ManagementUserName("biz", "gateway") != good || ManagementUserName("biz2", "gateway") == good {
+		t.Error("management user name must be stable per business and router")
+	}
+}
