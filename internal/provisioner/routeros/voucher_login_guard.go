@@ -39,7 +39,7 @@ func probeVoucherGuardClock(ctx context.Context, r CommandRunner) (int64, error)
 	out, err := r.Run(ctx, ":put ([:tonsec [:timestamp]] / 1000000000)")
 	finished := time.Now()
 	if err != nil {
-		return 0, fmt.Errorf("%w: :timestamp/:tonsec epoch-second probe failed", errVoucherGuardUnsupported)
+		return 0, fmt.Errorf("%w: :timestamp/:tonsec epoch-second probe failed: %v", errVoucherGuardUnsupported, err)
 	}
 	text := strings.TrimSpace(out)
 	if !voucherGuardEpochPattern.MatchString(text) {
