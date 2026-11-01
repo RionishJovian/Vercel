@@ -406,5 +406,6 @@ func (a *DeviceApplier) ApplyGateway(ctx context.Context, businessID, deviceID s
 		return result, fmt.Errorf("setup traffic guard removal did not verify")
 	}
 	result.Verified = true
+	pruneSnapshotsLater(r)
 	return result, nil
 }

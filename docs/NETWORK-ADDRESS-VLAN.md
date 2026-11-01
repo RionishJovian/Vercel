@@ -117,4 +117,14 @@ Not yet proven on real hardware, and the timing is unmeasured: about 14 router
 commands in one apply, at roughly 3 seconds each over the tunnel, inside a 90 second
 limit.
 
-Still to come: tidying the app's own old `mm-snap-*` backup files on the router.
+## Tidying old backup files on the router
+
+Every guarded change saves `mm-snap-<device>-<kind>-<time>.rsc` and `.backup` on the
+router. After a change is **verified** (network apply, Keep, customer network setup,
+WebFig), the app removes its own old ones in the background: the newest 10 snapshots
+are always kept, and so is anything younger than 7 days; only older ones go, oldest
+first, at most 20 files per run, each removed by its exact name. Only names that match
+exactly what the app generates are touched; any other file is left alone. It never
+runs after a failed change (those files are evidence), and a failure only leaves
+files behind, it never affects the change. Files left by earlier tests on a router are
+removed this way once they are older than 7 days and beyond the newest 10.

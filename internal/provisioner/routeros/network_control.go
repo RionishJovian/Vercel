@@ -678,6 +678,7 @@ func (a *DeviceApplier) ApplyNetwork(ctx context.Context, businessID, deviceID s
 		return result, fmt.Errorf("guard cancellation failed; inspect rollback status")
 	}
 	result.Verified = true
+	pruneSnapshotsLater(r)
 	return result, nil
 }
 
@@ -723,6 +724,7 @@ func (a *DeviceApplier) ConfirmNetwork(ctx context.Context, businessID, deviceID
 	}
 	networkPending.Delete(guardKey)
 	networkGuardUntil.Delete(guardKey)
+	pruneSnapshotsLater(r)
 	return nil
 }
 
