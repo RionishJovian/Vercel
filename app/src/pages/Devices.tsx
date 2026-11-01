@@ -100,7 +100,7 @@ export function Devices({ me }: { me: Me }) {
               {!state.rows.length ? <Note>{t("dv.none")}</Note> : (
                 <div className="stack">
                   {state.rows.map((r) => (
-                    <div className="glass pad stack" key={r.mac || r.ip}>
+                    <div className="glass pad stack" key={r.mac || r.ip} data-tone={r.state === "bound" ? "ok" : undefined}>
                       <LabelForm row={r} label={byMac.get(r.mac)} routerId={selected.device_id} canEdit={canEdit} />
                       {r.type && <p className="soft small">{t("dv.reports")}: {r.type}</p>}
                       <p className="small num">{r.ip} {r.mac}</p>

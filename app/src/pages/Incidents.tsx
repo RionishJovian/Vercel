@@ -3,7 +3,7 @@ import useSWR from "swr";
 import { api, ApiError, fetcher, isUnauthorized } from "../lib/api";
 import { asArray, type Me } from "../lib/types";
 import { useI18n } from "../i18n";
-import { BackLink, Note, PageHead } from "../components/ui";
+import { BackLink, Note, PageHead, IconTile } from "../components/ui";
 import { Skeleton } from "../components/Skeleton";
 
 interface Incident { id: string; severity?: string; kind?: string; subject_label?: string; subject_id?: string; detail?: string; opened_at?: string; suggested_action?: { kind?: string } }
@@ -51,8 +51,8 @@ export function Incidents({ me }: { me: Me }) {
       {!list.length ? <Note kind="ok">{t("inc.none")}</Note> : (
         <div className="stack">
           {list.map((i) => (
-            <article className="glass pad stack" key={i.id}>
-              <div className="row"><span className={"chip " + tone(i.severity)}>{i.severity || "info"}</span><span className="soft small">{i.opened_at ? new Date(i.opened_at).toLocaleString() : ""}</span></div>
+            <article className="glass pad stack" key={i.id} data-tone={tone(i.severity) || undefined}>
+              <div className="row"><IconTile name="alert" tone={tone(i.severity)} /><span className={"chip " + tone(i.severity)}>{i.severity || "info"}</span><span className="soft small">{i.opened_at ? new Date(i.opened_at).toLocaleString() : ""}</span></div>
               <b>{i.subject_label || i.subject_id || "—"}</b>
               <p className="soft small num">{i.kind}</p>
               {i.detail && <p className="small">{i.detail.replace(/\s+/g, " ").slice(0, 160)}</p>}

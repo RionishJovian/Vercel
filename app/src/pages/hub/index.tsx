@@ -1,3 +1,4 @@
+import { Icon } from "../../components/icons";
 import { useState, type FormEvent } from "react";
 import useSWR from "swr";
 import { api, ApiError, fetcher, isUnauthorized } from "../../lib/api";
@@ -52,8 +53,8 @@ function Card({ r, state, canEdit, cap, openId, setOpen, onChanged }: { r: GW; s
   }
   const tone = state === "up" ? "ok" : state === "stale" ? "warn" : state === "offline" ? "bad" : "";
   return (
-    <article className="glass pad stack gw-card">
-      <div className="row"><div className="stack" style={{ gap: 2 }}><h2>{r.hardware_name || t("hub.unnamed")}</h2><span className="soft small">{[r.vendor, r.device_model].filter(Boolean).join(" ")}</span></div><span className={"chip " + tone}>{t("fl.state." + (["up", "stale", "offline"].includes(state) ? state : "unknown"))}</span></div>
+    <article className="glass pad stack gw-card" data-tone={tone || undefined}>
+      <div className="row"><div className="who"><span className={"medal sm" + (state === "up" ? " on" : "")}><Icon name="router" /></span><div className="stack" style={{ gap: 2 }}><h2>{r.hardware_name || t("hub.unnamed")}</h2><span className="soft small">{[r.vendor, r.device_model].filter(Boolean).join(" ")}</span></div></div><span className={"chip " + tone}>{t("fl.state." + (["up", "stale", "offline"].includes(state) ? state : "unknown"))}</span></div>
       <dl className="facts">
         <dt>{t("hub.transport")}</dt><dd>{r.transport || "direct"}</dd>
         <dt>{t("hub.mgmtIp")}</dt><dd className="num">{r.management_ip || t("hub.notRegistered")}</dd>

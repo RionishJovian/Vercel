@@ -69,7 +69,7 @@ export function Wizard({ router, canEdit }: { router: RouterRow; canEdit: boolea
   }
 
   return (
-    <form ref={form} className="stack" onSubmit={preview} onInput={invalidate} onChange={invalidate}>
+    <form ref={form} className="stack nwform" onSubmit={preview} onInput={invalidate} onChange={invalidate}>
       <p className="soft small">{t("nw.lead")}</p>
       <fieldset className="glass pad stack fs" disabled={applying}>
         <legend>{t("nw.networkName")}</legend>

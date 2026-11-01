@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { Icon } from "./icons";
+import { Icon, type IconName } from "./icons";
 import { useI18n } from "../i18n";
 
 export function Note({ kind = "", children }: { kind?: "" | "bad" | "warn" | "ok"; children: ReactNode }) {
@@ -31,4 +31,17 @@ export function PageHead({ title, help }: { title: string; help?: string }) {
       {help && open ? <p className="soft help-text">{help}</p> : null}
     </header>
   );
+}
+
+/** A small rounded tile with an icon; the tone tints it for status (ok, warn, bad). */
+export function IconTile({ name, tone = "" }: { name: IconName; tone?: string }) {
+  return <span className="icontile" data-tone={tone || undefined}><Icon name={name} /></span>;
+}
+
+/** Initials in a jade gradient disc. The hue shifts a little per name so rows are easy to tell apart. */
+export function Avatar({ name }: { name?: string }) {
+  const text = (name ?? "").trim();
+  const initials = text.split(/[\s@._-]+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join("") || "·";
+  let h = 0; for (const c of text) h = (h * 31 + c.charCodeAt(0)) % 40;
+  return <span className="avatar" style={{ ["--hue" as string]: 150 + h }} aria-hidden="true">{initials}</span>;
 }

@@ -45,7 +45,7 @@ export function Events() {
           {!events.length ? <Note>{t("ev.none")}</Note> : (
             <div className="stack">
               {events.map((e, i) => (
-                <div className="rowitem evrow" key={i} title={e.message}>
+                <div className="rowitem evrow" key={i} title={e.message} data-tone={tone(e.severity) || undefined}>
                   <div className="stack" style={{ gap: 2, minWidth: 0 }}>
                     <div className="row" style={{ justifyContent: "flex-start", flexWrap: "wrap" }}><span className={"chip " + tone(e.severity)}>{e.severity || "info"}</span>{e.ai_severity && <span className="soft small">ai:{e.ai_severity}</span>}<span className="soft small num">{e.received_at ? new Date(e.received_at).toLocaleString() : ""}</span></div>
                     <span className="small">{clamp(e.message, 160)}</span>

@@ -3,7 +3,7 @@ import useSWR from "swr";
 import { api, fetcher, isUnauthorized } from "../lib/api";
 import { asArray } from "../lib/types";
 import { useI18n } from "../i18n";
-import { BackLink, Note, PageHead } from "../components/ui";
+import { BackLink, Note, PageHead, IconTile } from "../components/ui";
 import { Skeleton } from "../components/Skeleton";
 
 interface Adv { id: string; title: string; fix_unavailable?: boolean }
@@ -33,8 +33,8 @@ function Row({ d, controls }: { d: Dev; controls: boolean }) {
   const tone = d.posture === "affected" ? "bad" : d.posture === "safe" ? "ok" : "";
   const fix = d.posture !== "affected" ? "" : d.fix_first ? `${t("sec.upgrade")} ≥ ${d.fix_first}` : t("sec.closeService");
   return (
-    <article className="glass pad stack">
-      <div className="row"><b>{d.hardware_name}</b><span className={"chip " + tone}>{t("sec.p." + (d.posture || "unknown"))}</span></div>
+    <article className="glass pad stack" data-tone={tone || undefined}>
+      <div className="row"><div className="who"><IconTile name="shield" tone={tone} /><b>{d.hardware_name}</b></div><span className={"chip " + tone}>{t("sec.p." + (d.posture || "unknown"))}</span></div>
       <p className="soft small num">{d.routeros_version || "—"} {d.routeros_channel ? `· ${d.routeros_channel}` : ""}</p>
       <div className="row" style={{ justifyContent: "flex-start", flexWrap: "wrap" }}>
         {d.posture === "affected" && d.unpatchable && <span className="chip warn">{d.fix_first ? t("sec.partlyUnfixable") : t("sec.noFix")}</span>}
