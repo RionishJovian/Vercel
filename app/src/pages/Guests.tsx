@@ -3,7 +3,7 @@ import useSWR from "swr";
 import { api, fetcher, isUnauthorized } from "../lib/api";
 import { asArray, type Me, type Router } from "../lib/types";
 import { useI18n } from "../i18n";
-import { BackLink, Note, PageHead } from "../components/ui";
+import { BackLink, Note, PageHead, Avatar } from "../components/ui";
 import { Skeleton } from "../components/Skeleton";
 
 interface RouterX extends Router { site_id?: string | null }
@@ -91,7 +91,7 @@ export function Guests({ me }: { me: Me }) {
             const v = session.values ?? {};
             return (
               <div className="glass pad stack" key={(session.id ?? "") + i}>
-                <div className="row"><b>{v.user || t("gu.guest")}</b><span className="chip ok">{t("gu.active")}</span></div>
+                <div className="row"><div className="who"><Avatar name={v.user || t("gu.guest")} /><b>{v.user || t("gu.guest")}</b></div><span className="chip ok">{t("gu.active")}</span></div>
                 <p className="soft small num">{v.address} · {v["mac-address"]}</p>
                 <div className="row small"><span className="soft">{siteNames.get(s.gateway.site_id ?? "") ?? s.gateway.hardware_name}</span><span className="num">{v.uptime} · ↓{v["bytes-out"] ?? "—"} ↑{v["bytes-in"] ?? "—"}</span></div>
                 {canEdit && s.writable && <button className="pill danger" type="button" disabled={busy || reading} onClick={() => void disconnect(s, session)}>{t("gu.disconnect")}</button>}

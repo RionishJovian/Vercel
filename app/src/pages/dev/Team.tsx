@@ -3,7 +3,7 @@ import useSWR from "swr";
 import { api, ApiError, fetcher, isUnauthorized } from "../../lib/api";
 import { asArray } from "../../lib/types";
 import { useI18n } from "../../i18n";
-import { Field, Note } from "../../components/ui";
+import { Field, Note, Avatar } from "../../components/ui";
 import { Skeleton } from "../../components/Skeleton";
 import { Page } from "./Paged";
 
@@ -18,7 +18,7 @@ function Member({ u, onChanged, onError }: { u: User; onChanged: () => void; onE
   const run = async (fn: () => Promise<unknown>) => { setBusy(true); try { await fn(); onChanged(); } catch (e) { if (isUnauthorized(e)) throw e; onError(errText(e)); } setBusy(false); };
   return (
     <div className="glass pad stack">
-      <div className="row"><b>{u.full_name}</b><span className={"chip " + (u.is_active ? "ok" : "")}>{u.is_active ? t("dev.tm.active") : t("dev.tm.disabled")}</span></div>
+      <div className="row"><div className="who"><Avatar name={u.full_name || u.email} /><b>{u.full_name}</b></div><span className={"chip " + (u.is_active ? "ok" : "")}>{u.is_active ? t("dev.tm.active") : t("dev.tm.disabled")}</span></div>
       <p className="soft small">{u.email}</p>
       {managed ? (
         <div className="row" style={{ justifyContent: "flex-start", flexWrap: "wrap" }}>

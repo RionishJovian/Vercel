@@ -89,7 +89,7 @@ export function AccountPass({ me, pass, onRefresh }: { me: Me; pass: Pass; onRef
         {exempt ? <p className="soft small">{t("ap.noPassNeeded")}</p> : (
           <p className="soft small">{t("ap.activation")}: {pass.activated_at ? when(pass.activated_at) : t("ap.notActivated")}<br />{t("ap.expiry")}: {pass.expires_at ? when(pass.expires_at) : t("ap.notRecorded")}{pass.transition_expires_at ? <><br />{t("ap.transitionEnds")}: {when(pass.transition_expires_at)}</> : null}{pass.trial_expires_at ? <><br />{t("ap.trialEnds")}: {when(pass.trial_expires_at)}</> : null}</p>
         )}
-        <p className="soft small">{t("ap.features")}</p><p className="soft small">{t("ap.expiryNote")}</p>
+        <details className="moredet"><summary>{t("c.help")}</summary><p className="soft small">{t("ap.features")}</p></details><p className="soft small">{t("ap.expiryNote")}</p>
         <button className="pill" type="button" onClick={onRefresh}>{t("net.refresh")}</button>
         {unavailable && <p className="note" role="status">{unavailable}</p>}
       </section>

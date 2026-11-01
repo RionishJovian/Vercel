@@ -3,7 +3,7 @@ import useSWR from "swr";
 import { api, fetcher, isUnauthorized } from "../../lib/api";
 import { asArray } from "../../lib/types";
 import { useI18n } from "../../i18n";
-import { Note } from "../../components/ui";
+import { Note, Avatar } from "../../components/ui";
 import { Skeleton } from "../../components/Skeleton";
 
 interface Acc {
@@ -42,7 +42,7 @@ function AccountCard({ a, onChanged }: { a: Acc; onChanged: () => void }) {
   const isDev = a.user_role === "DEVELOPER";
   return (
     <article className="glass pad stack">
-      <div className="row"><b style={{ overflowWrap: "anywhere" }}>{a.email}</b><span className={"chip " + (a.is_active ? "ok" : "bad")}>{a.is_active ? t("pa.enabled") : t("pa.disabledAcc")}</span></div>
+      <div className="row"><div className="who"><Avatar name={a.full_name || a.email} /><b style={{ overflowWrap: "anywhere" }}>{a.email}</b></div><span className={"chip " + (a.is_active ? "ok" : "bad")}>{a.is_active ? t("pa.enabled") : t("pa.disabledAcc")}</span></div>
       <p className="soft small">{a.full_name} · {a.user_role} · {a.company_name}</p>
       <div className="row small"><span className={"chip " + tone}>{t("pa.presence." + (["online", "idle", "offline", "unobserved"].includes(a.presence ?? "") ? a.presence : "unobserved"))}</span><span className="soft">{t("pa.heartbeat")}: {when(a.last_seen_at)}</span></div>
       <dl className="facts">

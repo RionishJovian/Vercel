@@ -3,7 +3,7 @@ import useSWR from "swr";
 import { api, ApiError, fetcher, isUnauthorized } from "../lib/api";
 import { asArray, mmk, type Me } from "../lib/types";
 import { useI18n } from "../i18n";
-import { BackLink, Field, Note } from "../components/ui";
+import { BackLink, Field, Note, IconTile } from "../components/ui";
 import { Skeleton } from "../components/Skeleton";
 import { AccountPass, type Pass } from "./store/AccountPass";
 
@@ -34,7 +34,7 @@ function AddonCard({ a, pending, canBuy, onDone }: { a: Addon; pending: boolean;
   const desc = loc(a, "description");
   return (
     <section className="glass pad stack">
-      <div className="row"><h2>{loc(a, "name")}</h2><span className="chip">{t("st.kind." + a.kind)}</span></div>
+      <div className="row"><div className="who"><IconTile name="bag" /><h2>{loc(a, "name")}</h2></div><span className="chip">{t("st.kind." + a.kind)}</span></div>
       {desc && <p className="soft small">{desc}</p>}
       <div className="row"><b className="num price">{mmk(a.price_mmk)} {t("c.mmk")}</b><span className="soft small">{t("st.period." + a.period)}</span></div>
       <button className="btn" type="button" disabled={!canBuy || pending} onClick={() => setOpen((v) => !v)}>{pending ? t("st.status.pending") : t("st.request")}</button>

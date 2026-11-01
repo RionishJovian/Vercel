@@ -3,7 +3,7 @@ import useSWR from "swr";
 import { api, fetcher, isUnauthorized } from "../lib/api";
 import { asArray, type Router } from "../lib/types";
 import { useI18n } from "../i18n";
-import { BackLink, Note, PageHead } from "../components/ui";
+import { BackLink, Note, PageHead, IconTile } from "../components/ui";
 import { Skeleton } from "../components/Skeleton";
 
 interface Backup { id: string; label?: string; kind?: string; size_bytes?: number; created_at?: string }
@@ -50,7 +50,7 @@ export function Backups() {
       <section className="stack"><h2>{t("bk.backups")}</h2>
         {bk.error ? <Note kind="bad">{t("bk.loadFail")}</Note> : bk.isLoading ? <Skeleton h={100} /> : !backups.length ? <Note>{t("bk.none")}</Note> : backups.map((b) => (
           <div className="glass pad stack" key={b.id}>
-            <div className="row"><b>{b.label || "—"}</b><span className="chip">{b.kind}</span></div>
+            <div className="row"><div className="who"><IconTile name="save" /><b>{b.label || "—"}</b></div><span className="chip">{b.kind}</span></div>
             <p className="soft small num">{b.size_bytes} B · {b.created_at ? new Date(b.created_at).toLocaleString() : ""}</p>
             {bk.data?.restore_available ? (
               restoring?.id === b.id ? (
