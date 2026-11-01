@@ -275,6 +275,7 @@ func (h *GuestVoucherHandler) ListIssueBatches(c *gin.Context) {
 func (h *GuestVoucherHandler) respondGuestVoucherBatch(c *gin.Context, biz, id string, readyStatus int) {
 	var b *database.GuestVoucherIssueBatch
 	var items []database.GuestVoucherIssueItem
+	usage := map[string]database.GuestVoucherUsage{}
 	err := runInTenant(c, h.DB, biz, func(tx *sql.Tx) error {
 		repo := database.GuestVoucherBatchRepository{}
 		var err error
@@ -286,7 +287,14 @@ func (h *GuestVoucherHandler) respondGuestVoucherBatch(c *gin.Context, biz, id s
 			return errGuestVoucherBatchMissing
 		}
 		items, err = repo.ItemsTXN(tx, biz, id)
-		return err
+		if err != nil {
+			return err
+		}
+		// Stored usage is supplementary; never fail the batch read for it.
+		if stored, e := (database.GuestVoucherRepository{}).UsageForBatchTXN(tx, biz, id); e == nil {
+			usage = stored
+		}
+		return nil
 	})
 	if err != nil {
 		if errors.Is(err, errGuestVoucherBatchMissing) {
@@ -322,6 +330,6 @@ func (h *GuestVoucherHandler) respondGuestVoucherBatch(c *gin.Context, biz, id s
 	}
 	c.JSON(status, gin.H{"batch_id": b.ID, "device_id": b.DeviceID, "state": state,
 		"total_count": b.TotalCount, "verified_count": verified, "created_at": b.CreatedAt,
-		"items": metadata, "vouchers": vouchers, "product": "guest-internet", "data_mb": b.DataMB,
+		"items": metadata, "vouchers": vouchers, "product": "guest-internet", "data_mb": b.DataMB, "usage": usage,
 		"validity_starts": "first_use", "retry_url": "/guest-vouchers/batches/" + b.ID + "/retry"})
 }

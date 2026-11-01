@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -285,5 +286,64 @@ func TestGuestVoucherAccountingLiveSessionWithoutAnchorNeedsReview(t *testing.T)
 	g := accountingSnapshot(t, db, biz, id)
 	if g.state != "unused" || g.activated.Valid || g.firstUsed.Valid || g.expiry.Valid {
 		t.Fatalf("invented first use from scan time: %+v", g)
+	}
+}
+
+func usageRow(t *testing.T, db *database.DB, biz, id string) (bytes, uptime int64, found bool) {
+	t.Helper()
+	err := withTenant(db, biz, func(tx *sql.Tx) error {
+		e := tx.QueryRow(`SELECT bytes_used,uptime_seconds FROM guest_voucher_usage WHERE business_id=$1 AND voucher_id=$2`, biz, id).Scan(&bytes, &uptime)
+		found = e == nil
+		if e == sql.ErrNoRows {
+			return nil
+		}
+		return e
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return
+}
+
+func TestGuestVoucherAccountingStoresUsageOnlyWhenMigrationApplied(t *testing.T) {
+	db := harness_testdb(t)
+	biz, device := loginFixture(t, db)
+	id := accountingSeedGrants(t, db, biz, device, 1)[0]
+	h := loginHandler(db)
+	observe := func(bytes, uptime int64) {
+		t.Helper()
+		h.Syncer = accountingSyncFunc(func(_ context.Context, _, _ string, specs []VoucherLoginSpec) ([]VoucherLoginState, error) {
+			states := accountingObserved(specs)
+			for i := range states {
+				states[i].BytesUsed, states[i].UptimeSeconds = bytes, uptime
+			}
+			return states, nil
+		})
+		if w := callSync(h, biz, device); w.Code != 200 {
+			t.Fatalf("sync status=%d body=%s", w.Code, w.Body.String())
+		}
+	}
+	// Release before the migration: sync must keep working with no usage table.
+	if _, err := db.Exec(`DROP TABLE IF EXISTS guest_voucher_usage`); err != nil {
+		t.Fatal(err)
+	}
+	observe(1000, 10)
+	if accountingSnapshot(t, db, biz, id).state != "active" {
+		t.Fatal("sync without the usage table must still activate the grant")
+	}
+	mig, err := os.ReadFile("../../migrations/20261101120000_guest_voucher_usage.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(string(mig)); err != nil {
+		t.Fatal(err)
+	}
+	observe(3_200_000, 1223)
+	if b, u, ok := usageRow(t, db, biz, id); !ok || b != 3_200_000 || u != 1223 {
+		t.Fatalf("usage = %d/%d found=%v", b, u, ok)
+	}
+	observe(500, 5) // counters reset on the router: stored usage must not regress
+	if b, u, _ := usageRow(t, db, biz, id); b != 3_200_000 || u != 1223 {
+		t.Fatalf("usage regressed to %d/%d", b, u)
 	}
 }

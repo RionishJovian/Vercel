@@ -10,12 +10,13 @@ interface Pending { batch_id: string; verified_count: number; total_count: numbe
 interface StockBatch { batch_id: string; device_id?: string; plan_label?: string; total_count?: number; activated_count?: number; installed_count?: number; shop_name?: string; created_at?: string }
 interface Batches { batches?: Pending[]; stock_batches?: StockBatch[] }
 interface BatchVoucher { id: string; code: string; status?: string; duration_minutes?: number }
-interface BatchDetail { data_mb?: number; vouchers?: BatchVoucher[] }
+interface SavedUsage { bytes_used?: number; uptime_seconds?: number; observed_at?: string }
+interface BatchDetail { data_mb?: number; vouchers?: BatchVoucher[]; usage?: Record<string, SavedUsage> }
 interface Usage { voucher_id: string; exists?: boolean; uptime_seconds?: number; bytes_used?: number }
 
 const fmtMB = (bytes: number) => (bytes / 1_000_000).toLocaleString(undefined, { maximumFractionDigits: bytes < 10_000_000 ? 1 : 0 });
 
-/** Codes of one batch. Usage is read live from the router on request and is not stored by the app. */
+/** Codes of one batch. Refresh reads usage live from the router; otherwise the last reading the app saved is shown. */
 function Codes({ batch }: { batch: StockBatch }) {
   const { t } = useI18n();
   const { data, error } = useSWR<BatchDetail>(`/guest-vouchers/batches/${encodeURIComponent(batch.batch_id)}`, fetcher);
@@ -44,7 +45,9 @@ function Codes({ batch }: { batch: StockBatch }) {
           </div>
           {failed ? <Note kind="bad">{t("v.refreshFailed")}</Note> : null}
           {vouchers.map((v) => {
-            const u = usage?.[v.id];
+            const saved = data?.usage?.[v.id];
+            const u = usage?.[v.id] ?? saved;
+            const asOf = !usage?.[v.id] && saved?.observed_at ? new Date(saved.observed_at).toLocaleString() : null;
             const limitSec = (num(v.duration_minutes) ?? 0) * 60;
             const bytes = num(u?.bytes_used) ?? 0, sec = num(u?.uptime_seconds) ?? 0;
             return (
@@ -56,6 +59,7 @@ function Codes({ batch }: { batch: StockBatch }) {
                     <span className="soft">{t("v.timeUsed")} <b className="num">{Math.floor(sec / 60)}{limitSec ? ` / ${Math.round(limitSec / 60)}` : ""} {t("v.min")}</b></span>
                   </div>
                 ) : null}
+                {asOf ? <span className="soft small">{t("v.asOf")} {asOf}</span> : null}
               </div>
             );
           })}
