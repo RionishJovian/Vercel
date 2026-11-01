@@ -95,5 +95,26 @@ use (it names what uses it). The router keeps a restore timer that re-creates th
 record, only if it is missing, with the same fields; the apply verifies the record is
 gone and a failed apply is rolled back and verified the same way.
 
-Still to come: removing a whole customer network in dependency order, and tidying the
-app's own old `mm-snap-*` backup files on the router.
+## Removing a customer network
+
+**LAN and Hotspot → Remove customer network** deletes a network made by *Create
+customer network* (everything named `mm-<name>`) as one guarded change, in the
+reverse of creation order: NAT, DHCP service, client gateway/DNS, address pool,
+gateway address, any leftover setup guard, then its VLAN. The preview lists each
+piece; the full `/export` and backup are taken first; the router-side timer
+re-creates the pieces in the opposite order (only the missing ones) if anything
+goes wrong; each piece's removal is verified, and a failure rolls back and verifies.
+
+It is deliberately limited to what it can put back exactly. It refuses, with the
+reason, a network that has a Hotspot or Hotspot profile (the portal cannot be
+restored exactly), a RADIUS entry (its secret cannot be restored), static DHCP
+reservations, other addresses, a second DHCP service or bridge membership on the
+port, a pool shared with another service, any duplicated or missing piece, a
+DHCP service not named `mm-...`, and a port that carries the uplink or the Hub.
+Only fields the wizard sets are put back; the saved export keeps everything else.
+
+Not yet proven on real hardware, and the timing is unmeasured: about 14 router
+commands in one apply, at roughly 3 seconds each over the tunnel, inside a 90 second
+limit.
+
+Still to come: tidying the app's own old `mm-snap-*` backup files on the router.
