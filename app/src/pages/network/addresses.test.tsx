@@ -36,11 +36,18 @@ describe("IP address and VLAN tasks", () => {
   it("with the server switch off: shows the form locked with the reason, never hidden", async () => {
     flags = { address_write_enabled: false };
     const { container } = await open("ip", /IP addresses/);
-    expect(await screen.findByText(/switched off on this server until they have been tested on a router/)).toBeTruthy();
+    expect(await screen.findByText(/can.t be applied yet: they are waiting for a test on a real router/)).toBeTruthy();
     const fieldset = container.querySelector("fieldset.nolock") as HTMLFieldSetElement;
     expect(fieldset.disabled).toBe(true);
     expect(container.textContent).toContain("IP address with prefix");
     expect([...fieldset.querySelectorAll("input, select, button")].every((c) => c.matches(":disabled"))).toBe(true);
+  });
+
+  it("in preview-only mode: the form is usable and a banner says nothing will be applied", async () => {
+    flags = { address_write_enabled: true, address_preview_only: true };
+    const { container } = await open("ip", /IP addresses/);
+    expect(await screen.findByText(/Preview only: the app reads your router/)).toBeTruthy();
+    await waitFor(() => expect((container.querySelector("fieldset.nolock") as HTMLFieldSetElement).disabled).toBe(false));
   });
 
   it("with the switch on: the address form is usable and sends only the three accepted fields", async () => {

@@ -105,3 +105,36 @@ func TestNetworkAddressAndVLANSeparatelyHeldBeforeAnyRouterLookup(t *testing.T) 
 		t.Fatalf("the address switch must not hold unrelated operations: %s", w.Body.String())
 	}
 }
+
+func TestNetworkAddressPreviewOnlyModeNeverApplies(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	t.Setenv("MM_NETWORK_CONTROLS_ENABLED", "true")
+	t.Setenv("MM_NETWORK_ADDRESS_CONTROLS_ENABLED", "preview")
+	h := NewSecurityHandler(nil, nil)
+	r := gin.New()
+	r.POST("/routers/:id/network/:action", func(c *gin.Context) { c.Set("business_id", "biz-1"); h.NetworkControl(c) })
+	for _, kind := range []string{"ip_address", "vlan"} {
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/routers/device/network/apply", strings.NewReader(`{"kind":"`+kind+`"}`)))
+		if w.Code != http.StatusServiceUnavailable || !strings.Contains(w.Body.String(), "preview-only mode") {
+			t.Fatalf("apply must be refused in preview-only mode for %s: %d %s", kind, w.Code, w.Body.String())
+		}
+		// Preview passes the address gate (it then stops at the missing controller, not at a hold).
+		w = httptest.NewRecorder()
+		r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/routers/device/network/preview", strings.NewReader(`{"kind":"`+kind+`"}`)))
+		if strings.Contains(w.Body.String(), "held until") || strings.Contains(w.Body.String(), "preview-only mode") {
+			t.Fatalf("preview must be allowed in preview-only mode for %s: %s", kind, w.Body.String())
+		}
+	}
+	// Any other value is the safe default: both actions are held.
+	for _, mode := range []string{"", "false", "TRUE", "yes", "1"} {
+		t.Setenv("MM_NETWORK_ADDRESS_CONTROLS_ENABLED", mode)
+		for _, action := range []string{"preview", "apply"} {
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/routers/device/network/"+action, strings.NewReader(`{"kind":"vlan"}`)))
+			if w.Code != http.StatusServiceUnavailable || !strings.Contains(w.Body.String(), "held until they have been tested") {
+				t.Fatalf("mode %q must hold %s: %d %s", mode, action, w.Code, w.Body.String())
+			}
+		}
+	}
+}

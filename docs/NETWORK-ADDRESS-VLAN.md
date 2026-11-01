@@ -19,11 +19,18 @@ Refused, by design (each has a test that fails if the rule is removed):
 - anything outside private ranges (10/8, 172.16/12, 192.168/16), prefixes outside /8 to /30, the network and broadcast addresses, anything overlapping an existing address or static route, and the whole Hub range 10.77.0.0/24
 - a port that is a bridge member (address the bridge instead), a VLAN on a VLAN or on a tunnel, a duplicate VLAN ID on the same port, and a VLAN name already used by any interface
 
-## Switching it on (after the router test)
-The server holds both operations until `MM_NETWORK_ADDRESS_CONTROLS_ENABLED=true`
-is set in `.env.production` (and `MM_NETWORK_CONTROLS_ENABLED=true`, already set),
-then the API is recreated. Until then the pages show the forms locked with a
-notice, and the server answers 503 to preview and apply.
+## The switch: `MM_NETWORK_ADDRESS_CONTROLS_ENABLED`
+Set in `.env.production`, then recreate the API. `MM_NETWORK_CONTROLS_ENABLED=true` must also be set (it is).
+
+| Value | Preview (read the router, show the plan) | Apply (change the router) | What the page shows |
+|---|---|---|---|
+| unset / anything else | refused (503) | refused (503) | form locked with the reason |
+| `preview` | allowed | **always refused (503)** | form usable, "Preview only" banner |
+| `true` | allowed | allowed | form usable |
+
+`preview` exists to check the plans against a real router with no possible change:
+the server refuses every apply in that mode (a test fails if that ever stops being
+true). Only the exact values `preview` and `true` have any effect.
 
 Router test plan (lab hAP ax2, one step at a time, using Preview first):
 1. Add `192.168.50.1/24` to a spare port. Check the readback, then `/ip address print` on the router.

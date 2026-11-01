@@ -38,9 +38,20 @@ func (h *SecurityHandler) NetworkControl(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid network request"})
 			return
 		}
-		if (request.Kind == "ip_address" || request.Kind == "vlan") && os.Getenv("MM_NETWORK_ADDRESS_CONTROLS_ENABLED") != "true" {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "IP address and VLAN changes are held until they have been tested on a router; no router was changed"})
-			return
+		if request.Kind == "ip_address" || request.Kind == "vlan" {
+			// "" (default) holds both actions; "preview" allows reading the router and
+			// showing the plan but never applies it; "true" allows both.
+			switch os.Getenv("MM_NETWORK_ADDRESS_CONTROLS_ENABLED") {
+			case "true":
+			case "preview":
+				if c.Param("action") == "apply" {
+					c.JSON(http.StatusServiceUnavailable, gin.H{"error": "IP address and VLAN changes are in preview-only mode: the plan was checked against the router but nothing can be applied yet; no router was changed"})
+					return
+				}
+			default:
+				c.JSON(http.StatusServiceUnavailable, gin.H{"error": "IP address and VLAN changes are held until they have been tested on a router; no router was changed"})
+				return
+			}
 		}
 		if (request.Kind == "wifi" || request.Kind == "wireless") && os.Getenv("MM_NETWORK_WIFI_CONTROLS_ENABLED") != "true" {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Wi-Fi writes are held for physical-radio acceptance; no router was changed"})
@@ -90,7 +101,9 @@ func (h *SecurityHandler) NetworkControl(c *gin.Context) {
 		}
 		inventory.WriteEnabled = enabled
 		inventory.WiFiWriteEnabled = enabled && os.Getenv("MM_NETWORK_WIFI_CONTROLS_ENABLED") == "true"
-		inventory.AddressWriteEnabled = enabled && os.Getenv("MM_NETWORK_ADDRESS_CONTROLS_ENABLED") == "true"
+		addressMode := os.Getenv("MM_NETWORK_ADDRESS_CONTROLS_ENABLED")
+		inventory.AddressWriteEnabled = enabled && (addressMode == "true" || addressMode == "preview")
+		inventory.AddressPreviewOnly = enabled && addressMode == "preview"
 		c.JSON(http.StatusOK, gin.H{"inventory": inventory})
 	case "preview", "apply":
 		if c.Request.Method != http.MethodPost {
