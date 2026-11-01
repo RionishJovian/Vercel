@@ -1,5 +1,5 @@
 import { useI18n } from "../../i18n";
-import type { HubStatus } from "./hubStatus";
+import type { HubStatus } from "../../lib/hubStatus";
 
 /** The label comes from the Magic Hub handshake. "Unknown" means the lookup was unavailable, not that the router is down. */
 export function HubChip({ status }: { status?: HubStatus }) {

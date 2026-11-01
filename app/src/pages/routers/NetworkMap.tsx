@@ -7,7 +7,7 @@ import { Note } from "../../components/ui";
 import { Skeleton } from "../../components/Skeleton";
 import type { RouterRow } from ".";
 import { HubChip } from "./HubChip";
-import type { HubStatus } from "./hubStatus";
+import type { HubStatus } from "../../lib/hubStatus";
 
 type Inv = { available?: Record<string, boolean>; objects?: Record<string, Array<{ values?: Record<string, string> }>> };
 interface Dev { mac: string; name: string; ip: string; port: string; how: "" | "wifi" | "neighbor" | "learned" }

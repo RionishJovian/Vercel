@@ -1,6 +1,7 @@
 import useSWR from "swr";
 import { fetcher } from "../lib/api";
-import { asArray, mmk, num, type Fleet, type Me, type Router, type VoucherReport } from "../lib/types";
+import { useFleet } from "../lib/useFleet";
+import { asArray, mmk, num, type Me, type Router, type VoucherReport } from "../lib/types";
 import { useI18n } from "../i18n";
 import { Ring } from "../components/Ring";
 import { Skeleton } from "../components/Skeleton";
@@ -27,7 +28,7 @@ function StockMeter({ rep }: { rep?: VoucherReport }) {
 export function Home({ me }: { me: Me }) {
   const { t } = useI18n();
   const report = useSWR<VoucherReport>("/voucher-report", fetcher);
-  const fleet = useSWR<Fleet>("/fleet/health", fetcher, { refreshInterval: 30000 });
+  const fleet = useFleet();
   const routers = useSWR<{ routers?: Router[] }>("/routers", fetcher);
   const todayShown = useCountUp(num(report.data?.activation_today));
   const name = me.user?.full_name || (me.user?.email ?? "").split("@")[0];

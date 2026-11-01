@@ -9,7 +9,7 @@ import { Icon, type IconName } from "../../components/icons";
 import { workspaceInfo, workspaces, type Workspace } from "../network/schema";
 import { Detail } from "./Detail";
 import { NetworkMap } from "./NetworkMap";
-import { useHubStatus } from "./hubStatus";
+import { useHubStatus } from "../../lib/hubStatus";
 import { HubChip } from "./HubChip";
 
 export interface RouterRow extends Router { is_online?: boolean; transport?: string; last_seen_at?: string }

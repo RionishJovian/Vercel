@@ -2,6 +2,7 @@ import { Icon } from "../../components/icons";
 import { useState, type FormEvent } from "react";
 import useSWR from "swr";
 import { api, ApiError, fetcher, isUnauthorized } from "../../lib/api";
+import { useFleet } from "../../lib/useFleet";
 import { asArray, type Me } from "../../lib/types";
 import { useI18n } from "../../i18n";
 import { BackLink, Field, Note, PageHead } from "../../components/ui";
@@ -127,7 +128,7 @@ export function Hub({ me }: { me: Me }) {
   const { t } = useI18n();
   const canEdit = EDITORS.includes(me.user?.user_role ?? "");
   const routers = useSWR<{ routers?: GW[] }>("/routers", fetcher);
-  const fleet = useSWR<{ peers?: Array<{ device_id?: string; state?: string }> }>("/fleet/health", fetcher, { shouldRetryOnError: false });
+  const fleet = useFleet({ shouldRetryOnError: false });
   const sitesRes = useSWR<{ sites?: Array<{ site_id: string; name: string }> }>("/sites", fetcher, { shouldRetryOnError: false });
   const cap = useSWR<Capability>(canEdit ? "/vps/enrollment-capability" : null, fetcher, { shouldRetryOnError: false });
   const [openId, setOpen] = useState("");

@@ -1,5 +1,6 @@
 import useSWR from "swr";
 import { fetcher } from "../lib/api";
+import { useFleet } from "../lib/useFleet";
 import { asArray, num, type Router } from "../lib/types";
 import { useI18n } from "../i18n";
 import { BackLink, Note } from "../components/ui";
@@ -9,13 +10,12 @@ import { deviceImage } from "../lib/deviceImage";
 import { useCountUp } from "../lib/useCountUp";
 
 interface Peer { device_id?: string; hardware_name?: string; state?: string }
-interface FleetData { peers?: Peer[]; total_peers?: number; up?: number; stale?: number; offline?: number; overall_state?: string }
 const LEVEL: Record<string, number> = { up: 10, stale: 5, offline: 1, unknown: 0 };
 const TONE: Record<string, string> = { up: "ok", stale: "warn", offline: "bad", unknown: "" };
 
 export function Fleet() {
   const { t } = useI18n();
-  const fleet = useSWR<FleetData>("/fleet/health", fetcher, { refreshInterval: 30000 });
+  const fleet = useFleet();
   const routers = useSWR<{ routers?: Router[] }>("/routers", fetcher);
   const pulse = useSWR<{ open_incidents_head?: unknown[] }>("/fleet/pulse", fetcher, { shouldRetryOnError: false });
   const availNow = (() => { const tp = num(fleet.data?.total_peers) ?? asArray(fleet.data?.peers).length; return tp ? Math.round(((num(fleet.data?.up) ?? 0) / tp) * 100) : 0; })();
