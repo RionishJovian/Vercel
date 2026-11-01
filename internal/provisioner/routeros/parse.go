@@ -14,6 +14,9 @@ import (
 //   - `print value-list detail` on LIST menus (/interface, /ip hotspot user)
 //   - plain `print` on SINGLETON menus (/system resource)
 func parseValueList(out string) map[string]string {
+	if looksLikeGuardDetail(out) {
+		return parseGuardDetail(out)
+	}
 	m := map[string]string{}
 	for _, line := range strings.Split(out, "\n") {
 		i := strings.Index(line, ":")

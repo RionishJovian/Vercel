@@ -329,7 +329,48 @@ func readNamedValueList(ctx context.Context, r CommandRunner, menu, name string)
 // commands such as :local and quoted MAC addresses remain part of the source.
 var guardPropertyPattern = regexp.MustCompile(`^([a-z][a-z0-9-]*):(?: |$)`)
 
+// RouterOS 7.25 prints some menus (observed for /system script) in the
+// "key=value" detail layout even when value-list is asked for, with a multi-line
+// script source after "source=". Older releases print "key: value" lines.
+var (
+	guardDetailHead = regexp.MustCompile(`^\s*\d+\s+(?:[A-Z]\s+)*[a-z][a-z0-9-]*=`)
+	guardDetailPair = regexp.MustCompile(`([a-z][a-z0-9-]*)=("(?:[^"\\]|\\.)*"|[^\s"]*)`)
+)
+
+func looksLikeGuardDetail(out string) bool {
+	for _, line := range strings.Split(out, "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		return guardDetailHead.MatchString(line)
+	}
+	return false
+}
+
+func parseGuardDetail(out string) map[string]string {
+	out = strings.ReplaceAll(out, "\r\n", "\n")
+	header, source, hasSource := out, "", false
+	if i := strings.Index(out, " source="); i >= 0 {
+		header, source, hasSource = out[:i], out[i+len(" source="):], true
+	}
+	m := map[string]string{}
+	for _, pair := range guardDetailPair.FindAllStringSubmatch(header, -1) {
+		v := pair[2]
+		if len(v) >= 2 && v[0] == '"' && v[len(v)-1] == '"' {
+			v = strings.NewReplacer(`\"`, `"`, `\\`, `\`).Replace(v[1 : len(v)-1])
+		}
+		m[pair[1]] = v
+	}
+	if hasSource {
+		m["source"] = strings.TrimSpace(source)
+	}
+	return m
+}
+
 func parseGuardValueList(out string) map[string]string {
+	if looksLikeGuardDetail(out) {
+		return parseGuardDetail(out)
+	}
 	m := map[string]string{}
 	var currentKey string
 	var currentValue strings.Builder
