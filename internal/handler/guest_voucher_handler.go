@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"regexp"
@@ -278,6 +279,18 @@ func (h *GuestVoucherHandler) syncGatewayVouchers(ctx context.Context, biz, devi
 				}
 				if grant == nil || grant.DeviceID != deviceID {
 					return database.ErrGuestVoucherUnavailable
+				}
+				// Keep the latest router counters when the operator-applied usage
+				// table exists. Best effort inside a savepoint: a problem here must
+				// never block activation or expiry synchronization.
+				if database.GuestVoucherUsageTableExists(tx) {
+					if _, e := tx.ExecContext(ctx, "SAVEPOINT mm_usage"); e == nil {
+						if e := grants.UpsertUsageTXN(tx, biz, observation.VoucherID, deviceID, observation.BytesUsed, observation.UptimeSeconds, now); e != nil {
+							_, _ = tx.ExecContext(ctx, "ROLLBACK TO SAVEPOINT mm_usage")
+							log.Printf("voucher usage not stored for %s: %v", observation.VoucherID, e)
+						}
+						_, _ = tx.ExecContext(ctx, "RELEASE SAVEPOINT mm_usage")
+					}
 				}
 				usage := observation.UptimeSeconds > 0 || observation.BytesUsed > 0 || observation.FirstUseEpoch > 0
 				eligible := voucherStatus == "unused" || voucherStatus == "active" || voucherStatus == "used"
