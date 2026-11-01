@@ -198,7 +198,7 @@ func voucherLoginUserMatch(user map[string]string, l VoucherLogin, server string
 	switch user["profile"] {
 	case voucherGuardProfile:
 		return true, false, hasUsage && !hasAnchor
-	case "default", voucherGuardLegacyProfile:
+	case "default", voucherGuardLegacyProfileV1, voucherGuardLegacyProfileV2:
 		return true, true, hasUsage && !hasAnchor
 	default:
 		return false, false, false
