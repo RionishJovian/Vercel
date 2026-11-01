@@ -119,6 +119,8 @@ func buildNetworkPlan(ctx context.Context, r CommandRunner, request NetworkReque
 		"queue":           "name target max-limit disabled",
 		"wifi":            "ssid country password disabled",
 		"wireless":        "ssid country password disabled",
+		"ip_address":      "address interface disabled",
+		"vlan":            "name interface vlan-id disabled",
 	}
 	fields, ok := allowed[request.Kind]
 	if !ok {
@@ -177,6 +179,10 @@ func buildNetworkPlan(ctx context.Context, r CommandRunner, request NetworkReque
 	switch request.Kind {
 	case "firewall", "shield", "fairshare":
 		return buildHubManagementPlan(ctx, r, request)
+	case "ip_address":
+		return finishNetworkPlan(buildIPAddressPlan(ctx, r, request))
+	case "vlan":
+		return finishNetworkPlan(buildVLANPlan(ctx, r, request))
 	case "wan":
 		if request.ID != "" || (v["mode"] != "balance" && v["mode"] != "failover") || v["wan1"] == v["wan2"] || !networkIPv4(v["gateway1"]) || !networkIPv4(v["gateway2"]) {
 			return nil, nil, fmt.Errorf("choose two distinct active uplinks, their IPv4 ISP gateways and balance or failover mode")
@@ -618,6 +624,20 @@ func buildNetworkPlan(ctx context.Context, r CommandRunner, request NetworkReque
 			err = edit(key, request.ID, "Update selected "+request.Kind+" settings", values)
 		}
 	}
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(steps) == 0 {
+		return nil, nil, fmt.Errorf("selected settings are already applied")
+	}
+	if len(steps) > 40 {
+		return nil, nil, fmt.Errorf("network change is too large for one guarded operation")
+	}
+	return steps, warnings, nil
+}
+
+// finishNetworkPlan applies the same size limit as every other operation.
+func finishNetworkPlan(steps []networkStep, warnings []string, err error) ([]networkStep, []string, error) {
 	if err != nil {
 		return nil, nil, err
 	}

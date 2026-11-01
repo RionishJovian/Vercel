@@ -22,13 +22,15 @@ type NetworkObject struct {
 	Values map[string]string `json:"values"`
 }
 type NetworkInventory struct {
-	ObservedAt       string                     `json:"observed_at,omitempty"`
-	Health           map[string]string          `json:"health,omitempty"`
-	WriteEnabled     bool                       `json:"write_enabled"`
-	WiFiWriteEnabled bool                       `json:"wifi_write_enabled"`
-	Interfaces       []GatewayInterface         `json:"interfaces"`
-	Objects          map[string][]NetworkObject `json:"objects"`
-	Available        map[string]bool            `json:"available"`
+	ObservedAt       string            `json:"observed_at,omitempty"`
+	Health           map[string]string `json:"health,omitempty"`
+	WriteEnabled     bool              `json:"write_enabled"`
+	WiFiWriteEnabled bool              `json:"wifi_write_enabled"`
+	// AddressWriteEnabled gates the free-form IP address and VLAN operations.
+	AddressWriteEnabled bool                       `json:"address_write_enabled"`
+	Interfaces          []GatewayInterface         `json:"interfaces"`
+	Objects             map[string][]NetworkObject `json:"objects"`
+	Available           map[string]bool            `json:"available"`
 }
 type NetworkRequest struct {
 	Kind         string            `json:"kind"`
@@ -57,6 +59,7 @@ var networkMenus = map[string]networkMenu{
 	"bindings":          {"/ip hotspot ip-binding", []string{"mac-address", "address", "server", "type", "comment", "disabled"}},
 	"queue_types":       {"/queue type", []string{"name", "kind", "pcq-rate", "pcq-classifier"}},
 	"addresses":         {"/ip address", []string{"address", "interface", "comment", "disabled", "dynamic"}},
+	"vlans":             {"/interface vlan", []string{"name", "vlan-id", "interface", "disabled"}},
 	"pools":             {"/ip pool", []string{"name", "ranges"}},
 	"dhcp":              {"/ip dhcp-server", []string{"name", "interface", "address-pool", "lease-time", "disabled"}},
 	"dhcp_networks":     {"/ip dhcp-server network", []string{"address", "gateway", "dns-server", "comment"}},
