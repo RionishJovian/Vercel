@@ -52,7 +52,7 @@ export const descriptions: Record<string, string> = {
   fairshare: "Share total upload/download bandwidth between client IP addresses using PCQ. Active FastTrack and overlapping queues must be reviewed first.",
   addresses: "Inspect assigned router addresses. Use Create customer network for a new LAN; existing management addresses are protected from casual edits.",
   ip_address: "Add an IP address to a customer port or bridge, or change one that is free. Internet uplinks, the Magic Hub tunnel, automatic addresses and ports that serve customers are protected.",
-  vlan: "Create a tagged VLAN on a port, bridge or bond. A VLAN that is in use keeps its ID and port; give it an address here or use Create customer network.",
+  vlan: "Create a tagged VLAN on a port, bridge or bond. Changing the ID or port of a VLAN in use cuts off everything on it, so it waits for you to press Keep and reverts by itself in 5 minutes otherwise. Give it an address here or use Create customer network.",
   routes: "Inspect routes and priorities. Use Internet connections for reviewed dual-uplink changes.",
   wan: "Keep a backup ISP ready or distribute connections across two ISPs.", pppoe_client: "Connect an ISP that gave you a PPPoE username and password.",
   pppoe_server: "Set up internet service for your wired subscribers.", pppoe_service: "Change the plan or state of an existing subscriber service.",
@@ -73,6 +73,7 @@ export interface Inventory {
   available?: Record<string, boolean>;
   objects?: Record<string, NetObject[]>;
   write_enabled?: boolean; wifi_write_enabled?: boolean; address_write_enabled?: boolean; address_preview_only?: boolean;
+  pending_confirm?: { revert_at: string };
 }
 export const objectsOf = (inv: Inventory, key: string): NetObject[] => inv.objects?.[key] ?? [];
 export const labelOf = (o: NetObject) => o.values.name || o.values["service-name"] || o.values.address || o.id;

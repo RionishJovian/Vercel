@@ -279,10 +279,11 @@ func TestVLANEditRules(t *testing.T) {
 			t.Fatal("VLAN not disabled")
 		}
 	})
-	t.Run("a VLAN in use keeps its id and port", func(t *testing.T) {
+	t.Run("a VLAN in use can be reshaped only with a strong warning", func(t *testing.T) {
 		r := addressFixture() // vlan10 carries 172.20.0.1/24
-		if _, err := preview(t, r, NetworkRequest{Kind: "vlan", ID: "*50", Values: map[string]string{"vlan-id": "11"}}); err == nil {
-			t.Fatal("reshaping an in-use VLAN must be refused")
+		review, err := preview(t, r, NetworkRequest{Kind: "vlan", ID: "*50", Values: map[string]string{"vlan-id": "11"}})
+		if err != nil || !strings.Contains(strings.Join(review.Warnings, " "), "reverts by itself in 5 minutes") {
+			t.Fatalf("review=%+v err=%v", review, err)
 		}
 	})
 	t.Run("disabling a VLAN in use warns about what stops", func(t *testing.T) {
@@ -352,4 +353,117 @@ func TestHubRangeIsRefusedEvenBeforeTheTunnelExists(t *testing.T) {
 	if _, err := preview(t, r, NetworkRequest{Kind: "ip_address", ID: "*13", Values: map[string]string{"address": "10.77.0.50/24"}}); err == nil || !strings.Contains(err.Error(), "Magic Hub") {
 		t.Fatalf("editing into the Hub range must be refused explicitly, got %v", err)
 	}
+}
+
+func clearPending(t *testing.T) {
+	t.Helper()
+	t.Cleanup(func() {
+		networkPending.Delete("biz-1:dev-1")
+		networkGuardUntil.Delete("biz-1:dev-1")
+	})
+}
+
+func applyHeld(t *testing.T, r *networkRunner, req NetworkRequest) NetworkResult {
+	t.Helper()
+	clearPending(t)
+	return applyOK(t, r, req)
+}
+
+func reshapeInUse() NetworkRequest {
+	return NetworkRequest{Kind: "vlan", ID: "*50", Values: map[string]string{"vlan-id": "11"}}
+}
+
+func TestReshapingAVLANInUseWaitsForConfirmation(t *testing.T) {
+	t.Run("apply verifies, keeps the timer armed and reports the deadline", func(t *testing.T) {
+		r := addressFixture()
+		result := applyHeld(t, r, reshapeInUse())
+		if !result.PendingConfirm || result.RevertAt == "" {
+			t.Fatalf("expected a pending confirmation: %+v", result)
+		}
+		if !r.guard {
+			t.Fatal("the router-side timer must stay armed until a person keeps the change")
+		}
+		if r.objects["vlans"]["*50"]["vlan-id"] != "11" {
+			t.Fatal("the change must be on the router while it waits")
+		}
+		if !strings.Contains(strings.Join(r.commands, "\n"), ":delay 5m;") {
+			t.Fatal("a held change needs the longer five minute window")
+		}
+	})
+	t.Run("keeping it cancels the timer and verifies that", func(t *testing.T) {
+		r := addressFixture()
+		applyHeld(t, r, reshapeInUse())
+		if err := quickConfigApplier(r).ConfirmNetwork(context.Background(), "biz-1", "dev-1"); err != nil {
+			t.Fatal(err)
+		}
+		if r.guard || r.objects["vlans"]["*50"]["vlan-id"] != "11" {
+			t.Fatal("confirm must cancel the timer and keep the change")
+		}
+		if _, ok := networkPending.Load("biz-1:dev-1"); ok {
+			t.Fatal("nothing should be pending after confirming")
+		}
+		if err := quickConfigApplier(r).ConfirmNetwork(context.Background(), "biz-1", "dev-1"); err == nil {
+			t.Fatal("confirming twice must be refused")
+		}
+	})
+	t.Run("reverting restores the old values and cancels the timer", func(t *testing.T) {
+		r := addressFixture()
+		applyHeld(t, r, reshapeInUse())
+		result, err := quickConfigApplier(r).RevertNetwork(context.Background(), "biz-1", "dev-1")
+		if err != nil || !result.RolledBack {
+			t.Fatalf("%+v %v", result, err)
+		}
+		if r.objects["vlans"]["*50"]["vlan-id"] != "10" || r.guard {
+			t.Fatal("revert must restore the VLAN id and cancel the timer")
+		}
+	})
+	t.Run("once the router timer has run, keeping it is refused honestly", func(t *testing.T) {
+		r := addressFixture()
+		applyHeld(t, r, reshapeInUse())
+		r.guard = false // the timer fired on the router
+		err := quickConfigApplier(r).ConfirmNetwork(context.Background(), "biz-1", "dev-1")
+		if err == nil || !strings.Contains(err.Error(), "time ran out") {
+			t.Fatalf("got %v", err)
+		}
+	})
+	t.Run("confirm is refused if the router no longer matches the change", func(t *testing.T) {
+		r := addressFixture()
+		applyHeld(t, r, reshapeInUse())
+		r.objects["vlans"]["*50"]["vlan-id"] = "12" // someone changed it meanwhile
+		if err := quickConfigApplier(r).ConfirmNetwork(context.Background(), "biz-1", "dev-1"); err == nil {
+			t.Fatal("a drifted router must not be confirmed")
+		}
+		if !r.guard {
+			t.Fatal("the timer must stay armed when confirmation is refused")
+		}
+	})
+	t.Run("ordinary changes are not held", func(t *testing.T) {
+		r := addressFixture()
+		clearPending(t)
+		result := applyOK(t, r, NetworkRequest{Kind: "vlan", ID: "*51", Values: map[string]string{"vlan-id": "21"}})
+		if result.PendingConfirm || r.guard {
+			t.Fatalf("an unused VLAN change must finish at once: %+v", result)
+		}
+	})
+	t.Run("a VLAN that carries the uplink is still refused", func(t *testing.T) {
+		r := addressFixture()
+		r.objects["dhcp_clients"]["*21"] = map[string]string{"interface": "vlan10", "gateway": "", "add-default-route": "yes", "disabled": "no"}
+		if _, err := preview(t, r, reshapeInUse()); err == nil {
+			t.Fatal("an uplink VLAN must never be reshaped")
+		}
+	})
+	t.Run("another change is blocked while one waits", func(t *testing.T) {
+		r := addressFixture()
+		applyHeld(t, r, reshapeInUse())
+		a := quickConfigApplier(r)
+		other := NetworkRequest{Kind: "vlan", ID: "*51", Values: map[string]string{"vlan-id": "22"}}
+		review, err := a.PreviewNetwork(context.Background(), "biz-1", "dev-1", other)
+		if err != nil {
+			t.Fatal(err)
+		}
+		other.Confirmation = review.Confirmation
+		if _, err = a.ApplyNetwork(context.Background(), "biz-1", "dev-1", other); err == nil {
+			t.Fatal("a second write must wait for the first to be kept or reverted")
+		}
+	})
 }

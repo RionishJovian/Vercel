@@ -444,9 +444,14 @@ func buildVLANPlan(ctx context.Context, r CommandRunner, request NetworkRequest)
 		}
 	}
 	reshaped := (v["vlan-id"] != "" && v["vlan-id"] != before["vlan-id"]) || (v["interface"] != "" && v["interface"] != before["interface"])
+	hold := false
 	if reshaped {
 		if len(used) > 0 {
-			return nil, nil, fmt.Errorf("%s is in use by %s; its ID or port cannot be changed. Create a new VLAN instead", name, strings.Join(used, ", "))
+			// Its addresses and services follow the VLAN, so nothing is removed, but
+			// everything on it is cut off unless the switch or access point carries the
+			// new ID and port. A person must test a real client and keep the change.
+			hold = true
+			warnings = append(warnings, name+" is in use by "+strings.Join(used, ", ")+". Changing its ID or port cuts off everything on it unless your switch or access point carries the new VLAN ID on the connecting port. After applying, test a real client: the change reverts by itself in 5 minutes unless you press Keep.")
 		}
 		parent, vid := before["interface"], before["vlan-id"]
 		if v["interface"] != "" {
@@ -474,6 +479,7 @@ func buildVLANPlan(ctx context.Context, r CommandRunner, request NetworkRequest)
 	if step == nil {
 		return nil, nil, fmt.Errorf("selected settings are already applied")
 	}
+	step.Hold = hold
 	return []networkStep{*step}, warnings, nil
 }
 

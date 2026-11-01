@@ -33,6 +33,7 @@ type NetworkInventory struct {
 	Interfaces         []GatewayInterface         `json:"interfaces"`
 	Objects            map[string][]NetworkObject `json:"objects"`
 	Available          map[string]bool            `json:"available"`
+	PendingConfirm     *NetworkPending            `json:"pending_confirm,omitempty"`
 }
 type NetworkRequest struct {
 	Kind         string            `json:"kind"`
@@ -50,6 +51,16 @@ type NetworkResult struct {
 	Backup     string `json:"backup"`
 	Verified   bool   `json:"verified"`
 	RolledBack bool   `json:"rolled_back"`
+	// PendingConfirm is set for a risky change: it is applied and verified, but the
+	// router-side restore timer stays armed and reverts it at RevertAt unless it is
+	// confirmed. See ConfirmNetwork and RevertNetwork.
+	PendingConfirm bool   `json:"pending_confirm,omitempty"`
+	RevertAt       string `json:"revert_at,omitempty"`
+}
+
+// NetworkPending describes a change that is waiting to be kept or reverted.
+type NetworkPending struct {
+	RevertAt string `json:"revert_at"`
 }
 type networkMenu struct {
 	path   string
@@ -267,6 +278,13 @@ func (a *DeviceApplier) ReadNetwork(ctx context.Context, businessID, deviceID st
 		return NetworkInventory{}, err
 	}
 	result := NetworkInventory{Health: readHubHealth(ctx, r), Interfaces: interfaces, Objects: map[string][]NetworkObject{}, Available: map[string]bool{}}
+	if v, ok := networkPending.Load(businessID + ":" + deviceID); ok {
+		if entry := v.(networkPendingEntry); time.Now().Before(entry.until) {
+			result.PendingConfirm = &NetworkPending{RevertAt: entry.until.UTC().Format(time.RFC3339)}
+		} else {
+			networkPending.Delete(businessID + ":" + deviceID)
+		}
+	}
 	for key := range networkMenus {
 		if key == "ssh_sessions" || key == "wg_peers" {
 			continue
@@ -296,6 +314,9 @@ type networkStep struct {
 	Values, Before                               map[string]string
 	First                                        bool
 	EmptyTable                                   bool
+	// Hold keeps the restore timer armed after a verified apply, so a person can
+	// test a real client and then keep or revert the change.
+	Hold bool
 }
 type networkApproval struct {
 	Business, Device, RequestHash, StateHash string
@@ -306,6 +327,17 @@ var networkApprovals = struct {
 	sync.Mutex
 	entries map[string]networkApproval
 }{entries: map[string]networkApproval{}}
+
+type networkPendingEntry struct {
+	job   string
+	steps []networkStep
+	until time.Time
+}
+
+// networkPending holds changes waiting to be kept or reverted, keyed like the
+// restoration guard. If the server restarts the entry is lost and the router
+// simply reverts at the deadline: the safe default.
+var networkPending sync.Map
 
 // An unconfirmed timer must finish before another network write can reuse its
 // owned selectors. This map is guarded by the per-device gateway lock.
@@ -485,6 +517,14 @@ func (a *DeviceApplier) ApplyNetwork(ctx context.Context, businessID, deviceID s
 	if e != nil || jobs != 1 {
 		return result, fmt.Errorf("router has an active script job; wait for it to finish before changing network settings")
 	}
+	hold := false
+	for _, step := range steps {
+		hold = hold || step.Hold
+	}
+	window := 3 * time.Minute
+	if hold {
+		window = 5 * time.Minute
+	}
 	result.Backup = snapshotName(deviceID+"-network", time.Now().UTC())
 	for _, command := range []string{"/export file=" + result.Backup, "/system backup save name=" + result.Backup} {
 		if _, err = r.Run(ctx, command); err != nil {
@@ -495,12 +535,13 @@ func (a *DeviceApplier) ApplyNetwork(ctx context.Context, businessID, deviceID s
 	// reviewed fields if transport disappears. Never log this source: previous
 	// credentials can be part of a restoration. Each undo is isolated so one
 	// absent addition does not prevent the remaining records from restoring.
-	guard := `:put [:execute { :delay 3m;`
+	guard := fmt.Sprintf(`:put [:execute { :delay %dm;`, int(window.Minutes()))
 	for i := len(steps) - 1; i >= 0; i-- {
 		guard += ` :do { ` + networkWriteCommand(steps[i], true) + ` } on-error={};`
 	}
 	guard += ` }]`
-	networkGuardUntil.Store(guardKey, time.Now().Add(3*time.Minute+10*time.Second))
+	guardStart := time.Now()
+	networkGuardUntil.Store(guardKey, guardStart.Add(window+10*time.Second))
 	out, guardErr := r.Run(ctx, guard)
 	job := strings.TrimSpace(out)
 	if guardErr != nil || !networkIDPattern.MatchString(job) {
@@ -576,11 +617,100 @@ func (a *DeviceApplier) ApplyNetwork(ctx context.Context, businessID, deviceID s
 			}
 		}
 	}
+	if hold {
+		// Verified, but a person must keep it. The timer on the router stays armed
+		// and reverts the change at the deadline.
+		until := guardStart.Add(window)
+		networkPending.Store(guardKey, networkPendingEntry{job: job, steps: steps, until: until})
+		result.Verified, result.PendingConfirm, result.RevertAt = true, true, until.UTC().Format(time.RFC3339)
+		return result, nil
+	}
 	if err = cancelGuard(ctx); err != nil {
 		rollback()
 		return result, fmt.Errorf("guard cancellation failed; inspect rollback status")
 	}
 	result.Verified = true
+	return result, nil
+}
+
+// ConfirmNetwork keeps a verified change that is waiting for confirmation by
+// cancelling the router-side restore timer. It refuses if the timer already ran
+// (the router has reverted) or if the router no longer matches the change.
+func (a *DeviceApplier) ConfirmNetwork(ctx context.Context, businessID, deviceID string) error {
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	guardKey := businessID + ":" + deviceID
+	lock, _ := gatewayLocks.LoadOrStore(guardKey, &sync.Mutex{})
+	mu := lock.(*sync.Mutex)
+	mu.Lock()
+	defer mu.Unlock()
+	v, ok := networkPending.Load(guardKey)
+	if !ok {
+		return fmt.Errorf("there is no change waiting for confirmation")
+	}
+	entry := v.(networkPendingEntry)
+	r, err := runnerForDevice(ctx, a.src, a.factory, a.timeout, businessID, deviceID)
+	if err != nil {
+		return err
+	}
+	n, err := networkCount(ctx, r, "/system script job print count-only where .id="+entry.job)
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		networkPending.Delete(guardKey)
+		networkGuardUntil.Delete(guardKey) // the timer already ran, so the window is over
+		return fmt.Errorf("the time ran out, so the router has returned to its previous settings")
+	}
+	for _, step := range entry.steps {
+		if err = networkVerify(ctx, r, step, false); err != nil {
+			return fmt.Errorf("the router no longer matches the change, so it was not confirmed: %s", err.Error())
+		}
+	}
+	if _, err = r.Run(ctx, "/system script job remove "+entry.job); err != nil {
+		return fmt.Errorf("could not cancel the restoration timer; the change will still revert at its deadline")
+	}
+	if n, err = networkCount(ctx, r, "/system script job print count-only where .id="+entry.job); err != nil || n != 0 {
+		return fmt.Errorf("could not confirm the restoration timer was cancelled; the change will still revert at its deadline")
+	}
+	networkPending.Delete(guardKey)
+	networkGuardUntil.Delete(guardKey)
+	return nil
+}
+
+// RevertNetwork undoes a change that is waiting for confirmation right now,
+// verifying each undo, instead of waiting for the timer.
+func (a *DeviceApplier) RevertNetwork(ctx context.Context, businessID, deviceID string) (NetworkResult, error) {
+	ctx, cancel := context.WithTimeout(ctx, 90*time.Second)
+	defer cancel()
+	result := NetworkResult{}
+	guardKey := businessID + ":" + deviceID
+	lock, _ := gatewayLocks.LoadOrStore(guardKey, &sync.Mutex{})
+	mu := lock.(*sync.Mutex)
+	mu.Lock()
+	defer mu.Unlock()
+	v, ok := networkPending.Load(guardKey)
+	if !ok {
+		return result, fmt.Errorf("there is no change waiting for confirmation")
+	}
+	entry := v.(networkPendingEntry)
+	r, err := runnerForDevice(ctx, a.src, a.factory, a.timeout, businessID, deviceID)
+	if err != nil {
+		return result, err
+	}
+	verified := true
+	for i := len(entry.steps) - 1; i >= 0; i-- {
+		if networkWrite(ctx, r, entry.steps[i], true) != nil || networkVerify(ctx, r, entry.steps[i], true) != nil {
+			verified = false
+		}
+	}
+	if !verified {
+		return result, fmt.Errorf("the previous settings could not be verified; the router will try again automatically at the deadline")
+	}
+	_, _ = r.Run(ctx, "/system script job remove "+entry.job) // already gone if the timer ran first
+	networkPending.Delete(guardKey)
+	networkGuardUntil.Delete(guardKey)
+	result.Verified, result.RolledBack = true, true
 	return result, nil
 }
 

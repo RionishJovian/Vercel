@@ -105,6 +105,41 @@ func (h *SecurityHandler) NetworkControl(c *gin.Context) {
 		inventory.AddressWriteEnabled = enabled && (addressMode == "true" || addressMode == "preview")
 		inventory.AddressPreviewOnly = enabled && addressMode == "preview"
 		c.JSON(http.StatusOK, gin.H{"inventory": inventory})
+	case "confirm", "revert":
+		// Never gated by the write switches: keeping or undoing a change that is
+		// already on the router must stay possible whatever the settings are now.
+		if c.Request.Method != http.MethodPost {
+			c.Status(http.StatusMethodNotAllowed)
+			return
+		}
+		decider, ok := controller.(interface {
+			ConfirmNetwork(context.Context, string, string) error
+			RevertNetwork(context.Context, string, string) (routeros.NetworkResult, error)
+		})
+		if !ok {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "network control is unavailable"})
+			return
+		}
+		var (
+			err    error
+			result routeros.NetworkResult
+			action = "router.network.confirmed"
+			reason = "Network change kept after the owner tested it"
+		)
+		if c.Param("action") == "confirm" {
+			err = decider.ConfirmNetwork(ctx, b, d)
+		} else {
+			result, err = decider.RevertNetwork(ctx, b, d)
+			action, reason = "router.network.reverted", "Network change reverted by the owner before the restore timer"
+		}
+		if err != nil {
+			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+			return
+		}
+		auditErr := runInTenant(c, h.db, b, func(tx *sql.Tx) error {
+			return h.deviceRepo.RecordChangeTXN(tx, b, d, auth.GetUserRole(c), action, reason)
+		})
+		c.JSON(http.StatusOK, gin.H{"ok": true, "result": result, "audit_recorded": auditErr == nil})
 	case "preview", "apply":
 		if c.Request.Method != http.MethodPost {
 			c.Status(http.StatusMethodNotAllowed)
