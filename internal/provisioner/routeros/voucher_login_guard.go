@@ -13,9 +13,18 @@ import (
 )
 
 const (
-	voucherGuardScriptName  = "mega-magic-voucher-guard-v1"
-	voucherGuardScheduler   = "mega-magic-voucher-guard-v1"
-	voucherGuardProfile     = "mega-magic-voucher-v1"
+	voucherGuardScriptName = "mega-magic-voucher-guard-v1"
+	voucherGuardScheduler  = "mega-magic-voucher-guard-v1"
+	voucherGuardProfile    = "mega-magic-voucher-v2"
+	// v1 profile and login script called the login script through
+	// "/system script run", which does not receive the hotspot hook's $user, so
+	// first use was never stamped. They are only recognised to migrate users.
+	voucherGuardLegacyProfile = "mega-magic-voucher-v1"
+	voucherGuardLoginScript   = "mega-magic-voucher-guard-v2-login"
+	voucherGuardLoginUserVar  = "mmGuardLoginUser"
+	// voucherGuardOnLogin hands the hotspot hook's $user to the shared script
+	// through a global; local variables are not visible to the called script.
+	voucherGuardOnLogin     = ":global " + voucherGuardLoginUserVar + " $user; /system script run " + voucherGuardLoginScript
 	voucherGuardMarker      = "mega-magic:voucher-guard:v1"
 	voucherGuardProfileNote = "/system script run " + voucherGuardScriptName
 	voucherGuardInterval    = "60s"
@@ -138,12 +147,15 @@ func parseRouterOSDuration(s string) (int64, error) {
 
 // voucherGuardSourceLogin is the on-login hook script.
 // It captures first-use evidence ONLY for the specific user that just logged in.
-// Uses RouterOS login hook variable $user (the username that just logged in).
+// The profile hook passes the username that just logged in through the global
+// mmGuardLoginUser, because $user is not visible inside a called script.
 // Only stamps anchor on base-form comments (54 chars, no existing anchor).
 const voucherGuardSourceLogin = `:local mmGuardVersion "mega-magic:voucher-guard:v1"; {
   :local now ([:tonsec [:timestamp]] / 1000000000);
   :if ([:typeof $now] != "num" or $now < 1000000000 or $now > 4102444800) do={ :return; };
-  :local loginUser $user;
+  :global mmGuardLoginUser;
+  :local loginUser $mmGuardLoginUser;
+  :set mmGuardLoginUser "";
   :if ([:len $loginUser] = 0) do={ :return; };
   :local c [/ip hotspot user get $loginUser comment];
   :if ([:len $c] < 54 or [:pick $c 0 18] != "mega-magic:vlogin:") do={ :return; };
@@ -311,8 +323,7 @@ func voucherGuardSchedulerIsOurs(v map[string]string) bool {
 }
 
 func voucherGuardProfileIsOurs(v map[string]string) bool {
-	expectedOnLogin := "/system script run " + voucherGuardScriptName + "-login"
-	return strings.TrimSpace(v["on-login"]) == expectedOnLogin &&
+	return strings.TrimSpace(v["on-login"]) == voucherGuardOnLogin &&
 		strings.TrimSpace(v["on-logout"]) == "" && v["shared-users"] == "1"
 }
 
@@ -439,9 +450,9 @@ func ensureVoucherLoginGuard(ctx context.Context, r CommandRunner) error {
 		return err
 	}
 	// Install login hook script
-	scriptLoginAdd := "name=" + routerOSQuoted(voucherGuardScriptName+"-login") +
+	scriptLoginAdd := "name=" + routerOSQuoted(voucherGuardLoginScript) +
 		" policy=read,write dont-require-permissions=yes source=" + routerOSQuoted(voucherGuardSourceLogin)
-	if err := ensureOrAdoptGuardObject(ctx, r, "/system script", voucherGuardScriptName+"-login", scriptLoginAdd, voucherGuardScriptIsOurs); err != nil {
+	if err := ensureOrAdoptGuardObject(ctx, r, "/system script", voucherGuardLoginScript, scriptLoginAdd, voucherGuardScriptIsOurs); err != nil {
 		return err
 	}
 	// Install expiry script
@@ -460,7 +471,7 @@ func ensureVoucherLoginGuard(ctx context.Context, r CommandRunner) error {
 	}
 	// Profile with on-login hook
 	profileAdd := "name=" + routerOSQuoted(voucherGuardProfile) +
-		" shared-users=1 on-login=" + routerOSQuoted("/system script run "+voucherGuardScriptName+"-login") + " on-logout=" + routerOSQuoted("")
+		" shared-users=1 on-login=" + routerOSQuoted(voucherGuardOnLogin) + " on-logout=" + routerOSQuoted("")
 	if err := ensureOrAdoptGuardObject(ctx, r, "/ip hotspot user profile", voucherGuardProfile, profileAdd, voucherGuardProfileIsOurs); err != nil {
 		return err
 	}
