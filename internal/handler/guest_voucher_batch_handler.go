@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -174,6 +175,10 @@ func (h *GuestVoucherHandler) installGuestVoucherBatch(c *gin.Context, biz, id s
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 45*time.Second)
 	installErr := h.Provisioner.ProvisionVoucherLogins(ctx, biz, batch.DeviceID, specs)
 	cancel()
+	if installErr != nil {
+		// The reason stays server-side; the response only says the batch is not ready.
+		log.Printf("guest voucher batch %s install failed: %v", id, installErr)
+	}
 	// A disconnected HTTP client must not prevent us recording uncertainty.
 	// A fresh tenant-bound transaction is bounded and never releases the IDs.
 	finishCtx, finishCancel := context.WithTimeout(context.Background(), 5*time.Second)
