@@ -425,8 +425,11 @@ func ensureOrAdoptGuardObject(ctx context.Context, r CommandRunner, menu, name, 
 		return fmt.Errorf("%w: %s %q: %s", errVoucherGuardConflict, menu, name, describeGuardFields(fields))
 	}
 	count, err = r.Run(ctx, menu+" print count-only where name="+routerOSQuoted(name))
-	if err != nil || strings.TrimSpace(count) != "1" {
-		return fmt.Errorf("%s %q did not verify", menu, name)
+	if err != nil {
+		return fmt.Errorf("%s %q did not verify: %w", menu, name, err)
+	}
+	if strings.TrimSpace(count) != "1" {
+		return fmt.Errorf("%s %q did not verify: count %q", menu, name, strings.TrimSpace(count))
 	}
 	return nil
 }
