@@ -339,7 +339,8 @@ var (
 
 func looksLikeGuardDetail(out string) bool {
 	for _, line := range strings.Split(out, "\n") {
-		if strings.TrimSpace(line) == "" {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "Flags:") || strings.HasPrefix(trimmed, "Columns:") {
 			continue
 		}
 		return guardDetailHead.MatchString(line)
