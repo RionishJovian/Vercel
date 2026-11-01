@@ -205,3 +205,59 @@ func BuildQuickConnectScript(deviceID string, peer Peer, privateKey string) (str
 	setup = strings.Replace(setup, "STOP: run step 1 first", "STOP: Magic Hub interface creation failed", 1)
 	return setup, nil
 }
+
+// ManagementUserName is the dedicated RouterOS account (and group) that one-paste
+// setup creates for a router. Setup and disconnect must derive it identically.
+func ManagementUserName(businessID, deviceID string) string {
+	hash := sha256.Sum256([]byte(businessID + "/" + deviceID))
+	return fmt.Sprintf("mm-%x", hash[:6])
+}
+
+var managementUserName = regexp.MustCompile(`^mm-[0-9a-f]{12}$`)
+
+// BuildDisconnectScript retires an enrollment completely: it removes the
+// management firewall rule, SSH key, user and group created by one-paste setup
+// (only when their ownership marker matches), then the tunnel. The router's
+// WireGuard interface and private key are kept for reconnection. SSH service
+// settings are not touched because the router's original state is unknown.
+func BuildDisconnectScript(deviceID string, peer Peer, managementUser string) (string, error) {
+	if _, err := BuildRouterScripts(deviceID, peer); err != nil || !managementUserName.MatchString(managementUser) {
+		return "", fmt.Errorf("invalid disconnect request")
+	}
+	marker := "mega-magic:" + managementUser
+	cleanup := fmt.Sprintf(`# Retire this Magic Hub enrollment: removes its management user, group, SSH key and
+# firewall rule, then its tunnel. The router's WireGuard interface and private key are kept,
+# and SSH service settings are left as they are. Safe to paste more than once.
+:local rule [/ip/firewall/filter find where comment="%s" and chain="input"]
+:if ([:len $rule] > 0) do={ /ip/firewall/filter remove $rule; :put "Management firewall rule removed." }
+:local account [/user find where name="%s"]
+:if ([:len $account] > 1) do={ :error "STOP: ambiguous management account" }
+:if ([:len $account] = 1) do={
+  :if ([:pick [/user get $account comment] 0 %d] = "%s:") do={
+    :local keys [/user/ssh-keys find where user="%s"]
+    :if ([:len $keys] > 0) do={ /user/ssh-keys remove $keys }
+    /user remove $account
+    :put "Management user and SSH key removed."
+  } else={ :put "A user named %s exists but is not owned by Magic Hub; left untouched." }
+}
+:local grp [/user/group find where name="%s"]
+:if ([:len $grp] = 1) do={ :do { /user/group remove $grp } on-error={ :put "Management group is still in use; left in place." } }
+`, marker, managementUser, len(marker)+1, marker, managementUser, managementUser, managementUser)
+	// Guard the tunnel removals so a repeat paste on a partly cleaned router succeeds.
+	name, tunnelMarker, err := scriptNames(deviceID)
+	if err != nil {
+		return "", err
+	}
+	tunnel := fmt.Sprintf(`:local iface [/interface/wireguard find where name="%s"]
+:if ([:len $iface] != 1) do={ :error "STOP: interface missing or ambiguous" }
+:if ([/interface/wireguard get $iface comment] != "%s" || [/interface/wireguard get $iface public-key] != "%s") do={ :error "STOP: enrollment ownership mismatch" }
+:local peers [/interface/wireguard/peers find where interface="%s" and comment="%s" and public-key="%s"]
+:if ([:len $peers] > 0) do={ /interface/wireguard/peers remove $peers }
+:local routes [/ip/route find where gateway="%s" and comment="%s"]
+:if ([:len $routes] > 0) do={ /ip/route remove $routes }
+:local addrs [/ip/address find where interface="%s" and comment="%s" and address="%s"]
+:if ([:len $addrs] > 0) do={ /ip/address remove $addrs }
+:put "Magic Hub tunnel and management access removed. The router's WireGuard key was kept."
+}`, name, tunnelMarker, peer.RouterPublicKey, name, tunnelMarker, peer.HubPublicKey, name, tunnelMarker, name, tunnelMarker, peer.TunnelAddress)
+	return "{\n" + cleanup + tunnel, nil
+}

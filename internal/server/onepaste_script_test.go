@@ -155,9 +155,13 @@ func TestOnePasteScriptsAreWellFormedRouterOS(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	fullDisconnect, err := hub.BuildDisconnectScript(peer.RouterID, peer, pending.user)
+	if err != nil {
+		t.Fatal(err)
+	}
 	all := map[string]string{
-		"step 1 bootstrap": scripts.Bootstrap, "step 2 setup": scripts.Setup, "disconnect": scripts.Disconnect,
-		"one-paste tunnel": quick, "one-paste tunnel + management": combined,
+		"step 1 bootstrap": scripts.Bootstrap, "step 2 setup": scripts.Setup, "disconnect (tunnel only)": scripts.Disconnect,
+		"one-paste tunnel": quick, "one-paste tunnel + management": combined, "full disconnect": fullDisconnect,
 	}
 	for name, script := range all {
 		checkRouterOSBlock(t, name, script)
@@ -172,8 +176,35 @@ func TestOnePasteScriptsAreWellFormedRouterOS(t *testing.T) {
 	if !strings.Contains(scripts.Disconnect, "NOT removed") || !strings.Contains(scripts.Disconnect, "were not removed") {
 		t.Error("disconnect must say the management user, key and rule stay on the router")
 	}
+	// Full disconnect: setup and disconnect must agree on the account, and it must
+	// remove only what setup created, in a safe order, and only when owned.
+	if !strings.Contains(combined, `/user add name="`+pending.user+`"`) || !strings.Contains(fullDisconnect, `name="`+pending.user+`"`) {
+		t.Error("setup and disconnect disagree about the management account name")
+	}
+	ordered := []string{`/user/ssh-keys remove`, `/user remove`, `/user/group remove`, `/interface/wireguard/peers remove`}
+	last := -1
+	for _, step := range ordered {
+		i := strings.Index(fullDisconnect, step)
+		if i < 0 || i < last {
+			t.Errorf("full disconnect step %q missing or out of order", step)
+		}
+		last = i
+	}
+	if !strings.Contains(fullDisconnect, `comment="mega-magic:`+pending.user+`" and chain="input"`) || !strings.Contains(fullDisconnect, `] = "mega-magic:`+pending.user+`:"`) {
+		t.Error("full disconnect does not check ownership before removing the rule and user")
+	}
+	for _, forbidden := range []string{"/ip/service", "/interface/wireguard remove", "private-key", "/system", "/ip/firewall/filter add"} {
+		if strings.Contains(fullDisconnect, forbidden) {
+			t.Errorf("full disconnect must not contain %q", forbidden)
+		}
+	}
+	for n, line := range strings.Split(fullDisconnect, "\n") {
+		if strings.Contains(line, " remove ") && !strings.Contains(line, ":if ([:len") && !strings.Contains(line, "/user remove $account") {
+			t.Errorf("full disconnect line %d removes without checking something exists: %.80s", n+1, line)
+		}
+	}
 	// The private WireGuard key may appear only in the one-paste scripts.
-	for _, name := range []string{"step 1 bootstrap", "step 2 setup", "disconnect"} {
+	for _, name := range []string{"step 1 bootstrap", "step 2 setup", "disconnect (tunnel only)", "full disconnect"} {
 		if strings.Contains(all[name], private) {
 			t.Errorf("%s leaks the router private key", name)
 		}

@@ -121,9 +121,14 @@ func (h *VPSHandler) EnrollGateway(c *gin.Context) {
 		c.JSON(502, gin.H{"error": "Hub allocation lacks safe script configuration; retry with the same router key"})
 		return
 	}
+	disconnect, err := hub.BuildDisconnectScript(device.DeviceID, peer, hub.ManagementUserName(biz, device.DeviceID))
+	if err != nil {
+		c.JSON(502, gin.H{"error": "Hub allocation lacks safe script configuration; retry with the same router key"})
+		return
+	}
 	c.JSON(200, gin.H{"peer_id": peer.PeerID, "device_id": device.DeviceID, "tunnel_address": peer.TunnelAddress,
 		"hub_public_key": peer.HubPublicKey, "endpoint": peer.Endpoint, "allowed_ips": peer.AllowedIPs,
-		"router_script": scripts.Setup, "disconnect_script": scripts.Disconnect,
+		"router_script": scripts.Setup, "disconnect_script": disconnect,
 		"state": "hub_peer_enrolled", "lan_reachability_verified": false, "router_configuration_required": true})
 }
 
