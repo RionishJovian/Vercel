@@ -7,6 +7,7 @@ import (
 	"math"
 	"regexp"
 	"strconv"
+	"sort"
 	"strings"
 	"time"
 )
@@ -379,7 +380,7 @@ func ensureOrAdoptGuardObject(ctx context.Context, r CommandRunner, menu, name, 
 		return fmt.Errorf("verify %s %q: %w", menu, name, err)
 	}
 	if !isOurs(fields) {
-		return errVoucherGuardConflict
+		return fmt.Errorf("%w: %s %q: %s", errVoucherGuardConflict, menu, name, describeGuardFields(fields))
 	}
 	count, err = r.Run(ctx, menu+" print count-only where name="+routerOSQuoted(name))
 	if err != nil || strings.TrimSpace(count) != "1" {
@@ -419,4 +420,33 @@ func ensureVoucherLoginGuard(ctx context.Context, r CommandRunner) error {
 		return err
 	}
 	return nil
+}
+
+// describeGuardFields summarises what the gateway printed so a mismatch can be
+// diagnosed from the API log. It lists field names and lengths, the short
+// permission fields in full, and the first and last 60 characters of long
+// values such as a script source. Guard objects hold no secrets.
+func describeGuardFields(fields map[string]string) string {
+	keys := make([]string, 0, len(fields))
+	for k := range fields {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var b strings.Builder
+	for i, k := range keys {
+		if i > 0 {
+			b.WriteString("; ")
+		}
+		v := fields[k]
+		if len(v) <= 40 {
+			fmt.Fprintf(&b, "%s=%q", k, v)
+			continue
+		}
+		head, tail := v, v
+		if len(v) > 60 {
+			head, tail = v[:60], v[len(v)-60:]
+		}
+		fmt.Fprintf(&b, "%s(len %d)=%q...%q", k, len(v), head, tail)
+	}
+	return b.String()
 }
