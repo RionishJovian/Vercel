@@ -86,7 +86,7 @@ func provisionVoucherLogins(ctx context.Context, r CommandRunner, logins []Vouch
 			// limits, still enabled. Anything else belongs to someone else.
 			ok, migrate, legacyWithoutAnchor := voucherLoginUserMatch(user, l, server)
 			if !ok {
-				return fmt.Errorf("existing HotSpot user differs from voucher %s", l.VoucherID)
+				return fmt.Errorf("existing HotSpot user differs from voucher %s (server %q, minutes %d, data MB %d): %s", l.VoucherID, server, l.Minutes, l.DataMB, describeGuardFields(user))
 			}
 			// Refuse before changing the profile: installing an on-login hook on
 			// an already-used, unanchored voucher could give its next login a
@@ -122,7 +122,7 @@ func provisionVoucherLogins(ctx context.Context, r CommandRunner, logins []Vouch
 		_ = migrate
 		_ = legacyWithoutAnchor
 		if !ok {
-			return fmt.Errorf("voucher login readback did not match for %s", l.VoucherID)
+			return fmt.Errorf("voucher login readback did not match for %s: %s", l.VoucherID, describeGuardFields(parseValueList(out)))
 		}
 	}
 	return nil
