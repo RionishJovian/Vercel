@@ -61,7 +61,7 @@ func TestNetworkDurationScalarAndStrictInput(t *testing.T) {
 	}
 }
 
-func (r *networkRunner) Run(_ context.Context, cmd string) (string, error) {
+func (r *networkRunner) Run(ctx context.Context, cmd string) (string, error) {
 	r.commands = append(r.commands, cmd)
 	if strings.HasPrefix(cmd, "{ ") {
 		body := strings.TrimSuffix(strings.TrimPrefix(cmd, "{ "), " }")
@@ -232,6 +232,21 @@ func (r *networkRunner) Run(_ context.Context, cmd string) (string, error) {
 		}
 		if strings.HasPrefix(cmd, `:put [`+menu.path+` find where `) {
 			return strings.Join(selector(), ";") + "\n", nil
+		}
+		if strings.HasPrefix(cmd, menu.path+" remove *") && !strings.Contains(cmd, "find") {
+			delete(rows, strings.TrimPrefix(cmd, menu.path+" remove "))
+			return "", nil
+		}
+		if strings.HasPrefix(cmd, `:if ([:len [`+menu.path+` find where `) {
+			rest := strings.TrimPrefix(cmd, `:if ([:len [`+menu.path+` find where `)
+			i := strings.Index(rest, `]] = 0) do={ `)
+			if i < 0 || !strings.HasSuffix(rest, " }") {
+				return "", fmt.Errorf("unrecognized conditional")
+			}
+			if out, _ := r.Run(ctx, menu.path+" print count-only where "+rest[:i]); strings.TrimSpace(out) == "0" {
+				return r.Run(ctx, strings.TrimSuffix(rest[i+len(`]] = 0) do={ `):], " }"))
+			}
+			return "", nil
 		}
 		if strings.HasPrefix(cmd, menu.path+" remove ") {
 			for _, id := range selector() {

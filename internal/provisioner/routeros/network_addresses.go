@@ -258,7 +258,7 @@ func buildIPAddressPlan(ctx context.Context, r CommandRunner, request NetworkReq
 		}
 		cidr := strings.TrimSpace(v["address"])
 		step, err := networkAddStep(ctx, r, "addresses", "address", cidr, "Add IP address "+cidr+" to "+iface,
-			map[string]string{"address": cidr, "interface": iface, "comment": "mega-magic", "disabled": disabled})
+			map[string]string{"address": cidr, "interface": iface, "comment": networkOwnedMark, "disabled": disabled})
 		if err != nil {
 			return nil, nil, err
 		}
@@ -406,7 +406,7 @@ func buildVLANPlan(ctx context.Context, r CommandRunner, request NetworkRequest)
 			return nil, nil, fmt.Errorf("VLAN %d already exists on %s", id, parent)
 		}
 		step, err := networkAddStep(ctx, r, "vlans", "name", name, "Create VLAN "+strconv.Itoa(id)+" ("+name+") on "+parent,
-			map[string]string{"name": name, "vlan-id": strconv.Itoa(id), "interface": parent, "disabled": disabled})
+			map[string]string{"name": name, "vlan-id": strconv.Itoa(id), "interface": parent, "comment": networkOwnedMark, "disabled": disabled})
 		if err != nil {
 			return nil, nil, err
 		}
@@ -490,4 +490,76 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+// networkOwnedMark is the comment the app puts on addresses and VLANs it creates.
+// Only records carrying it can be deleted here: anything else was made by a person
+// or another tool and is removed where it was made.
+const networkOwnedMark = "mega-magic"
+
+// buildRemovePlan deletes one address or VLAN that this app created. It applies
+// the same protections as editing, and a VLAN must also be unused. The router
+// keeps a restore timer that puts the record back, and a full copy of its fields
+// is taken first.
+func buildRemovePlan(ctx context.Context, r CommandRunner, request NetworkRequest) ([]networkStep, []string, error) {
+	if len(request.Values) != 0 || !networkIDPattern.MatchString(request.ID) {
+		return nil, nil, fmt.Errorf("choose the record to delete")
+	}
+	warnings := []string{"Deleting cannot be undone from the app after you confirm, but the full record is copied first and the router puts it back by itself within three minutes if anything goes wrong."}
+	up, err := networkUplinkInterfaces(ctx, r)
+	if err != nil {
+		return nil, nil, err
+	}
+	if request.Kind == "remove_ip_address" {
+		before, err := networkReadOne(ctx, r, "addresses", request.ID, map[string]string{"address": "", "interface": "", "comment": "", "disabled": "", "dynamic": ""})
+		if err != nil {
+			return nil, nil, err
+		}
+		if before["comment"] != networkOwnedMark {
+			return nil, nil, fmt.Errorf("this address was not created by Mega Magic, so it is not deleted here; remove it where it was created")
+		}
+		if networkBool(before["dynamic"]) != "no" {
+			return nil, nil, fmt.Errorf("this address is assigned automatically and cannot be deleted here")
+		}
+		iface := before["interface"]
+		kind, err := networkInterfaceType(ctx, r, iface)
+		if err != nil {
+			return nil, nil, err
+		}
+		if !strings.Contains(networkLANTypes, " "+kind+" ") || strings.HasPrefix(iface, "mmh-") {
+			return nil, nil, fmt.Errorf("addresses on %s (%s) are protected and cannot be deleted here", iface, kind)
+		}
+		if up[iface] {
+			return nil, nil, fmt.Errorf("%s carries your internet uplink; its addresses are protected", iface)
+		}
+		serves, err := networkInterfaceServes(ctx, r, iface)
+		if err != nil {
+			return nil, nil, err
+		}
+		if serves {
+			return nil, nil, fmt.Errorf("%s serves customers (DHCP, Hotspot or PPPoE); deleting its address would strand them", iface)
+		}
+		keep := map[string]string{"address": before["address"], "interface": iface, "comment": networkOwnedMark, "disabled": before["disabled"]}
+		return []networkStep{{Key: "addresses", ID: request.ID, Remove: true, SelectorField: "address", SelectorValue: before["address"], Label: "Delete IP address " + before["address"] + " on " + iface, Before: keep}}, warnings, nil
+	}
+	before, err := networkReadOne(ctx, r, "vlans", request.ID, map[string]string{"name": "", "interface": "", "vlan-id": "", "comment": "", "disabled": ""})
+	if err != nil {
+		return nil, nil, err
+	}
+	if before["comment"] != networkOwnedMark {
+		return nil, nil, fmt.Errorf("this VLAN was not created by Mega Magic, so it is not deleted here; remove it where it was created")
+	}
+	name := before["name"]
+	if up[name] {
+		return nil, nil, fmt.Errorf("%s carries your internet uplink and is protected", name)
+	}
+	used, err := networkVLANUsedBy(ctx, r, name)
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(used) > 0 {
+		return nil, nil, fmt.Errorf("%s is in use by %s; remove those first", name, strings.Join(used, ", "))
+	}
+	keep := map[string]string{"name": name, "interface": before["interface"], "vlan-id": before["vlan-id"], "comment": networkOwnedMark, "disabled": before["disabled"]}
+	return []networkStep{{Key: "vlans", ID: request.ID, Remove: true, SelectorField: "name", SelectorValue: name, Label: "Delete VLAN " + name + " (ID " + before["vlan-id"] + ")", Before: keep}}, warnings, nil
 }
