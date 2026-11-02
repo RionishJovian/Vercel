@@ -32,3 +32,9 @@ Connection: `MM_DB_URL=postgres://user:pass@host/db`, or `MM_PSQL_BASE="docker e
 ## Tests
 
 `bash deploy/server/test-mm-migrate.sh` with `MM_TEST_DB_URL` pointing at any disposable Postgres 17 (CI provides one). 57 checks cover ordering, rollback, tamper detection and the baseline logic.
+
+## Deploys
+
+`deploy/deploy-vps.sh` ships `db/`, `runtime-db-role.sql` and `mm-migrate` with the release. After the pre-deploy backup and before the new API starts it runs `mm-migrate status` (a changed, missing or out-of-order file, or a missing baseline, stops the deploy before anything is touched) and then `mm-migrate up`. If anything later fails, the old API and web images come back; the schema stays at the new version. So a migration must keep the previous release working: add columns and tables in one release, remove or rename them in a later one.
+
+The deploy path itself was changed without a production deploy to test it; the first deploy after this change is its first real run (the backup and automatic rollback still apply).

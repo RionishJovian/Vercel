@@ -165,6 +165,8 @@ jobs:
           release_dir="/root/mm-ci-releases/$GITHUB_SHA"
           ssh -i ~/.ssh/megamagic-app -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=deploy/vps-known-hosts "$VPS_USER@$VPS_HOST" "mkdir -p '$release_dir' && chmod 700 '$release_dir'"
           scp -i ~/.ssh/megamagic-app -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=deploy/vps-known-hosts release.json deploy/deploy-vps.sh "$VPS_USER@$VPS_HOST:$release_dir/"
+          tar czf release-db.tgz db deploy/runtime-db-role.sql deploy/server/mm-migrate
+          scp -i ~/.ssh/megamagic-app -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=deploy/vps-known-hosts release-db.tgz "$VPS_USER@$VPS_HOST:$release_dir/"
       - name: Release with backup, real readiness and automatic rollback
         env:
           REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -173,4 +175,4 @@ jobs:
           printf '%s\n' "$REGISTRY_TOKEN" | ssh -i ~/.ssh/megamagic-app -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=deploy/vps-known-hosts "$VPS_USER@$VPS_HOST" "bash '/root/mm-ci-releases/$GITHUB_SHA/deploy-vps.sh' '/root/mm-ci-releases/$GITHUB_SHA' '$REGISTRY_USER'"
       - name: Remove temporary runner identity
         if: always()
-        run: rm -f ~/.ssh/megamagic-app release.json
+        run: rm -f ~/.ssh/megamagic-app release.json release-db.tgz
