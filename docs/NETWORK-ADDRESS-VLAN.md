@@ -8,7 +8,7 @@ the router against a baseline taken before the test:
 - 6 real applies, all verified, none rolled back: create VLAN, change its ID, enable it, add an address on it, change that address, disable the VLAN. The only router differences were the intended ones (plus the automatic connected route while the VLAN was enabled).
 - Backup before each apply, restore timer set and cancelled, readback verified.
 
-**Not yet proven on real hardware:** rollback after a real failure, and the restore timer firing when the connection drops (both covered only by the simulated-router tests). Test these on the lab hAP ax2 when it is powered.
+**Proven on real hardware (command level, 2026-11-02, hAP ax3, RouterOS 7.12.2):** the router-side restore timer fires by itself and runs the undo, cancelling it with `/system script job remove` stops it, the "re-create only if missing" command does nothing when the record exists and restores every field after deletion, and the backup-file listing and exact-name removal work (see "Real-router command check" below). **Still not proven on real hardware:** the same flows driven through the app, and rollback after a real mid-change failure (covered only by the simulated-router tests).
 
 **Left on that router by the test:** disabled VLAN `mm-test-4001` (ID 4002, ether3), address `192.168.123.2/24` on it, and 6 sets of `mm-snap-...-net-20261101-...` backup/export files. The app has no delete yet.
 
@@ -77,8 +77,8 @@ never final on its own:
 5. Another change is refused while one is waiting. A VLAN that carries the internet
    uplink is still refused, and the audit log records applied, kept and reverted.
 
-Not yet proven on real hardware: the router firing the timer by itself. Plan: test it on
-the disabled test VLAN with the owner's approval.
+The router firing the timer by itself is proven at command level (below); the full flow
+through the app is not yet.
 
 ## Deleting what the app created
 
@@ -152,8 +152,8 @@ uses it, any missing or duplicated piece, a service not named `mm-...`, and a po
 carries the uplink or the Hub. Anything configured elsewhere by hand that mentions the old
 subnet is not checked, which the preview says.
 
-Not yet proven on real hardware: the restore timer firing by itself, and a real device
-renewing into the new subnet.
+The restore timer itself is proven at command level (below); not yet proven: the move
+through the app, and a real device renewing into the new subnet.
 
 ## Tidying old backup files on the router
 
@@ -166,3 +166,24 @@ exactly what the app generates are touched; any other file is left alone. It nev
 runs after a failed change (those files are evidence), and a failure only leaves
 files behind, it never affects the change. Files left by earlier tests on a router are
 removed this way once they are older than 7 days and beyond the newest 10.
+
+## Real-router command check (2026-11-02)
+
+Run by hand in WinBox on the owner's own hAP ax3 (RouterOS 7.12.2), using throwaway
+objects (`mm-test-vlan` on an empty bridge, a fake `mm-snap-...` file) that were removed
+afterwards. Every command is the exact text the app generates.
+
+| What | Result |
+|---|---|
+| `:put [:execute { :delay 20s; ... }]` | prints a job id (`*270`), matching the app's id check |
+| `/system script job print count-only where .id=<job>` | 1 while armed, 0 after it ran |
+| Change a VLAN id, wait 25 s | the router set it back by itself |
+| Same, but `/system script job remove <job>` first | the change stayed (this is what Keep does) |
+| `:if ([:len [find where name="x"]] = 0) do={ add ... }` with the record present | did nothing, no duplicate |
+| Same after deleting the VLAN and its address | recreated both with the original name, id, interface, comment and address |
+| `:foreach f in=[/file find where name~"^mm-snap-"] do={ :put [/file get $f name] }` | one name per line; a non-matching `mm-snap-notes.txt` is listed too, which is why the app's own name pattern is checked in Go |
+| `/file remove [find where name="<exact>"]` | removed only that file |
+| The app's read commands for DHCP service, pool, client settings, Hotspot, Hotspot profile, queues, NAT | all ran without syntax or field errors |
+
+Not covered: a real mid-change failure and rollback, and anything through the app (this
+router is not connected to the Hub).
