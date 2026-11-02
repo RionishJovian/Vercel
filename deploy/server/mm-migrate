@@ -1,0 +1,183 @@
+#!/usr/bin/env bash
+# mm-migrate: applies database migrations in order and records them, so nobody has to remember what was run.
+#
+#   mm-migrate status                 what is applied, what is pending, anything wrong. Exit 0 up to date, 2 pending, 3 problem.
+#   mm-migrate up [--allow-out-of-order]   apply pending migrations (each in its own transaction), then re-run the runtime-role setup.
+#   mm-migrate init                   build a NEW, EMPTY database: apply the baseline, record it.
+#   mm-migrate baseline [--force]     mark an EXISTING database as being at the baseline (after verifying its schema matches it).
+#   mm-migrate verify-baseline        check that the database's schema matches db/baseline.sql.
+#   mm-migrate grants                 re-run the runtime-role setup (grants and policies) by hand.
+#
+# (CHECK constraints are compared without parentheses: the same condition deparses with different nesting after a dump and reload.)
+# Files: db/baseline.sql (first line "-- mm:baseline-version <14 digits>") and db/migrations/<14 digits>_<name>.sql.
+# A migration must not contain BEGIN/COMMIT (the tool wraps it in one transaction together with its bookkeeping row).
+# A file that cannot run in a transaction (for example CREATE INDEX CONCURRENTLY) says "-- mm:no-transaction" in its first
+# lines and is applied statement by statement. An applied file must never be edited: its checksum is recorded and checked.
+#
+# Connection, either:
+#   MM_DB_URL=postgres://user:pass@host:port/dbname        (uses psql)
+#   MM_PSQL_BASE="docker exec -i <container> psql -U <user>"  MM_DB_NAME=<dbname>   (prefix without -d)
+# Optional: MM_DB_DIR (default: ../../db relative to this script), MM_POST_SQL (default: deploy/runtime-db-role.sql next to db/).
+set -Eeuo pipefail
+
+die() { echo "mm-migrate: $*" >&2; exit 3; }
+here=$(cd "$(dirname "$0")" && pwd)
+DB_DIR=${MM_DB_DIR:-$here/../../db}
+BASELINE=$DB_DIR/baseline.sql
+MIGRATIONS=$DB_DIR/migrations
+POST_SQL=${MM_POST_SQL-$DB_DIR/../deploy/runtime-db-role.sql}
+
+if [ -n "${MM_DB_URL:-}" ]; then
+  DB_NAME=${MM_DB_URL##*/}; DB_NAME=${DB_NAME%%\?*}
+  psql_db() { psql "${MM_DB_URL%/*}/$1" -X -q -v ON_ERROR_STOP=1 "${@:2}"; }
+elif [ -n "${MM_PSQL_BASE:-}" ] && [ -n "${MM_DB_NAME:-}" ]; then
+  DB_NAME=$MM_DB_NAME
+  read -r -a BASE <<<"$MM_PSQL_BASE"
+  psql_db() { "${BASE[@]}" -d "$1" -X -q -v ON_ERROR_STOP=1 "${@:2}"; }
+else
+  die "set MM_DB_URL, or MM_PSQL_BASE and MM_DB_NAME"
+fi
+sql() { psql_db "$DB_NAME" -At -c "$1"; }          # one value, no headers
+sql_in() { psql_db "$1" -At -c "$2"; }             # same, in another database
+sha() { if command -v sha256sum >/dev/null; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi; }
+q() { printf "'%s'" "${1//\'/\'\'}"; }               # SQL string literal
+
+baseline_version() { sed -n 's/^-- mm:baseline-version \([0-9]\{14\}\)$/\1/p' "$BASELINE" | head -1; }
+have_table() { [ "$(sql "select to_regclass('public.schema_migrations') is not null")" = t ]; }
+ensure_table() {
+  sql "create table if not exists public.schema_migrations (version text primary key, filename text not null, checksum text not null, kind text not null check (kind in ('baseline','migration')), applied_at timestamptz not null default now(), applied_by text not null default current_user)" >/dev/null
+}
+record_sql() { echo "insert into schema_migrations(version, filename, checksum, kind) values ($(q "$1"), $(q "$2"), $(q "$3"), $(q "$4"));"; }
+
+list_files() { # prints "<version> <path>" in order; refuses bad names and duplicate versions
+  local f b v prev="" base; base=$(baseline_version); [ -n "$base" ] || die "$BASELINE has no '-- mm:baseline-version' line"
+  for f in $(ls "$MIGRATIONS"/*.sql 2>/dev/null | sort); do
+    b=$(basename "$f")
+    [[ "$b" =~ ^([0-9]{14})_[a-z0-9_]+\.sql$ ]] || die "bad migration file name: $b (want 14 digits, underscore, lowercase name, .sql)"
+    v=${BASH_REMATCH[1]}
+    [ "$v" != "$prev" ] || die "two migrations share the version $v"
+    [[ "$v" > "$base" ]] || die "$b is not newer than the baseline ($base); older changes belong in the baseline"
+    grep -Eiq '^[[:space:]]*(begin|commit|rollback|start[[:space:]]+transaction)[[:space:]]*;' "$f" && die "$b contains BEGIN/COMMIT: remove it, the tool wraps each file in a transaction"
+    prev=$v; echo "$v $f"
+  done
+}
+
+# state: sets APPLIED_LIST ("version|checksum|filename" lines), PENDING ("version path" items), PROBLEMS, OUT_OF_ORDER
+inspect() {
+  have_table || { echo "this database has no schema_migrations table: run 'mm-migrate init' (new empty database) or 'mm-migrate baseline' (existing)"; return 3; }
+  APPLIED_LIST=$(sql "select version||'|'||checksum||'|'||filename from schema_migrations where kind='migration' order by version")
+  PENDING=(); PROBLEMS=0
+  local max v f row seen=" " name sum
+  max=$(printf '%s\n' "$APPLIED_LIST" | cut -d'|' -f1 | sort | tail -1)
+  local files; files=$(list_files) || return 3
+  while read -r v f; do
+    [ -n "$v" ] || continue
+    seen="$seen$v "
+    row=$(printf '%s\n' "$APPLIED_LIST" | grep "^$v|" || true)
+    if [ -n "$row" ]; then
+      if [ "$(sha "$f")" = "$(echo "$row" | cut -d'|' -f2)" ]; then echo "  applied  $(basename "$f")"; else echo "  CHANGED  $(basename "$f")  (the file was edited after it was applied)"; PROBLEMS=$((PROBLEMS+1)); fi
+    else
+      PENDING+=("$v $f")
+      if [ -n "$max" ] && [[ "$v" < "$max" ]]; then echo "  OUT-OF-ORDER  $(basename "$f")  (older than the newest applied, $max)"; OUT_OF_ORDER=1; else echo "  pending  $(basename "$f")"; fi
+    fi
+  done <<<"$files"
+  while IFS='|' read -r v sum name; do
+    [ -n "$v" ] || continue
+    case "$seen" in *" $v "*) ;; *) echo "  MISSING  $name (applied, but the file is gone)"; PROBLEMS=$((PROBLEMS+1));; esac
+  done <<<"$APPLIED_LIST"
+  return 0
+}
+
+cmd_status() {
+  OUT_OF_ORDER=0
+  local b; b=$(sql "select version||' (recorded '||applied_at::date||')' from schema_migrations where kind='baseline'" 2>/dev/null || true)
+  inspect || exit $?
+  echo "baseline: ${b:-NOT RECORDED}"
+  [ "$PROBLEMS" = 0 ] || { echo "result: PROBLEM ($PROBLEMS)"; exit 3; }
+  [ -n "$b" ] || { echo "result: PROBLEM (no baseline recorded)"; exit 3; }
+  [ "${#PENDING[@]}" = 0 ] && { echo "result: up to date"; exit 0; }
+  echo "result: ${#PENDING[@]} pending"; exit 2
+}
+
+run_post() {
+  [ -n "$POST_SQL" ] && [ -f "$POST_SQL" ] || return 0
+  echo "re-running $(basename "$POST_SQL") (grants and runtime-role policies for any new tables)"
+  psql_db "$DB_NAME" -f - <"$POST_SQL" >/dev/null
+}
+
+cmd_up() {
+  local allow=0; [ "${1:-}" = "--allow-out-of-order" ] && allow=1
+  OUT_OF_ORDER=0
+  inspect || exit $?
+  [ "$PROBLEMS" = 0 ] || die "refusing to apply anything while there are problems above"
+  [ "$OUT_OF_ORDER" = 0 ] || [ "$allow" = 1 ] || die "an unapplied migration is older than an applied one; rerun with --allow-out-of-order only if that is intended"
+  [ -n "$(sql "select 1 from schema_migrations where kind='baseline'")" ] || die "no baseline recorded"
+  [ "${#PENDING[@]}" != 0 ] || { echo "nothing to apply"; return 0; }
+  local item v f b sum
+  for item in "${PENDING[@]}"; do
+    v=${item%% *}; f=${item#* }; b=$(basename "$f"); sum=$(sha "$f")
+    echo "applying $b"
+    if head -5 "$f" | grep -q '^-- mm:no-transaction'; then
+      { cat "$f"; echo; record_sql "$v" "$b" "$sum" migration; } | psql_db "$DB_NAME" -f - >/dev/null || die "$b failed (no transaction was used for this file; check what it changed)"
+    else
+      { echo "begin;"; cat "$f"; echo; record_sql "$v" "$b" "$sum" migration; echo "commit;"; } | psql_db "$DB_NAME" -f - >/dev/null || die "$b failed and was rolled back; later migrations were not applied"
+    fi
+  done
+  run_post
+  echo "applied ${#PENDING[@]} migration(s)"
+}
+
+scratch_baseline() { # builds the baseline in a scratch database; prints its name
+  local name="mm_baseline_check_$$"
+  psql_db postgres -c "create database $name" >/dev/null
+  psql_db "$name" -f - <"$BASELINE" >/dev/null || { psql_db postgres -c "drop database if exists $name" >/dev/null; die "the baseline does not apply to an empty database"; }
+  echo "$name"
+}
+fingerprint_sql() { cat <<'SQL'
+select 'columns|'||c.relname||'.'||a.attname||'|'||format_type(a.atttypid,a.atttypmod)||'|'||a.attnotnull||'|'||coalesce(pg_get_expr(d.adbin,d.adrelid),'')
+  from pg_attribute a join pg_class c on c.oid=a.attrelid join pg_namespace n on n.oid=c.relnamespace left join pg_attrdef d on d.adrelid=a.attrelid and d.adnum=a.attnum
+ where n.nspname='public' and c.relname<>'schema_migrations' and c.relkind in ('r','p') and a.attnum>0 and not a.attisdropped
+union all select 'constraint|'||c.conrelid::regclass||'|'||c.conname||'|'||case when c.contype='c' then regexp_replace(pg_get_constraintdef(c.oid),'[()]','','g') else pg_get_constraintdef(c.oid) end from pg_constraint c join pg_namespace n on n.oid=c.connamespace where n.nspname='public' and c.conrelid::regclass::text<>'schema_migrations'
+union all select 'index|'||indexdef from pg_indexes where schemaname='public' and tablename<>'schema_migrations'
+union all select 'policy|'||tablename||'|'||policyname||'|'||cmd||'|'||roles::text||'|'||coalesce(qual,'')||'|'||coalesce(with_check,'') from pg_policies where schemaname='public' and policyname<>'mm_runtime_service'
+union all select 'rls|'||c.relname||'|'||c.relrowsecurity||'|'||c.relforcerowsecurity from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and c.relname<>'schema_migrations' and c.relkind in ('r','p')
+union all select 'function|'||p.proname||'|'||pg_get_function_identity_arguments(p.oid)||'|'||p.prosecdef from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public'
+union all select 'trigger|'||c.relname||'|'||t.tgname from pg_trigger t join pg_class c on c.oid=t.tgrelid join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and not t.tgisinternal
+order by 1
+SQL
+}
+cmd_verify() {
+  local scratch a b rc=0; scratch=$(scratch_baseline) || return 1
+  a=$(mktemp); b=$(mktemp)
+  if sql "$(fingerprint_sql)" >"$a" && sql_in "$scratch" "$(fingerprint_sql)" >"$b"; then
+    if diff -q "$a" "$b" >/dev/null; then echo "schema matches the baseline ($(wc -l <"$a" | tr -d ' ') schema facts compared)"
+    else echo "schema does NOT match the baseline. First differences (< database, > baseline):"; { diff "$a" "$b" | head -12 | cut -c1-170; } || true; rc=1; fi
+  else echo "could not read the schema"; rc=1; fi
+  rm -f "$a" "$b"; psql_db postgres -c "drop database if exists $scratch" >/dev/null 2>&1 || true
+  return $rc
+}
+cmd_baseline() {
+  local force=0; [ "${1:-}" = "--force" ] && force=1
+  local v; v=$(baseline_version); [ -n "$v" ] || die "no baseline version"
+  have_table && [ -n "$(sql "select 1 from schema_migrations where kind='baseline'")" ] && die "a baseline is already recorded"
+  if [ "$force" = 0 ]; then cmd_verify || die "the database does not match the baseline; fix that first (or --force if you know why)"; fi
+  ensure_table
+  { record_sql "$v" "$(basename "$BASELINE")" "$(sha "$BASELINE")" baseline; } | psql_db "$DB_NAME" -f - >/dev/null
+  echo "recorded baseline $v"
+}
+cmd_init() {
+  [ "$(sql "select count(*) from information_schema.tables where table_schema='public'")" = 0 ] || die "this database is not empty; use 'baseline' for an existing database"
+  local v; v=$(baseline_version); [ -n "$v" ] || die "no baseline version"
+  { echo "begin;"; cat "$BASELINE"; echo "set search_path = public;"; echo "create table public.schema_migrations (version text primary key, filename text not null, checksum text not null, kind text not null check (kind in ('baseline','migration')), applied_at timestamptz not null default now(), applied_by text not null default current_user);"; record_sql "$v" "$(basename "$BASELINE")" "$(sha "$BASELINE")" baseline; echo "commit;"; } | psql_db "$DB_NAME" -f - >/dev/null || die "the baseline failed and was rolled back"
+  echo "initialised at baseline $v"
+}
+
+case "${1:-}" in
+  status) cmd_status;;
+  up) shift; cmd_up "$@";;
+  init) cmd_init;;
+  baseline) shift; cmd_baseline "$@";;
+  verify-baseline) cmd_verify;;
+  grants) run_post;;
+  *) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 64;;
+esac

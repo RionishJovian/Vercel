@@ -1,0 +1,5 @@
+[Unit]
+Description=Nightly Mega Magic database backup
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/mm-db-backup

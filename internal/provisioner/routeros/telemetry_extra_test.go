@@ -17,8 +17,8 @@ func TestParseEthernetLinksKeepsOnlyPlausibleValues(t *testing.T) {
 	if rows[0].rate != "1Gbps" || rows[0].status != "link-ok" || rows[0].fullDuplex == nil || !*rows[0].fullDuplex {
 		t.Fatalf("ether1: %+v", rows[0])
 	}
-	if rows[0].autoNeg != nil {
-		t.Fatal("unrecognised auto-negotiation text was accepted")
+	if rows[0].negotiation != "done" {
+		t.Fatalf("the router's own negotiation result was lost: %q", rows[0].negotiation)
 	}
 	if rows[1].rate != "" || rows[1].fullDuplex != nil || rows[1].status != "no-link" {
 		t.Fatalf("a port with no link must have no rate or duplex: %+v", rows[1])
@@ -102,7 +102,11 @@ func (r *extraRunner) Run(_ context.Context, command string) (string, error) {
 	}
 	switch command {
 	case TelemetryEthernetCommand:
-		return "name: ether1\nstatus: link-ok\nrate: 1Gbps\nfull-duplex: true\nauto-negotiation: true\n", nil
+		return "name: ether1\nstatus: link-ok\nrate: 100Mbps\nfull-duplex: true\nauto-negotiation: done\nsupported: 10M-baseT-half,10M-baseT-full,100M-baseT-half,100M-baseT-full,1G-baseT-full\nlink-partner-advertising: 10M-baseT-half,10M-baseT-full,100M-baseT-half,100M-baseT-full,1G-baseT-full\n", nil
+	case TelemetryEthernetBasicCommand:
+		return "name: ether1\nstatus: link-ok\nrate: 100Mbps\nfull-duplex: true\nauto-negotiation: done\n", nil
+	case TelemetryEthernetStatsCommand:
+		return "name: ether1\nrx-fcs-error: 4\nrx-align-error: 1\nrx-fragment: 0\nrx-runt: 0\nrx-carrier-error: 0\nname: ether2\nrx-fcs-error: \nrx-align-error: \n", nil
 	case TelemetryTrafficCommand:
 		return "name: ether1\nrx-bps: 5000\ntx-bps: 7000\n", nil
 	case TelemetryHealthCommand:
@@ -123,7 +127,7 @@ func TestCollectExtrasFillsPortsAndThrottlesSlowReads(t *testing.T) {
 	first := baseTelemetry()
 	a.collectExtras(context.Background(), runner, "biz", "dev", &first)
 	e := first.Interfaces[0]
-	if e.LinkRate != "1Gbps" || e.FullDuplex == nil || !*e.FullDuplex || e.RXBitsPerSecond == nil || *e.RXBitsPerSecond != 5000 {
+	if e.LinkRate != "100Mbps" || e.FullDuplex == nil || !*e.FullDuplex || e.RXBitsPerSecond == nil || *e.RXBitsPerSecond != 5000 {
 		t.Fatalf("ether1: %+v", e)
 	}
 	if first.Interfaces[1].LinkRate != "" || first.Interfaces[1].RXBitsPerSecond != nil {
@@ -158,7 +162,7 @@ func TestCollectExtrasFailuresLeaveOnlyThatExtraOut(t *testing.T) {
 	if result.Interfaces[0].RXBitsPerSecond != nil || len(result.Health) != 0 {
 		t.Fatalf("failed reads were shown as readings: %+v %+v", result.Interfaces[0], result.Health)
 	}
-	if result.Interfaces[0].LinkRate != "1Gbps" || result.Firmware == nil {
+	if result.Interfaces[0].LinkRate != "100Mbps" || result.Firmware == nil {
 		t.Fatal("working extras were lost because others failed")
 	}
 	if len(result.Issues) != 0 {
@@ -167,5 +171,98 @@ func TestCollectExtrasFailuresLeaveOnlyThatExtraOut(t *testing.T) {
 	data, _ := json.Marshal(result)
 	if strings.Contains(string(data), "secret") {
 		t.Fatal("transport details leaked")
+	}
+}
+
+func TestMaxModeMbpsReadsTheFastestModeAndNeverGuesses(t *testing.T) {
+	cases := map[string]int{
+		"10M-baseT-half,10M-baseT-full,100M-baseT-half,100M-baseT-full,1G-baseT-full": 1000,
+		"100M-baseT-full;1G-baseT-full;2.5G-baseT":                                    2500,
+		"10G-baseT":                  10000,
+		"1G-baseX":                   1000,
+		"":                           0,
+		"nonsense,,;":                0,
+		"M-baseT,0G-baseT,-1G-baseT": 0,
+		"100M-baseT-full,wat":        100,
+	}
+	for in, want := range cases {
+		if got := maxModeMbps(in); got != want {
+			t.Errorf("%q: got %d want %d", in, got, want)
+		}
+	}
+}
+
+func TestParseEthernetLinksReadsNegotiationAndBothEndsModes(t *testing.T) {
+	rows := parseEthernetLinks("name: ether1\nstatus: link-ok\nrate: 100Mbps\nfull-duplex: true\nauto-negotiation: done\nsupported: 100M-baseT-full,1G-baseT-full\nlink-partner-advertising: 100M-baseT-full\nname: ether2\nstatus: link-ok\nrate: 1Gbps\nauto-negotiation: banana\nsupported: 1G-baseT-full\nlink-partner-advertising: \nname: ether3\nstatus: no-link\nauto-negotiation: failed\n")
+	if len(rows) != 3 {
+		t.Fatalf("%+v", rows)
+	}
+	if rows[0].negotiation != "done" || rows[0].maxMbps != 1000 || rows[0].partnerMbps != 100 {
+		t.Fatalf("ether1: %+v", rows[0])
+	}
+	if rows[1].negotiation != "" || rows[1].partnerMbps != 0 || rows[1].maxMbps != 1000 {
+		t.Fatalf("an unrecognised negotiation text or an empty partner list must stay unknown: %+v", rows[1])
+	}
+	if rows[2].negotiation != "failed" {
+		t.Fatalf("ether3: %+v", rows[2])
+	}
+}
+
+func TestParseEthernetStatsSumsPhysicalErrorsAndNeverInventsZero(t *testing.T) {
+	got := parseEthernetStats("name: ether1\nrx-fcs-error: 4\nrx-align-error: 1\nrx-fragment: 2\nrx-runt: 0\nrx-carrier-error: 3\nname: ether2\nrx-fcs-error: \nrx-align-error: nope\nname: ether3\nrx-fcs-error: 0\nname: ether4\nrx-fcs-error: 99999999999999999999999\n")
+	if got["ether1"] != 10 {
+		t.Fatalf("ether1: %v", got)
+	}
+	if _, ok := got["ether2"]; ok {
+		t.Fatal("a port that reported no readable counter was shown as having zero errors")
+	}
+	if v, ok := got["ether3"]; !ok || v != 0 {
+		t.Fatalf("a real zero must stay zero: %v", got)
+	}
+	if _, ok := got["ether4"]; ok {
+		t.Fatal("an absurd counter was accepted")
+	}
+}
+
+func TestCollectExtrasAddsNegotiationPartnerAndErrors(t *testing.T) {
+	a := &DeviceApplier{}
+	runner := &extraRunner{calls: map[string]int{}}
+	result := baseTelemetry()
+	a.collectExtras(context.Background(), runner, "biz", "dev", &result)
+	e := result.Interfaces[0]
+	if e.Negotiation != "done" || e.MaxRateMbps != 1000 || e.PartnerMaxMbps != 1000 || e.PhyErrors == nil || *e.PhyErrors != 5 {
+		t.Fatalf("ether1: %+v", e)
+	}
+	if result.Interfaces[1].PhyErrors != nil || result.Interfaces[1].Negotiation != "" {
+		t.Fatalf("a port the router did not report must stay empty: %+v", result.Interfaces[1])
+	}
+	runner2 := &extraRunner{calls: map[string]int{}, fail: map[string]bool{TelemetryEthernetStatsCommand: true}}
+	failed := baseTelemetry()
+	a.collectExtras(context.Background(), runner2, "biz2", "dev", &failed)
+	if failed.Interfaces[0].PhyErrors != nil || failed.Interfaces[0].Negotiation != "done" {
+		t.Fatalf("a failed counter read must only remove the counters: %+v", failed.Interfaces[0])
+	}
+	if len(failed.Issues) != 0 {
+		t.Fatalf("an optional read added an issue: %v", failed.Issues)
+	}
+}
+
+func TestRefusedFullEthernetReadFallsBackToTheProvenOneAndKeepsLinkRate(t *testing.T) {
+	a := &DeviceApplier{}
+	runner := &extraRunner{calls: map[string]int{}, fail: map[string]bool{TelemetryEthernetCommand: true}}
+	result := baseTelemetry()
+	a.collectExtras(context.Background(), runner, "biz", "dev", &result)
+	e := result.Interfaces[0]
+	if e.LinkRate != "100Mbps" || e.Negotiation != "done" || e.FullDuplex == nil {
+		t.Fatalf("a refused extended read cost the port its link details: %+v", e)
+	}
+	if e.MaxRateMbps != 0 || e.PartnerMaxMbps != 0 {
+		t.Fatalf("modes were invented without the extended read: %+v", e)
+	}
+	if runner.calls[TelemetryEthernetBasicCommand] != 1 {
+		t.Fatalf("the proven command was not used: %v", runner.calls)
+	}
+	if len(result.Issues) != 0 {
+		t.Fatalf("an optional read added an issue: %v", result.Issues)
 	}
 }

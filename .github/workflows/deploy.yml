@@ -47,6 +47,12 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version-file: go.mod
+      - name: Go toolchain must match go.mod
+        run: |
+          want=$(awk '/^toolchain /{print $2}' go.mod)
+          have=$(go env GOVERSION)
+          echo "Go $have (go.mod toolchain $want)"
+          test -n "$want" && test "$have" = "$want"
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '24'
@@ -56,7 +62,16 @@ jobs:
       - run: npm ci --ignore-scripts && npm test && npm run build
         working-directory: app
       - run: go test -race ./internal/... && go build ./...
+      - name: Known vulnerabilities in reachable code
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.9.0 && "$(go env GOPATH)/bin/govulncheck" ./...
       - run: bash -n deploy/deploy-vps.sh
+      - run: for f in deploy/server/mm-db-backup deploy/server/mm-restore-drill deploy/server/mm-offsite-copy deploy/server/mm-offsite-setup deploy/server/install-backup-tools.sh; do bash -n "$f"; done && bash deploy/server/test-mm-db-backup.sh && bash deploy/server/test-mm-offsite-copy.sh
+      - name: Migration runner (needs psql/pg_dump 17 to match the service)
+        run: |
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y >/dev/null
+          sudo apt-get install -y postgresql-client-17 >/dev/null
+          export PATH=/usr/lib/postgresql/17/bin:$PATH
+          bash -n deploy/server/mm-migrate && bash deploy/server/test-mm-migrate.sh
 
   build:
     needs: validate
@@ -75,6 +90,12 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version-file: go.mod
+      - name: Go toolchain must match go.mod
+        run: |
+          want=$(awk '/^toolchain /{print $2}' go.mod)
+          have=$(go env GOVERSION)
+          echo "Go $have (go.mod toolchain $want)"
+          test -n "$want" && test "$have" = "$want"
       - name: Build runtime binaries
         run: |
           mkdir -p restore-bin
@@ -144,6 +165,8 @@ jobs:
           release_dir="/root/mm-ci-releases/$GITHUB_SHA"
           ssh -i ~/.ssh/megamagic-app -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=deploy/vps-known-hosts "$VPS_USER@$VPS_HOST" "mkdir -p '$release_dir' && chmod 700 '$release_dir'"
           scp -i ~/.ssh/megamagic-app -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=deploy/vps-known-hosts release.json deploy/deploy-vps.sh "$VPS_USER@$VPS_HOST:$release_dir/"
+          tar czf release-db.tgz db deploy/runtime-db-role.sql deploy/server/mm-migrate
+          scp -i ~/.ssh/megamagic-app -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=deploy/vps-known-hosts release-db.tgz "$VPS_USER@$VPS_HOST:$release_dir/"
       - name: Release with backup, real readiness and automatic rollback
         env:
           REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -152,4 +175,4 @@ jobs:
           printf '%s\n' "$REGISTRY_TOKEN" | ssh -i ~/.ssh/megamagic-app -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=deploy/vps-known-hosts "$VPS_USER@$VPS_HOST" "bash '/root/mm-ci-releases/$GITHUB_SHA/deploy-vps.sh' '/root/mm-ci-releases/$GITHUB_SHA' '$REGISTRY_USER'"
       - name: Remove temporary runner identity
         if: always()
-        run: rm -f ~/.ssh/megamagic-app release.json
+        run: rm -f ~/.ssh/megamagic-app release.json release-db.tgz

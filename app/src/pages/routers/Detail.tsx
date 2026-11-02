@@ -9,11 +9,12 @@ import type { RouterRow } from ".";
 import { Capabilities } from "./Capabilities";
 import { FirmwareUpgrade } from "./FirmwareUpgrade";
 import { PortPanelView } from "./PortPanel";
+import { cableHints } from "./cableHealth";
 import { panelFor } from "../../lib/portPanels";
 import { rateText, stillMeasuring } from "./speed";
 import { firmwareText, healthLabel, healthValue, linkText, softwareText, type Firmware, type Health } from "./portInfo";
 
-interface Iface { name: string; disabled?: boolean; running?: boolean; rx_bps?: number; tx_bps?: number; link_rate?: string; full_duplex?: boolean }
+interface Iface { name: string; disabled?: boolean; running?: boolean; rx_bps?: number; tx_bps?: number; link_rate?: string; full_duplex?: boolean; negotiation?: string; max_rate_mbps?: number; partner_max_mbps?: number; phy_errors?: string; phy_errors_recent?: number }
 interface Telemetry { state?: string; snapshot?: { read_at?: string; resources?: Record<string, unknown> & { board_name?: string; routeros_version?: string; cpu_percent?: number; memory_used_bytes?: number | string; memory_total_bytes?: number | string; uptime_seconds?: number }; hotspot_sessions?: number | null; dhcp_bound_leases?: number | null; interfaces?: Iface[]; issues?: string[]; health?: Health[] | null; firmware?: Firmware | null } }
 
 const pct = (v: unknown) => (typeof v === "number" ? Math.round(v) + "%" : "—");
@@ -62,9 +63,12 @@ export function Detail({ id, router }: { id: string; router?: RouterRow }) {
               {/* A strip of port lamps, like the front of the board: lit when the link is up. */}
               <div className="portstrip" aria-hidden="true">{asArray<Iface>(snap.interfaces).map((i) => <i key={i.name} className={i.disabled ? "off" : i.running ? "up" : "down"} title={i.name} />)}</div>
               {asArray<Iface>(snap.interfaces).map((i) => (
-                <div className="row small" key={i.name}>
-                  <span>{i.name} <span className={"chip " + (i.disabled ? "bad" : i.running ? "ok" : "warn")}>{i.disabled ? t("r.off") : i.running ? t("c.online") : t("r.down")}</span></span>
-                  <span className="soft num">{linkText(i, words) && <>{linkText(i, words)} · </>}↓ {rateText(i.rx_bps, measuring)} ↑ {rateText(i.tx_bps, measuring)}</span>
+                <div key={i.name}>
+                  <div className="row small">
+                    <span>{i.name} <span className={"chip " + (i.disabled ? "bad" : i.running ? "ok" : "warn")}>{i.disabled ? t("r.off") : i.running ? t("c.online") : t("r.down")}</span></span>
+                    <span className="soft num">{linkText(i, words) && <>{linkText(i, words)} · </>}↓ {rateText(i.rx_bps, measuring)} ↑ {rateText(i.tx_bps, measuring)}</span>
+                  </div>
+                  {cableHints(i).map((h) => <p key={h.id} className="small cable-hint" data-tone={h.tone}>{t("ch." + h.id)}</p>)}
                 </div>
               ))}
             </section>

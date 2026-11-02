@@ -13,8 +13,8 @@ A guest plan (Vouchers → Guest page → Plans) can now carry a **download** an
 - The free grace session while a payment is pending has no speed limit.
 - Existing purchases and plans keep working: speed defaults to 0/0.
 
-## Production rollout (the deploy does not migrate)
-`deploy/deploy-vps.sh` does no schema migration, so apply `migrations/20261102120000_guest_plan_speed.sql` to the production database **before** deploying this code. It is additive and safe to run twice (`ADD COLUMN IF NOT EXISTS` with default 0, and a check that both speeds are set or neither). Old code ignores the new columns, so applying it first is safe; new code without it would fail every guest purchase read.
+## Production rollout
+The migration is `db/migrations/20261102120000_guest_plan_speed.sql`. The deploy applies it after the backup and before the new API starts (see docs/MIGRATIONS.md). It is additive and safe to run twice (`ADD COLUMN IF NOT EXISTS` with default 0, and a check that both speeds are set or neither), and the old code ignores the new columns, so a rollback of the code is safe.
 
 ## Verified / not verified
 Verified: unit tests against a simulated router (order, adoption rules, read-back, invalid speeds), and database tests against a real PostgreSQL (migration twice, default values, the constraint, the purchase saving the speed, approval passing it on). Not yet verified on a real RouterBOARD: how RouterOS prints the profile's `rate-limit` and `shared-users` for the adoption check, and that the Hotspot enforces the profile's limit for a MAC-logged-in guest. Try it on a router whose owner agreed, with one test plan.

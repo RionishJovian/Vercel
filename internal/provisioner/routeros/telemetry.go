@@ -38,10 +38,21 @@ type InterfaceTelemetry struct {
 	RXBitsPerSecond *float64 `json:"rx_bps"`
 	TXBitsPerSecond *float64 `json:"tx_bps"`
 	// Optional link details from /interface ethernet monitor; empty when not read or not an Ethernet port.
-	LinkStatus      string `json:"link_status,omitempty"`
-	LinkRate        string `json:"link_rate,omitempty"`
-	FullDuplex      *bool  `json:"full_duplex,omitempty"`
-	AutoNegotiation *bool  `json:"auto_negotiation,omitempty"`
+	LinkStatus string `json:"link_status,omitempty"`
+	LinkRate   string `json:"link_rate,omitempty"`
+	FullDuplex *bool  `json:"full_duplex,omitempty"`
+	// Negotiation is the router's own auto-negotiation result: done, failed, incomplete or disabled.
+	Negotiation string `json:"negotiation,omitempty"`
+	// MaxRateMbps is the fastest mode this port supports; PartnerMaxMbps the fastest the device at the
+	// other end advertises. 0 means the router did not report it.
+	MaxRateMbps    int `json:"max_rate_mbps,omitempty"`
+	PartnerMaxMbps int `json:"partner_max_mbps,omitempty"`
+	// PhyErrors counts physical-layer receive errors (bad checksums, misaligned or truncated frames,
+	// carrier errors) since the router's counters were last reset. PhyErrorsRecent is how many of them
+	// were added during the last PhyErrorsWindowSeconds, worked out by the telemetry service from its own readings.
+	PhyErrors              *uint64 `json:"phy_errors,string,omitempty"`
+	PhyErrorsRecent        *uint64 `json:"phy_errors_recent,omitempty"`
+	PhyErrorsWindowSeconds int     `json:"phy_errors_window_seconds,omitempty"`
 }
 type RouterTelemetry struct {
 	Observed        map[string]time.Time `json:"observed_at"`

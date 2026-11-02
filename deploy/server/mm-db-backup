@@ -1,0 +1,28 @@
+#!/bin/bash
+# Nightly dump of the production database, installed as /usr/local/bin/mm-db-backup and run by mm-db-backup.timer.
+# The dump is only kept if it reads back (pg_restore -l), contains tables, and is not suspiciously smaller than
+# the previous one. Keeps KEEP_DAYS days. Optional dead-man's-switch ping (see mm-monitor.env.example).
+set -euo pipefail
+[ -f /etc/mm-monitor.env ] && . /etc/mm-monitor.env
+OUT=${BACKUP_DIR:-/var/backups/megamagic}
+KEEP_DAYS=${KEEP_DAYS:-14}
+DB=${PROD_DB_CONTAINER:-mega-magic-go-restored-db-1}
+notify() { [ -n "${HEALTHCHECK_BACKUP_URL:-}" ] && curl -fsS -m 10 --retry 2 -o /dev/null "${HEALTHCHECK_BACKUP_URL}$1" || true; }
+fail() { echo "backup failed: $1" >&2; logger -t mm-db-backup "FAIL $1"; rm -f "${F:-}.partial"; notify /fail; exit 1; }
+
+mkdir -p "$OUT"; chmod 700 "$OUT"
+STAMP=$(date -u +%Y%m%dT%H%M%SZ); F="$OUT/mega_magic-$STAMP.dump"
+prev=$(ls -1t "$OUT"/mega_magic-*.dump 2>/dev/null | head -1 || true)
+
+docker exec "$DB" pg_dump -U mega_magic -d mega_magic -Fc >"$F.partial" || fail "pg_dump did not complete"
+[ -s "$F.partial" ] || fail "empty dump"
+LIST=$(docker exec -i "$DB" pg_restore -l <"$F.partial") || fail "dump cannot be read back"
+case "$LIST" in *" TABLE "*) ;; *) fail "dump has no tables";; esac
+if [ -n "$prev" ]; then
+  was=$(wc -c <"$prev" | tr -d " "); now=$(wc -c <"$F.partial" | tr -d " ")
+  [ $((now * 2)) -ge "$was" ] || fail "dump is less than half the size of the previous one ($now vs $was bytes)"
+fi
+mv "$F.partial" "$F"; chmod 600 "$F"
+find "$OUT" -name 'mega_magic-*.dump' -mtime +"$KEEP_DAYS" -delete
+logger -t mm-db-backup "ok $F $(wc -c <"$F" | tr -d " ") bytes"
+notify ""

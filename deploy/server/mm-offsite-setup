@@ -1,0 +1,36 @@
+#!/bin/bash
+# Run once on the server as root:  sudo mm-offsite-setup
+# Asks for the Cloudflare R2 details and the PUBLIC age key, writes /etc/mm-offsite.env (mode 600) and tests the
+# connection by uploading and removing a small test file. The secret is typed without being shown, so it never
+# appears on screen or in any log.
+set -euo pipefail
+[ "$(id -u)" = 0 ] || { echo "run as root (sudo)"; exit 1; }
+command -v age >/dev/null && command -v rclone >/dev/null || { echo "age and rclone must be installed (apt install age rclone)"; exit 1; }
+read -r -p "Cloudflare account ID: " acct
+read -r -p "R2 bucket name: " bucket
+read -r -p "R2 access key ID: " keyid
+read -r -s -p "R2 secret access key (hidden): " secret; echo
+read -r -p "Backup PUBLIC key (starts with age1): " recipient
+case "$recipient" in age1*) ;; *) echo "That is not an age public key. It must start with age1."; exit 1;; esac
+umask 077
+cat >/etc/mm-offsite.env <<ENV
+R2_ACCOUNT_ID=$acct
+R2_ACCESS_KEY_ID=$keyid
+R2_SECRET_ACCESS_KEY=$secret
+R2_BUCKET=$bucket
+AGE_RECIPIENT=$recipient
+KEEP_REMOTE_DAYS=30
+ENV
+chmod 600 /etc/mm-offsite.env
+echo "saved /etc/mm-offsite.env (mode 600). Testing the connection..."
+set -a; . /etc/mm-offsite.env; set +a
+export RCLONE_CONFIG_R2_TYPE=s3 RCLONE_CONFIG_R2_PROVIDER=Cloudflare RCLONE_CONFIG_R2_ACL=private
+export RCLONE_CONFIG_R2_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID" RCLONE_CONFIG_R2_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY"
+export RCLONE_CONFIG_R2_ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+probe=$(mktemp); echo "mm-offsite connection test $(date -u +%FT%TZ)" | age -r "$AGE_RECIPIENT" -o "$probe"
+rclone copyto "$probe" "R2:${R2_BUCKET}/db/connection-test.age" --s3-no-check-bucket
+rclone deletefile "R2:${R2_BUCKET}/db/connection-test.age" --s3-no-check-bucket
+rm -f "$probe"
+echo "OK: the bucket accepts encrypted uploads. The nightly copy will use it from now on."
+systemctl enable --now mm-offsite-copy.timer
+echo "Nightly copy enabled (03:40 UTC). Run the first copy now with:  sudo systemctl start mm-offsite-copy.service"
