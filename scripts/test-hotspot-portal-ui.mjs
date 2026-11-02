@@ -4,7 +4,9 @@ import { test } from 'node:test';
 import { JSDOM } from 'jsdom';
 
 const html = fs.readFileSync(new URL('../web/portal.html', import.meta.url), 'utf8');
-const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+// The page script is an external file (the CSP forbids inline scripts), so read it from the file the page references.
+const scriptSrc = html.match(/<script src="\/assets\/js\/(portal\.js)"/)[1];
+const script = fs.readFileSync(new URL(`../web/assets/js/${scriptSrc}`, import.meta.url), 'utf8');
 const gateway = '11111111-1111-4111-8111-111111111111';
 const config = { business_name: 'Test cafe', voucher_login_enabled: true, mobile_payment_enabled: true, consent_required: true, consent_text: 'Site terms' };
 const response = (body, status = 200) => ({ ok: status >= 200 && status < 300, status, json: async () => body });

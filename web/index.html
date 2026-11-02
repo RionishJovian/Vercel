@@ -27,18 +27,7 @@
   <link rel="apple-touch-icon" sizes="180x180" href="/assets/images/mikromagic-touch-green-v2-180.png?v=20260930-3">
   <link rel="manifest" href="/site.webmanifest?v=20260930-3">
   <link rel="preload" as="font" type="font/woff2" crossorigin href="/assets/fonts/bricolage-grotesque-latin-wght-normal-DLoelf7F.woff2">
-  <script>
-    /* Same keys as the app so Day/Night and language carry over after sign-in. */
-    (function () {
-      var d = document.documentElement;
-      try {
-        var t = localStorage.getItem("mm_theme");
-        d.dataset.theme = t === "day" || t === "night" ? t : (matchMedia("(prefers-color-scheme: light)").matches ? "day" : "night");
-        var l = localStorage.getItem("mm2_lang");
-        if (l === "en" || l === "my") { d.dataset.lang = l; d.lang = l; }
-      } catch (e) {}
-    })();
-  </script>
+  <script src="/assets/js/index-theme.js"></script>
   <link rel="stylesheet" href="/assets/css/landing.css?v=20261101b">
 </head>
 <body>
@@ -157,35 +146,6 @@
     <span><a href="/pricing.html"><span lang="en">Pricing</span><span lang="my">စျေးနှုန်း</span></a> · <a href="https://t.me/nish2769" target="_blank" rel="noopener noreferrer">Telegram</a> · <a href="/signin.html"><span lang="en">Sign in</span><span lang="my">ဝင်မည်</span></a></span>
   </footer>
 
-  <script>
-    (function () {
-      var d = document.documentElement;
-      var btns = document.querySelectorAll("[data-set-lang]");
-      function show(l) {
-        d.dataset.lang = l; d.lang = l;
-        btns.forEach(function (b) { b.setAttribute("aria-pressed", b.dataset.setLang === l ? "true" : "false"); });
-        if (demo) loadDemo();
-      }
-      /* Preview video: right language, only plays while on screen, still image if motion is reduced. */
-      var demo = document.getElementById("demo");
-      var still = matchMedia("(prefers-reduced-motion: reduce)").matches;
-      var visible = false;
-      function loadDemo() {
-        var l = d.dataset.lang === "en" ? "en" : "my";
-        var src = "/assets/video/portal-demo-" + l + ".mp4";
-        if (demo.getAttribute("src") !== src) { demo.setAttribute("src", src); demo.setAttribute("poster", "/assets/video/portal-demo-" + l + ".jpg"); }
-        if (visible && !still) { var p = demo.play(); if (p && p.catch) p.catch(function () {}); }
-      }
-      if ("IntersectionObserver" in window) new IntersectionObserver(function (e) { visible = e[0].isIntersecting; if (visible) loadDemo(); else demo.pause(); }, { threshold: .25 }).observe(demo);
-      loadDemo();
-      show(d.dataset.lang === "en" ? "en" : "my");
-      btns.forEach(function (b) { b.addEventListener("click", function () { show(b.dataset.setLang); try { localStorage.setItem("mm2_lang", b.dataset.setLang); } catch (e) {} }); });
-      document.getElementById("theme").addEventListener("click", function () {
-        var n = d.dataset.theme === "day" ? "night" : "day";
-        d.dataset.theme = n;
-        try { localStorage.setItem("mm_theme", n); } catch (e) {}
-      });
-    })();
-  </script>
+  <script src="/assets/js/index-lang.js"></script>
 </body>
 </html>
