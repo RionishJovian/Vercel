@@ -860,3 +860,148 @@ func TestEditingACustomerNetworkAsOneUnit(t *testing.T) {
 		}
 	})
 }
+
+func move(values map[string]string) NetworkRequest {
+	return NetworkRequest{Kind: "move_network", ID: "*74", Values: values}
+}
+
+var newSubnet = map[string]string{"gateway_cidr": "10.20.0.1/24", "pool_start": "10.20.0.10", "pool_end": "10.20.0.200"}
+
+func TestMovingACustomerNetworkIsHeldUntilKept(t *testing.T) {
+	t.Run("moves address, range, client settings and NAT together and waits for Keep", func(t *testing.T) {
+		r := shopFixture()
+		review, err := preview(t, r, move(newSubnet))
+		if err != nil || len(review.Steps) != 4 || !strings.Contains(strings.Join(review.Warnings, " "), "reverts by itself in 5 minutes") {
+			t.Fatalf("%+v %v", review, err)
+		}
+		result := applyHeld(t, r, move(newSubnet))
+		if !result.PendingConfirm || !r.guard {
+			t.Fatalf("a subnet move must wait for confirmation: %+v", result)
+		}
+		if r.objects["addresses"]["*71"]["address"] != "10.20.0.1/24" || r.objects["pools"]["*72"]["ranges"] != "10.20.0.10-10.20.0.200" ||
+			r.objects["dhcp_networks"]["*73"]["address"] != "10.20.0.0/24" || r.objects["dhcp_networks"]["*73"]["gateway"] != "10.20.0.1" || r.objects["nat"]["*75"]["src-address"] != "10.20.0.0/24" {
+			t.Fatalf("not moved: %v", snapshotRows(r))
+		}
+		if err := quickConfigApplier(r).ConfirmNetwork(context.Background(), "biz-1", "dev-1"); err != nil || r.guard {
+			t.Fatalf("keep: %v guard=%v", err, r.guard)
+		}
+	})
+	t.Run("reverting, or the router timer, puts every piece back exactly", func(t *testing.T) {
+		r := shopFixture()
+		before := snapshotRows(r)
+		applyHeld(t, r, move(newSubnet))
+		if result, err := quickConfigApplier(r).RevertNetwork(context.Background(), "biz-1", "dev-1"); err != nil || !result.RolledBack {
+			t.Fatalf("%+v %v", result, err)
+		}
+		after := snapshotRows(r)
+		for key, rows := range before {
+			if strings.Join(rows, "\n") != strings.Join(after[key], "\n") {
+				t.Fatalf("%s differs after revert", key)
+			}
+		}
+	})
+	t.Run("a network without a NAT rule can still be moved", func(t *testing.T) {
+		r := shopFixture()
+		delete(r.objects["nat"], "*75")
+		review, err := preview(t, r, move(newSubnet))
+		if err != nil || len(review.Steps) != 3 {
+			t.Fatalf("%+v %v", review, err)
+		}
+	})
+	t.Run("an unchanged request is reported as already applied", func(t *testing.T) {
+		r := shopFixture()
+		same := map[string]string{"gateway_cidr": "192.168.99.1/24", "pool_start": "192.168.99.10", "pool_end": "192.168.99.200"}
+		if _, err := preview(t, r, move(same)); err == nil || !strings.Contains(err.Error(), "already applied") {
+			t.Fatalf("got %v", err)
+		}
+	})
+	t.Run("refuses a new subnet that is invalid or overlaps something", func(t *testing.T) {
+		for name, values := range map[string]map[string]string{
+			"overlaps the bridge network": {"gateway_cidr": "192.168.88.1/24", "pool_start": "192.168.88.10", "pool_end": "192.168.88.200"},
+			"overlaps the Hub range":      {"gateway_cidr": "10.77.0.1/24", "pool_start": "10.77.0.10", "pool_end": "10.77.0.200"},
+			"overlaps a customer network": {"gateway_cidr": "172.20.0.1/24", "pool_start": "172.20.0.10", "pool_end": "172.20.0.200"},
+			"is a public network":         {"gateway_cidr": "8.8.8.1/24", "pool_start": "8.8.8.10", "pool_end": "8.8.8.200"},
+			"is too small a prefix":       {"gateway_cidr": "10.20.0.1/30", "pool_start": "10.20.0.2", "pool_end": "10.20.0.2"},
+			"range outside the subnet":    {"gateway_cidr": "10.20.0.1/24", "pool_start": "10.21.0.10", "pool_end": "10.21.0.20"},
+			"range includes the gateway":  {"gateway_cidr": "10.20.0.1/24", "pool_start": "10.20.0.1", "pool_end": "10.20.0.50"},
+			"range reversed":              {"gateway_cidr": "10.20.0.1/24", "pool_start": "10.20.0.100", "pool_end": "10.20.0.20"},
+			"missing range":               {"gateway_cidr": "10.20.0.1/24"},
+			"not an address":              {"gateway_cidr": "gateway", "pool_start": "a", "pool_end": "b"},
+			"unexpected input":            {"gateway_cidr": "10.20.0.1/24", "pool_start": "10.20.0.10", "pool_end": "10.20.0.200", "dns": "1.1.1.1"},
+		} {
+			r := shopFixture()
+			if _, err := preview(t, r, move(values)); err == nil {
+				t.Errorf("must refuse a subnet that %s", name)
+			}
+		}
+	})
+	t.Run("refuses networks it cannot move exactly", func(t *testing.T) {
+		for name, mutate := range map[string]func(r *networkRunner){
+			"a Hotspot": func(r *networkRunner) {
+				r.objects["hotspots"]["*80"] = map[string]string{"name": "mm-shop", "interface": "mm-shop-vlan", "profile": "mm-shop", "address-pool": "mm-shop", "disabled": "no"}
+			},
+			"a Hotspot only on the port": func(r *networkRunner) {
+				r.objects["hotspots"]["*87"] = map[string]string{"name": "portal", "interface": "mm-shop-vlan", "profile": "p", "address-pool": "x", "disabled": "no"}
+			},
+			"a RADIUS entry": func(r *networkRunner) { r.radius = true },
+			"a static reservation": func(r *networkRunner) {
+				r.objects["leases"]["*81"] = map[string]string{"address": "192.168.99.50", "mac-address": "AA:BB:CC:DD:EE:FF", "server": "mm-shop", "comment": "", "disabled": "no", "dynamic": "no"}
+			},
+			"another address on the port": func(r *networkRunner) {
+				r.objects["addresses"]["*82"] = map[string]string{"address": "10.55.0.1/24", "interface": "mm-shop-vlan", "comment": "", "disabled": "no", "dynamic": "no"}
+			},
+			"the internet uplink": func(r *networkRunner) {
+				r.objects["dhcp_clients"]["*83"] = map[string]string{"interface": "mm-shop-vlan", "gateway": "", "add-default-route": "yes", "disabled": "no"}
+			},
+			"a second DHCP service": func(r *networkRunner) {
+				r.objects["dhcp"]["*84"] = map[string]string{"name": "other", "interface": "mm-shop-vlan", "address-pool": "x", "lease-time": "1h", "disabled": "no"}
+			},
+			"a shared pool": func(r *networkRunner) {
+				r.objects["dhcp"]["*86"] = map[string]string{"name": "x", "interface": "ether4", "address-pool": "mm-shop", "lease-time": "1h", "disabled": "no"}
+			},
+			"a limit on the old subnet": func(r *networkRunner) {
+				r.objects["queues"]["*90"] = map[string]string{"name": "shop-limit", "target": "192.168.99.0/24", "max-limit": "10M/10M", "queue": "", "parent": "", "comment": "", "disabled": "no"}
+			},
+			"a limit on half of it": func(r *networkRunner) {
+				r.objects["queues"]["*93"] = map[string]string{"name": "half", "target": "192.168.99.128/25", "max-limit": "5M/5M", "queue": "", "parent": "", "comment": "", "disabled": "no"}
+			},
+			"a limit on a list with it": func(r *networkRunner) {
+				r.objects["queues"]["*94"] = map[string]string{"name": "mixed", "target": "10.9.9.0/24,192.168.99.77", "max-limit": "5M/5M", "queue": "", "parent": "", "comment": "", "disabled": "no"}
+			},
+			"a limit on a shop device": func(r *networkRunner) {
+				r.objects["queues"]["*91"] = map[string]string{"name": "till", "target": "192.168.99.50/32", "max-limit": "2M/2M", "queue": "", "parent": "", "comment": "", "disabled": "no"}
+			},
+			"another NAT rule on it": func(r *networkRunner) {
+				r.objects["nat"]["*92"] = map[string]string{"chain": "srcnat", "action": "masquerade", "src-address": "192.168.99.0/24", "out-interface": "ether1", "comment": "mine", "disabled": "no"}
+			},
+			"a missing address": func(r *networkRunner) { delete(r.objects["addresses"], "*71") },
+			"a duplicated NAT rule": func(r *networkRunner) {
+				r.objects["nat"]["*85"] = map[string]string{"chain": "srcnat", "action": "masquerade", "src-address": "192.168.99.0/24", "out-interface": "ether1", "comment": "mm-shop", "disabled": "no"}
+			},
+		} {
+			r := shopFixture()
+			mutate(r)
+			if _, err := preview(t, r, move(newSubnet)); err == nil {
+				t.Errorf("must refuse a network with %s", name)
+			}
+		}
+		r := shopFixture()
+		if _, err := preview(t, r, NetworkRequest{Kind: "move_network", ID: "*40", Values: newSubnet}); err == nil {
+			t.Fatal("a DHCP service the wizard did not create must never be moved")
+		}
+	})
+}
+
+func TestMovingNeverUsesTheHubRangeEvenWithoutATunnelAddress(t *testing.T) {
+	r := shopFixture()
+	delete(r.objects["addresses"], "*11") // the Hub tunnel address, which would also cause an overlap
+	if _, err := preview(t, r, move(map[string]string{"gateway_cidr": "10.77.0.1/24", "pool_start": "10.77.0.10", "pool_end": "10.77.0.200"})); err == nil {
+		t.Fatal("the Hub management range must be refused on its own")
+	}
+	r = shopFixture()
+	r.objects["queues"]["*95"] = map[string]string{"name": "other-net", "target": "10.9.9.0/24", "max-limit": "5M/5M", "queue": "", "parent": "", "comment": "", "disabled": "no"}
+	r.objects["queues"]["*96"] = map[string]string{"name": "by-interface", "target": "ether4", "max-limit": "5M/5M", "queue": "", "parent": "", "comment": "", "disabled": "no"}
+	if _, err := preview(t, r, move(newSubnet)); err != nil {
+		t.Fatalf("limits that do not touch the old subnet must not block the move: %v", err)
+	}
+}
