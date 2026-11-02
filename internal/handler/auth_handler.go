@@ -4,7 +4,9 @@ import (
 	"database/sql"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -27,6 +29,7 @@ type AuthHandler struct {
 	userRepo                   *database.UserRepository
 	authService                *auth.Service
 	db                         *database.DB
+	logins                     *auth.LoginLimiter
 }
 
 // NewAuthHandler creates a new auth handler
@@ -35,6 +38,8 @@ func NewAuthHandler(userRepo *database.UserRepository, authService *auth.Service
 		userRepo:    userRepo,
 		authService: authService,
 		db:          db,
+		// 8 wrong passwords in 10 minutes lock that sign-in for 15 minutes.
+		logins: auth.NewLoginLimiter(8, 10*time.Minute, 15*time.Minute),
 	}
 }
 
@@ -202,6 +207,12 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
+	if locked, left := h.logins.Locked(req.Email); locked {
+		c.Header("Retry-After", strconv.Itoa(int(left.Seconds())+1))
+		c.JSON(http.StatusTooManyRequests, gin.H{"error": "too many failed sign-in attempts; try again in a few minutes"})
+		return
+	}
+
 	// EXCLUSION (system-level): login runs BEFORE any tenant context exists;
 	// scoping this lookup to a business would lock every user out.
 	user, err := h.userRepo.FindByEmail(req.Email)
@@ -210,14 +221,17 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 	if user == nil {
+		h.logins.Fail(req.Email)
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
 		return
 	}
 
 	if err := h.authService.VerifyPassword(req.Password, user.PasswordHash); err != nil {
+		h.logins.Fail(req.Email)
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
 		return
 	}
+	h.logins.Succeed(req.Email)
 
 	// Update last login (EXCLUSION: pre-tenant bootstrap write, owner-scoped by design).
 	_ = h.userRepo.UpdateLastLogin(user.UserID)
@@ -451,10 +465,10 @@ func (h *AuthHandler) UpdateProfile(c *gin.Context) {
 func (h *AuthHandler) ChangePassword(c *gin.Context) {
 	var req struct {
 		CurrentPassword string `json:"current_password" binding:"required"`
-		NewPassword     string `json:"new_password" binding:"required,min=8,max=128"`
+		NewPassword     string `json:"new_password" binding:"required,min=10,max=128"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "current password and a new password of at least 8 characters are required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "current password and a new password of at least 10 characters are required"})
 		return
 	}
 	userID, businessID := auth.GetUserID(c), auth.GetBusinessID(c)
