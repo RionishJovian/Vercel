@@ -47,6 +47,12 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version-file: go.mod
+      - name: Go toolchain must match go.mod
+        run: |
+          want=$(awk '/^toolchain /{print $2}' go.mod)
+          have=$(go env GOVERSION)
+          echo "Go $have (go.mod toolchain $want)"
+          test -n "$want" && test "$have" = "$want"
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '24'
@@ -56,6 +62,8 @@ jobs:
       - run: npm ci --ignore-scripts && npm test && npm run build
         working-directory: app
       - run: go test -race ./internal/... && go build ./...
+      - name: Known vulnerabilities in reachable code
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.9.0 && "$(go env GOPATH)/bin/govulncheck" ./...
       - run: bash -n deploy/deploy-vps.sh
 
   build:
@@ -75,6 +83,12 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version-file: go.mod
+      - name: Go toolchain must match go.mod
+        run: |
+          want=$(awk '/^toolchain /{print $2}' go.mod)
+          have=$(go env GOVERSION)
+          echo "Go $have (go.mod toolchain $want)"
+          test -n "$want" && test "$have" = "$want"
       - name: Build runtime binaries
         run: |
           mkdir -p restore-bin
