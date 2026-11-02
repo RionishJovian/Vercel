@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import useSWR from "swr";
 import { fetcher } from "../../lib/api";
 import { asArray } from "../../lib/types";
@@ -6,13 +7,13 @@ import { Note } from "../../components/ui";
 import { Skeleton } from "../../components/Skeleton";
 import type { RouterRow } from ".";
 import { Capabilities } from "./Capabilities";
+import { rateText, stillMeasuring } from "./speed";
 
 interface Iface { name: string; disabled?: boolean; running?: boolean; rx_bps?: number; tx_bps?: number }
-interface Telemetry { state?: string; snapshot?: { resources?: Record<string, unknown> & { board_name?: string; routeros_version?: string; cpu_percent?: number; memory_used_bytes?: number | string; memory_total_bytes?: number | string; uptime_seconds?: number }; hotspot_sessions?: number | null; dhcp_bound_leases?: number | null; interfaces?: Iface[]; issues?: string[] } }
+interface Telemetry { state?: string; snapshot?: { read_at?: string; resources?: Record<string, unknown> & { board_name?: string; routeros_version?: string; cpu_percent?: number; memory_used_bytes?: number | string; memory_total_bytes?: number | string; uptime_seconds?: number }; hotspot_sessions?: number | null; dhcp_bound_leases?: number | null; interfaces?: Iface[]; issues?: string[] } }
 
 const pct = (v: unknown) => (typeof v === "number" ? Math.round(v) + "%" : "—");
 const mb = (v: unknown) => (Number.isFinite(Number(v)) ? (Number(v) / 1048576).toFixed(0) + " MB" : "—");
-const rate = (v?: number) => (typeof v === "number" ? (v >= 1e6 ? (v / 1e6).toFixed(1) + " Mbps" : Math.round(v / 1e3) + " kbps") : "—");
 function uptime(sec: unknown) {
   if (typeof sec !== "number") return "—";
   const d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600), m = Math.floor((sec % 3600) / 60);
@@ -25,6 +26,9 @@ export function Detail({ id, router }: { id: string; router?: RouterRow }) {
   const { t } = useI18n();
   const { data, error, isLoading, mutate } = useSWR<{ telemetry?: Telemetry }>(`/routers/${encodeURIComponent(id)}/telemetry`, fetcher, { refreshInterval: 15000 });
   const tele = data?.telemetry, snap = tele?.snapshot, r = snap?.resources ?? {};
+  const [reads, setReads] = useState(0), readAt = snap?.read_at;
+  useEffect(() => { if (readAt) setReads((n) => n + 1); }, [readAt]);
+  const measuring = stillMeasuring(asArray<Iface>(snap?.interfaces), reads) ? t("r.measuring") : null;
   return (
     <>
       <h1>{router?.hardware_name || id}</h1>
@@ -49,7 +53,7 @@ export function Detail({ id, router }: { id: string; router?: RouterRow }) {
               {asArray<Iface>(snap.interfaces).map((i) => (
                 <div className="row small" key={i.name}>
                   <span>{i.name} <span className={"chip " + (i.disabled ? "bad" : i.running ? "ok" : "warn")}>{i.disabled ? t("r.off") : i.running ? t("c.online") : t("r.down")}</span></span>
-                  <span className="soft num">↓ {rate(i.rx_bps)} ↑ {rate(i.tx_bps)}</span>
+                  <span className="soft num">↓ {rateText(i.rx_bps, measuring)} ↑ {rateText(i.tx_bps, measuring)}</span>
                 </div>
               ))}
             </section>

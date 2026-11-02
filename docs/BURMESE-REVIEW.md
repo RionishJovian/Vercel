@@ -43,3 +43,9 @@ Strings added since the IP/VLAN editors (2026-11-01). The Burmese is my own word
 | `hub.w.restart` | Start again from step 1 | အဆင့် ၁ မှ ပြန်စမည် |
 
 The remaining `hub.w.*` keys (button labels, step bodies, the four checklist lines) follow the same wording; see `app/src/i18n/extra.ts`.
+
+## Port speeds (2026-11-02)
+
+| Key | English | Burmese (to review) |
+|---|---|---|
+| `r.measuring` | Measuring… | တိုင်းနေသည်… |
