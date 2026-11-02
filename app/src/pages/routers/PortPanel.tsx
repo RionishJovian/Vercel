@@ -3,8 +3,9 @@ import { useI18n } from "../../i18n";
 import type { PortPanel as Panel } from "../../lib/portPanels";
 import { linkText, type Words } from "./portInfo";
 import { rateText } from "./speed";
+import { cableHints, needsAttention, type CableFacts } from "./cableHealth";
 
-export interface PortState { name: string; disabled?: boolean; running?: boolean; rx_bps?: number; tx_bps?: number; link_rate?: string; full_duplex?: boolean }
+export interface PortState extends CableFacts { name: string; rx_bps?: number; tx_bps?: number }
 type Tone = "up" | "down" | "off" | "unknown";
 const toneOf = (i?: PortState): Tone => (!i ? "unknown" : i.disabled ? "off" : i.running ? "up" : "down");
 
@@ -18,7 +19,8 @@ export function PortPanelView({ panel, ports, words, measuring }: { panel: Panel
     const status = tone === "up" ? t("c.online") : tone === "off" ? t("r.off") : tone === "down" ? t("r.down") : t("pp.unknown");
     const link = i ? linkText(i, words) : "";
     const speed = tone === "up" && i ? `↓ ${rateText(i.rx_bps, measuring)} ↑ ${rateText(i.tx_bps, measuring)}` : "";
-    return { status, line: [link, speed].filter(Boolean).join(" · "), tone };
+    const hints = i ? cableHints(i) : [];
+    return { status, line: [link, speed].filter(Boolean).join(" · "), tone, hints, attention: needsAttention(hints) };
   };
   const active = picked ? label(picked) : null;
   return (
@@ -28,9 +30,9 @@ export function PortPanelView({ panel, ports, words, measuring }: { panel: Panel
         {panel.ports.map((spot) => {
           const l = label(spot.name);
           return (
-            <button key={spot.name} type="button" className={"port-dot " + l.tone + (picked === spot.name ? " on" : "")}
+            <button key={spot.name} type="button" className={"port-dot " + l.tone + (l.attention ? " flag" : "") + (picked === spot.name ? " on" : "")}
               style={{ left: spot.x + "%", top: spot.y + "%", width: panel.size + "%" }}
-              aria-pressed={picked === spot.name} aria-label={`${spot.name}: ${l.status}${l.line ? ", " + l.line : ""}`}
+              aria-pressed={picked === spot.name} aria-label={`${spot.name}: ${l.status}${l.line ? ", " + l.line : ""}${l.attention ? ", " + t("ch.attention") : ""}`}
               onClick={() => setPicked(picked === spot.name ? "" : spot.name)} />
           );
         })}
@@ -38,6 +40,7 @@ export function PortPanelView({ panel, ports, words, measuring }: { panel: Panel
       <p className="soft small" role="status">
         {active ? <><b>{picked}</b> <span className={"chip " + (active.tone === "up" ? "ok" : active.tone === "off" ? "bad" : "warn")}>{active.status}</span>{active.line ? <span className="num"> {active.line}</span> : null}</> : t("pp.hint")}
       </p>
+      {active && active.hints.map((h) => <p key={h.id} className="small cable-hint" data-tone={h.tone}>{t("ch." + h.id)}</p>)}
     </div>
   );
 }
