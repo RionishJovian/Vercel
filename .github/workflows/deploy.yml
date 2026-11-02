@@ -19,7 +19,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  VPS_HOST: 156.67.216.128
+  VPS_HOST: 207.148.76.172
   VPS_USER: root
   DEPLOY_PATH: /opt/mega-magic-go-restored-20261018T100554Z
 
