@@ -1,0 +1,5 @@
+[Unit]
+Description=Weekly Mega Magic restore drill (restore the newest dump into a throwaway database and compare)
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/mm-restore-drill

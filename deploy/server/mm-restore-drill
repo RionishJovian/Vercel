@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+# Restore drill: proves the newest production dump really restores.
+#
+# It restores the newest dump into a throwaway PostgreSQL container (no network, data in memory), compares the
+# structure (tables, indexes, constraints, policies) and the row count of every table with production, and
+# removes the container. Production is only read. Exit code 0 means the dump restored cleanly and matches.
+#
+# Installed by deploy/server/install-backup-tools.sh as /usr/local/bin/mm-restore-drill and run weekly by a timer.
+# Run by hand:  sudo /usr/local/bin/mm-restore-drill
+# Environment: BACKUP_DIR, PROD_DB_CONTAINER, DB_USER, DB_NAME, DRILL_IMAGE, DRILL_VOLATILE (see below).
+set -Eeuo pipefail
+
+# Optional dead-man's-switch pings (see mm-monitor.env.example): success pings the URL, failure pings URL/fail.
+[ -f /etc/mm-monitor.env ] && . /etc/mm-monitor.env
+notify() { [ -n "${HEALTHCHECK_DRILL_URL:-}" ] && curl -fsS -m 10 --retry 2 -o /dev/null "${HEALTHCHECK_DRILL_URL}$1" || true; }
+
+BACKUP_DIR=${BACKUP_DIR:-/var/backups/megamagic}
+PROD=${PROD_DB_CONTAINER:-mega-magic-go-restored-db-1}
+DB_USER=${DB_USER:-mega_magic}
+DB_NAME=${DB_NAME:-mega_magic}
+IMAGE=${DRILL_IMAGE:-postgres:16-alpine}
+# Tables that change every second or two; a small difference in them is normal while production is running.
+VOLATILE=${DRILL_VOLATILE:-auth_sessions peer_heartbeats device_change_events}
+NAME="mm-restore-drill-$$"
+
+dump=$(ls -1t "$BACKUP_DIR"/mega_magic-*.dump 2>/dev/null | head -1 || true)
+[ -n "$dump" ] || { echo "FAIL: no dump found in $BACKUP_DIR"; notify /fail; exit 2; }
+age=$(( $(date +%s) - $(stat -c %Y "$dump") ))
+echo "dump: $dump ($(stat -c %s "$dump") bytes, $((age / 60)) minutes old)"
+
+cleanup() { docker rm -f "$NAME" >/dev/null 2>&1 || true; }
+trap cleanup EXIT
+trap 'notify /fail' ERR
+
+prod() { docker exec "$PROD" psql -U "$DB_USER" -d "$DB_NAME" -At -F' | ' -c "$1"; }
+drill() { docker exec "$NAME" psql -U "$DB_USER" -d "$DB_NAME" -At -F' | ' -c "$1"; }
+
+docker run -d --name "$NAME" --network none --tmpfs /var/lib/postgresql/data \
+  -e POSTGRES_USER="$DB_USER" -e POSTGRES_PASSWORD=drill -e POSTGRES_DB="$DB_NAME" "$IMAGE" >/dev/null
+for _ in $(seq 1 60); do
+  docker exec "$NAME" pg_isready -U "$DB_USER" -d "$DB_NAME" >/dev/null 2>&1 && break
+  sleep 1
+done
+docker exec "$NAME" pg_isready -U "$DB_USER" -d "$DB_NAME" >/dev/null
+
+# The dump references roles that live outside it. Recreate the ones production has, so grants and policies restore.
+for role in $(prod "select rolname from pg_roles where rolname in ('authenticated','mega_magic_runtime') order by 1"); do
+  drill "create role \"$role\" nologin" >/dev/null
+done
+
+start=$(date +%s)
+docker exec -i "$NAME" pg_restore -U "$DB_USER" -d "$DB_NAME" --exit-on-error <"$dump"
+echo "restore: ok in $(( $(date +%s) - start )) s"
+
+fail=0
+compare() { # label, production value, drill value
+  if [ "$2" = "$3" ]; then echo "  same   $1: $2"; else echo "  DIFFER $1: production=$2 restored=$3"; fail=1; fi
+}
+echo "structure:"
+for q in \
+  "tables|select count(*) from information_schema.tables where table_schema='public' and table_type='BASE TABLE'" \
+  "indexes|select count(*) from pg_indexes where schemaname='public'" \
+  "constraints|select count(*) from pg_constraint c join pg_namespace n on n.oid=c.connamespace where n.nspname='public'" \
+  "policies|select count(*) from pg_policies where schemaname='public'" \
+  "functions|select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public'" \
+  "triggers|select count(*) from pg_trigger t join pg_class c on c.oid=t.tgrelid join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and not t.tgisinternal"; do
+  compare "${q%%|*}" "$(prod "${q#*|}")" "$(drill "${q#*|}")"
+done
+
+count_sql="select table_name||'='||(xpath('/row/c/text()', query_to_xml(format('select count(*) as c from public.%I', table_name), false, true, '')))[1]::text from information_schema.tables where table_schema='public' and table_type='BASE TABLE' order by 1"
+prod "$count_sql" >/tmp/mm-drill-prod.$$
+drill "$count_sql" >/tmp/mm-drill-restored.$$
+echo "row counts (every table):"
+rows=0; differ=0
+while IFS='=' read -r table n; do
+  rows=$((rows + n)); other=$(grep -m1 "^$table=" /tmp/mm-drill-restored.$$ | cut -d= -f2)
+  if [ "$n" != "$other" ]; then
+    case " $VOLATILE " in
+      *" $table "*) echo "  volatile $table: production=$n restored=$other (changes while running)";;
+      *) echo "  DIFFER $table: production=$n restored=$other"; differ=1; fail=1;;
+    esac
+  fi
+done </tmp/mm-drill-prod.$$
+rm -f /tmp/mm-drill-prod.$$ /tmp/mm-drill-restored.$$
+[ "$differ" = 0 ] && echo "  all $(prod "select count(*) from information_schema.tables where table_schema='public' and table_type='BASE TABLE'") tables match ($rows rows in total)"
+
+if [ "$fail" = 0 ]; then echo "RESULT: PASS - the dump restores and matches production"; logger -t mm-restore-drill "pass $dump"; notify ""; else echo "RESULT: FAIL"; logger -t mm-restore-drill "FAIL $dump"; notify /fail; exit 1; fi

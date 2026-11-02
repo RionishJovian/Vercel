@@ -14,6 +14,8 @@ tmp/
 *.out
 *.prof
 mm-*
+# ...except the server tools kept in the repository
+!deploy/server/mm-*
 /build/
 /server
 # deploy.sh's rollback binary (~22 MB) — a build artifact, never source.
