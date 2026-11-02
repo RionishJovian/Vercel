@@ -83,3 +83,18 @@ The other `fw.*` keys (preview-only note, checking, applying, failure texts) fol
 |---|---|---|
 | `pp.hint` | Select a port on the picture to see its status. | ပုံပေါ်ရှိ port တစ်ခုကို ရွေးပြီး အခြေအနေ ကြည့်ပါ။ |
 | `pp.unknown` | Not reported | မပြသေးပါ |
+
+## Cable health (2026-11-02)
+
+| Key | English | Burmese (to review) |
+|---|---|---|
+| `ch.attention` | needs attention | စစ်ဆေးသင့်သည် |
+| `ch.neg` | The router could not finish agreeing a speed with the device on this port. Try another cable or restart the device. | Router သည် ဤ port ရှိ ကိရိယာနှင့် မြန်နှုန်း သဘောတူညီမှု မပြီးမြောက်ပါ။ ကေဘယ်အသစ် စမ်းကြည့်ပါ သို့မဟုတ် ကိရိယာကို ပြန်စတင်ပါ။ |
+| `ch.half` | This port is running half duplex, which is slow and usually means a cable or settings problem. | ဤ port သည် half duplex ဖြင့် အလုပ်လုပ်နေသည်။ ၎င်းသည် နှေးပြီး ကေဘယ် သို့မဟုတ် ဆက်တင်ပြဿနာ ဖြစ်တတ်သည်။ |
+| `ch.slowCable` | This link is slower than both ends support. The cable or a connector is the likely cause. | ဤလင့်ခ်သည် နှစ်ဖက်စလုံး ထောက်ပံ့နိုင်သည်ထက် နှေးနေသည်။ ကေဘယ် သို့မဟုတ် ချိတ်ဆက်ခေါင်း ပြဿနာ ဖြစ်နိုင်ခြေ အများဆုံး။ |
+| `ch.partnerLimit` | Linked at the fastest speed the connected device offers. | ချိတ်ဆက်ထားသော ကိရိယာ ပေးနိုင်သည့် အမြန်ဆုံး မြန်နှုန်းဖြင့် ချိတ်ထားသည်။ |
+| `ch.belowMax` | Linked below this port's top speed. The cable or the connected device may limit it. | ဤ port ၏ အမြန်ဆုံးထက် နှေးစွာ ချိတ်ထားသည်။ ကေဘယ် သို့မဟုတ် ချိတ်ထားသော ကိရိယာက ကန့်သတ်နေနိုင်သည်။ |
+| `ch.fixedSpeed` | Auto-negotiation is off on this port, so its speed is set by hand. | ဤ port တွင် auto-negotiation ပိတ်ထားသဖြင့် မြန်နှုန်းကို လက်ဖြင့် သတ်မှတ်ထားသည်။ |
+| `ch.errNow` | Receive errors are still increasing. A damaged cable or a loose connector is the likely cause. | လက်ခံမှု အမှားများ ဆက်တိုး နေသည်။ ကေဘယ် ပျက်စီးခြင်း သို့မဟုတ် ချိတ်ခေါင်း လျော့ခြင်း ဖြစ်နိုင်ခြေ အများဆုံး။ |
+| `ch.errPast` | Errors were counted earlier but none in the last few minutes. | အမှားများကို ယခင်က ရေတွက်ထားသော်လည်း လွန်ခဲ့သော မိနစ်အနည်းငယ်အတွင်း မရှိပါ။ |
+| `ch.errWatching` | Errors were counted since the router last started. Watching for new ones. | Router နောက်ဆုံး စတင်ပြီးကတည်းက အမှားများ ရေတွက်ထားသည်။ အသစ်များကို စောင့်ကြည့်နေသည်။ |

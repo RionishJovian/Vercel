@@ -167,3 +167,96 @@ func TestTelemetryPartialFailureKeepsPerMetricTimes(t *testing.T) {
 		t.Fatal("stale counter received a new rate")
 	}
 }
+
+func phyReading(at time.Time, errors *uint64) routeros.RouterTelemetry {
+	return routeros.RouterTelemetry{Observed: map[string]time.Time{"phy_errors": at}, Interfaces: []routeros.InterfaceTelemetry{{Name: "ether1", PhyErrors: errors}, {Name: "ether2"}}}
+}
+
+func TestPhyErrorTrendNeverInventsAnythingFromOneReadingOrAReset(t *testing.T) {
+	e := &entry{}
+	t0 := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
+	read := func(at time.Time, v *uint64) routeros.InterfaceTelemetry {
+		s := phyReading(at, v)
+		trackPhyErrors(e, &s)
+		return s.Interfaces[0]
+	}
+	if got := read(t0, ptr(uint64(10))); got.PhyErrorsRecent != nil {
+		t.Fatal("a single reading produced a trend")
+	}
+	got := read(t0.Add(15*time.Second), ptr(uint64(10)))
+	if got.PhyErrorsRecent == nil || *got.PhyErrorsRecent != 0 || got.PhyErrorsWindowSeconds != 15 {
+		t.Fatalf("no new errors must read as zero over the window: %+v", got)
+	}
+	got = read(t0.Add(30*time.Second), ptr(uint64(13)))
+	if got.PhyErrorsRecent == nil || *got.PhyErrorsRecent != 3 || got.PhyErrorsWindowSeconds != 30 {
+		t.Fatalf("three new errors: %+v", got)
+	}
+	// The same reading seen twice must not shorten the window or count twice.
+	if got = read(t0.Add(30*time.Second), ptr(uint64(13))); got.PhyErrorsRecent != nil {
+		t.Fatalf("a repeated timestamp changed the trend: %+v", got)
+	}
+	// A counter that goes down is a reboot or a reset: start over, never a burst.
+	if got = read(t0.Add(45*time.Second), ptr(uint64(2))); got.PhyErrorsRecent != nil {
+		t.Fatalf("a counter reset was read as a trend: %+v", got)
+	}
+	got = read(t0.Add(60*time.Second), ptr(uint64(5)))
+	if got.PhyErrorsRecent == nil || *got.PhyErrorsRecent != 3 {
+		t.Fatalf("trend after a reset: %+v", got)
+	}
+	// Only the last five minutes count: errors older than that are history.
+	got = read(t0.Add(10*time.Minute), ptr(uint64(5)))
+	if got.PhyErrorsRecent != nil {
+		t.Fatalf("a long gap must leave no trend, not a stale one: %+v", got)
+	}
+	got = read(t0.Add(10*time.Minute+15*time.Second), ptr(uint64(5)))
+	if got.PhyErrorsRecent == nil || *got.PhyErrorsRecent != 0 {
+		t.Fatalf("errors older than the window must not count: %+v", got)
+	}
+}
+
+func TestPhyErrorTrendIgnoresPortsWithoutACounterAndFailedReads(t *testing.T) {
+	e := &entry{}
+	t0 := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
+	s := phyReading(t0, nil)
+	trackPhyErrors(e, &s)
+	if len(e.phy) != 0 || s.Interfaces[0].PhyErrorsRecent != nil {
+		t.Fatal("a port without a counter got a trend")
+	}
+	noRead := routeros.RouterTelemetry{Observed: map[string]time.Time{}, Interfaces: []routeros.InterfaceTelemetry{{Name: "ether1", PhyErrors: ptr(uint64(7))}}}
+	trackPhyErrors(e, &noRead)
+	if len(e.phy) != 0 {
+		t.Fatal("stale values carried from an earlier reading were counted as a new reading")
+	}
+}
+
+func TestPhyErrorTrendSurvivesTheServiceAndIsCopiedPerCaller(t *testing.T) {
+	now := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
+	calls := 0
+	service := New(readerFunc(func(_ context.Context, b, d string) (routeros.RouterTelemetry, error) {
+		calls++
+		s := sample(now, d, uint64(calls*100), uint64(calls*1000), uint64(calls*2000))
+		s.Observed["phy_errors"] = now
+		s.Interfaces[0].PhyErrors = ptr(uint64(calls * 4))
+		return s, nil
+	}))
+	service.clock = func() time.Time { return now }
+	first, _ := service.Read(context.Background(), "tenant-a", "router")
+	if first.Snapshot.Interfaces[0].PhyErrorsRecent != nil {
+		t.Fatal("first reading invented a trend")
+	}
+	now = now.Add(16 * time.Second)
+	second, _ := service.Read(context.Background(), "tenant-a", "router")
+	got := second.Snapshot.Interfaces[0]
+	if got.PhyErrorsRecent == nil || *got.PhyErrorsRecent != 4 || got.PhyErrorsWindowSeconds != 16 {
+		t.Fatalf("trend lost in the service: %+v", got)
+	}
+	*second.Snapshot.Interfaces[0].PhyErrorsRecent = 999
+	third, _ := service.Read(context.Background(), "tenant-a", "router")
+	if v := third.Snapshot.Interfaces[0].PhyErrorsRecent; v != nil && *v == 999 {
+		t.Fatal("a caller changed another caller's reading")
+	}
+	other, _ := service.Read(context.Background(), "tenant-b", "router")
+	if other.Snapshot.Interfaces[0].PhyErrorsRecent != nil {
+		t.Fatal("one tenant's history leaked into another's")
+	}
+}

@@ -153,6 +153,9 @@
 .port-dot.down { border-color: color-mix(in srgb, var(--warn) 80%, transparent); }
 .port-dot.off { border-color: var(--bad); }
 .port-dot.unknown { border-style: dashed; opacity: .7; }
+.port-dot.flag::before { content: ""; position: absolute; top: -5px; right: -5px; width: 11px; height: 11px; border-radius: 50%; background: var(--warn); border: 2px solid var(--bg-0, #04120f); }
+.cable-hint { margin: 4px 0 0; color: var(--ink-soft); }
+.cable-hint[data-tone="warn"] { color: var(--warn); }
 .port-dot.on, .port-dot:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
 @media (max-width: 520px) { .wiz-dot { flex-direction: column; justify-content: center; text-align: center; gap: 4px; padding: 8px 6px; } .wiz-name { font-size: .8125rem; } }
 .site-pick { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; width: 100%; min-height: 56px; padding: 0; border: 0; background: transparent; color: inherit; }

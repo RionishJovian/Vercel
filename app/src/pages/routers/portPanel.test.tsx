@@ -29,7 +29,7 @@ describe("port panel", () => {
       "ether1: Online, 1 Gbps · Full duplex · ↓ 5 kbps ↑ 7 kbps",
       "ether2: No link",
       "ether3: Off",
-      "ether4: Online, 100 Mbps · Half duplex · ↓ — ↑ —",
+      "ether4: Online, 100 Mbps · Half duplex · ↓ — ↑ —, needs attention",
       "ether5: Not reported",
     ]);
   });
@@ -60,5 +60,29 @@ describe("port panel", () => {
     cleanup();
     show([]);
     expect(screen.getAllByRole("button").every((b) => /Not reported/.test(b.getAttribute("aria-label") ?? ""))).toBe(true);
+  });
+
+  it("flags a port with a likely cable problem and explains it only when selected", () => {
+    show([
+      { name: "ether1", running: true, link_rate: "100Mbps", full_duplex: true, negotiation: "done", max_rate_mbps: 1000, partner_max_mbps: 1000, phy_errors: "9", phy_errors_recent: 4 },
+      { name: "ether2", running: true, link_rate: "1Gbps", full_duplex: true, negotiation: "done", max_rate_mbps: 1000, partner_max_mbps: 1000, phy_errors: "0", phy_errors_recent: 0 },
+    ]);
+    const [one, two] = screen.getAllByRole("button");
+    expect(one.className).toContain("flag");
+    expect(one.getAttribute("aria-label")).toContain("needs attention");
+    expect(two.className).not.toContain("flag");
+    expect(screen.queryByText(/cable or a connector is the likely cause/)).toBeNull();
+    fireEvent.click(one);
+    expect(screen.getByText("This link is slower than both ends support. The cable or a connector is the likely cause.")).toBeTruthy();
+    expect(screen.getByText("Receive errors are still increasing. A damaged cable or a loose connector is the likely cause.")).toBeTruthy();
+    fireEvent.click(two);
+    expect(screen.queryByText(/likely cause/)).toBeNull();
+  });
+  it("shows an informational hint without flagging the port", () => {
+    show([{ name: "ether1", running: true, link_rate: "100Mbps", full_duplex: true, negotiation: "done", max_rate_mbps: 1000, partner_max_mbps: 100 }]);
+    const one = screen.getAllByRole("button")[0];
+    expect(one.className).not.toContain("flag");
+    fireEvent.click(one);
+    expect(screen.getByText("Linked at the fastest speed the connected device offers.")).toBeTruthy();
   });
 });

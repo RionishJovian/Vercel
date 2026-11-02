@@ -18,7 +18,12 @@ import (
 // RouterOS computes live rates itself (/interface monitor-traffic), so a speed is
 // available on the first reading. Health sensors can load the CPU of some models if
 // polled hard, so health and firmware are read far less often than the 15 s page poll.
-const TelemetryEthernetCommand = `:foreach i in=[/interface ethernet find] do={ :local m [/interface ethernet monitor $i once as-value]; :put ("name: ".($m->"name")); :put ("status: ".($m->"status")); :put ("rate: ".($m->"rate")); :put ("full-duplex: ".($m->"full-duplex")); :put ("auto-negotiation: ".($m->"auto-negotiation")); }`
+const TelemetryEthernetCommand = `:foreach i in=[/interface ethernet find] do={ :local m [/interface ethernet monitor $i once as-value]; :put ("name: ".($m->"name")); :put ("status: ".($m->"status")); :put ("rate: ".($m->"rate")); :put ("full-duplex: ".($m->"full-duplex")); :put ("auto-negotiation: ".($m->"auto-negotiation")); :put ("supported: ".($m->"supported")); :put ("link-partner-advertising: ".($m->"link-partner-advertising")); }`
+
+// TelemetryEthernetBasicCommand is the shorter read that is known to work on real routers. It is used when the
+// fuller command above is refused, so a failure of the newer fields can never cost a port its link rate.
+const TelemetryEthernetBasicCommand = `:foreach i in=[/interface ethernet find] do={ :local m [/interface ethernet monitor $i once as-value]; :put ("name: ".($m->"name")); :put ("status: ".($m->"status")); :put ("rate: ".($m->"rate")); :put ("full-duplex: ".($m->"full-duplex")); :put ("auto-negotiation: ".($m->"auto-negotiation")); }`
+const TelemetryEthernetStatsCommand = `:foreach row in=[/interface ethernet print stats as-value] do={ :put ("name: ".($row->"name")); :put ("rx-fcs-error: ".($row->"rx-fcs-error")); :put ("rx-align-error: ".($row->"rx-align-error")); :put ("rx-fragment: ".($row->"rx-fragment")); :put ("rx-runt: ".($row->"rx-runt")); :put ("rx-carrier-error: ".($row->"rx-carrier-error")); }`
 const TelemetryTrafficCommand = `:foreach i in=[/interface find where running=yes] do={ :local n [/interface get $i name]; :local m [/interface monitor-traffic $n once as-value]; :put ("name: ".$n); :put ("rx-bps: ".($m->"rx-bits-per-second")); :put ("tx-bps: ".($m->"tx-bits-per-second")); }`
 const TelemetryHealthCommand = "/system health print terse"
 const TelemetryFirmwareCommand = `:do { :put ("model: ".[/system routerboard get model]) } on-error={}; :do { :put ("current-firmware: ".[/system routerboard get current-firmware]) } on-error={}; :do { :put ("upgrade-firmware: ".[/system routerboard get upgrade-firmware]) } on-error={}; :do { :put ("installed-version: ".[/system package update get installed-version]) } on-error={}; :do { :put ("latest-version: ".[/system package update get latest-version]) } on-error={}; :do { :put ("channel: ".[/system package update get channel]) } on-error={}`
@@ -104,6 +109,7 @@ func (a *DeviceApplier) collectExtras(ctx context.Context, runner CommandRunner,
 	var firmware *FirmwareStatus
 	var gotHealth, gotFirmware bool
 	var link []linkRow
+	var phyErrors map[string]uint64
 	var traffic map[string][2]*float64
 	run := func(command string) (string, bool) {
 		sub, cancel := context.WithTimeout(ctx, extraReadTimeout)
@@ -111,8 +117,15 @@ func (a *DeviceApplier) collectExtras(ctx context.Context, runner CommandRunner,
 		out, err := runner.Run(sub, command)
 		return out, err == nil
 	}
-	if out, ok := run(TelemetryEthernetCommand); ok {
+	out, ok := run(TelemetryEthernetCommand)
+	if !ok {
+		out, ok = run(TelemetryEthernetBasicCommand)
+	}
+	if ok {
 		link = parseEthernetLinks(out)
+	}
+	if out, ok := run(TelemetryEthernetStatsCommand); ok {
+		phyErrors = parseEthernetStats(out)
 	}
 	if out, ok := run(TelemetryTrafficCommand); ok {
 		traffic = parseTrafficRates(out)
@@ -140,10 +153,21 @@ func (a *DeviceApplier) collectExtras(ctx context.Context, runner CommandRunner,
 				result.Interfaces[i].LinkStatus = row.status
 				result.Interfaces[i].LinkRate = row.rate
 				result.Interfaces[i].FullDuplex = row.fullDuplex
-				result.Interfaces[i].AutoNegotiation = row.autoNeg
+				result.Interfaces[i].Negotiation = row.negotiation
+				result.Interfaces[i].MaxRateMbps = row.maxMbps
+				result.Interfaces[i].PartnerMaxMbps = row.partnerMbps
 			}
 		}
 		result.Observed["link"] = at
+	}
+	if len(phyErrors) > 0 && len(result.Interfaces) > 0 {
+		for i := range result.Interfaces {
+			if n, ok := phyErrors[result.Interfaces[i].Name]; ok {
+				v := n
+				result.Interfaces[i].PhyErrors = &v
+			}
+		}
+		result.Observed["phy_errors"] = at
 	}
 	if len(traffic) > 0 && len(result.Interfaces) > 0 {
 		for i := range result.Interfaces {
@@ -176,7 +200,9 @@ func (a *DeviceApplier) collectExtras(ctx context.Context, runner CommandRunner,
 type linkRow struct {
 	name, status, rate string
 	fullDuplex         *bool
-	autoNeg            *bool
+	negotiation        string
+	maxMbps            int
+	partnerMbps        int
 }
 
 var linkRatePattern = regexp.MustCompile(`^[0-9]{1,6}(?:\.[0-9])?[MGT]bps$`)
@@ -218,8 +244,16 @@ func parseEthernetLinks(output string) []linkRow {
 				cur.fullDuplex = telemetryBool(value)
 			}
 		case "auto-negotiation":
-			if cur != nil && (value == "true" || value == "false" || value == "yes" || value == "no") {
-				cur.autoNeg = telemetryBool(value)
+			if cur != nil && (value == "done" || value == "failed" || value == "incomplete" || value == "disabled") {
+				cur.negotiation = value
+			}
+		case "supported":
+			if cur != nil {
+				cur.maxMbps = maxModeMbps(value)
+			}
+		case "link-partner-advertising":
+			if cur != nil {
+				cur.partnerMbps = maxModeMbps(value)
 			}
 		}
 	}
@@ -396,4 +430,62 @@ func parseFirmware(output string) *FirmwareStatus {
 	s.UpdateAvailable = versionNewer(s.LatestVersion, s.InstalledVersion)
 	s.FirmwareUpgradeable = s.UpgradeFirmware != "" && s.CurrentFirmware != "" && versionNewer(s.UpgradeFirmware, s.CurrentFirmware)
 	return s
+}
+
+var modePattern = regexp.MustCompile(`^([0-9]+(?:\.[0-9]+)?)([MG])-`)
+
+// maxModeMbps is the fastest link mode in a list such as "10M-baseT-half,100M-baseT-full,1G-baseT-full,2.5G-baseT",
+// in Mbps. Entries it does not recognise are ignored; an empty or unreadable list gives 0, never a guess.
+func maxModeMbps(list string) int {
+	best := 0.0
+	for _, token := range strings.FieldsFunc(list, func(r rune) bool { return r == ',' || r == ';' || r == ' ' }) {
+		m := modePattern.FindStringSubmatch(token)
+		if m == nil {
+			continue
+		}
+		n, err := strconv.ParseFloat(m[1], 64)
+		if err != nil || n <= 0 || n > 1000 {
+			continue
+		}
+		if m[2] == "G" {
+			n *= 1000
+		}
+		if n > best {
+			best = n
+		}
+	}
+	return int(best)
+}
+
+// parseEthernetStats adds up the physical-layer receive error counters per port. A port is included only if
+// the router reported at least one of them, so a model without these counters is never shown as error-free.
+func parseEthernetStats(output string) map[string]uint64 {
+	out := map[string]uint64{}
+	name, seen := "", false
+	var sum uint64
+	flush := func() {
+		if name != "" && seen && len(out) < 128 {
+			out[name] = sum
+		}
+	}
+	for _, line := range strings.Split(strings.ReplaceAll(output, "\r", ""), "\n") {
+		key, value, ok := strings.Cut(strings.TrimSpace(line), ": ")
+		if !ok {
+			continue
+		}
+		switch key {
+		case "name":
+			flush()
+			name, seen, sum = value, false, 0
+		case "rx-fcs-error", "rx-align-error", "rx-fragment", "rx-runt", "rx-carrier-error":
+			n, err := strconv.ParseUint(strings.TrimSpace(value), 10, 64)
+			if err != nil || name == "" || n > 1<<60 {
+				continue
+			}
+			seen = true
+			sum += n
+		}
+	}
+	flush()
+	return out
 }

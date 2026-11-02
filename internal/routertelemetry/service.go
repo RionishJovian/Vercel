@@ -36,6 +36,7 @@ type entry struct {
 	view       View
 	next, last time.Time
 	flight     chan struct{}
+	phy        map[string][]phySample
 }
 type Service struct {
 	mu       sync.Mutex
@@ -117,6 +118,7 @@ func (s *Service) Read(ctx context.Context, business, device string) (View, erro
 		} else {
 			mergeSources(&sample, previous)
 			applyRates(&sample, previous)
+			trackPhyErrors(e, &sample)
 			e.view.State = "live"
 			if len(sample.Issues) > 0 {
 				e.view.State = "syncing"
@@ -215,6 +217,61 @@ func applyRates(current, previous *routeros.RouterTelemetry) {
 	}
 }
 
+// phyWindow is how far back the error trend looks. Errors that are only in the lifetime counter, with none
+// added inside the window, are history, not a live fault.
+const phyWindow = 5 * time.Minute
+
+type phySample struct {
+	at    time.Time
+	value uint64
+}
+
+// trackPhyErrors keeps a short history of each port's physical error counter and reports how many were added
+// inside the window. A counter that goes down (a reboot or a reset) starts the history again, so a reset is
+// never read as a burst of errors, and a port with fewer than two readings has no trend rather than a zero.
+func trackPhyErrors(e *entry, sample *routeros.RouterTelemetry) {
+	at := sample.Observed["phy_errors"]
+	if at.IsZero() {
+		return
+	}
+	if e.phy == nil {
+		e.phy = map[string][]phySample{}
+	}
+	seen := map[string]bool{}
+	for i := range sample.Interfaces {
+		item := &sample.Interfaces[i]
+		if item.PhyErrors == nil {
+			continue
+		}
+		seen[item.Name] = true
+		value, hist := *item.PhyErrors, e.phy[item.Name]
+		if n := len(hist); n > 0 && (value < hist[n-1].value || !at.After(hist[n-1].at)) {
+			if value < hist[n-1].value {
+				hist = nil
+			} else {
+				continue
+			}
+		}
+		hist = append(hist, phySample{at, value})
+		for len(hist) > 1 && hist[0].at.Before(at.Add(-phyWindow)) {
+			hist = hist[1:]
+		}
+		if len(hist) > 64 {
+			hist = hist[len(hist)-64:]
+		}
+		e.phy[item.Name] = hist
+		if len(hist) >= 2 {
+			recent, window := value-hist[0].value, int(at.Sub(hist[0].at).Seconds())
+			item.PhyErrorsRecent, item.PhyErrorsWindowSeconds = &recent, window
+		}
+	}
+	for name := range e.phy {
+		if !seen[name] {
+			delete(e.phy, name)
+		}
+	}
+}
+
 // Callers receive detached values so neither handlers nor tests can mutate cache.
 func copyPointer[T any](p *T) *T {
 	if p == nil {
@@ -253,7 +310,8 @@ func clone(view View) View {
 			row.RXBitsPerSecond = copyPointer(row.RXBitsPerSecond)
 			row.TXBitsPerSecond = copyPointer(row.TXBitsPerSecond)
 			row.FullDuplex = copyPointer(row.FullDuplex)
-			row.AutoNegotiation = copyPointer(row.AutoNegotiation)
+			row.PhyErrors = copyPointer(row.PhyErrors)
+			row.PhyErrorsRecent = copyPointer(row.PhyErrorsRecent)
 		}
 		sample.Health = append([]routeros.HealthReading(nil), sample.Health...)
 		sample.Firmware = copyPointer(sample.Firmware)
