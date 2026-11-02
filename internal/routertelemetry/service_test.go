@@ -68,18 +68,27 @@ func TestTelemetryResetAndSamplingGapsSuppressRates(t *testing.T) {
 		}
 	}
 }
-func TestTelemetryKeepsTheRoutersOwnLiveRate(t *testing.T) {
+func TestTelemetryAveragesOnceTwoReadingsExistAndKeepsTheSnapshotBefore(t *testing.T) {
 	now := time.Now().UTC()
-	before := sample(now, "a", 100, 1000, 1000)
-	next := sample(now.Add(15*time.Second), "a", 115, 2_000_000, 2_000_000)
 	live := 4321.0
+	first := sample(now, "a", 100, 1000, 1000)
+	first.Interfaces[0].RXBitsPerSecond = &live
+	applyRates(&first, nil)
+	if first.Interfaces[0].RXBitsPerSecond == nil || *first.Interfaces[0].RXBitsPerSecond != live {
+		t.Fatal("the router's snapshot must stand in for the first reading")
+	}
+	before := sample(now, "a", 100, 1000, 1000)
+	next := sample(now.Add(15*time.Second), "a", 115, 1000+1_875_000, 1000)
 	next.Interfaces[0].RXBitsPerSecond = &live
 	applyRates(&next, &before)
-	if next.Interfaces[0].RXBitsPerSecond == nil || *next.Interfaces[0].RXBitsPerSecond != live {
-		t.Fatal("a speed measured by the router was replaced by a calculated one")
+	if got := next.Interfaces[0].RXBitsPerSecond; got == nil || *got != 1_000_000 {
+		t.Fatalf("the average between readings must replace the snapshot: %v", got)
 	}
-	if next.Interfaces[0].TXBitsPerSecond == nil {
-		t.Fatal("a port without a live rate must still get the calculated one")
+	reset := sample(now.Add(15*time.Second), "a", 1, 2000, 2000)
+	reset.Interfaces[0].RXBitsPerSecond = &live
+	applyRates(&reset, &before)
+	if got := reset.Interfaces[0].RXBitsPerSecond; got == nil || *got != live {
+		t.Fatal("after a reboot there is no average, so the snapshot stays")
 	}
 }
 func TestTelemetryConcurrentReadersShareBoundedCollection(t *testing.T) {
