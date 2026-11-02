@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"mega-magic/internal/secretbox"
@@ -18,6 +19,8 @@ type CredentialRotationReport struct {
 	DeviceSecrets       int // device SSH logins re-sealed
 	PendingEnrollments  int // unexpired pending enrollments re-sealed
 	ExpiredEnrollments  int // expired pending enrollments deleted (already unusable)
+	BotTokens           int // Telegram bot tokens re-sealed
+	WebhookSecrets      int // webhook signing secrets re-sealed
 	VerifiedUnderNewKey int // values opened again with the new key before commit
 }
 
@@ -43,7 +46,7 @@ func (d *DB) RotateCredentialKey(ctx context.Context, oldBox, newBox *secretbox.
 		return report, err
 	}
 	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx, `LOCK TABLE devices, hub_pending_enrollments IN SHARE ROW EXCLUSIVE MODE`); err != nil {
+	if _, err := tx.ExecContext(ctx, `LOCK TABLE devices, hub_pending_enrollments, business_telegram_bots, webhook_endpoints IN SHARE ROW EXCLUSIVE MODE`); err != nil {
 		return report, fmt.Errorf("lock tables: %w", err)
 	}
 
@@ -141,6 +144,57 @@ func (d *DB) RotateCredentialKey(ctx context.Context, oldBox, newBox *secretbox.
 		report.PendingEnrollments++
 	}
 
+	// Integration secrets carry the "enc:v1:" prefix (see field_secrets.go). One still stored in plaintext is
+	// sealed under the new key here, so after rotation nothing depends on the retired key.
+	for _, col := range []struct {
+		table, key, column string
+		counter            *int
+	}{
+		{"business_telegram_bots", "business_id", "bot_token", &report.BotTokens},
+		{"webhook_endpoints", "id", "secret", &report.WebhookSecrets},
+	} {
+		type field struct{ id, stored string }
+		var fields []field
+		rows, err := tx.QueryContext(ctx, fmt.Sprintf(`SELECT %s::text, %s FROM %s WHERE %s IS NOT NULL AND %s <> '' ORDER BY 1`, col.key, col.column, col.table, col.column, col.column))
+		if err != nil {
+			return report, err
+		}
+		for rows.Next() {
+			var f field
+			if err := rows.Scan(&f.id, &f.stored); err != nil {
+				rows.Close()
+				return report, err
+			}
+			fields = append(fields, f)
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return report, err
+		}
+		rows.Close()
+		for _, f := range fields {
+			label := col.table + " " + f.id
+			plain := f.stored
+			if strings.HasPrefix(f.stored, sealedPrefix) {
+				if plain, err = oldBox.Open(strings.TrimPrefix(f.stored, sealedPrefix)); err != nil {
+					return report, fmt.Errorf("%s cannot be opened with the current key; nothing was changed", label)
+				}
+			}
+			next, err := newBox.Seal(plain)
+			if err != nil {
+				return report, fmt.Errorf("%s: seal with the new key: %w", label, err)
+			}
+			if _, err := oldBox.Open(next); err == nil {
+				return report, errors.New("the new key opens values sealed for the current key: the keys must differ")
+			}
+			if _, err := tx.ExecContext(ctx, fmt.Sprintf(`UPDATE %s SET %s=$1 WHERE %s::text=$2`, col.table, col.column, col.key), sealedPrefix+next, f.id); err != nil {
+				return report, fmt.Errorf("%s: %w", label, err)
+			}
+			report.VerifiedUnderNewKey++
+			*col.counter++
+		}
+	}
+
 	// Final pass over what is now in the database, not what we meant to write.
 	if err := verifyAllUnderKey(ctx, tx, newBox, report); err != nil {
 		return report, err
@@ -160,6 +214,8 @@ func verifyAllUnderKey(ctx context.Context, tx *sql.Tx, box *secretbox.Box, want
 	for _, q := range []string{
 		`SELECT ssh_secret_ciphertext FROM devices WHERE ssh_secret_ciphertext IS NOT NULL`,
 		`SELECT ciphertext FROM hub_pending_enrollments`,
+		`SELECT substr(bot_token, 8) FROM business_telegram_bots WHERE bot_token IS NOT NULL AND bot_token <> ''`,
+		`SELECT substr(secret, 8) FROM webhook_endpoints WHERE secret IS NOT NULL AND secret <> ''`,
 	} {
 		rows, err := tx.QueryContext(ctx, q)
 		if err != nil {
@@ -183,8 +239,8 @@ func verifyAllUnderKey(ctx context.Context, tx *sql.Tx, box *secretbox.Box, want
 		}
 		rows.Close()
 	}
-	if count != want.DeviceSecrets+want.PendingEnrollments {
-		return fmt.Errorf("verification saw %d sealed values, expected %d; nothing was changed", count, want.DeviceSecrets+want.PendingEnrollments)
+	if want := want.DeviceSecrets + want.PendingEnrollments + want.BotTokens + want.WebhookSecrets; count != want {
+		return fmt.Errorf("verification saw %d sealed values, expected %d; nothing was changed", count, want)
 	}
 	return nil
 }

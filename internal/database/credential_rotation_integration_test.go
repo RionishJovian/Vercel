@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"mega-magic/internal/model"
 	"mega-magic/internal/secretbox"
 )
 
@@ -58,6 +59,24 @@ func TestDBRotateCredentialKeyIsAtomicVerifiedAndReversibleUntilCommit(t *testin
 	mustExec(`INSERT INTO hub_pending_enrollments(business_id,device_id,purpose,ciphertext,expires_at) VALUES($1,$2,'router_key',$3,$4)`, bizA, devA, live, time.Now().Add(time.Hour))
 	mustExec(`INSERT INTO hub_pending_enrollments(business_id,device_id,purpose,ciphertext,expires_at) VALUES($1,$2,'management',$3,$4)`, bizA, devA, dead, time.Now().Add(-time.Hour))
 
+	// Integration secrets sealed under the old key (and one legacy plaintext) must follow the rotation.
+	SetFieldBox(oldBox)
+	t.Cleanup(func() {
+		SetFieldBox(nil)
+		_, _ = db.Exec(`DELETE FROM business_telegram_bots WHERE business_id IN ($1,$2)`, bizA, bizB)
+		_, _ = db.Exec(`DELETE FROM webhook_endpoints WHERE business_id IN ($1,$2)`, bizA, bizB)
+	})
+	if err := NewBusinessTelegramBotRepository(db).Upsert(&model.BusinessTelegramBot{BusinessID: bizA, BotToken: "111:rot-token", TargetChatID: 1, ApproverUserID: 2}); err != nil {
+		t.Fatal(err)
+	}
+	hookSecret := "rot-hook-secret"
+	hookRepo := NewWebhookRepository(db)
+	hook, err := hookRepo.CreateEndpoint(&model.WebhookEndpoint{BusinessID: bizB, URL: "https://example.com/h", Secret: &hookSecret, EventTypes: []string{"x"}, Enabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustExec(`UPDATE webhook_endpoints SET secret='legacy-plain' WHERE id=$1`, hook.ID)
+
 	sealedOf := func(dev string) string {
 		var s string
 		if err := db.QueryRow(`SELECT ssh_secret_ciphertext FROM devices WHERE device_id=$1`, dev).Scan(&s); err != nil {
@@ -72,7 +91,7 @@ func TestDBRotateCredentialKeyIsAtomicVerifiedAndReversibleUntilCommit(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r.Applied || r.DeviceSecrets < 2 || r.PendingEnrollments < 1 || r.ExpiredEnrollments < 1 || r.VerifiedUnderNewKey != r.DeviceSecrets+r.PendingEnrollments {
+	if r.Applied || r.DeviceSecrets < 2 || r.PendingEnrollments < 1 || r.ExpiredEnrollments < 1 || r.VerifiedUnderNewKey != r.DeviceSecrets+r.PendingEnrollments+r.BotTokens+r.WebhookSecrets {
 		t.Fatalf("dry-run report = %+v", r)
 	}
 	if sealedOf(devA) != before {
@@ -121,6 +140,13 @@ func TestDBRotateCredentialKeyIsAtomicVerifiedAndReversibleUntilCommit(t *testin
 	}
 	if p, err := newBox.Open(ct); err != nil || p != "pending-live" {
 		t.Fatal("live pending enrollment was not preserved under the new key")
+	}
+	SetFieldBox(newBox)
+	if b, err := NewBusinessTelegramBotRepository(db).GetByBusiness(bizA); err != nil || b.BotToken != "111:rot-token" {
+		t.Fatalf("bot token after rotation = %+v, %v", b, err)
+	}
+	if h, err := hookRepo.GetEndpointByID(hook.ID); err != nil || *h.Secret != "legacy-plain" {
+		t.Fatalf("webhook secret after rotation = %+v, %v", h, err)
 	}
 	var left int
 	_ = db.QueryRow(`SELECT count(*) FROM hub_pending_enrollments WHERE device_id=$1 AND purpose='management'`, devA).Scan(&left)

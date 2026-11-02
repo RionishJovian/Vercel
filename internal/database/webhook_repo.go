@@ -2,6 +2,7 @@ package database
 
 import (
 	"database/sql"
+	"database/sql/driver"
 	"fmt"
 	"time"
 
@@ -29,14 +30,13 @@ func (r *WebhookRepository) CreateEndpoint(ep *model.WebhookEndpoint) (*model.We
 	var secret sql.NullString
 	var events pq.StringArray
 	err := r.db.QueryRow(query,
-		ep.BusinessID, ep.URL, ep.Secret, pq.Array(ep.EventTypes), ep.Enabled,
+		ep.BusinessID, ep.URL, sealPtr(ep.Secret), pq.Array(ep.EventTypes), ep.Enabled,
 	).Scan(&e.ID, &e.BusinessID, &e.URL, &secret, &events, &e.Enabled, &e.CreatedAt, &e.UpdatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("create webhook endpoint: %w", err)
 	}
-	if secret.Valid {
-		s := secret.String
-		e.Secret = &s
+	if err := loadWebhookSecret(e, secret); err != nil {
+		return nil, err
 	}
 	e.EventTypes = events
 	return e, nil
@@ -59,9 +59,8 @@ func (r *WebhookRepository) ListEndpoints(businessID string) ([]*model.WebhookEn
 		if err := rows.Scan(&e.ID, &e.BusinessID, &e.URL, &secret, &events, &e.Enabled, &e.CreatedAt, &e.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan webhook endpoint: %w", err)
 		}
-		if secret.Valid {
-			s := secret.String
-			e.Secret = &s
+		if err := loadWebhookSecret(e, secret); err != nil {
+			return nil, err
 		}
 		e.EventTypes = events
 		endpoints = append(endpoints, e)
@@ -83,9 +82,8 @@ func (r *WebhookRepository) GetEndpointByID(id string) (*model.WebhookEndpoint, 
 	if err != nil {
 		return nil, fmt.Errorf("get webhook endpoint: %w", err)
 	}
-	if secret.Valid {
-		s := secret.String
-		e.Secret = &s
+	if err := loadWebhookSecret(e, secret); err != nil {
+		return nil, err
 	}
 	e.EventTypes = events
 	return e, nil
@@ -94,7 +92,7 @@ func (r *WebhookRepository) GetEndpointByID(id string) (*model.WebhookEndpoint, 
 func (r *WebhookRepository) UpdateEndpoint(ep *model.WebhookEndpoint) error {
 	result, err := r.db.Exec(
 		`UPDATE webhook_endpoints SET url=$1, secret=$2, event_types=$3, enabled=$4, updated_at=$5 WHERE id=$6`,
-		ep.URL, ep.Secret, pq.Array(ep.EventTypes), ep.Enabled, time.Now().UTC(), ep.ID,
+		ep.URL, sealPtr(ep.Secret), pq.Array(ep.EventTypes), ep.Enabled, time.Now().UTC(), ep.ID,
 	)
 	if err != nil {
 		return fmt.Errorf("update webhook endpoint: %w", err)
@@ -136,9 +134,8 @@ func (r *WebhookRepository) ListEnabledForEvent(businessID, eventType string) ([
 		if err := rows.Scan(&e.ID, &e.BusinessID, &e.URL, &secret, &events, &e.Enabled, &e.CreatedAt, &e.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan webhook endpoint: %w", err)
 		}
-		if secret.Valid {
-			s := secret.String
-			e.Secret = &s
+		if err := loadWebhookSecret(e, secret); err != nil {
+			return nil, err
 		}
 		e.EventTypes = events
 		endpoints = append(endpoints, e)
@@ -264,14 +261,13 @@ func (r *WebhookRepository) CreateEndpointTXN(tx *sql.Tx, ep *model.WebhookEndpo
 	var secret sql.NullString
 	var events pq.StringArray
 	err := tx.QueryRow(query,
-		ep.BusinessID, ep.URL, ep.Secret, pq.Array(ep.EventTypes), ep.Enabled,
+		ep.BusinessID, ep.URL, sealPtr(ep.Secret), pq.Array(ep.EventTypes), ep.Enabled,
 	).Scan(&e.ID, &e.BusinessID, &e.URL, &secret, &events, &e.Enabled, &e.CreatedAt, &e.UpdatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("create webhook endpoint: %w", err)
 	}
-	if secret.Valid {
-		s := secret.String
-		e.Secret = &s
+	if err := loadWebhookSecret(e, secret); err != nil {
+		return nil, err
 	}
 	e.EventTypes = events
 	return e, nil
@@ -295,9 +291,8 @@ func (r *WebhookRepository) ListEndpointsTXN(tx *sql.Tx, businessID string) ([]*
 		if err := rows.Scan(&e.ID, &e.BusinessID, &e.URL, &secret, &events, &e.Enabled, &e.CreatedAt, &e.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan webhook endpoint: %w", err)
 		}
-		if secret.Valid {
-			s := secret.String
-			e.Secret = &s
+		if err := loadWebhookSecret(e, secret); err != nil {
+			return nil, err
 		}
 		e.EventTypes = events
 		endpoints = append(endpoints, e)
@@ -320,9 +315,8 @@ func (r *WebhookRepository) GetEndpointByIDTXN(tx *sql.Tx, id string) (*model.We
 	if err != nil {
 		return nil, fmt.Errorf("get webhook endpoint: %w", err)
 	}
-	if secret.Valid {
-		s := secret.String
-		e.Secret = &s
+	if err := loadWebhookSecret(e, secret); err != nil {
+		return nil, err
 	}
 	e.EventTypes = events
 	return e, nil
@@ -332,7 +326,7 @@ func (r *WebhookRepository) GetEndpointByIDTXN(tx *sql.Tx, id string) (*model.We
 func (r *WebhookRepository) UpdateEndpointTXN(tx *sql.Tx, ep *model.WebhookEndpoint) error {
 	result, err := tx.Exec(
 		`UPDATE webhook_endpoints SET url=$1, secret=$2, event_types=$3, enabled=$4, updated_at=$5 WHERE id=$6`,
-		ep.URL, ep.Secret, pq.Array(ep.EventTypes), ep.Enabled, time.Now().UTC(), ep.ID,
+		ep.URL, sealPtr(ep.Secret), pq.Array(ep.EventTypes), ep.Enabled, time.Now().UTC(), ep.ID,
 	)
 	if err != nil {
 		return fmt.Errorf("update webhook endpoint: %w", err)
@@ -376,9 +370,8 @@ func (r *WebhookRepository) ListEnabledForEventTXN(tx *sql.Tx, businessID, event
 		if err := rows.Scan(&e.ID, &e.BusinessID, &e.URL, &secret, &events, &e.Enabled, &e.CreatedAt, &e.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan webhook endpoint: %w", err)
 		}
-		if secret.Valid {
-			s := secret.String
-			e.Secret = &s
+		if err := loadWebhookSecret(e, secret); err != nil {
+			return nil, err
 		}
 		e.EventTypes = events
 		endpoints = append(endpoints, e)
@@ -488,3 +481,34 @@ func (r *WebhookRepository) ListDeliveriesTXN(tx *sql.Tx, businessID string, lim
 	}
 	return deliveries, rows.Err()
 }
+
+// loadWebhookSecret fills Secret from the stored column, opening it if sealed. A sealed value that cannot be
+// opened is an error, never an empty secret: an empty one would send deliveries unsigned.
+func loadWebhookSecret(e *model.WebhookEndpoint, v sql.NullString) error {
+	if !v.Valid {
+		return nil
+	}
+	plain, err := openField(v.String)
+	if err != nil {
+		return fmt.Errorf("webhook endpoint %s: %w", e.ID, err)
+	}
+	e.Secret = &plain
+	return nil
+}
+
+// sealPtr prepares a nullable secret for storage.
+func sealPtr(p *string) any {
+	if p == nil {
+		return nil
+	}
+	sealed, err := sealField(*p)
+	if err != nil {
+		return errSealParam{err}
+	}
+	return sealed
+}
+
+// errSealParam makes the statement fail instead of storing plaintext when sealing fails.
+type errSealParam struct{ err error }
+
+func (e errSealParam) Value() (driver.Value, error) { return nil, e.err }

@@ -72,8 +72,8 @@ func run(configPath string, apply bool, timeout time.Duration) error {
 	if report.Applied {
 		mode = "APPLIED"
 	}
-	fmt.Printf("%s\n  device logins re-sealed:        %d\n  pending enrollments re-sealed:  %d\n  expired enrollments deleted:    %d\n  values verified under new key:  %d\n",
-		mode, report.DeviceSecrets, report.PendingEnrollments, report.ExpiredEnrollments, report.VerifiedUnderNewKey)
+	fmt.Printf("%s\n  device logins re-sealed:        %d\n  pending enrollments re-sealed:  %d\n  telegram bot tokens re-sealed:  %d\n  webhook secrets re-sealed:      %d\n  expired enrollments deleted:    %d\n  values verified under new key:  %d\n",
+		mode, report.DeviceSecrets, report.PendingEnrollments, report.BotTokens, report.WebhookSecrets, report.ExpiredEnrollments, report.VerifiedUnderNewKey)
 	if report.Applied {
 		fmt.Println("Now put the new key in the API environment and start the API. The old key no longer opens any stored value.")
 	}
