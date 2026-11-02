@@ -24,3 +24,22 @@ Strings added since the IP/VLAN editors (2026-11-01). The Burmese is my own word
 | `net.rolledBack` | Previous settings were restored and verified. | ယခင်ဆက်တင်များကို ပြန်ထားပြီး အတည်ပြုပြီး။ |
 | `net.rollbackUnconfirmed` | Rollback was not confirmed: inspect the router and its backup before trying again. | ပြန်ထားမှု မအတည်ပြုရသေးပါ - ထပ်မစမ်းမီ Router နှင့် ၎င်း၏ ဘက်ခ်အပ်ကို စစ်ပါ။ |
 | `net.reloadHint` | Refresh status to edit again. | ထပ်ပြင်ရန် အခြေအနေ ပြန်ဖတ်ပါ။ |
+
+## Magic Hub connection steps (2026-11-02)
+
+| Key | English | Burmese (to review) |
+|---|---|---|
+| `hub.w.s1` | Prepare | ပြင်ဆင် |
+| `hub.w.s2` | Connect | ချိတ် |
+| `hub.w.s3` | Check | စစ် |
+| `hub.w.t1` | 1. Prepare the router | ၁။ Router ကို ပြင်ဆင်ပါ |
+| `hub.w.t2` | 2. Connect the router | ၂။ Router ကို ချိတ်ပါ |
+| `hub.w.t3` | 3. Check the connection | ၃။ ချိတ်ဆက်မှုကို စစ်ပါ |
+| `hub.w.where` | Where do I paste? | ဘယ်မှာ paste လုပ်ရမလဲ? |
+| `hub.w.expect` | Paste the whole block and press Enter. Wait until it stops. Red text, or a line starting with STOP:, means it did not finish. | Block တစ်ခုလုံးကို paste လုပ်ပြီး Enter နှိပ်ပါ။ ရပ်သွားသည်အထိ စောင့်ပါ။ အနီရောင်စာ သို့မဟုတ် STOP: ဖြင့်စသော စာကြောင်း ပေါ်လာပါက မပြီးမြောက်ပါ။ |
+| `hub.w.pasted` | I pasted it and saw no error | Paste လုပ်ပြီး error မမြင်ရပါ |
+| `hub.w.once` | Paste this script once. If the router prints a line starting with STOP:, it refused to change anything. Do not run it again and again: copy that line and ask for help. | ဤ script ကို တစ်ကြိမ်သာ paste လုပ်ပါ။ Router က STOP: ဖြင့်စသော စာကြောင်း ပြပါက ဘာမှ မပြောင်းဘဲ ငြင်းလိုက်ခြင်း ဖြစ်သည်။ ထပ်ခါထပ်ခါ မ run ပါနှင့်။ ထိုစာကြောင်းကို ကူးပြီး အကူအညီ တောင်းပါ။ |
+| `hub.w.help` | If the check does not pass, make sure that: | မအောင်မြင်ပါက အောက်ပါတို့ကို သေချာစစ်ပါ - |
+| `hub.w.restart` | Start again from step 1 | အဆင့် ၁ မှ ပြန်စမည် |
+
+The remaining `hub.w.*` keys (button labels, step bodies, the four checklist lines) follow the same wording; see `app/src/i18n/extra.ts`.
