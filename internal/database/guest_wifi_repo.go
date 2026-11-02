@@ -101,7 +101,7 @@ func NewGuestPurchaseRequestRepository(db *DB) *GuestPurchaseRequestRepository {
 
 const guestRequestCols = `id, business_id, device_id, client_mac, client_ip, plan_key, amount,
 	data_mb, paid_phone, tx_last6, bank_reference, receipt_path, grace_started_at, grace_expires_at, grace_data_mb, status,
-	decided_at, created_at, updated_at, purchased_minutes`
+	decided_at, created_at, updated_at, purchased_minutes, speed_down_mbps, speed_up_mbps`
 
 // scanGuestRequest is a shared row-scanner for guest purchase requests.
 type guestRequestScan interface {
@@ -112,11 +112,11 @@ func scanGuestRequest(row guestRequestScan) (*model.GuestPurchaseRequest, error)
 	r := &model.GuestPurchaseRequest{}
 	var deviceID, planKey, paidPhone, txLast6, bankRef, receipt, status, clientIP sql.NullString
 	var graceStart, graceExpire, decided sql.NullTime
-	var amount, dataMB, graceDataMB int
+	var amount, dataMB, graceDataMB, speedDown, speedUp int
 	var purchasedMinutes sql.NullInt64
 	if err := row.Scan(&r.ID, &r.BusinessID, &deviceID, &r.ClientMAC, &clientIP, &planKey,
 		&amount, &dataMB, &paidPhone, &txLast6, &bankRef, &receipt, &graceStart, &graceExpire, &graceDataMB, &status, &decided,
-		&r.CreatedAt, &r.UpdatedAt, &purchasedMinutes); err != nil {
+		&r.CreatedAt, &r.UpdatedAt, &purchasedMinutes, &speedDown, &speedUp); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
@@ -130,6 +130,7 @@ func scanGuestRequest(row guestRequestScan) (*model.GuestPurchaseRequest, error)
 	r.PlanKey = planKey.String
 	r.Amount = amount
 	r.DataMB = dataMB
+	r.SpeedDownMbps, r.SpeedUpMbps = speedDown, speedUp
 	r.PaidPhone = paidPhone.String
 	r.TxLast6 = txLast6.String
 	r.BankReference = scanNullableString(bankRef)
@@ -150,12 +151,12 @@ func (r *GuestPurchaseRequestRepository) CreateTXN(tx *sql.Tx, req *model.GuestP
 	row := tx.QueryRow(
 		`INSERT INTO guest_purchase_requests
 		   (business_id, device_id, client_mac, client_ip, plan_key, amount,
-			data_mb, bank_reference, receipt_path, grace_started_at, grace_expires_at, grace_data_mb, status, purchased_minutes)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+			data_mb, bank_reference, receipt_path, grace_started_at, grace_expires_at, grace_data_mb, status, purchased_minutes, speed_down_mbps, speed_up_mbps)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
 		 RETURNING `+guestRequestCols,
 		req.BusinessID, req.DeviceID, req.ClientMAC, ipString(req.ClientIP), req.PlanKey,
 		req.Amount, req.DataMB, req.BankReference, req.ReceiptPath, req.GraceStartedAt, req.GraceExpiresAt,
-		req.GraceDataMB, req.Status, req.PurchasedMinutes)
+		req.GraceDataMB, req.Status, req.PurchasedMinutes, req.SpeedDownMbps, req.SpeedUpMbps)
 	return scanGuestRequest(row)
 }
 

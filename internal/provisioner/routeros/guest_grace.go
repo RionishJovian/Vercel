@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"mega-magic/internal/model"
 )
 
 var guestRequestIDPattern = regexp.MustCompile(`^[a-fA-F0-9-]{36}$`)
@@ -174,9 +176,9 @@ func verifyGraceUser(user map[string]string, g GuestGrace, server, comment strin
 // DecideGuestAccess switches only this purchase's temporary account to paid
 // limits, or removes it on rejection. Counters remain intact: paid limits add
 // the purchased allowance to usage already consumed during the grace session.
-func (a *DeviceApplier) DecideGuestAccess(ctx context.Context, businessID, deviceID, requestID, clientMAC string, approve bool, minutes, dataMB int) error {
+func (a *DeviceApplier) DecideGuestAccess(ctx context.Context, businessID, deviceID, requestID, clientMAC string, approve bool, minutes, dataMB, downMbps, upMbps int) error {
 	mac, err := net.ParseMAC(clientMAC)
-	if err != nil || len(mac) != 6 || !guestRequestIDPattern.MatchString(requestID) || minutes < 0 || dataMB < 0 {
+	if err != nil || len(mac) != 6 || !guestRequestIDPattern.MatchString(requestID) || minutes < 0 || dataMB < 0 || !model.ValidGuestSpeed(downMbps, upMbps) {
 		return fmt.Errorf("invalid guest access decision")
 	}
 	runner, err := runnerForDevice(ctx, a.src, a.factory, a.timeout, businessID, deviceID)
@@ -243,7 +245,19 @@ func (a *DeviceApplier) DecideGuestAccess(ctx context.Context, businessID, devic
 	if minutes > 0 {
 		seconds = parseUptimeSeconds(user["uptime"]) + minutes*60
 	}
-	cmd := fmt.Sprintf("/ip hotspot user set [find name=%s comment=%s] disabled=no limit-uptime=%ds limit-bytes-total=%d comment=%s", name, routerOSQuoted(graceComment), seconds, bytes, routerOSQuoted(paidComment))
+	// The speed profile is prepared before the user is switched to paid limits, so a refusal leaves the
+	// temporary account exactly as it was and the approval can simply be retried.
+	speedProfile := ""
+	if downMbps != 0 {
+		if speedProfile, err = ensureGuestSpeedProfile(ctx, runner, downMbps, upMbps); err != nil {
+			return err
+		}
+	}
+	profileArg := ""
+	if speedProfile != "" {
+		profileArg = " profile=" + routerOSQuoted(speedProfile)
+	}
+	cmd := fmt.Sprintf("/ip hotspot user set [find name=%s comment=%s] disabled=no limit-uptime=%ds limit-bytes-total=%d comment=%s%s", name, routerOSQuoted(graceComment), seconds, bytes, routerOSQuoted(paidComment), profileArg)
 	if _, err := runner.Run(ctx, cmd); err != nil {
 		return err
 	}
@@ -253,7 +267,7 @@ func (a *DeviceApplier) DecideGuestAccess(ctx context.Context, businessID, devic
 	}
 	verified := parseValueList(out)
 	actualBytes, e := strconv.ParseInt(verified["limit-bytes-total"], 10, 64)
-	if e != nil || actualBytes != bytes || parseUptimeSeconds(verified["limit-uptime"]) != seconds || verified["comment"] != paidComment {
+	if e != nil || actualBytes != bytes || parseUptimeSeconds(verified["limit-uptime"]) != seconds || verified["comment"] != paidComment || (speedProfile != "" && verified["profile"] != speedProfile) {
 		return fmt.Errorf("paid allowance verification failed")
 	}
 	if _, err := runner.Run(ctx, "/system scheduler remove [find name="+routerOSQuoted("mm-grace-"+requestID)+"]"); err != nil {

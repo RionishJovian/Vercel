@@ -240,6 +240,19 @@ type GuestPlan struct {
 	Minutes int    `json:"minutes"`
 	Amount  int    `json:"amount"`
 	DataMB  int    `json:"data_mb,omitempty"`
+	// SpeedDownMbps and SpeedUpMbps are the guest's speed limit in megabits per second. Both are set
+	// or neither is; 0/0 means no limit. They are saved with each purchase, so editing a plan later
+	// never changes what a guest already bought.
+	SpeedDownMbps int `json:"speed_down_mbps,omitempty"`
+	SpeedUpMbps   int `json:"speed_up_mbps,omitempty"`
+}
+
+// ValidGuestSpeed reports whether a speed pair is acceptable: both unset (no limit), or both 1 to 10000.
+func ValidGuestSpeed(downMbps, upMbps int) bool {
+	if downMbps == 0 && upMbps == 0 {
+		return true
+	}
+	return downMbps >= 1 && downMbps <= 10000 && upMbps >= 1 && upMbps <= 10000
 }
 
 // BusinessTelegramBot is the Telegram bot that carries a business's GUEST wifi
@@ -267,6 +280,8 @@ type GuestPurchaseRequest struct {
 	PlanKey          string  `json:"plan_key"`
 	Amount           int     `json:"amount"`
 	DataMB           int     `json:"data_mb,omitempty"`
+	SpeedDownMbps    int     `json:"speed_down_mbps,omitempty"`
+	SpeedUpMbps      int     `json:"speed_up_mbps,omitempty"`
 	// MMQR flow: the payer's phone number and last 6 digits of the bank/MMQR
 	// transaction number, submitted after paying so the owner can verify.
 	PaidPhone      string     `json:"paid_phone,omitempty"`

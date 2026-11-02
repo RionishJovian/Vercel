@@ -30,7 +30,7 @@ func (r *fakeRouter) ConfigureGuestGrace(_ context.Context, _, _ string, g route
 	r.grants = append(r.grants, g)
 	return nil
 }
-func (*fakeRouter) DecideGuestAccess(context.Context, string, string, string, string, bool, int, int) error {
+func (*fakeRouter) DecideGuestAccess(context.Context, string, string, string, string, bool, int, int, int, int) error {
 	return nil
 }
 

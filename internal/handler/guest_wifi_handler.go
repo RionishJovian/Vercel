@@ -67,13 +67,13 @@ type GuestWifiHandler struct {
 	svcFmt         func(token string) (telegram.Messenger, bool) // build messenger from an owner token
 	graceRouter    interface {
 		ConfigureGuestGrace(context.Context, string, string, routeros.GuestGrace) error
-		DecideGuestAccess(context.Context, string, string, string, string, bool, int, int) error
+		DecideGuestAccess(context.Context, string, string, string, string, bool, int, int, int, int) error
 	}
 }
 
 func (h *GuestWifiHandler) EnableGuestGrace(router interface {
 	ConfigureGuestGrace(context.Context, string, string, routeros.GuestGrace) error
-	DecideGuestAccess(context.Context, string, string, string, string, bool, int, int) error
+	DecideGuestAccess(context.Context, string, string, string, string, bool, int, int, int, int) error
 }) {
 	h.graceRouter = router
 }
@@ -227,7 +227,7 @@ func (h *GuestWifiHandler) PublicGuestPurchase(c *gin.Context) {
 			if !resume {
 				// Remove only this failed request's router user, never a paid or
 				// unrelated account. Close its pending decision before retrying.
-				if e := h.graceRouter.DecideGuestAccess(c.Request.Context(), dev.BusinessID, deviceID, previous.ID, clientMAC, false, 0, 0); e != nil {
+				if e := h.graceRouter.DecideGuestAccess(c.Request.Context(), dev.BusinessID, deviceID, previous.ID, clientMAC, false, 0, 0, 0, 0); e != nil {
 					return &httpError{status: http.StatusBadGateway, msg: "could not close the previous temporary session"}
 				}
 				if previous.Status == "pending" {
@@ -251,6 +251,8 @@ func (h *GuestWifiHandler) PublicGuestPurchase(c *gin.Context) {
 			PurchasedMinutes: &plan.Minutes,
 			Amount:           plan.Amount,
 			DataMB:           plan.DataMB,
+			SpeedDownMbps:    plan.SpeedDownMbps,
+			SpeedUpMbps:      plan.SpeedUpMbps,
 			GraceStartedAt:   &graceStart,
 			GraceExpiresAt:   &graceExpires,
 			GraceDataMB:      cfg.GuestGraceDataMB,
@@ -273,7 +275,7 @@ func (h *GuestWifiHandler) PublicGuestPurchase(c *gin.Context) {
 		if createdGrace && req != nil {
 			// Compensate if persisting the pending request fails after the
 			// router write. This cleanup is scoped by the request comment.
-			_ = h.graceRouter.DecideGuestAccess(context.Background(), dev.BusinessID, deviceID, req.ID, clientMAC, false, 0, 0)
+			_ = h.graceRouter.DecideGuestAccess(context.Background(), dev.BusinessID, deviceID, req.ID, clientMAC, false, 0, 0, 0, 0)
 		}
 		respondErr(c, err)
 		return
@@ -646,7 +648,7 @@ func (h *GuestWifiHandler) DecideGuest(txSrc func() (*sql.Tx, error), businessID
 				if h.graceRouter == nil {
 					return &httpError{status: http.StatusServiceUnavailable, msg: "router access is unavailable"}
 				}
-				if e := h.graceRouter.DecideGuestAccess(context.Background(), businessID, *r.DeviceID, r.ID, r.ClientMAC, false, 0, 0); e != nil {
+				if e := h.graceRouter.DecideGuestAccess(context.Background(), businessID, *r.DeviceID, r.ID, r.ClientMAC, false, 0, 0, 0, 0); e != nil {
 					return e
 				}
 			}
@@ -676,7 +678,7 @@ func (h *GuestWifiHandler) DecideGuest(txSrc func() (*sql.Tx, error), businessID
 		if h.graceRouter == nil {
 			return &httpError{status: http.StatusServiceUnavailable, msg: "router access is unavailable"}
 		}
-		return h.graceRouter.DecideGuestAccess(context.Background(), businessID, *r.DeviceID, r.ID, r.ClientMAC, true, minutes, r.DataMB)
+		return h.graceRouter.DecideGuestAccess(context.Background(), businessID, *r.DeviceID, r.ID, r.ClientMAC, true, minutes, r.DataMB, r.SpeedDownMbps, r.SpeedUpMbps)
 	})
 	if err != nil {
 		return err

@@ -345,9 +345,10 @@ function renderPlans(cfg) {
     var dm = p.data_mb ? " · " + p.data_mb + " MB" : "";
     var mins = p.minutes ? (p.minutes >= 60 ? (p.minutes/60) + " hr" : p.minutes + " min") : "";
     var amt = p.amount ? " · " + p.amount.toLocaleString("en") + " MMK" : "";
+    var spd = p.speed_down_mbps ? " · " + p.speed_down_mbps + " Mbps" : "";
     return '<button class="plan" data-key="' + esc(p.key) + '">' +
       '<div class="nm">' + esc(p.label) + '</div>' +
-      '<div class="sub">' + esc(mins) + esc(dm) + amt + '</div></button>';
+      '<div class="sub">' + esc(mins) + esc(dm) + esc(spd) + amt + '</div></button>';
   }).join("");
   document.getElementById("root").innerHTML =
     portalHeading(cfg, "buy", "Buy WiFi") +

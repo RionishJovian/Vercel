@@ -119,6 +119,7 @@ func setupHarness(base string) {
 		"20261021090000_guest_voucher_activation.sql",
 		"20261021180000_guest_voucher_issue_batches.sql",
 		"20261024170000_guest_voucher_resellers.sql",
+		"20261102120000_guest_plan_speed.sql",
 	} {
 		migration, err := os.ReadFile("../../migrations/" + name)
 		if err != nil {
@@ -416,15 +417,16 @@ func TestGuestWifi_graceWindowBounds(t *testing.T) {
 	}
 }
 
-type paidTermsFixture struct{ calls, minutes, data int }
+type paidTermsFixture struct{ calls, minutes, data, down, up int }
 
 func (f *paidTermsFixture) ConfigureGuestGrace(context.Context, string, string, routeros.GuestGrace) error {
 	return nil
 }
-func (f *paidTermsFixture) DecideGuestAccess(_ context.Context, b, d, id, mac string, approve bool, minutes, data int) error {
+func (f *paidTermsFixture) DecideGuestAccess(_ context.Context, b, d, id, mac string, approve bool, minutes, data, down, up int) error {
 	f.calls++
 	f.minutes = minutes
 	f.data = data
+	f.down, f.up = down, up
 	return nil
 }
 
@@ -453,7 +455,7 @@ func TestGuestWifiPublishedPaymentTerms(t *testing.T) {
 	}
 	configRepo := database.NewPortalConfigRepository(db)
 	siteRepo := database.NewSitePortalRepository()
-	published := &model.PortalConfig{BusinessID: biz, BusinessName: "Published payment", MobilePaymentEnabled: true, GuestGraceMinutes: 10, GuestGraceDataMB: 50, GuestPlans: []model.GuestPlan{{Key: "daily", Label: "Daily", Minutes: 90, Amount: 1500, DataMB: 256}}}
+	published := &model.PortalConfig{BusinessID: biz, BusinessName: "Published payment", MobilePaymentEnabled: true, GuestGraceMinutes: 10, GuestGraceDataMB: 50, GuestPlans: []model.GuestPlan{{Key: "daily", Label: "Daily", Minutes: 90, Amount: 1500, DataMB: 256, SpeedDownMbps: 25, SpeedUpMbps: 8}}}
 	if err := withTenant(db, biz, func(tx *sql.Tx) error {
 		if err := configRepo.UpsertTXN(tx, &model.PortalConfig{BusinessID: biz, BusinessName: "Disabled business fallback", MobilePaymentEnabled: false}); err != nil {
 			return err
@@ -481,12 +483,15 @@ func TestGuestWifiPublishedPaymentTerms(t *testing.T) {
 	if w.Code != 201 {
 		t.Fatalf("published site offer refused: %d %s", w.Code, w.Body.String())
 	}
-	var minutes, amount, data int
-	if err := db.QueryRow(`SELECT purchased_minutes,amount,data_mb FROM guest_purchase_requests WHERE business_id=$1`, biz).Scan(&minutes, &amount, &data); err != nil {
+	var minutes, amount, data, down, up int
+	if err := db.QueryRow(`SELECT purchased_minutes,amount,data_mb,speed_down_mbps,speed_up_mbps FROM guest_purchase_requests WHERE business_id=$1`, biz).Scan(&minutes, &amount, &data, &down, &up); err != nil {
 		t.Fatal(err)
 	}
 	if minutes != 90 || amount != 1500 || data != 256 {
 		t.Fatalf("wrong saved offer: %d/%d/%d", minutes, amount, data)
+	}
+	if down != 25 || up != 8 {
+		t.Fatalf("the plan's speed was not saved with the purchase: %d/%d", down, up)
 	}
 	var historical string
 	if err := withTenant(db, biz, func(tx *sql.Tx) error {
@@ -507,5 +512,58 @@ func TestGuestWifiPublishedPaymentTerms(t *testing.T) {
 	}
 	if status != "pending" {
 		t.Fatalf("historical request mutated: %s", status)
+	}
+}
+
+// A plan's speed is saved with the purchase (so editing the plan later cannot change what the guest
+// bought) and is what the router is told when the owner approves. The database refuses half a speed.
+func TestGuestWifi_planSpeedIsSavedWithThePurchaseAndPassedOnApproval(t *testing.T) {
+	db := harness_testdb(t)
+	h := NewGuestWifiHandler(db, database.NewDeviceRepository(db), database.NewBusinessTelegramBotRepository(db), database.NewGuestPurchaseRequestRepository(db), database.NewPortalConfigRepository(db), database.NewBusinessMeteredQuotaRepository(db), "/tmp/guest-receipts-"+randHex(4), func(token string) (telegram.Messenger, bool) { return nil, false })
+	biz := insertBusiness(db)
+	var device string
+	if e := db.QueryRow(`INSERT INTO devices(business_id,hardware_name,deployment_layer) VALUES($1,'speed-fixture','MAIN_GATEWAY') RETURNING device_id`, biz).Scan(&device); e != nil {
+		t.Fatal(e)
+	}
+	router := &paidTermsFixture{}
+	h.EnableGuestGrace(router)
+	now := time.Now().UTC()
+	graceMax := now.Add(10 * time.Minute)
+	create := func(mac string, down, up int) (*model.GuestPurchaseRequest, error) {
+		var out *model.GuestPurchaseRequest
+		err := withTenant(db, biz, func(tx *sql.Tx) error {
+			r, e := h.reqRepo.CreateTXN(tx, &model.GuestPurchaseRequest{BusinessID: biz, DeviceID: &device, PurchasedMinutes: ptr(120), ClientMAC: mac, PlanKey: "daily", Amount: 2000, DataMB: 1024, SpeedDownMbps: down, SpeedUpMbps: up, GraceStartedAt: &now, GraceExpiresAt: &graceMax, Status: "pending"})
+			out = r
+			return e
+		})
+		return out, err
+	}
+	fast, err := create("AA:BB:CC:DD:EE:01", 20, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fast.SpeedDownMbps != 20 || fast.SpeedUpMbps != 5 {
+		t.Fatalf("speed was not saved with the purchase: %+v", fast)
+	}
+	if err := h.DecidePurchaseRequest(biz, fast.ID, true); err != nil {
+		t.Fatalf("approve failed: %v", err)
+	}
+	if router.down != 20 || router.up != 5 {
+		t.Fatalf("the router was not told the purchased speed: down=%d up=%d", router.down, router.up)
+	}
+	plain, err := create("AA:BB:CC:DD:EE:02", 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := h.DecidePurchaseRequest(biz, plain.ID, true); err != nil {
+		t.Fatalf("approve failed: %v", err)
+	}
+	if router.down != 0 || router.up != 0 {
+		t.Fatalf("a plan without a speed must not set one: down=%d up=%d", router.down, router.up)
+	}
+	for _, pair := range [][2]int{{20, 0}, {0, 5}, {10001, 5}, {-1, 5}} {
+		if _, err := create("AA:BB:CC:DD:EE:03", pair[0], pair[1]); err == nil {
+			t.Fatalf("the database accepted speed %v", pair)
+		}
 	}
 }

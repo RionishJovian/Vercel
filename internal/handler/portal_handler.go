@@ -559,6 +559,10 @@ func (h *PortalHandler) StaffUpdateConfig(c *gin.Context) {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "guest plan minutes, price and data must be >= 0"})
 				return
 			}
+			if !model.ValidGuestSpeed(p.SpeedDownMbps, p.SpeedUpMbps) {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "guest plan speed needs both download and upload between 1 and 10000 Mbps, or neither for no limit"})
+				return
+			}
 		}
 	}
 

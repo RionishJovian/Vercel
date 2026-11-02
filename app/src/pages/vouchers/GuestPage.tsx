@@ -4,10 +4,11 @@ import { api, fetcher, isUnauthorized } from "../../lib/api";
 import { asArray } from "../../lib/types";
 import { useI18n } from "../../i18n";
 import { Field, Note } from "../../components/ui";
+import { speedOk, speedValue } from "./planSpeed";
 import { Skeleton } from "../../components/Skeleton";
 import { GuestDeploy } from "./GuestDeploy";
 
-interface Plan { key: string; label: string; minutes: number; amount: number; data_mb: number }
+interface Plan { key: string; label: string; minutes: number; amount: number; data_mb: number; speed_down_mbps?: number; speed_up_mbps?: number }
 interface Config {
   business_name?: string; welcome_text?: string; terms_text?: string; primary_hex?: string; glass_tint_hex?: string;
   bank_name?: string; bank_holder?: string; bank_account?: string; mmqr_url?: string; payment_instructions?: string;
@@ -19,7 +20,7 @@ const hexOr = (v: unknown, fallback: string) => (typeof v === "string" && HEX6.t
 // Configs saved before access-method selection existed have no flags: treat as both enabled.
 const on = (v: boolean | undefined) => (typeof v === "boolean" ? v : true);
 const EMPTY: Config = {};
-const blankPlan = (p: Plan) => !(p.key || p.label || p.minutes || p.amount || p.data_mb);
+const blankPlan = (p: Plan) => !(p.key || p.label || p.minutes || p.amount || p.data_mb || p.speed_down_mbps || p.speed_up_mbps);
 
 interface Draft {
   name: string; welcome: string; terms: string; primary: string; tint: string;
@@ -30,7 +31,7 @@ const fromConfig = (c: Config): Draft => ({
   name: c.business_name ?? "", welcome: c.welcome_text ?? "", terms: c.terms_text ?? "", primary: hexOr(c.primary_hex, "#ffb547"), tint: hexOr(c.glass_tint_hex, "#7ad0ff"),
   bankName: c.bank_name ?? "", bankHolder: c.bank_holder ?? "", bankAcc: c.bank_account ?? "", mmqr: c.mmqr_url ?? "", instructions: c.payment_instructions ?? "",
   graceMin: String(c.guest_grace_minutes ?? 10), graceData: String(c.guest_grace_data_mb ?? 50), voucher: on(c.voucher_login_enabled), payment: on(c.mobile_payment_enabled),
-  plans: asArray<Plan>(c.guest_plans).map((p) => ({ key: p.key ?? "", label: p.label ?? "", minutes: p.minutes ?? 0, amount: p.amount ?? 0, data_mb: p.data_mb ?? 0 })),
+  plans: asArray<Plan>(c.guest_plans).map((p) => ({ key: p.key ?? "", label: p.label ?? "", minutes: p.minutes ?? 0, amount: p.amount ?? 0, data_mb: p.data_mb ?? 0, speed_down_mbps: p.speed_down_mbps ?? 0, speed_up_mbps: p.speed_up_mbps ?? 0 })),
 });
 
 /** Preview payload. Empty fields get sample values for the preview only; Save never sends these. */
@@ -97,6 +98,7 @@ export function GuestPage() {
     if (!draft.voucher && !draft.payment) { setMsg(<Note kind="bad">{t("g.needMethod")}</Note>); return; }
     const gm = Number(draft.graceMin), gd = Number(draft.graceData);
     if (!Number.isInteger(gm) || gm < 1 || gm > 1440 || !Number.isInteger(gd) || gd < 1 || gd > 10240) { setMsg(<Note kind="bad">{t("g.badGrace")}</Note>); return; }
+    if (!draft.plans.filter((p) => !blankPlan(p)).every(speedOk)) { setMsg(<Note kind="bad">{t("g.plan.speedBad")}</Note>); return; }
     setBusy(true);
     // The server merges, so send only what this screen owns. Media (Jellyfin) and consent settings stay untouched.
     const body = {
@@ -157,10 +159,15 @@ export function GuestPage() {
                 <Field label={t("g.plan.price")}><input className="input" type="number" min={0} inputMode="numeric" value={p.amount} onChange={(e) => setPlan(i, { amount: parseInt(e.target.value || "0", 10) || 0 })} /></Field>
               </div>
               <Field label={t("g.plan.data")}><input className="input" type="number" min={0} inputMode="numeric" value={p.data_mb} onChange={(e) => setPlan(i, { data_mb: parseInt(e.target.value || "0", 10) || 0 })} /></Field>
+              <div className="two">
+                <Field label={t("g.plan.down")}><input className="input" type="number" min={0} max={10000} inputMode="numeric" value={p.speed_down_mbps ?? 0} onChange={(e) => setPlan(i, { speed_down_mbps: speedValue(e.target.value) })} /></Field>
+                <Field label={t("g.plan.up")}><input className="input" type="number" min={0} max={10000} inputMode="numeric" value={p.speed_up_mbps ?? 0} onChange={(e) => setPlan(i, { speed_up_mbps: speedValue(e.target.value) })} /></Field>
+              </div>
+              <p className="soft small">{t("g.plan.speedHint")}</p>
               <button className="pill danger" type="button" onClick={() => set("plans", draft.plans.filter((_, j) => j !== i))}>{t("g.plan.remove")}</button>
             </div>
           ))}
-          <button className="pill" type="button" onClick={() => set("plans", [...draft.plans, { key: "", label: "", minutes: 0, amount: 0, data_mb: 0 }])}>{t("g.plan.add")}</button>
+          <button className="pill" type="button" onClick={() => set("plans", [...draft.plans, { key: "", label: "", minutes: 0, amount: 0, data_mb: 0, speed_down_mbps: 0, speed_up_mbps: 0 }])}>{t("g.plan.add")}</button>
         </section>
         {msg}
         <button className="btn" type="submit" disabled={busy}>{t("g.save")}</button>

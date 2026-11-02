@@ -73,7 +73,7 @@ func TestGuestGraceEnforcesBothLimitsAndDoesNotResetRetry(t *testing.T) {
 
 func TestGuestRejectionNeverRemovesForeignUser(t *testing.T) {
 	r := &graceRunner{user: "name: AA:BB:CC:DD:EE:FE\ncomment: unrelated-owner-user"}
-	if err := quickConfigApplier(r).DecideGuestAccess(context.Background(), "biz-1", "dev-1", graceTestID, "AA:BB:CC:DD:EE:FE", false, 0, 0); err == nil {
+	if err := quickConfigApplier(r).DecideGuestAccess(context.Background(), "biz-1", "dev-1", graceTestID, "AA:BB:CC:DD:EE:FE", false, 0, 0, 0, 0); err == nil {
 		t.Fatal("foreign user should be refused")
 	}
 	if len(r.commands) != 1 || !strings.Contains(r.commands[0], " user print ") {
@@ -118,11 +118,11 @@ func TestGuestApprovalGrantsPaidQuotaAndRetryDoesNotGrantTwice(t *testing.T) {
 		}
 	})
 	a := quickConfigApplier(r)
-	if err := a.DecideGuestAccess(context.Background(), "biz-1", "dev-1", graceTestID, "AA:BB:CC:DD:EE:FE", true, 60, 1024); err != nil {
+	if err := a.DecideGuestAccess(context.Background(), "biz-1", "dev-1", graceTestID, "AA:BB:CC:DD:EE:FE", true, 60, 1024, 0, 0); err != nil {
 		t.Fatal(err)
 	}
 	commands = nil
-	if err := a.DecideGuestAccess(context.Background(), "biz-1", "dev-1", graceTestID, "AA:BB:CC:DD:EE:FE", true, 60, 1024); err != nil {
+	if err := a.DecideGuestAccess(context.Background(), "biz-1", "dev-1", graceTestID, "AA:BB:CC:DD:EE:FE", true, 60, 1024, 0, 0); err != nil {
 		t.Fatal(err)
 	}
 	for _, cmd := range commands {
