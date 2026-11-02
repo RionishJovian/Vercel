@@ -8,6 +8,7 @@
 #   mm-migrate verify-baseline        check that the database's schema matches db/baseline.sql.
 #   mm-migrate grants                 re-run the runtime-role setup (grants and policies) by hand.
 #
+# (CHECK constraints are compared without parentheses: the same condition deparses with different nesting after a dump and reload.)
 # Files: db/baseline.sql (first line "-- mm:baseline-version <14 digits>") and db/migrations/<14 digits>_<name>.sql.
 # A migration must not contain BEGIN/COMMIT (the tool wraps it in one transaction together with its bookkeeping row).
 # A file that cannot run in a transaction (for example CREATE INDEX CONCURRENTLY) says "-- mm:no-transaction" in its first
@@ -136,7 +137,7 @@ fingerprint_sql() { cat <<'SQL'
 select 'columns|'||c.relname||'.'||a.attname||'|'||format_type(a.atttypid,a.atttypmod)||'|'||a.attnotnull||'|'||coalesce(pg_get_expr(d.adbin,d.adrelid),'')
   from pg_attribute a join pg_class c on c.oid=a.attrelid join pg_namespace n on n.oid=c.relnamespace left join pg_attrdef d on d.adrelid=a.attrelid and d.adnum=a.attnum
  where n.nspname='public' and c.relname<>'schema_migrations' and c.relkind in ('r','p') and a.attnum>0 and not a.attisdropped
-union all select 'constraint|'||c.conrelid::regclass||'|'||c.conname||'|'||pg_get_constraintdef(c.oid) from pg_constraint c join pg_namespace n on n.oid=c.connamespace where n.nspname='public' and c.conrelid::regclass::text<>'schema_migrations'
+union all select 'constraint|'||c.conrelid::regclass||'|'||c.conname||'|'||case when c.contype='c' then regexp_replace(pg_get_constraintdef(c.oid),'[()]','','g') else pg_get_constraintdef(c.oid) end from pg_constraint c join pg_namespace n on n.oid=c.connamespace where n.nspname='public' and c.conrelid::regclass::text<>'schema_migrations'
 union all select 'index|'||indexdef from pg_indexes where schemaname='public' and tablename<>'schema_migrations'
 union all select 'policy|'||tablename||'|'||policyname||'|'||cmd||'|'||roles::text||'|'||coalesce(qual,'')||'|'||coalesce(with_check,'') from pg_policies where schemaname='public' and policyname<>'mm_runtime_service'
 union all select 'rls|'||c.relname||'|'||c.relrowsecurity||'|'||c.relforcerowsecurity from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and c.relname<>'schema_migrations' and c.relkind in ('r','p')
