@@ -203,12 +203,14 @@ func applyRates(current, previous *routeros.RouterTelemetry) {
 			}
 			return &n
 		}
-		// A live rate measured by the router itself is never replaced by a calculated one.
-		if item.RXBitsPerSecond == nil {
-			item.RXBitsPerSecond = rate(item.RXBytes, before.RXBytes)
+		// The router's own reading is a one-second snapshot: accurate, but a bursty link is
+		// mostly 0 with spikes. Once two readings exist the average between them is steadier,
+		// so it replaces the snapshot; the snapshot only stands in for the first reading.
+		if avg := rate(item.RXBytes, before.RXBytes); avg != nil {
+			item.RXBitsPerSecond = avg
 		}
-		if item.TXBitsPerSecond == nil {
-			item.TXBitsPerSecond = rate(item.TXBytes, before.TXBytes)
+		if avg := rate(item.TXBytes, before.TXBytes); avg != nil {
+			item.TXBitsPerSecond = avg
 		}
 	}
 }
