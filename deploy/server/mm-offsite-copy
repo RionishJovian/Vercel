@@ -1,0 +1,57 @@
+#!/bin/bash
+# Off-server copy of the newest database dump, installed as /usr/local/bin/mm-offsite-copy and run nightly by
+# mm-offsite-copy.timer (after the backup). The dump is ENCRYPTED with age to a public key before it leaves the
+# server, uploaded to Cloudflare R2, and verified by size. The matching private key is never on this server, so
+# neither the storage provider nor a leaked bucket can read the dumps. Old remote copies are pruned.
+#
+# Configuration: /etc/mm-offsite.env (mode 600), written by mm-offsite-setup. See mm-offsite.env.example.
+set -euo pipefail
+[ -f /etc/mm-monitor.env ] && . /etc/mm-monitor.env
+[ -f /etc/mm-offsite.env ] && . /etc/mm-offsite.env
+OUT=${BACKUP_DIR:-/var/backups/megamagic}
+KEEP_REMOTE_DAYS=${KEEP_REMOTE_DAYS:-30}
+MAX_DUMP_AGE_HOURS=${MAX_DUMP_AGE_HOURS:-30}
+notify() { [ -n "${HEALTHCHECK_OFFSITE_URL:-}" ] && curl -fsS -m 10 --retry 2 -o /dev/null "${HEALTHCHECK_OFFSITE_URL}$1" || true; }
+tmp=""
+cleanup() { [ -z "$tmp" ] || rm -f "$tmp"; }
+trap cleanup EXIT
+fail() { echo "off-server copy failed: $1" >&2; logger -t mm-offsite-copy "FAIL $1"; notify /fail; exit 1; }
+
+for v in R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_BUCKET AGE_RECIPIENT; do
+  [ -n "${!v:-}" ] || fail "$v is not set (run mm-offsite-setup)"
+done
+case "$AGE_RECIPIENT" in age1*) ;; *) fail "AGE_RECIPIENT must be an age public key (starts with age1), never a private key";; esac
+
+# rclone is configured entirely from the environment, so no credentials are written to disk by this script.
+export RCLONE_CONFIG_R2_TYPE=s3 RCLONE_CONFIG_R2_PROVIDER=Cloudflare RCLONE_CONFIG_R2_ACL=private
+export RCLONE_CONFIG_R2_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID" RCLONE_CONFIG_R2_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY"
+export RCLONE_CONFIG_R2_ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+remote="R2:${R2_BUCKET}/db"
+
+dump=$(ls -1t "$OUT"/mega_magic-*.dump 2>/dev/null | head -1 || true)
+[ -n "$dump" ] || fail "no dump found in $OUT"
+mtime=$(stat -c %Y "$dump" 2>/dev/null || stat -f %m "$dump")
+age_hours=$(( ( $(date +%s) - mtime ) / 3600 ))
+[ "$age_hours" -le "$MAX_DUMP_AGE_HOURS" ] || fail "the newest dump is $age_hours hours old: the nightly backup did not run"
+
+name="$(basename "$dump").age"
+tmp=$(mktemp "${TMPDIR:-/tmp}/mm-offsite.XXXXXX")
+age -r "$AGE_RECIPIENT" -o "$tmp" "$dump" || fail "encryption failed"
+size=$(wc -c <"$tmp" | tr -d ' ')
+[ "$size" -gt 0 ] || fail "encrypted file is empty"
+
+# Already uploaded? Then there is nothing to do. An S3 object appears only when complete, so existing means whole.
+have=$(rclone lsf --files-only --format s --include "$name" "$remote" 2>/dev/null | head -1 || true)
+if [ -n "$have" ]; then
+  logger -t mm-offsite-copy "already uploaded $name"
+  notify ""
+  exit 0
+fi
+
+rclone copyto "$tmp" "$remote/$name" --s3-no-check-bucket || fail "upload failed"
+got=$(rclone lsf --files-only --format s --include "$name" "$remote" 2>/dev/null | head -1 || true)
+[ "$got" = "$size" ] || fail "uploaded size ($got) does not match the encrypted file ($size)"
+
+rclone delete "$remote" --min-age "${KEEP_REMOTE_DAYS}d" --s3-no-check-bucket >/dev/null 2>&1 || logger -t mm-offsite-copy "warning: pruning old remote copies failed"
+logger -t mm-offsite-copy "ok $name $size bytes"
+notify ""
