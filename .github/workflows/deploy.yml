@@ -66,6 +66,12 @@ jobs:
         run: go install golang.org/x/vuln/cmd/govulncheck@v1.9.0 && "$(go env GOPATH)/bin/govulncheck" ./...
       - run: bash -n deploy/deploy-vps.sh
       - run: for f in deploy/server/mm-db-backup deploy/server/mm-restore-drill deploy/server/mm-offsite-copy deploy/server/mm-offsite-setup deploy/server/install-backup-tools.sh; do bash -n "$f"; done && bash deploy/server/test-mm-db-backup.sh && bash deploy/server/test-mm-offsite-copy.sh
+      - name: Migration runner (needs psql/pg_dump 17 to match the service)
+        run: |
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y >/dev/null
+          sudo apt-get install -y postgresql-client-17 >/dev/null
+          export PATH=/usr/lib/postgresql/17/bin:$PATH
+          bash -n deploy/server/mm-migrate && bash deploy/server/test-mm-migrate.sh
 
   build:
     needs: validate
