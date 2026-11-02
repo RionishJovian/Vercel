@@ -65,6 +65,7 @@ jobs:
       - name: Known vulnerabilities in reachable code
         run: go install golang.org/x/vuln/cmd/govulncheck@v1.9.0 && "$(go env GOPATH)/bin/govulncheck" ./...
       - run: bash -n deploy/deploy-vps.sh
+      - run: for f in deploy/server/mm-db-backup deploy/server/mm-restore-drill deploy/server/install-backup-tools.sh; do bash -n "$f"; done && bash deploy/server/test-mm-db-backup.sh
 
   build:
     needs: validate
