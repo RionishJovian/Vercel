@@ -8,6 +8,8 @@ import { Skeleton } from "../../components/Skeleton";
 import type { RouterRow } from ".";
 import { Capabilities } from "./Capabilities";
 import { FirmwareUpgrade } from "./FirmwareUpgrade";
+import { PortPanelView } from "./PortPanel";
+import { panelFor } from "../../lib/portPanels";
 import { rateText, stillMeasuring } from "./speed";
 import { firmwareText, healthLabel, healthValue, linkText, softwareText, type Firmware, type Health } from "./portInfo";
 
@@ -56,6 +58,7 @@ export function Detail({ id, router }: { id: string; router?: RouterRow }) {
           {asArray<Iface>(snap.interfaces).length > 0 && (
             <section className="glass pad stack">
               <h2>{t("r.ports")}</h2>
+              {(() => { const panel = panelFor(r.board_name, router?.hardware_name); return panel ? <PortPanelView panel={panel} ports={asArray<Iface>(snap.interfaces)} words={words} measuring={measuring} /> : null; })()}
               {/* A strip of port lamps, like the front of the board: lit when the link is up. */}
               <div className="portstrip" aria-hidden="true">{asArray<Iface>(snap.interfaces).map((i) => <i key={i.name} className={i.disabled ? "off" : i.running ? "up" : "down"} title={i.name} />)}</div>
               {asArray<Iface>(snap.interfaces).map((i) => (

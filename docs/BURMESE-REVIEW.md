@@ -76,3 +76,10 @@ The remaining `hub.w.*` keys (button labels, step bodies, the four checklist lin
 | `fw.timeout` | The router has not reported the new firmware after ten minutes. Check its power and cable, then refresh. | မိနစ် ၁၀ ကြာပြီးနောက်တွင်ပင် Router က firmware အသစ်ကို မပြသေးပါ။ ပါဝါနှင့် ကေဘယ်ကို စစ်ပြီး refresh လုပ်ပါ။ |
 
 The other `fw.*` keys (preview-only note, checking, applying, failure texts) follow the same wording; see `app/src/i18n/extra.ts`.
+
+## Port diagram (2026-11-02)
+
+| Key | English | Burmese (to review) |
+|---|---|---|
+| `pp.hint` | Select a port on the picture to see its status. | ပုံပေါ်ရှိ port တစ်ခုကို ရွေးပြီး အခြေအနေ ကြည့်ပါ။ |
+| `pp.unknown` | Not reported | မပြသေးပါ |
