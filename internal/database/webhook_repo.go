@@ -89,31 +89,6 @@ func (r *WebhookRepository) GetEndpointByID(id string) (*model.WebhookEndpoint, 
 	return e, nil
 }
 
-func (r *WebhookRepository) UpdateEndpoint(ep *model.WebhookEndpoint) error {
-	result, err := r.db.Exec(
-		`UPDATE webhook_endpoints SET url=$1, secret=$2, event_types=$3, enabled=$4, updated_at=$5 WHERE id=$6`,
-		ep.URL, sealPtr(ep.Secret), pq.Array(ep.EventTypes), ep.Enabled, time.Now().UTC(), ep.ID,
-	)
-	if err != nil {
-		return fmt.Errorf("update webhook endpoint: %w", err)
-	}
-	if n, _ := result.RowsAffected(); n == 0 {
-		return fmt.Errorf("webhook endpoint not found: %s", ep.ID)
-	}
-	return nil
-}
-
-func (r *WebhookRepository) DeleteEndpoint(id string) error {
-	result, err := r.db.Exec(`DELETE FROM webhook_endpoints WHERE id = $1`, id)
-	if err != nil {
-		return fmt.Errorf("delete webhook endpoint: %w", err)
-	}
-	if n, _ := result.RowsAffected(); n == 0 {
-		return fmt.Errorf("webhook endpoint not found: %s", id)
-	}
-	return nil
-}
-
 // ListEnabledForEvent returns enabled endpoints for a business subscribed to an event type.
 func (r *WebhookRepository) ListEnabledForEvent(businessID, eventType string) ([]*model.WebhookEndpoint, error) {
 	rows, err := r.db.Query(

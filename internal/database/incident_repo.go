@@ -242,40 +242,6 @@ func (r *IncidentRepository) ListByDevice(businessID, deviceID string) ([]model.
 	return incidents, nil
 }
 
-// Acknowledge marks an incident as acknowledged
-func (r *IncidentRepository) Acknowledge(id, acknowledgedBy string) error {
-	now := time.Now().UTC()
-	result, err := r.db.Exec(
-		`UPDATE incidents SET acknowledged_at = $1, acknowledged_by = $2, updated_at = $3 WHERE id = $4`,
-		now, acknowledgedBy, now, id,
-	)
-	if err != nil {
-		return fmt.Errorf("acknowledge incident: %w", err)
-	}
-	rows, _ := result.RowsAffected()
-	if rows == 0 {
-		return fmt.Errorf("incident not found: %s", id)
-	}
-	return nil
-}
-
-// Resolve marks an incident as resolved
-func (r *IncidentRepository) Resolve(id, resolvedBy string) error {
-	now := time.Now().UTC()
-	result, err := r.db.Exec(
-		`UPDATE incidents SET resolved_at = $1, resolved_by = $2, updated_at = $3 WHERE id = $4`,
-		now, resolvedBy, now, id,
-	)
-	if err != nil {
-		return fmt.Errorf("resolve incident: %w", err)
-	}
-	rows, _ := result.RowsAffected()
-	if rows == 0 {
-		return fmt.Errorf("incident not found: %s", id)
-	}
-	return nil
-}
-
 // scanIncidentNulls populates nullable Incident fields from sql scan targets —
 // the single place all read paths funnel through, so suggested_action cannot
 // desync between them.

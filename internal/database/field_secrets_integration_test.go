@@ -64,7 +64,15 @@ func TestIntegrationSecretsAreSealedAtRestAndReadBackInPlaintext(t *testing.T) {
 	}
 
 	// Updating with the already-read plaintext seals again, never double-seals.
-	if err := hooks.UpdateEndpoint(back); err != nil {
+	updateTx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := hooks.UpdateEndpointTXN(updateTx, back); err != nil {
+		updateTx.Rollback()
+		t.Fatal(err)
+	}
+	if err := updateTx.Commit(); err != nil {
 		t.Fatal(err)
 	}
 	if again, _ := hooks.GetEndpointByID(ep.ID); again == nil || *again.Secret != secret {
