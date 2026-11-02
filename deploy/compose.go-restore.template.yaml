@@ -1,0 +1,110 @@
+# Reference copy of the production compose file (2026-11-02), for review and for rebuilding the server.
+# The real file lives at /opt/mega-magic-go-restored-20261018T100554Z/deploy/compose.go-restore.yaml on the server and
+# deploy/deploy-vps.sh rewrites only the two image lines in it. Secrets are NOT in it: the API reads
+# ../.env.production and ../config.go-production.yaml, neither of which is in the repository.
+# The volume names still say "staging" because the data was restored into them; do not rename them.
+name: mega-magic-go-restored
+services:
+  db:
+    image: postgres:16-alpine
+    volumes:
+    - db_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - pg_isready -U mega_magic -d mega_magic
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  redis:
+    image: redis:7-alpine
+    command:
+    - redis-server
+    - --appendonly
+    - 'yes'
+    volumes:
+    - redis_data:/data
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+  nats:
+    image: nats:2-alpine
+    command:
+    - -js
+    - -m
+    - '8222'
+    - -sd
+    - /data
+    volumes:
+    - nats_data:/data
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.go-restore
+    image: ghcr.io/rionishjovian/vercel/mega-magic-api@sha256:<set by deploy/deploy-vps.sh>
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      nats:
+        condition: service_started
+    environment:
+      ENVIRONMENT: production
+      MM_MANAGEMENT_MIGRATION_ENABLED: "true"
+    volumes:
+    - ../config.go-production.yaml:/app/config.yaml:ro
+    - app_data:/app/data
+    ports:
+    - 127.0.0.1:18080:8080
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    env_file:
+    - ../.env.production
+  web:
+    build:
+      context: ..
+      dockerfile: Dockerfile.web.prod
+    image: ghcr.io/rionishjovian/vercel/mega-magic-web@sha256:<set by deploy/deploy-vps.sh>
+    depends_on:
+    - api
+    ports:
+    - 127.0.0.1:18081:80
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+volumes:
+  db_data:
+    external: true
+    name: mega-magic-go-staging_db_data
+  redis_data:
+    external: true
+    name: mega-magic-go-staging_redis_data
+  nats_data:
+    external: true
+    name: mega-magic-go-staging_nats_data
+  app_data:
+    external: true
+    name: mega-magic-go-staging_app_data
