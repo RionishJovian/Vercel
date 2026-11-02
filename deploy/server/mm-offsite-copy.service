@@ -1,0 +1,6 @@
+[Unit]
+Description=Encrypted off-server copy of the newest Mega Magic database dump
+After=mm-db-backup.service
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/mm-offsite-copy
