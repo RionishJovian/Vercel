@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Executed only by an explicitly requested production workflow. No schema auto-migration.
+# Executed only by an explicitly requested production workflow. Pending db/migrations files are applied after the backup and before the new API starts.
 set -Eeuo pipefail
 umask 077
 release_dir=${1:?release directory required}
@@ -37,6 +37,12 @@ docker inspect --format '{{.Image}}' mega-magic-go-restored-api-1 mega-magic-go-
 docker exec mega-magic-go-restored-db-1 pg_dump -U mega_magic -d mega_magic -Fc > "$backup/database.dump"
 docker exec -i mega-magic-go-restored-db-1 pg_restore -l < "$backup/database.dump" > "$backup/database-list.txt"
 test -s "$backup/database-list.txt"
+# Schema first, still on the old code: each file is one transaction, so a failure changes nothing and the ERR trap restores the old API.
+# Migrations must therefore keep the previous release working (add columns/tables; drop or rename only in a later release).
+mkdir -p "$release_dir/unpacked" && tar xzf "$release_dir/release-db.tgz" -C "$release_dir/unpacked"
+export MM_PSQL_BASE="docker exec -i mega-magic-go-restored-db-1 psql -U mega_magic" MM_DB_NAME=mega_magic MM_DB_DIR="$release_dir/unpacked/db"
+mig="$release_dir/unpacked/deploy/server/mm-migrate"
+"$mig" status || [ $? -eq 2 ]   # 3 = changed/missing/out-of-order file or no baseline: refuse to deploy
 rollback(){
  status=$?;trap - ERR;set +e
  cp -p "$backup/compose.yaml" "$compose"
@@ -45,6 +51,7 @@ rollback(){
  echo "Deployment failed; previous API/web restored. Backup: $backup";exit "$status"
 }
 trap rollback ERR
+"$mig" up
 # Change only the two selected image references. No unrelated services, keys or flags.
 python3 - "$compose" "$api_image" "$web_image" <<'PY'
 import pathlib,sys,re,os
