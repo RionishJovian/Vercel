@@ -132,6 +132,29 @@ a service not named `mm-...`, several ranges, a pool shared with another service
 a missing or duplicated piece, and a port that carries the uplink or the Hub.
 Moving the subnet or gateway is a separate, later step (confirm-or-revert).
 
+## Moving a customer network to a new subnet (stage 2)
+
+**LAN and Hotspot → Move customer network** moves a network made by *Create customer
+network* to a new subnet and gateway as one held change: the gateway address, DHCP
+range, client gateway settings and the NAT source subnet change together. Every device
+on it loses its connection until it renews, so it uses the confirm-or-revert window: the
+change is applied and verified, the router's restore timer stays armed for 5 minutes, and
+the page shows Keep and Revert now. Doing nothing lets the router put everything back.
+
+The new subnet must pass the same rules as creating a network (private, /16 to /29, range
+ordered and inside it, excluding the gateway, network and broadcast addresses), must not
+overlap any address or route on the router, and must not touch the Hub range
+(10.77.0.0/24). Refused with a reason: a Hotspot, Hotspot profile or RADIUS entry (the
+portal cannot be moved exactly), static reservations, other addresses, a second DHCP
+service, bridge membership or PPPoE on the port, a pool shared with another service,
+bandwidth limits whose target addresses fall inside the old subnet, another NAT rule that
+uses it, any missing or duplicated piece, a service not named `mm-...`, and a port that
+carries the uplink or the Hub. Anything configured elsewhere by hand that mentions the old
+subnet is not checked, which the preview says.
+
+Not yet proven on real hardware: the restore timer firing by itself, and a real device
+renewing into the new subnet.
+
 ## Tidying old backup files on the router
 
 Every guarded change saves `mm-snap-<device>-<kind>-<time>.rsc` and `.backup` on the

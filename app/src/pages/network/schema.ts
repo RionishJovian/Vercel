@@ -20,6 +20,7 @@ export const schema: Record<string, Schema> = {
   wireless: { title: "Legacy Wi-Fi SSIDs", menu: "wireless", fields: [["ssid", "Wi-Fi network name"], ["country", "Actual installation country"], ["password", "New Wi-Fi password", "password"], ["disabled", "Radio state", "state"]] },
   dhcp: { title: "DHCP services", menu: "dhcp", fields: [["address-pool", "Client address pool", "record", "pools"], ["lease-time", "Lease duration (e.g. 1h)"], ["disabled", "Service state", "state"]] },
   edit_network: { title: "Edit customer network", menu: "dhcp", fields: [["pool_start", "First client address"], ["pool_end", "Last client address"], ["lease-time", "Lease duration (e.g. 1h)"], ["dns", "Client DNS servers (comma separated)"], ["disabled", "DHCP service", "state"]] },
+  move_network: { title: "Move customer network", menu: "dhcp", fields: [["gateway_cidr", "New gateway address with prefix (for example 10.20.0.1/24)"], ["pool_start", "New first client address"], ["pool_end", "New last client address"]] },
   remove_network: { title: "Remove customer network", menu: "dhcp", fields: [] },
   pool: { title: "Address pools", menu: "pools", fields: [["ranges", "First-last client address"]] },
   dhcp_network: { title: "Client gateway and DNS", menu: "dhcp_networks", fields: [["gateway", "Client gateway"], ["dns-server", "Client DNS servers"]] },
@@ -36,7 +37,7 @@ export type Workspace = (typeof workspaces)[number];
 export const choices: Record<Workspace, string[]> = {
   protection: ["firewall", "shield"], qos: ["fairshare", "queue"], ip: ["ip_address", "routes", "dhcp", "pool", "dhcp_network", "lease"], vlan: ["vlan"],
   wan: ["wan", "pppoe_client"], pppoe: ["pppoe_server", "pppoe_service", "subscriber", "ppp_profile"], wifi: ["wifi", "wireless"],
-  existing: ["edit_network", "dhcp", "pool", "dhcp_network", "hotspot", "hotspot_profile", "lease", "queue", "remove_network"],
+  existing: ["edit_network", "dhcp", "pool", "dhcp_network", "hotspot", "hotspot_profile", "lease", "queue", "move_network", "remove_network"],
 };
 export const workspaceInfo: Record<Workspace, [string, string]> = {
   protection: ["Protection", "Manage router protection and review portal exemptions."],
@@ -58,6 +59,7 @@ export const descriptions: Record<string, string> = {
   routes: "Inspect routes and priorities. Use Internet connections for reviewed dual-uplink changes.",
   wan: "Keep a backup ISP ready or distribute connections across two ISPs.", pppoe_client: "Connect an ISP that gave you a PPPoE username and password.",
   edit_network: "Change the client address range, lease time, DNS and DHCP on/off of a network made by Create customer network, all in one reviewed change. The subnet and gateway are not changed here.",
+  move_network: "Move a network made by Create customer network to a new subnet and gateway. Devices on it lose their connection until they renew, so the change is applied, then reverts by itself in 5 minutes unless you press Keep. Networks with a Hotspot are not moved here.",
   remove_network: "Delete a customer network made by Create customer network: its DHCP service, address pool, gateway address, NAT and VLAN. Networks with a Hotspot are not removed here.",
   pppoe_server: "Set up internet service for your wired subscribers.", pppoe_service: "Change the plan or state of an existing subscriber service.",
   subscriber: "Create or manage a customer login.", ppp_profile: "Set address allocation and speeds for a subscriber plan.",
@@ -91,7 +93,7 @@ export function listFor(inv: Inventory, kind: string): NetObject[] {
   if (kind === "shield") list = list.filter((o) => o.values.type === "bypassed" && !yes(o.values.disabled) && !/^mm-/i.test(o.values.comment || ""));
   if (kind === "fairshare") list = list.filter((o) => o.values.comment?.startsWith("mm-fairshare-v1:"));
   if (kind === "queue") list = list.filter((o) => !o.values.comment?.startsWith("mm-fairshare-v1:"));
-  if (kind === "remove_network" || kind === "edit_network") list = list.filter((o) => /^mm-[A-Za-z0-9_-]{1,24}$/.test(o.values.name || ""));
+  if (kind === "remove_network" || kind === "edit_network" || kind === "move_network") list = list.filter((o) => /^mm-[A-Za-z0-9_-]{1,24}$/.test(o.values.name || ""));
   if (kind === "lease" || kind === "ip_address") list = list.filter((o) => !yes(o.values.dynamic));
   return list;
 }
@@ -124,4 +126,11 @@ export function editNetworkValues(inv: Inventory, server: NetObject): Record<str
   const range = (objectsOf(inv, "pools").find((o) => o.values.name === name)?.values.ranges ?? "").split("-");
   const scope = objectsOf(inv, "dhcp_networks").find((o) => o.values.comment === name);
   return { pool_start: range.length === 2 ? range[0] : "", pool_end: range.length === 2 ? range[1] : "", "lease-time": server.values["lease-time"] ?? "", dns: scope?.values["dns-server"] ?? "", disabled: yes(server.values.disabled) ? "yes" : "no" };
+}
+
+/** Current gateway address and DHCP range of a customer network, as the starting point for moving it. */
+export function moveNetworkValues(inv: Inventory, server: NetObject): Record<string, string> {
+  const name = server.values.name;
+  const range = (objectsOf(inv, "pools").find((o) => o.values.name === name)?.values.ranges ?? "").split("-");
+  return { gateway_cidr: objectsOf(inv, "addresses").find((o) => o.values.comment === name)?.values.address ?? "", pool_start: range.length === 2 ? range[0] : "", pool_end: range.length === 2 ? range[1] : "" };
 }
