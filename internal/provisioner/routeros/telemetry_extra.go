@@ -80,6 +80,16 @@ func (s *extraStore) entry(key string, now time.Time) *extraCache {
 	return e
 }
 
+// forgetFirmware drops the retained firmware status so the next reading re-reads it; used once
+// the firmware has been written, since the retained value would otherwise show the old version.
+func (s *extraStore) forgetFirmware(key string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if e := s.entries[key]; e != nil {
+		e.firmware, e.firmwareAt = nil, time.Time{}
+	}
+}
+
 // collectExtras adds the optional readings to result. Health and firmware are only
 // re-read when due; otherwise the retained values (with their original read time) are used.
 func (a *DeviceApplier) collectExtras(ctx context.Context, runner CommandRunner, business, device string, result *RouterTelemetry) {

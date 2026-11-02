@@ -7,6 +7,7 @@ import { Note } from "../../components/ui";
 import { Skeleton } from "../../components/Skeleton";
 import type { RouterRow } from ".";
 import { Capabilities } from "./Capabilities";
+import { FirmwareUpgrade } from "./FirmwareUpgrade";
 import { rateText, stillMeasuring } from "./speed";
 import { firmwareText, healthLabel, healthValue, linkText, softwareText, type Firmware, type Health } from "./portInfo";
 
@@ -34,6 +35,8 @@ export function Detail({ id, router }: { id: string; router?: RouterRow }) {
   return (
     <>
       <h1>{router?.hardware_name || id}</h1>
+      {/* Outside the loading/error branches so a restart (when telemetry briefly fails) does not close it. */}
+      <FirmwareUpgrade id={id} fw={snap?.firmware ?? undefined} onDone={() => void mutate()} />
       {isLoading ? <Skeleton h={300} /> : error || !snap ? (
         <><Note kind="warn">{t("r.telFail")}</Note><button className="pill" type="button" onClick={() => void mutate()}>{t("c.retry")}</button></>
       ) : (
