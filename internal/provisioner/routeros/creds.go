@@ -223,6 +223,7 @@ type DeviceApplier struct {
 	tDown      time.Duration
 	rotatePort int
 	resetHold  time.Duration
+	extras     extraStore
 }
 
 func NewDeviceApplier(src TargetSource, timeout time.Duration, factory RunnerFactory, iface string, rotatePort int, resetHold time.Duration) *DeviceApplier {

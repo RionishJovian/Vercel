@@ -49,3 +49,13 @@ The remaining `hub.w.*` keys (button labels, step bodies, the four checklist lin
 | Key | English | Burmese (to review) |
 |---|---|---|
 | `r.measuring` | Measuring… | တိုင်းနေသည်… |
+
+## Ports and health (2026-11-02)
+
+| Key | English | Burmese (to review) |
+|---|---|---|
+| `r.updateAvail` | Update available | အပ်ဒိတ် ရနိုင်သည် |
+| `r.noNewer` | No newer version known | ပိုသစ်သော ဗားရှင်း မသိရသေးပါ |
+| `r.fwUpgrade` | Upgrade available | အဆင့်မြှင့်နိုင်သည် |
+
+`r.full`, `r.half`, `r.software` and `r.firmware` are kept in English (Full duplex, Half duplex, RouterOS, Firmware) as technical terms.

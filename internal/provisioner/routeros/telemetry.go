@@ -37,6 +37,11 @@ type InterfaceTelemetry struct {
 	TXBytes         *uint64  `json:"tx_bytes,string"`
 	RXBitsPerSecond *float64 `json:"rx_bps"`
 	TXBitsPerSecond *float64 `json:"tx_bps"`
+	// Optional link details from /interface ethernet monitor; empty when not read or not an Ethernet port.
+	LinkStatus      string `json:"link_status,omitempty"`
+	LinkRate        string `json:"link_rate,omitempty"`
+	FullDuplex      *bool  `json:"full_duplex,omitempty"`
+	AutoNegotiation *bool  `json:"auto_negotiation,omitempty"`
 }
 type RouterTelemetry struct {
 	Observed        map[string]time.Time `json:"observed_at"`
@@ -47,6 +52,8 @@ type RouterTelemetry struct {
 	HotspotSessions *uint64              `json:"hotspot_sessions"`
 	DHCPLeases      *uint64              `json:"dhcp_bound_leases"`
 	Issues          []string             `json:"issues"`
+	Health          []HealthReading      `json:"health"`
+	Firmware        *FirmwareStatus      `json:"firmware"`
 }
 
 func (a *DeviceApplier) ReadTelemetry(ctx context.Context, business, device string) (RouterTelemetry, error) {
@@ -54,7 +61,12 @@ func (a *DeviceApplier) ReadTelemetry(ctx context.Context, business, device stri
 	if err != nil {
 		return RouterTelemetry{}, ErrTelemetryRead
 	}
-	return collectTelemetry(ctx, runner, device)
+	result, err := collectTelemetry(ctx, runner, device)
+	if err != nil {
+		return result, err
+	}
+	a.collectExtras(ctx, runner, business, device, &result)
+	return result, nil
 }
 
 func collectTelemetry(ctx context.Context, runner CommandRunner, device string) (RouterTelemetry, error) {
