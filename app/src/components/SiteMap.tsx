@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import maplibregl from "maplibre-gl";
+import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 export interface MapSite { site_id: string; name: string; latitude?: number | null; longitude?: number | null }
