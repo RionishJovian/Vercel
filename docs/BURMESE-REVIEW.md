@@ -59,3 +59,20 @@ The remaining `hub.w.*` keys (button labels, step bodies, the four checklist lin
 | `r.fwUpgrade` | Upgrade available | အဆင့်မြှင့်နိုင်သည် |
 
 `r.full`, `r.half`, `r.software` and `r.firmware` are kept in English (Full duplex, Half duplex, RouterOS, Firmware) as technical terms.
+
+## Firmware upgrade (2026-11-02)
+
+| Key | English | Burmese (to review) |
+|---|---|---|
+| `fw.title` | Firmware upgrade | Firmware အဆင့်မြှင့်ခြင်း |
+| `fw.held` | Firmware upgrades are switched off for now. | Firmware အဆင့်မြှင့်ခြင်းကို ယခုအချိန် ပိတ်ထားသည်။ |
+| `fw.upgrade` | Upgrade firmware | Firmware အဆင့်မြှင့်မည် |
+| `fw.steps` | What will happen | ဖြစ်မည့်အရာများ |
+| `fw.before` | Before you continue | ဆက်မလုပ်မီ |
+| `fw.understand` | I understand the router restarts and guests lose internet for a few minutes. | Router ပြန်စတင်မည်ဖြစ်ပြီး ဧည့်သည်များ မိနစ်အနည်းငယ် အင်တာနက် မရကြောင်း နားလည်ပါသည်။ |
+| `fw.go` | Upgrade and restart | အဆင့်မြှင့်ပြီး ပြန်စတင်မည် |
+| `fw.restarting` | Restarting. The router is offline for one to three minutes. Keep it powered on; this page updates by itself. | ပြန်စတင်နေသည်။ Router သည် တစ်မိနစ်မှ သုံးမိနစ်အထိ အော့ဖ်လိုင်း ဖြစ်မည်။ ပါဝါဖွင့်ထားပါ။ ဤစာမျက်နှာ ကိုယ်တိုင် ပြောင်းလဲမည်။ |
+| `fw.done` | Done. The router reports firmware | ပြီးပါပြီ။ Router က firmware ကို ဤသို့ ပြသည် |
+| `fw.timeout` | The router has not reported the new firmware after ten minutes. Check its power and cable, then refresh. | မိနစ် ၁၀ ကြာပြီးနောက်တွင်ပင် Router က firmware အသစ်ကို မပြသေးပါ။ ပါဝါနှင့် ကေဘယ်ကို စစ်ပြီး refresh လုပ်ပါ။ |
+
+The other `fw.*` keys (preview-only note, checking, applying, failure texts) follow the same wording; see `app/src/i18n/extra.ts`.
