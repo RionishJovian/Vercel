@@ -26,7 +26,7 @@ check() { if [ "$2" = "$3" ]; then pass=$((pass + 1)); else failn=$((failn + 1))
 reset() { rm -f "$work"/dump_fails "$work"/restore_fails "$work"/pings "$work"/log "$work"/out/*; head -c 4000 /dev/zero | tr '\0' 'x' >"$work/dump_content"; echo '1; 1 TABLE public businesses mm' >"$work/restore_list"; }
 dumps() { ls "$work/out" 2>/dev/null | grep -c '\.dump$'; }
 partials() { ls "$work/out" 2>/dev/null | grep -c '\.partial$'; }
-run() { bash "$here/mm-db-backup" >/dev/null 2>&1; echo $?; }
+run() { bash "$here/mm-db-backup" >/dev/null 2>>"$work/errors.log"; echo $?; }
 
 reset
 check "good dump exits 0" "$(run)" "0"
@@ -69,4 +69,5 @@ reset; HEALTHCHECK_BACKUP_URL="" bash "$here/mm-db-backup" >/dev/null 2>&1
 check "no ping URL means no ping" "$(ls "$work/pings" 2>/dev/null | wc -l | tr -d ' ')" "0"
 
 echo "$pass passed, $failn failed"
+if [ "$failn" != 0 ] && [ -s "$work/errors.log" ]; then echo "--- what the script printed to stderr:"; sort "$work/errors.log" | uniq -c | sort -rn | head -8; fi
 [ "$failn" = 0 ]
