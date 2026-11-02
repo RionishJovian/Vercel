@@ -845,3 +845,181 @@ func buildEditNetworkPlan(ctx context.Context, r CommandRunner, request NetworkR
 	}
 	return steps, warnings, nil
 }
+
+// buildMoveNetworkPlan moves a customer network made by Create customer network to a
+// new subnet and gateway: the gateway address, DHCP range, client gateway settings and
+// the NAT source subnet change together. Every device on it loses its connection until
+// it renews, so the change is held: it is applied and verified, then reverts by itself
+// unless the owner keeps it. It is limited to what it can move exactly: a Hotspot,
+// RADIUS, static reservations, other addresses on the port, rules that mention the old
+// subnet (queues, other NAT rules) or a new subnet that overlaps anything stop it.
+func buildMoveNetworkPlan(ctx context.Context, r CommandRunner, request NetworkRequest) ([]networkStep, []string, error) {
+	v := request.Values
+	if !networkIDPattern.MatchString(request.ID) {
+		return nil, nil, fmt.Errorf("choose the customer network to move")
+	}
+	if strings.TrimSpace(v["gateway_cidr"]) == "" || strings.TrimSpace(v["pool_start"]) == "" || strings.TrimSpace(v["pool_end"]) == "" {
+		return nil, nil, fmt.Errorf("provide the new gateway address with its prefix and the first and last client address")
+	}
+	server, err := networkReadOne(ctx, r, "dhcp", request.ID, map[string]string{"name": "", "interface": "", "address-pool": "", "lease-time": "", "disabled": ""})
+	if err != nil {
+		return nil, nil, err
+	}
+	name, iface := server["name"], server["interface"]
+	if !networkOwnedNetworkName.MatchString(name) || server["address-pool"] != name {
+		return nil, nil, fmt.Errorf("this DHCP service was not created by Create customer network, so it is not moved here")
+	}
+	kind, err := networkInterfaceType(ctx, r, iface)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !strings.Contains(networkLANTypes, " "+kind+" ") || strings.HasPrefix(iface, "mmh-") {
+		return nil, nil, fmt.Errorf("%s (%s) is protected, so its network is not moved here", iface, kind)
+	}
+	up, err := networkUplinkInterfaces(ctx, r)
+	if err != nil {
+		return nil, nil, err
+	}
+	if up[iface] {
+		return nil, nil, fmt.Errorf("%s carries your internet uplink; its network is protected", iface)
+	}
+	for _, probe := range []struct{ menu, where, why string }{
+		{"/ip hotspot", "interface=" + routerOSQuoted(iface), "has a Hotspot (guest portal); moving Hotspot networks is not supported because the portal cannot be moved exactly"},
+		{"/ip hotspot", "name=" + routerOSQuoted(name), "has a Hotspot (guest portal); moving Hotspot networks is not supported because the portal cannot be moved exactly"},
+		{"/ip hotspot profile", "name=" + routerOSQuoted(name), "has a Hotspot login profile; moving Hotspot networks is not supported"},
+		{"/radius", "comment=" + routerOSQuoted(name), "has a RADIUS entry that points at its gateway"},
+		{"/interface bridge port", "interface=" + routerOSQuoted(iface), "is a bridge member"},
+		{"/interface pppoe-server server", "interface=" + routerOSQuoted(iface), "serves PPPoE subscribers"},
+		{"/ip dhcp-server lease", "server=" + routerOSQuoted(name) + " dynamic=no", "has static DHCP reservations in the old subnet; remove them first"},
+	} {
+		n, e := networkCount(ctx, r, probe.menu+" print count-only where "+probe.where)
+		if e != nil {
+			return nil, nil, e
+		}
+		if n > 0 {
+			return nil, nil, fmt.Errorf("%s %s", name, probe.why)
+		}
+	}
+	if n, e := networkCount(ctx, r, "/ip dhcp-server print count-only where address-pool="+routerOSQuoted(name)); e != nil || n != 1 {
+		return nil, nil, fmt.Errorf("the address pool %s is shared or missing; it is not moved here", name)
+	}
+	if n, e := networkCount(ctx, r, "/ip dhcp-server print count-only where interface="+routerOSQuoted(iface)); e != nil || n != 1 {
+		return nil, nil, fmt.Errorf("%s has more than one DHCP service; it is not moved here", iface)
+	}
+	if n, e := networkCount(ctx, r, "/ip address print count-only where interface="+routerOSQuoted(iface)); e != nil || n != 1 {
+		return nil, nil, fmt.Errorf("%s has other addresses; they would be stranded, so it is not moved here", iface)
+	}
+	addressID, err := networkOwnedID(ctx, r, name, "/ip address", "addresses", "comment", name, true)
+	if err != nil {
+		return nil, nil, err
+	}
+	poolID, err := networkOwnedID(ctx, r, name, "/ip pool", "pools", "name", name, true)
+	if err != nil {
+		return nil, nil, err
+	}
+	netID, err := networkOwnedID(ctx, r, name, "/ip dhcp-server network", "dhcp_networks", "comment", name, true)
+	if err != nil {
+		return nil, nil, err
+	}
+	natID, err := networkOwnedID(ctx, r, name, "/ip firewall nat", "nat", "comment", name, false)
+	if err != nil {
+		return nil, nil, err
+	}
+	current, err := networkReadOne(ctx, r, "addresses", addressID, map[string]string{"address": "", "interface": ""})
+	if err != nil || current["interface"] != iface {
+		return nil, nil, fmt.Errorf("%s: the gateway address is not on %s; it is not moved here", name, iface)
+	}
+	scope, err := networkReadOne(ctx, r, "dhcp_networks", netID, map[string]string{"address": "", "gateway": "", "dns-server": ""})
+	if err != nil {
+		return nil, nil, err
+	}
+	_, oldNetwork, oerr := net.ParseCIDR(scope["address"])
+	if oerr != nil || oldNetwork.IP.To4() == nil {
+		return nil, nil, fmt.Errorf("the network's current address could not be read safely")
+	}
+
+	// The new subnet, checked with the same rules as creating a network.
+	g, network, err := normalizeGatewaySetup(GatewaySetup{Name: strings.TrimPrefix(name, "mm-"), WAN: "validation-uplink", LAN: iface,
+		Address: strings.TrimSpace(v["gateway_cidr"]), PoolStart: strings.TrimSpace(v["pool_start"]), PoolEnd: strings.TrimSpace(v["pool_end"]), DNS: strings.Split(scope["dns-server"], ",")})
+	if err != nil {
+		return nil, nil, err
+	}
+	if network.Contains(networkHubRange.IP) || networkHubRange.Contains(network.IP) {
+		return nil, nil, fmt.Errorf("10.77.0.0/24 is reserved for Magic Hub management")
+	}
+	reserved, err := networkReservedForAddress(ctx, r, addressID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if gatewayNetworkOverlaps(network, reserved) {
+		return nil, nil, fmt.Errorf("the new subnet overlaps an address or route already on the router")
+	}
+
+	// Rules that name the old subnet would silently stop matching.
+	queues, err := readNetworkObjects(ctx, r, "queues")
+	if err != nil {
+		return nil, nil, fmt.Errorf("could not read the bandwidth limits; nothing was changed")
+	}
+	for _, q := range queues {
+		if networkTargetTouches(q.Values["target"], oldNetwork) {
+			return nil, nil, fmt.Errorf("a bandwidth limit (%s) targets the old subnet; change it first", q.Values["name"])
+		}
+	}
+	rules, err := readNetworkObjects(ctx, r, "nat")
+	if err != nil {
+		return nil, nil, fmt.Errorf("could not read the NAT rules; nothing was changed")
+	}
+	for _, rule := range rules {
+		if rule.ID != natID && rule.Values["src-address"] == oldNetwork.String() {
+			return nil, nil, fmt.Errorf("another NAT rule uses the old subnet; change it first")
+		}
+	}
+
+	gateway := strings.Split(g.Address, "/")[0]
+	steps := []networkStep{}
+	add := func(step *networkStep, e error) error {
+		if e != nil {
+			return e
+		}
+		if step != nil {
+			step.Hold = true
+			steps = append(steps, *step)
+		}
+		return nil
+	}
+	if err = add(networkEditStep(ctx, r, "addresses", addressID, "Move gateway address of "+name, map[string]string{"address": g.Address})); err != nil {
+		return nil, nil, err
+	}
+	if err = add(networkEditStep(ctx, r, "pools", poolID, "Move DHCP range of "+name, map[string]string{"ranges": g.PoolStart + "-" + g.PoolEnd})); err != nil {
+		return nil, nil, err
+	}
+	if err = add(networkEditStep(ctx, r, "dhcp_networks", netID, "Move client gateway settings of "+name, map[string]string{"address": network.String(), "gateway": gateway})); err != nil {
+		return nil, nil, err
+	}
+	if natID != "" {
+		if err = add(networkEditStep(ctx, r, "nat", natID, "Move NAT source subnet of "+name, map[string]string{"src-address": network.String()})); err != nil {
+			return nil, nil, err
+		}
+	}
+	warnings := []string{
+		"Every device on " + name + " loses its connection until it renews its address, and devices with a fixed address stop working. Test a real device right after applying.",
+		"The change reverts by itself in 5 minutes unless you press Keep. Nothing that mentions the old subnet outside this network was found, but anything you set up elsewhere by hand is not checked.",
+	}
+	return steps, warnings, nil
+}
+
+// networkTargetTouches reports whether any address or network in a queue target (a
+// comma separated list) lies inside, or contains, the given network. Entries that are
+// not addresses, such as interface names, cannot be checked and are ignored.
+func networkTargetTouches(target string, network *net.IPNet) bool {
+	for _, item := range strings.Split(target, ",") {
+		item = strings.TrimSpace(item)
+		if ip := net.ParseIP(item); ip != nil && network.Contains(ip) {
+			return true
+		}
+		if ip, n, err := net.ParseCIDR(item); err == nil && ip.To4() != nil && (network.Contains(n.IP) || n.Contains(network.IP)) {
+			return true
+		}
+	}
+	return false
+}

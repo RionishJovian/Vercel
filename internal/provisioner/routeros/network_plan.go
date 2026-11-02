@@ -128,6 +128,7 @@ func buildNetworkPlan(ctx context.Context, r CommandRunner, request NetworkReque
 		"ip_address":      "address interface disabled",
 		"vlan":            "name interface vlan-id disabled",
 		"edit_network":    "pool_start pool_end lease-time dns disabled",
+		"move_network":    "gateway_cidr pool_start pool_end",
 	}
 	fields, ok := allowed[request.Kind]
 	if !ok {
@@ -192,6 +193,8 @@ func buildNetworkPlan(ctx context.Context, r CommandRunner, request NetworkReque
 		return finishNetworkPlan(buildVLANPlan(ctx, r, request))
 	case "edit_network":
 		return finishNetworkPlan(buildEditNetworkPlan(ctx, r, request))
+	case "move_network":
+		return finishNetworkPlan(buildMoveNetworkPlan(ctx, r, request))
 	case "wan":
 		if request.ID != "" || (v["mode"] != "balance" && v["mode"] != "failover") || v["wan1"] == v["wan2"] || !networkIPv4(v["gateway1"]) || !networkIPv4(v["gateway2"]) {
 			return nil, nil, fmt.Errorf("choose two distinct active uplinks, their IPv4 ISP gateways and balance or failover mode")
