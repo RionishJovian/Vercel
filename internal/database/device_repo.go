@@ -226,19 +226,6 @@ func (r *DeviceRepository) UpdateDevice(device *model.Device) (*model.Device, er
 	return d, nil
 }
 
-// DeleteDevice removes a device by its ID
-func (r *DeviceRepository) DeleteDevice(deviceID string) error {
-	result, err := r.db.Exec("DELETE FROM devices WHERE device_id = $1", deviceID)
-	if err != nil {
-		return fmt.Errorf("delete device: %w", err)
-	}
-	rows, _ := result.RowsAffected()
-	if rows == 0 {
-		return fmt.Errorf("device not found")
-	}
-	return nil
-}
-
 // ---------------------------------------------------------------------------
 // Transaction-scoped variants (RLS enforcement rollout: device request path).
 // Same SQL on the caller's *sql.Tx so they can run under WithTenant. Bare

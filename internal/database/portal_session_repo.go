@@ -164,27 +164,6 @@ func (r *PortalSessionRepository) ListActiveByBusiness(businessID string) ([]*mo
 	return sessions, nil
 }
 
-// DeactivateSession marks a session as inactive
-func (r *PortalSessionRepository) DeactivateSession(id string) error {
-	result, err := r.db.Exec(
-		"UPDATE portal_sessions SET is_active = false WHERE id = $1 AND is_active = true",
-		id,
-	)
-	if err != nil {
-		return fmt.Errorf("deactivate session: %w", err)
-	}
-
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("deactivate session rows affected: %w", err)
-	}
-	if rows == 0 {
-		return fmt.Errorf("deactivate session: no active session found with id %s", id)
-	}
-
-	return nil
-}
-
 // GetByID returns a session by its ID
 func (r *PortalSessionRepository) GetByID(id string) (*model.PortalSession, error) {
 	query := `

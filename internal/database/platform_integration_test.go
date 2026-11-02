@@ -82,8 +82,16 @@ func TestDB_PlatformIncident_ListOpenAll(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create resolved incident: %v", err)
 	}
-	if err := incRepo.Resolve(res.ID, insertUser(t, db, bizRes)); err != nil {
+	resolveTx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := incRepo.ResolveTXN(resolveTx, res.ID, insertUser(t, db, bizRes)); err != nil {
+		resolveTx.Rollback()
 		t.Fatalf("resolve incident: %v", err)
+	}
+	if err := resolveTx.Commit(); err != nil {
+		t.Fatal(err)
 	}
 
 	got, err := repo.ListOpenAll()

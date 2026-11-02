@@ -46,12 +46,6 @@ func quoteConnectionValue(value string) string {
 	return "'" + strings.NewReplacer(`\`, `\\`, `'`, `\'`).Replace(value) + "'"
 }
 
-// SetTenantContext sets the current_business_id session variable for RLS
-func (db *DB) SetTenantContext(businessID string) error {
-	_, err := db.Exec(fmt.Sprintf("SET SESSION app.current_business_id = '%s'", businessID))
-	return err
-}
-
 // ClearTenantContext clears the app session variables
 func (db *DB) ClearTenantContext() error {
 	_, err := db.Exec("RESET SESSION app.current_business_id")
