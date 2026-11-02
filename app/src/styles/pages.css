@@ -133,6 +133,19 @@
 .facts code { font-family: var(--font-body); font-size: .875rem; }
 .script { font-family: ui-monospace, Menlo, monospace; font-size: .8125rem; line-height: 1.5; padding: 12px 14px; min-height: 180px; }
 .enroll { padding-top: 6px; border-top: 1px solid var(--edge-soft); }
+.wiz-rail { display: flex; gap: 8px; list-style: none; margin: 0; padding: 0; }
+.wiz-rail li { flex: 1 1 0; min-width: 0; }
+.wiz-dot { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 48px; padding: 6px 10px; border: 1px solid var(--edge-soft); border-radius: var(--r-row); background: var(--glass); color: var(--ink-soft); text-align: left; }
+.wiz-dot:disabled { opacity: .6; cursor: default; }
+.wiz-num { flex: none; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--edge); font-weight: 700; font-size: .8125rem; }
+.wiz-name { min-width: 0; font-size: .875rem; font-weight: 600; }
+.wiz-rail [data-state="current"] .wiz-dot { border-color: var(--jade); color: var(--ink); opacity: 1; }
+.wiz-rail [data-state="current"] .wiz-num { background: var(--jade); border-color: var(--jade); color: var(--on-jade, #fff); }
+.wiz-rail [data-state="done"] .wiz-num { color: var(--ok); border-color: var(--ok); }
+.wiz-where summary { cursor: pointer; color: var(--ink-soft); font-size: .9375rem; min-height: 32px; }
+.wiz-list { margin: 0; padding-left: 1.25rem; display: grid; gap: 4px; }
+.wiz h3:focus { outline: none; }
+@media (max-width: 520px) { .wiz-dot { flex-direction: column; justify-content: center; text-align: center; gap: 4px; padding: 8px 6px; } .wiz-name { font-size: .8125rem; } }
 .site-pick { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; width: 100%; min-height: 56px; padding: 0; border: 0; background: transparent; color: inherit; }
 .site-card[data-selected="true"] { border-color: var(--jade); }
 .dot-state { width: 14px; height: 14px; border-radius: 50%; border: 1px solid var(--edge); }
