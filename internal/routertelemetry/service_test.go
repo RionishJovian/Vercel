@@ -68,6 +68,20 @@ func TestTelemetryResetAndSamplingGapsSuppressRates(t *testing.T) {
 		}
 	}
 }
+func TestTelemetryKeepsTheRoutersOwnLiveRate(t *testing.T) {
+	now := time.Now().UTC()
+	before := sample(now, "a", 100, 1000, 1000)
+	next := sample(now.Add(15*time.Second), "a", 115, 2_000_000, 2_000_000)
+	live := 4321.0
+	next.Interfaces[0].RXBitsPerSecond = &live
+	applyRates(&next, &before)
+	if next.Interfaces[0].RXBitsPerSecond == nil || *next.Interfaces[0].RXBitsPerSecond != live {
+		t.Fatal("a speed measured by the router was replaced by a calculated one")
+	}
+	if next.Interfaces[0].TXBitsPerSecond == nil {
+		t.Fatal("a port without a live rate must still get the calculated one")
+	}
+}
 func TestTelemetryConcurrentReadersShareBoundedCollection(t *testing.T) {
 	var calls atomic.Int32
 	release := make(chan struct{})

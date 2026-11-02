@@ -203,8 +203,13 @@ func applyRates(current, previous *routeros.RouterTelemetry) {
 			}
 			return &n
 		}
-		item.RXBitsPerSecond = rate(item.RXBytes, before.RXBytes)
-		item.TXBitsPerSecond = rate(item.TXBytes, before.TXBytes)
+		// A live rate measured by the router itself is never replaced by a calculated one.
+		if item.RXBitsPerSecond == nil {
+			item.RXBitsPerSecond = rate(item.RXBytes, before.RXBytes)
+		}
+		if item.TXBitsPerSecond == nil {
+			item.TXBitsPerSecond = rate(item.TXBytes, before.TXBytes)
+		}
 	}
 }
 
@@ -245,7 +250,11 @@ func clone(view View) View {
 			row.TXBytes = copyPointer(row.TXBytes)
 			row.RXBitsPerSecond = copyPointer(row.RXBitsPerSecond)
 			row.TXBitsPerSecond = copyPointer(row.TXBitsPerSecond)
+			row.FullDuplex = copyPointer(row.FullDuplex)
+			row.AutoNegotiation = copyPointer(row.AutoNegotiation)
 		}
+		sample.Health = append([]routeros.HealthReading(nil), sample.Health...)
+		sample.Firmware = copyPointer(sample.Firmware)
 		sample.Issues = append([]string{}, sample.Issues...)
 		out.Snapshot = &sample
 	}
