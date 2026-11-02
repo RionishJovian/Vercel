@@ -31,6 +31,9 @@ func scanBot(row interface{ Scan(...interface{}) error }) (*model.BusinessTelegr
 	if err != nil {
 		return nil, fmt.Errorf("scan telegram bot: %w", err)
 	}
+	if b.BotToken, err = openField(b.BotToken); err != nil {
+		return nil, fmt.Errorf("telegram bot token for %s: %w", b.BusinessID, err)
+	}
 	return b, nil
 }
 
@@ -56,7 +59,11 @@ func (r *BusinessTelegramBotRepository) UpsertTXN(tx *sql.Tx, b *model.BusinessT
 func upsertBot(exec interface {
 	Exec(string, ...any) (sql.Result, error)
 }, b *model.BusinessTelegramBot) error {
-	_, err := exec.Exec(
+	token, err := sealField(b.BotToken)
+	if err != nil {
+		return err
+	}
+	_, err = exec.Exec(
 		`INSERT INTO business_telegram_bots (business_id, bot_token, target_chat_id, approver_user_id, enabled, updated_at)
 		 VALUES ($1, $2, $3, $4, $5, now())
 		 ON CONFLICT (business_id) DO UPDATE SET
@@ -65,7 +72,7 @@ func upsertBot(exec interface {
 			approver_user_id = EXCLUDED.approver_user_id,
 			enabled = EXCLUDED.enabled,
 			updated_at = now()`,
-		b.BusinessID, b.BotToken, b.TargetChatID, b.ApproverUserID, b.Enabled)
+		b.BusinessID, token, b.TargetChatID, b.ApproverUserID, b.Enabled)
 	return err
 }
 

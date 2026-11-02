@@ -30,6 +30,7 @@ import (
 	"mega-magic/internal/probe"
 	"mega-magic/internal/quota"
 	"mega-magic/internal/recovery"
+	"mega-magic/internal/secretbox"
 	"mega-magic/internal/telegram"
 	"mega-magic/pkg/logger"
 )
@@ -81,6 +82,29 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 			_ = db.Close()
 			return nil, err
 		}
+	}
+
+	// Telegram bot tokens and webhook secrets are stored sealed with the credential key. Rows written before this
+	// existed are sealed once, here, on the service connection.
+	if key := strings.TrimSpace(cfg.Provisioner.Applier.CredentialKey); key != "" {
+		box, err := secretbox.New(key)
+		if err != nil {
+			_ = db.Close()
+			return nil, fmt.Errorf("credential key: %w", err)
+		}
+		database.SetFieldBox(box)
+		sealCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		bots, hooks, err := database.EncryptLegacyFieldSecrets(sealCtx, db)
+		cancel()
+		if err != nil {
+			_ = db.Close()
+			return nil, fmt.Errorf("seal integration secrets: %w", err)
+		}
+		if bots+hooks > 0 {
+			sugar.Infow("Integration secrets sealed", "telegram_bot_tokens", bots, "webhook_secrets", hooks)
+		}
+	} else {
+		sugar.Warn("No credential key configured: Telegram bot tokens and webhook secrets are stored in plaintext")
 	}
 
 	natsRepo := database.NewNATSSubjectRepository(db)

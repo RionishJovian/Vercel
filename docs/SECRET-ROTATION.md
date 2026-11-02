@@ -35,7 +35,7 @@ rotate() {  # usage: rotate [-apply]
 rotate
 ```
 Expected: `DRY RUN (verified, rolled back; nothing changed)` with the counts of device
-logins and pending enrollments. Any error here (for example "cannot be opened with
+logins, pending enrollments, Telegram bot tokens and webhook secrets (the last two are sealed with the same key, prefix `enc:v1:`). Any error here (for example "cannot be opened with
 the current key") means stop and investigate; nothing has been changed.
 
 ## 2. The window
