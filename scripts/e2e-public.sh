@@ -69,24 +69,23 @@ expect() {
   ok "$method $path -> $code"
 }
 
-# check_inline_js <url-path>  — fetch an HTML page and node --check its inline JS
+# check_page_js <url-path>  — fetch an HTML page, refuse inline scripts (the CSP forbids them) and node --check each
+# script file the page loads from /assets/js
 check_inline_js() {
-  local p="$1" f="$TMP/page.html" code
+  local p="$1" f="$TMP/page.html" code src n=0
   code="$(http GET "$p" "$f")"
   [[ "$code" == "200" ]] || return 1
-  node -e '
-    const fs=require("fs");
-    const html=fs.readFileSync(process.argv[1],"utf8");
-    const m=html.match(/<script>([\s\S]*?)<\/script>/);
-    if(!m){ process.exit(0); }               // no inline script: nothing to check
-    fs.writeFileSync(process.argv[2], m[1]);
-  ' "$f" "$TMP/page.js"
-  if [[ -s "$TMP/page.js" ]]; then
-    node --check "$TMP/page.js" || die "inline JS in $p failed node --check"
-    ok "inline JS in $p parses ($(wc -c <"$TMP/page.js" | tr -d ' ') bytes)"
-  else
-    ok "$p has no inline JS to check"
+  if node -e 'const h=require("fs").readFileSync(process.argv[1],"utf8");process.exit(/<script(?![^>]*\bsrc=)[^>]*>\s*\S/.test(h)?0:1)' "$f"; then
+    die "$p has an inline <script>; the CSP does not allow it"
   fi
+  while IFS= read -r src; do
+    [[ -n "$src" ]] || continue
+    [[ "$(http GET "$src" "$TMP/page.js")" == "200" ]] || die "$p references $src which is not served"
+    node --check "$TMP/page.js" || die "$src failed node --check"
+    ok "$src parses ($(wc -c <"$TMP/page.js" | tr -d ' ') bytes)"
+    n=$((n+1))
+  done < <(node -e 'const h=require("fs").readFileSync(process.argv[1],"utf8");for(const m of h.matchAll(/<script[^>]*\bsrc=["\x27](\/assets\/js\/[^"\x27?#]+)/g))console.log(m[1])' "$f")
+  [[ "$n" -gt 0 ]] || return 1
 }
 
 printf 'E2 public E2E — base=%s mode=%s\n' "$BASE" "$MODE"
@@ -101,7 +100,7 @@ if [[ "$MODE" == "dry" ]]; then
   printf '  6. GET  /api/v1/security/posture -> 200 (posture)\n'
   printf '  7. GET  /api/v1/team           -> 200 (team[])\n'
   printf '  8. GET  /api/v1/routers        -> 200; then backups list for first device\n'
-  printf '  9. node --check inline JS on /portal.html \n'
+  printf '  9. node --check the script files of /portal.html (and no inline script) \n'
   printf '\nNo requests made (dry-run).\n'
   exit 0
 fi
@@ -111,12 +110,12 @@ step "landing"
 expect GET / "$TMP/home.html" 200 - || true
 
 # ---- 9. inline JS (public, do early) --------------------------------------
-step "inline JS syntax"
+step "page script syntax"
 check_js_seen=0
 for p in /portal.html; do
   if check_inline_js "$p"; then check_js_seen=1; fi
 done
-[[ "$check_js_seen" == "1" ]] || die "no portal/app page served inline JS to check"
+[[ "$check_js_seen" == "1" ]] || die "the portal page loaded no script file to check"
 
 if [[ "$MODE" == "public" ]]; then
   printf '\nPUBLIC-ONLY run complete: %d checks passed.\n' "$PASSED"
