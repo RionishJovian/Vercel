@@ -59,7 +59,7 @@ export function Guests({ me }: { me: Me }) {
     const v = session.values ?? {};
     if (busy || reading || !window.confirm(`${t("gu.confirm")} ${v.user ?? ""} / ${s.gateway.hardware_name ?? ""}`)) return;
     setBusy(true); setStatus(t("gu.disconnecting"));
-    let note = "";
+    let note: string;
     try {
       const r = await api.post<{ verified?: boolean }>(`/routers/${encodeURIComponent(s.gateway.device_id)}/guests/disconnect`, { id: session.id, mac: v["mac-address"], address: v.address, user: v.user, confirm: true });
       if (r.verified !== true) throw new Error("not verified");
