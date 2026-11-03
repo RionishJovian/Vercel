@@ -169,13 +169,15 @@ func (n *Notifier) dispatch(businessID, eventType string, payload []byte) {
 	}
 }
 
-func (n *Notifier) attempt(ep *model.WebhookEndpoint, delivery *model.WebhookDelivery, payload []byte, businessID string) {
-	lastErr := ""
-	statusCode := 0
+// sleep is replaced in tests so retries do not wait.
+var sleep = time.Sleep
 
+// deliver POSTs the payload, retrying up to MaxAttempts. It reports whether a 2xx came back, the last status code and
+// the last error text; recording the outcome is the caller's job.
+func (n *Notifier) deliver(ep *model.WebhookEndpoint, eventType string, payload []byte) (ok bool, statusCode int, lastErr string) {
 	for attempt := 1; attempt <= MaxAttempts; attempt++ {
 		if attempt > 1 {
-			time.Sleep(BackoffBetweenAttempts)
+			sleep(BackoffBetweenAttempts)
 		}
 
 		req, err := http.NewRequest(http.MethodPost, ep.URL, bytes.NewReader(payload))
@@ -185,7 +187,7 @@ func (n *Notifier) attempt(ep *model.WebhookEndpoint, delivery *model.WebhookDel
 		}
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("User-Agent", "MegaMagic-Notifier/1.0")
-		req.Header.Set("X-MegaMagic-Event", delivery.EventType)
+		req.Header.Set("X-MegaMagic-Event", eventType)
 
 		if ep.Secret != nil && *ep.Secret != "" {
 			mac := hmac.New(sha256.New, []byte(*ep.Secret))
@@ -202,15 +204,23 @@ func (n *Notifier) attempt(ep *model.WebhookEndpoint, delivery *model.WebhookDel
 		_ = resp.Body.Close()
 
 		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-			msg := ""
-			if err := n.markDeliveryResult(businessID, delivery.ID, "delivered", resp.StatusCode, &msg); err != nil {
-				n.logger.Warnf("notifier: mark delivered %s: %v", delivery.ID, err)
-			}
-			n.logger.Infof("notifier: delivered %s to %s (%d)", delivery.EventType, ep.URL, resp.StatusCode)
-			return
+			return true, statusCode, ""
 		}
 
 		lastErr = fmt.Sprintf("http %d", resp.StatusCode)
+	}
+	return false, statusCode, lastErr
+}
+
+func (n *Notifier) attempt(ep *model.WebhookEndpoint, delivery *model.WebhookDelivery, payload []byte, businessID string) {
+	ok, statusCode, lastErr := n.deliver(ep, delivery.EventType, payload)
+	if ok {
+		msg := ""
+		if err := n.markDeliveryResult(businessID, delivery.ID, "delivered", statusCode, &msg); err != nil {
+			n.logger.Warnf("notifier: mark delivered %s: %v", delivery.ID, err)
+		}
+		n.logger.Infof("notifier: delivered %s to %s (%d)", delivery.EventType, ep.URL, statusCode)
+		return
 	}
 
 	msg := lastErr
