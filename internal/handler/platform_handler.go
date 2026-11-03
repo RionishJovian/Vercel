@@ -202,8 +202,8 @@ func (h *PlatformHandler) CreateBusiness(c *gin.Context) {
 	if tier == "" {
 		tier = "SMALL_WISP"
 	}
-	if body.CompanyName == "" || body.OwnerEmail == "" || len(body.OwnerPassword) < 8 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "company_name, owner_email and an 8+ char owner_password are required"})
+	if body.CompanyName == "" || body.OwnerEmail == "" || len(body.OwnerPassword) < auth.MinPasswordLength {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "company_name, owner_email and a 10+ char owner_password are required"})
 		return
 	}
 	if !validTiers[tier] {
@@ -277,8 +277,8 @@ func (h *PlatformHandler) ResetOwnerPassword(c *gin.Context) {
 	var body struct {
 		NewPassword string `json:"new_password"`
 	}
-	if err := c.ShouldBindJSON(&body); err != nil || len(body.NewPassword) < 8 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "new_password (8+ chars) is required"})
+	if err := c.ShouldBindJSON(&body); err != nil || len(body.NewPassword) < auth.MinPasswordLength {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "new_password (10+ chars) is required"})
 		return
 	}
 	hash, err := h.authService.HashPassword(body.NewPassword)

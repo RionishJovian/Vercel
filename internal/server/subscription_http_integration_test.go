@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"strconv"
 	"testing"
 	"time"
 
@@ -233,4 +234,16 @@ func TestDB_SubscriptionAuthenticatedHTTP(t *testing.T) {
 		t.Fatal(err)
 	}
 	request("GET", "/api/v1/subscription", nil, 401)
+	// Repeated wrong passwords lock the account, even for the right password, and never reveal whether it exists.
+	for i := 0; i < 8; i++ {
+		request("POST", "/api/v1/auth/login", gin.H{"email": email, "password": "wrong-password-" + strconv.Itoa(i)}, 401)
+	}
+	w = request("POST", "/api/v1/auth/login", gin.H{"email": email, "password": "disposable-test-password"}, 429)
+	if w.Header().Get("Retry-After") == "" {
+		t.Fatal("lockout response has no Retry-After")
+	}
+	for i := 0; i < 8; i++ {
+		request("POST", "/api/v1/auth/login", gin.H{"email": "nobody-" + email, "password": "not-the-password"}, 401)
+	}
+	request("POST", "/api/v1/auth/login", gin.H{"email": "nobody-" + email, "password": "not-the-password"}, 429)
 }

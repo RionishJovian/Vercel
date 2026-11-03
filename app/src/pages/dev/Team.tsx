@@ -55,7 +55,7 @@ export function Team() {
         <h2>{t("dev.tm.add")}</h2>
         <Field label={t("pf.name")}><input className="input" name="name" required /></Field>
         <Field label={t("s.email")}><input className="input" name="email" type="email" required /></Field>
-        <Field label={t("dev.tm.password")}><input className="input" name="pass" type="password" autoComplete="new-password" minLength={8} required /></Field>
+        <Field label={t("dev.tm.password")}><input className="input" name="pass" type="password" autoComplete="new-password" minLength={10} required /></Field>
         <Field label={t("dev.tm.role")}><select className="input" name="role" defaultValue="ADMIN">{ROLES.map((r) => <option key={r}>{r}</option>)}</select></Field>
         <button className="btn" type="submit" disabled={busy}>{t("dev.tm.addBtn")}</button>
       </form>

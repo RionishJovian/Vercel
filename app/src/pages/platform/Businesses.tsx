@@ -24,8 +24,8 @@ function Row({ b, self, onChanged }: { b: Biz; self: boolean; onChanged: () => v
         <button className="pill" type="button" disabled={busy} onClick={() => void (async () => { try { setSt(await api.get<State>(`/platform/businesses/${encodeURIComponent(b.business_id)}/state`)); } catch (e) { if (isUnauthorized(e)) throw e; setMsg(errText(e, t("pb.failed"))); } })()}>{t("pb.state")}</button>
       </div>
       {pw !== null && (
-        <div className="note stack"><input className="input" type="password" autoComplete="new-password" minLength={8} value={pw} onChange={(e) => setPw(e.target.value)} aria-label={t("pb.newPw")} placeholder={t("pb.newPw")} />
-          <button className="pill danger" type="button" disabled={busy || pw.length < 8} onClick={() => void run(async () => { await api.post(`/platform/businesses/${encodeURIComponent(b.business_id)}/reset-owner-password`, { new_password: pw }); setPw(null); }, t("pb.pwReset"))}>{t("pb.resetPw")}</button></div>
+        <div className="note stack"><input className="input" type="password" autoComplete="new-password" minLength={10} value={pw} onChange={(e) => setPw(e.target.value)} aria-label={t("pb.newPw")} placeholder={t("pb.newPw")} />
+          <button className="pill danger" type="button" disabled={busy || pw.length < 10} onClick={() => void run(async () => { await api.post(`/platform/businesses/${encodeURIComponent(b.business_id)}/reset-owner-password`, { new_password: pw }); setPw(null); }, t("pb.pwReset"))}>{t("pb.resetPw")}</button></div>
       )}
       {st && <dl className="facts"><dt>{t("pb.owner")}</dt><dd>{st.owner_email}</dd><dt>{t("pb.devices")}</dt><dd>{st.device_count} / {st.device_quota_limit}</dd><dt>{t("pb.incidents")}</dt><dd>{st.open_incidents}</dd><dt>{t("pb.extra")}</dt><dd>{st.purchased_extra_slots}</dd><dt>AI</dt><dd>{st.ai_token_balance}</dd></dl>}
       {msg && <p className="soft small" role="status">{msg}</p>}
@@ -44,7 +44,7 @@ export function Businesses({ me }: { me: Me }) {
     e.preventDefault();
     const form = e.currentTarget, f = new FormData(form);
     const body = { company_name: String(f.get("company")).trim(), owner_email: String(f.get("email")).trim(), owner_password: String(f.get("pass")), access_tier: "SMALL_WISP", device_quota_limit: 1 };
-    if (!body.company_name || !body.owner_email || body.owner_password.length < 8) { setMsg(t("pb.required")); return; }
+    if (!body.company_name || !body.owner_email || body.owner_password.length < 10) { setMsg(t("pb.required")); return; }
     setBusy(true); setMsg("");
     try { await api.post("/platform/businesses", body); form.reset(); void mutate(); } catch (err) { if (isUnauthorized(err)) throw err; setMsg(errText(err, t("pb.failed"))); }
     setBusy(false);
@@ -55,7 +55,7 @@ export function Businesses({ me }: { me: Me }) {
         <h2>{t("pb.create")}</h2><p className="soft small">{t("pb.createHelp")}</p>
         <Field label={t("pb.company")}><input className="input" name="company" required /></Field>
         <Field label={t("pb.ownerEmail")}><input className="input" name="email" type="email" required /></Field>
-        <Field label={t("pb.ownerPw")}><input className="input" name="pass" type="password" autoComplete="new-password" minLength={8} required /></Field>
+        <Field label={t("pb.ownerPw")}><input className="input" name="pass" type="password" autoComplete="new-password" minLength={10} required /></Field>
         {msg && <Note kind="bad">{msg}</Note>}
         <button className="btn" type="submit" disabled={busy}>{t("pb.createBtn")}</button>
       </form>
