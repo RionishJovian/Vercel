@@ -359,7 +359,9 @@ func (a *DeviceApplier) ApplyGateway(ctx context.Context, businessID, deviceID s
 			return result, fmt.Errorf("gateway write failed at %s; check rollback status", s.menu)
 		}
 		if s.menu == "/ip firewall filter" {
-			if _, e = r.Run(ctx, s.menu+" move [find "+gatewaySelector(s)+"] 0"); e != nil {
+			// By ID, as rule number 0 can be a dynamic rule. Moving the only static rule is refused
+			// ("can not move object before itself"), so there must be another one.
+			if _, e = r.Run(ctx, ":local mmStatic ["+s.menu+" find where dynamic=no]; :if ([:len $mmStatic] > 1) do={ "+s.menu+" move [find "+gatewaySelector(s)+"] [:pick $mmStatic 0] }"); e != nil {
 				rollback()
 				return result, fmt.Errorf("could not install temporary setup traffic guard")
 			}

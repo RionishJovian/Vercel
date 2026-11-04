@@ -31,11 +31,8 @@ The app has no device-mode check. Vouchers need Hotspot and guards need Schedule
 ### 3. Multi-line SSH commands (already reported, now confirmed)
 Source: [SSH](https://manual.mikrotik.com/docs/management-tools/ssh/): multi-line commands "fail on older RouterOS versions" and "RouterOS 7.25 and later execute them". Scripting: each CLI line is its own scope. `broadband.go` renew/suspend/resume embed `bbClockSource`, which contains raw newlines. Stored scripts and hooks are fine because `routerOSQuoted` escapes newlines.
 
-### 4. Still undocumented, must be tested
-- `:toarray` element types. The manual says only "Convert a variable to an array". `($a->6) != "0"` in the guard depends on this.
-- Comparing num with str. Only the nil rule is documented.
-- `:return` outside a function (the hook uses it).
-- Whether re-setting an unchanged `disabled=no` writes to flash, and what happens if a scheduler run overlaps the next.
+### 4. Answered on a real router
+The questions the manual left open were answered on a CHR. See [CHR lab](CHR-LAB.md), which also lists the app bugs this found.
 
 ## REST API
 Source: [REST API](https://manual.mikrotik.com/docs/developer-guides/rest-api/).

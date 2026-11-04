@@ -1,6 +1,6 @@
 # Router-local Hotspot and PPPoE controlled trial
 
-Prepared 2026-11-04. **Not executed.** Owner reported the physical router unavailable.
+Prepared 2026-11-04. Not yet executed on a physical RouterBOARD. The software path has passed on a disposable CHR with real PPPoE sessions (2026-11-05, RouterOS 7.24.6): see [CHR lab](CHR-LAB.md). Rows below still need real hardware and real clients.
 Software release at preparation: `174510cf0cfcc274e19a333c0e20f26871292784`.
 Recheck current release and router state when execution becomes possible.
 

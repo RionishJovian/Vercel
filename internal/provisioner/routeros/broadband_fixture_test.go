@@ -42,7 +42,7 @@ func (r *bbReadFixture) Run(_ context.Context, cmd string) (string, error) {
 			return "1", nil
 		}
 		return "0", nil
-	case strings.Contains(cmd, "active print stats"):
+	case strings.Contains(cmd, "BBSESSION"):
 		return "none", nil
 	case strings.HasPrefix(cmd, "/ppp secret set"):
 		r.disabled = strings.HasSuffix(cmd, "disabled=yes")

@@ -484,7 +484,9 @@ func networkWriteCommand(s networkStep, restore bool) string {
 		cmd += " " + field + "=" + routerOSQuoted(values[field])
 	}
 	if s.First && !s.EmptyTable && s.ID == "" && !restore {
-		cmd += " place-before=0"
+		// Rule number 0 can be a dynamic rule, which RouterOS refuses as a position ("item referred by
+		// 'place-before' does not exist"): Hotspot adds such rules first. Use the first static rule's ID.
+		return ":local mmStatic [" + menu + " find where dynamic=no]; :if ([:len $mmStatic] > 0) do={ " + cmd + " place-before=[:pick $mmStatic 0] } else={ " + cmd + " }"
 	}
 	return cmd
 }
@@ -551,7 +553,7 @@ func networkVerify(ctx context.Context, r CommandRunner, s networkStep, restore 
 		}
 	}
 	if s.First && !restore {
-		first, e := r.Run(ctx, `:put [:pick [`+networkMenus[s.Key].path+` find] 0]`)
+		first, e := r.Run(ctx, `:put [:pick [`+networkMenus[s.Key].path+` find where dynamic=no] 0]`)
 		if e != nil || strings.TrimSpace(first) != id {
 			return fmt.Errorf("protection rule order not verified")
 		}

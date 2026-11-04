@@ -162,7 +162,17 @@ func configureGuestGrace(ctx context.Context, runner CommandRunner, g GuestGrace
 		_, _ = runner.Run(ctx, "/ip hotspot user remove [find name="+name+" comment="+routerOSQuoted(comment)+"]")
 		return fmt.Errorf("temporary allowance verification failed: %w", err)
 	}
+	retryMACLogin(ctx, runner, g.ClientMAC)
 	return nil
+}
+
+// retryMACLogin gets a guest online after their user is created. RouterOS tries MAC login only when it
+// first sees a host (or after a session is reset), so a guest already waiting on the Hotspot stays locked
+// out until the host entry expires, whatever traffic they send (seen on 7.24 CHR). Removing the entry of a
+// guest who is not logged in is harmless: their next packet recreates it and logs them in. Best effort:
+// the user is already correct, and the entry expires by itself.
+func retryMACLogin(ctx context.Context, r CommandRunner, mac string) {
+	_, _ = r.Run(ctx, ":if ([:len [/ip hotspot active find mac-address="+mac+"]] = 0) do={ /ip hotspot host remove [find mac-address="+mac+"] }")
 }
 
 func verifyGraceUser(user map[string]string, g GuestGrace, server, comment string) error {
