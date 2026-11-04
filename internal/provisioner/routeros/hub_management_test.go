@@ -13,7 +13,7 @@ type hubTestRunner struct {
 }
 
 func (r *hubTestRunner) Run(ctx context.Context, cmd string) (string, error) {
-	if cmd == `:put [:pick [/ip firewall filter find] 0]` {
+	if cmd == `:put [:pick [/ip firewall filter find where dynamic=no] 0]` {
 		return r.first, nil
 	}
 	out, e := r.networkRunner.Run(ctx, cmd)
@@ -175,7 +175,7 @@ func TestHubProtectionPreservesForeignRulesAndRejectsConflictingMarker(t *testin
 	if e != nil {
 		t.Fatal(e)
 	}
-	if len(steps) != 1 || !strings.Contains(networkWriteCommand(steps[0], false), "place-before=0") {
+	if len(steps) != 1 || !strings.Contains(networkWriteCommand(steps[0], false), "place-before=[:pick $mmStatic 0]") {
 		t.Fatal("existing policy ordering ignored")
 	}
 	if foreign["action"] != "accept" || foreign["disabled"] != "no" {

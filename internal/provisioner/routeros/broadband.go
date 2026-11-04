@@ -79,7 +79,10 @@ func readBroadbandObservation(ctx context.Context, r CommandRunner, id, name str
 		o.UsageAvailable = true
 		return o, nil
 	}
-	stats, err := r.Run(ctx, `:foreach a in=[/ppp active print stats as-value where name=`+routerOSQuoted(name)+` service=pppoe] do={ :put ("BBSESSION=" . ($a->"session-id") . "|" . ($a->"uptime") . "|" . ($a->"bytes")); }`)
+	// `/ppp active print stats` is refused on 7.24 ("bad parameter stats"), so counters come from the
+	// session's dynamic interface. tx-byte is what the router sent, which is the client's download.
+	stats, err := r.Run(ctx, `:local bbA [/ppp active find where name=`+routerOSQuoted(name)+` service=pppoe]; :local bbI [/interface find where name=`+routerOSQuoted("<pppoe-"+name+">")+`]; `+
+		`:put ("BBSESSION=" . [/ppp active get $bbA session-id] . "|" . [/ppp active get $bbA uptime] . "|" . [/interface get $bbI tx-byte] . "|" . [/interface get $bbI rx-byte])`)
 	if err == nil {
 		o.Session, err = parseBroadbandSession(stats)
 		o.UsageAvailable = err == nil && o.Session != nil

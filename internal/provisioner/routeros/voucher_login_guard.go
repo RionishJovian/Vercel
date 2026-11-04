@@ -346,7 +346,8 @@ var guardPropertyPattern = regexp.MustCompile(`^([a-z][a-z0-9-]*):(?: |$)`)
 // "key=value" detail layout even when value-list is asked for, with a multi-line
 // script source after "source=". Older releases print "key: value" lines.
 var (
-	guardDetailHead = regexp.MustCompile(`^\s*\d+\s+(?:[A-Z]\s+)*[a-z][a-z0-9-]*=`)
+	// A record with a comment starts `0  ;;; text` (seen on 7.24 CHR), so it is detail layout as well.
+	guardDetailHead = regexp.MustCompile(`^\s*\d+\s+(?:[A-Z]\s+)*(?:;;;|[a-z][a-z0-9-]*=)`)
 	guardDetailPair = regexp.MustCompile(`([a-z][a-z0-9-]*)=("(?:[^"\\]|\\.)*"|[^\s"]*)`)
 )
 
@@ -368,6 +369,13 @@ func parseGuardDetail(out string) map[string]string {
 		header, source, hasSource = out[:i], out[i+len(" source="):], true
 	}
 	m := map[string]string{}
+	if lines := strings.SplitN(header, "\n", 2); strings.Contains(lines[0], ";;;") {
+		m["comment"] = strings.TrimSpace(lines[0][strings.Index(lines[0], ";;;")+3:])
+		header = ""
+		if len(lines) == 2 {
+			header = lines[1]
+		}
+	}
 	for _, pair := range guardDetailPair.FindAllStringSubmatch(header, -1) {
 		v := pair[2]
 		if len(v) >= 2 && v[0] == '"' && v[len(v)-1] == '"' {
@@ -381,7 +389,22 @@ func parseGuardDetail(out string) map[string]string {
 	return m
 }
 
+// RouterOS omits `disabled` for these menus. A disabled record shows only the flag: a legend
+// "Flags: X - DISABLED" above it, or X before its fields (seen on 7.24 CHR).
+var guardDisabledRow = regexp.MustCompile(`(?m)^\s*\d+\s+(?:[A-Z]\s+)*X\s`)
+
 func parseGuardValueList(out string) map[string]string {
+	m := parseGuardFields(out)
+	if _, known := m["disabled"]; !known && len(m) > 0 {
+		m["disabled"] = "no"
+		if strings.Contains(out, "X - DISABLED") || guardDisabledRow.MatchString(out) {
+			m["disabled"] = "yes"
+		}
+	}
+	return m
+}
+
+func parseGuardFields(out string) map[string]string {
 	if looksLikeGuardDetail(out) {
 		return parseGuardDetail(out)
 	}
@@ -390,6 +413,12 @@ func parseGuardValueList(out string) map[string]string {
 	var currentValue strings.Builder
 	for _, line := range strings.Split(out, "\n") {
 		line = strings.TrimSpace(line)
+		// A comment prints as ";;; text" above the fields (seen on 7.24 CHR).
+		if strings.HasPrefix(line, ";;;") && currentKey == "" {
+			// Long comments wrap across several ";;;" lines.
+			m["comment"] += strings.TrimSpace(strings.TrimPrefix(line, ";;;"))
+			continue
+		}
 		field := guardPropertyPattern.FindStringSubmatch(line)
 		if field == nil {
 			// Continuation line
