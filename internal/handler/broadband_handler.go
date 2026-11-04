@@ -15,6 +15,7 @@ import (
 	"mega-magic/internal/secretbox"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 	"time"
 )
@@ -296,6 +297,7 @@ func (h *SecurityHandler) SyncBroadbandRouter(ctx context.Context, biz, device s
 	if e = tx.Commit(); e != nil {
 		return 0, e
 	}
+	oldestObservedFirst(accounts)
 	n := 0
 	var failures []error
 	for _, a := range accounts {
@@ -323,6 +325,15 @@ func (h *SecurityHandler) SyncBroadbandRouter(ctx context.Context, biz, device s
 		}
 	}
 	return n, errors.Join(failures...)
+}
+
+// The caller's time budget can end mid-list. Oldest reading first, so a router with many
+// subscribers still reaches all of them over successive passes.
+func oldestObservedFirst(accounts []database.BroadbandAccount) {
+	sort.SliceStable(accounts, func(i, j int) bool {
+		a, b := accounts[i].ObservedAt, accounts[j].ObservedAt
+		return a == nil && b != nil || a != nil && b != nil && a.Before(*b)
+	})
 }
 
 func recordBroadbandObservation(tx *sql.Tx, biz, device, account string, o broadband.Observation) error {

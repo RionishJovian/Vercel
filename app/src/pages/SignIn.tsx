@@ -13,7 +13,7 @@ export function SignIn({ notice, onDone }: { notice?: string; onDone: () => void
     const f = new FormData(e.currentTarget);
     setBusy(true); setError("");
     try { await api.post("/auth/login", { email: String(f.get("email")).trim(), password: String(f.get("password")) }); onDone(); }
-    catch (err) { setError(err instanceof ApiError && err.message === "network-unreachable" ? t("s.network") : t("s.failed")); setBusy(false); }
+    catch (err) { setError(err instanceof ApiError && err.status === 429 ? t("s.locked") : err instanceof ApiError && err.message === "network-unreachable" ? t("s.network") : t("s.failed")); setBusy(false); }
   }
   return (
     <div className="signin">

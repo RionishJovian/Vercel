@@ -18,13 +18,13 @@ const NET_ICONS: Record<Workspace, IconName> = { wan: "globe", ip: "nodes", vlan
 
 /** Internet setup is a first-class part of the Router tab, not buried under More. */
 function InternetSetup() {
-  const { t } = useI18n();
+  const { t, tn } = useI18n();
   return (
     <section className="stack" aria-labelledby="net-setup">
       <h2 id="net-setup">{t("title.network")}</h2>
       <nav className="tiles">
         <a className="tile" href="#/network/new"><span className="tile-ico"><Icon name="pin" /></span><b>{t("nw.title")}</b></a>
-        {workspaces.map((k) => <a key={k} className="tile" href={"#/network/" + k}><span className="tile-ico"><Icon name={NET_ICONS[k]} /></span><b>{workspaceInfo[k][0]}</b></a>)}
+        {workspaces.map((k) => <a key={k} className="tile" href={"#/network/" + k}><span className="tile-ico"><Icon name={NET_ICONS[k]} /></span><b>{tn(workspaceInfo[k][0])}</b></a>)}
       </nav>
     </section>
   );

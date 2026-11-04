@@ -47,6 +47,10 @@ rollback(){
  status=$?;trap - ERR;set +e
  cp -p "$backup/compose.yaml" "$compose"
  cp -p "$backup/restore-bin" "$app/restore-bin/mega-magic"
+ if [ -f "$backup/edge-security-headers.caddy" ]; then
+  cp -p "$backup/edge-security-headers.caddy" /etc/caddy/security-headers.caddy
+  systemctl reload caddy
+ fi
  (cd "$app" && docker compose -f "$compose" up -d --no-deps --no-build --pull never api web)
  echo "Deployment failed; previous API/web restored. Backup: $backup";exit "$status"
 }
@@ -77,6 +81,23 @@ for service in api web;do
  expected_id=$(docker image inspect --format '{{.Id}}' "$image")
  test "$(docker inspect --format '{{.Image}}' "mega-magic-go-restored-$service-1")" = "$expected_id"
 done
+# The host Caddy sets the public security headers and overrides the web image's copy. Keep it
+# identical to this release's policy, validating the whole config before it goes live.
+edge=/etc/caddy/security-headers.caddy
+edge_new="$release_dir/unpacked/deploy/security-headers.caddy"
+if ! cmp -s "$edge_new" "$edge"; then
+ edge_check=$(mktemp -d)
+ cp -a /etc/caddy/. "$edge_check/"
+ cp "$edge_new" "$edge_check/security-headers.caddy"
+ caddy validate --config "$edge_check/Caddyfile" --adapter caddyfile >/dev/null
+ rm -rf "$edge_check"
+ cp -p "$edge" "$backup/edge-security-headers.caddy"
+ cp "$edge_new" "$edge"
+ systemctl reload caddy
+fi
+edge_policy=$(sed -n 's/.*Content-Security-Policy "\([^"]*\)".*/\1/p' "$edge_new")
+test -n "$edge_policy"
+curl -fsSI https://megamagic.tech/ | tr -d '\r' | grep -iqF "content-security-policy: $edge_policy"
 # Public readiness must be JSON too; a website fallback page cannot pass.
 curl -fsS https://megamagic.tech/ready -o "$backup/public-ready.json"
 python3 - "$backup/public-ready.json" <<'PY'

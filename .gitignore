@@ -62,3 +62,6 @@ vercel-public/
 
 # Local browser-test output
 .playwright-mcp/
+
+# Sites prototype build output
+/dist/

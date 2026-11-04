@@ -3,6 +3,7 @@ import base from "./dict.json";
 import extra from "./extra";
 import broadband from "./broadband";
 import hubConnection from "./hubConnection";
+import { networkMy } from "./networkLabels";
 
 export type Lang = "my" | "en";
 const dict: Record<Lang, Record<string, string>> = {
@@ -12,7 +13,7 @@ const dict: Record<Lang, Record<string, string>> = {
 const KEY = "mm2_lang";
 const initial = (): Lang => { try { const s = localStorage.getItem(KEY); if (s === "en" || s === "my") return s; } catch { /* storage blocked */ } return "my"; };
 
-interface I18n { lang: Lang; setLang: (l: Lang) => void; t: (key: string) => string }
+interface I18n { lang: Lang; setLang: (l: Lang) => void; t: (key: string) => string; /** Network form text, keyed by its English wording. */ tn: (english: string) => string }
 const Ctx = createContext<I18n | null>(null);
 
 export function I18nProvider({ children }: { children: ReactNode }) {
@@ -21,7 +22,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     set(l); document.documentElement.lang = l;
     try { localStorage.setItem(KEY, l); } catch { /* ignore */ }
   }, []);
-  const value = useMemo<I18n>(() => ({ lang, setLang, t: (k) => dict[lang][k] ?? dict.en[k] ?? k }), [lang, setLang]);
+  const value = useMemo<I18n>(() => ({ lang, setLang, t: (k) => dict[lang][k] ?? dict.en[k] ?? k, tn: (s) => (lang === "my" ? networkMy[s] ?? s : s) }), [lang, setLang]);
   return <Ctx value={value}>{children}</Ctx>;
 }
 export function useI18n(): I18n {
