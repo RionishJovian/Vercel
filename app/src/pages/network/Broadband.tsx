@@ -22,19 +22,39 @@ export function Broadband({ routerId, routerName, canEdit, onBusyChange }: { rou
  const [busy, setBusy] = useState(false), [notice, setNotice] = useState(""), [failed, setFailed] = useState(false);
  const [days, setDays] = useState(30), [amount, setAmount] = useState(0);
  const alive = useRef(true), pending = useRef(false);
- useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+ // Retain an uncertain request's identity in memory, never browser storage.
+ // The same submitted values must not become a second payment after a lost reply.
+ const unconfirmed = useRef(new Map<string, string>());
+ useEffect(() => { alive.current = true; const requests = unconfirmed.current; return () => { alive.current = false; requests.clear(); }; }, []);
  useEffect(() => { onBusyChange?.(busy); return () => onBusyChange?.(false); }, [busy, onBusyChange]);
+ function finishUnconfirmed(id: string | undefined) {
+  for (const [key, value] of unconfirmed.current) if (value === id) unconfirmed.current.delete(key);
+ }
  async function act(path: string, body: Record<string, unknown>, sync = false) {
-  const account = data?.accounts.find((a) => path.includes(a.id));
-  const summary = [routerName, String(body.username ?? account?.username ?? ""), body.period_days ? `${t("bb.days")}: ${body.period_days}` : "", body.amount_mmk !== undefined ? `${t("bb.amount")}: ${body.amount_mmk}` : ""].filter(Boolean).join("\n");
-  if (pending.current || (!sync && !window.confirm(`${summary}\n${t("bb.confirm")}`))) return false;
+  if (pending.current) return false;
+  const recoveryID = path.match(/^\/operations\/([0-9a-f-]{36})\/retry$/)?.[1];
+  const account = data?.accounts.find((a) => path.includes(a.id) || !!recoveryID && a.pending_operation === recoveryID);
+  const { operation_id, ...intent } = body;
+  const paidChange = path === "/accounts" || /^\/accounts\/[0-9a-f-]{36}\/renew$/.test(path);
+  const identityKey = paidChange && typeof operation_id === "string" ? JSON.stringify([base, path, intent]) : "";
+  const cached = identityKey ? unconfirmed.current.get(identityKey) : undefined;
+  const summary = [cached ? t("bb.retryPrevious") : "", routerName, String(body.username ?? account?.username ?? ""), body.period_days ? `${t("bb.days")}: ${body.period_days}` : "", body.amount_mmk !== undefined ? `${t("bb.amount")}: ${body.amount_mmk}` : ""].filter(Boolean).join("\n");
+  if (!sync && !window.confirm(`${summary}\n${t("bb.confirm")}`)) return false;
+  const submitted = cached ? { ...body, operation_id: cached } : body;
+  const submittedID = typeof submitted.operation_id === "string" ? submitted.operation_id : recoveryID;
+  if (identityKey && submittedID) unconfirmed.current.set(identityKey, submittedID);
   pending.current = true; setBusy(true); setNotice(""); setFailed(false);
   try {
-   const result = await api.post<{ operation?: { state?: string } }>(base + path, sync ? {} : { ...body, confirm: true });
+   const result = await api.post<{ operation?: { state?: string } }>(base + path, sync ? {} : { ...submitted, confirm: true });
    if (!sync && result.operation?.state !== "applied") throw new Error("unverified");
+   finishUnconfirmed(submittedID);
    if (alive.current) { setNotice(sync ? t("bb.sync") : t("bb.done")); void mutate(); }
    return true;
-  } catch (e) { if (alive.current) { setFailed(true); setNotice(t(sync ? "bb.syncFailed" : e instanceof ApiError && e.status === 422 ? "bb.rejected" : "bb.failed")); void mutate(); } return false; }
+  } catch (e) {
+   if (e instanceof ApiError && e.status === 422) finishUnconfirmed(submittedID);
+   if (alive.current) { setFailed(true); setNotice(t(sync ? "bb.syncFailed" : e instanceof ApiError && e.status === 422 ? "bb.rejected" : identityKey ? "bb.unconfirmedRequest" : "bb.failed")); void mutate(); }
+   return false;
+  }
   finally { pending.current = false; if (alive.current) { setBusy(false); if (sync) void recheckPlans(); } }
  }
  function create(e: FormEvent<HTMLFormElement>) {
