@@ -3,7 +3,6 @@ import { api, isUnauthorized } from "../../lib/api";
 import { asArray } from "../../lib/types";
 import { useI18n } from "../../i18n";
 import { Note } from "../../components/ui";
-import { Skeleton } from "../../components/Skeleton";
 import type { RouterRow } from "../routers";
 
 interface Iface { name: string; type?: string; running?: boolean }
@@ -18,23 +17,26 @@ export function Wizard({ router, canEdit, reason }: { router?: RouterRow; canEdi
   const [load, setLoad] = useState<{ k: "loading" } | { k: "error"; msg: string } | { k: "ready"; ifaces: Iface[]; d: Defaults }>(router ? { k: "loading" } : { k: "error", msg: "" });
   const [approved, setApproved] = useState<Approved | null>(null), [status, setStatus] = useState<{ kind: "" | "ok" | "warn"; text: string }>({ kind: "", text: "" });
   const [busy, setBusy] = useState(false), [applying, setApplying] = useState(false);
+  const [retry, setRetry] = useState(0);
   const form = useRef<HTMLFormElement>(null);
   const base = router ? `/routers/${encodeURIComponent(router.device_id)}/gateway/` : "";
 
   useEffect(() => {
     if (!base) { setLoad({ k: "error", msg: "" }); return; }
     let live = true; setLoad({ k: "loading" });
-    Promise.all([api.get<{ interfaces?: Iface[] }>(base + "interfaces"), api.get<{ defaults?: Defaults }>(base + "defaults")])
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), 20000);
+    Promise.all([api.get<{ interfaces?: Iface[] }>(base + "interfaces", controller.signal), api.get<{ defaults?: Defaults }>(base + "defaults", controller.signal)])
       .then(([i, d]) => { if (live) setLoad({ k: "ready", ifaces: asArray<Iface>(i.interfaces), d: d.defaults ?? {} }); })
-      .catch((e) => { if (isUnauthorized(e)) throw e; if (live) setLoad({ k: "error", msg: errText(e) }); });
-    return () => { live = false; };
-  }, [base]);
+      .catch((e) => { if (isUnauthorized(e)) throw e; if (live) setLoad({ k: "error", msg: controller.signal.aborted ? "router-read-timeout" : errText(e) }); })
+      .finally(() => window.clearTimeout(timer));
+    return () => { live = false; controller.abort(); window.clearTimeout(timer); };
+  }, [base, retry]);
 
   if (!canEdit) return <Note>{t("nw.needAdmin")}</Note>;
-  if (load.k === "loading") return <Skeleton h={320} />;
   // Nothing is hidden: with no router, or one that cannot be read, the whole form
   // is shown locked under a banner and cannot be submitted.
-  const offline = load.k === "error" ? (reason || (!router ? t("net.noRouterBanner") : `${t("nw.readFail")} ${load.msg}`)) : "";
+  const offline = load.k === "loading" ? t("r.checking") : load.k === "error" ? (reason || (!router ? t("net.noRouterBanner") : `${t("nw.readFail")} ${load.msg === "router-read-timeout" ? t("net.readTimeout") : load.msg}`)) : "";
   const ifaces = load.k === "ready" ? load.ifaces : [], d: Defaults = load.k === "ready" ? load.d : {};
   const opt = (list: Iface[]) => [<option key="" value="">{t("nw.chooseIface")}</option>, ...list.map((i) => <option key={i.name} value={i.name}>{i.name} · {i.type || "interface"}{i.running ? ` · ${t("net.running")}` : ""}</option>)];
   const payload = () => {
@@ -72,11 +74,11 @@ export function Wizard({ router, canEdit, reason }: { router?: RouterRow; canEdi
   }
 
   return (
-    <form ref={form} className="stack nwform" onSubmit={preview} onInput={invalidate} onChange={invalidate}>
+    <form key={load.k} ref={form} className="stack nwform" onSubmit={preview} onInput={invalidate} onChange={invalidate}>
       {offline && (
         <div className="stack">
           <Note kind="bad">{offline}</Note>
-          <div className="row" style={{ justifyContent: "flex-start" }}><a className="pill on" href="#/hub">{t("hub.title")}</a></div>
+          <div className="row" style={{ justifyContent: "flex-start" }}><a className="pill on" href="#/hub">{t("hub.title")}</a>{router && load.k === "error" && <button className="pill" type="button" onClick={() => setRetry((n) => n + 1)}>{t("net.refresh")}</button>}</div>
         </div>
       )}
       <p className="soft small">{t("nw.lead")}</p>

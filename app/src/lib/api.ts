@@ -16,14 +16,14 @@ function renew(): Promise<boolean> {
   return refreshing;
 }
 
-export async function request<T = unknown>(method: string, path: string, body?: unknown, retried = false): Promise<T> {
+export async function request<T = unknown>(method: string, path: string, body?: unknown, retried = false, signal?: AbortSignal): Promise<T> {
   const headers: Record<string, string> = { Accept: "application/json", "X-MM-CSRF": "1" };
   if (body !== undefined) headers["Content-Type"] = "application/json";
   let res: Response;
-  try { res = await fetch(API + path, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined }); }
+  try { res = await fetch(API + path, { method, headers, signal, body: body !== undefined ? JSON.stringify(body) : undefined }); }
   catch { throw new ApiError("network-unreachable"); }
   if (res.status === 401) {
-    if (!retried && !path.startsWith("/auth/") && (await renew())) return request<T>(method, path, body, true);
+    if (!retried && !path.startsWith("/auth/") && (await renew())) return request<T>(method, path, body, true, signal);
     throw new ApiError("unauthorized", 401);
   }
   let data: unknown = null;
@@ -33,7 +33,7 @@ export async function request<T = unknown>(method: string, path: string, body?: 
 }
 
 export const api = {
-  get: <T,>(p: string) => request<T>("GET", p),
+  get: <T,>(p: string, signal?: AbortSignal) => request<T>("GET", p, undefined, false, signal),
   post: <T,>(p: string, b: unknown = {}) => request<T>("POST", p, b),
   put: <T,>(p: string, b: unknown) => request<T>("PUT", p, b),
   del: <T,>(p: string) => request<T>("DELETE", p),

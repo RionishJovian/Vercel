@@ -1,6 +1,7 @@
 // Strings added by the React app. Burmese is a first draft for native-speaker review.
 const extra = {
   en: {
+    "net.readTimeout": "The router did not respond in time. Check Magic Hub and try again.",
     "c.help": "Help",
     "more.g.business": "Business", "more.g.operations": "Operations", "more.g.tools": "Tools", "more.g.account": "Account",
     "ap.s.trial": "Seven-day trial", "ap.trialEnds": "Trial ends", "s.create": "Create an account",
@@ -133,6 +134,7 @@ const extra = {
     "md.sub": "Advice only. It never changes your network.", "md.hello": "Ask about your devices, vouchers or Jellyfin setup.", "md.p1": "How are my devices doing?", "md.p2": "Where do I add the Jellyfin library?", "md.p3": "Where do I connect the gateway?", "md.you": "You", "md.thinking": "Thinking…", "md.ask": "What can I help with?", "md.note": "Advice only. Nothing is changed.", "md.send": "Send", "md.close": "Close Magic Dude", "md.empty": "No answer yet. Please ask again.", "md.locked": "Magic Dude needs an unlock key. Ask your owner or admin.", "md.limit": "The AI usage limit is full. Try again later.", "md.fail": "No answer right now. Please try again. Nothing was changed.", "md.failNote": "The question could not be sent.",
   },
   my: {
+    "net.readTimeout": "Router မှ အချိန်မီ တုံ့ပြန်မှု မရပါ။ Magic Hub ကို စစ်ပြီး ထပ်ကြိုးစားပါ။",
     "c.help": "အကူအညီ",
     "more.g.business": "လုပ်ငန်း", "more.g.operations": "လုပ်ငန်းစဉ်", "more.g.tools": "ကိရိယာများ", "more.g.account": "အကောင့်",
     "ap.s.trial": "ရက်ခုနစ်ရက် စမ်းသုံးခွင့်", "ap.trialEnds": "စမ်းသုံးခွင့် ကုန်ဆုံးမည့်နေ့", "s.create": "အကောင့် ဖွင့်မည်",

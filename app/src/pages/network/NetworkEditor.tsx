@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { api, ApiError, isUnauthorized } from "../../lib/api";
 import { useI18n } from "../../i18n";
 import { Note } from "../../components/ui";
-import { Skeleton } from "../../components/Skeleton";
 import { choices, currentNames, descriptions, editNetworkValues, initialValues, moveNetworkValues, isSecretField, labelOf, listFor, objectsOf, payloadValues, schema, workspaceInfo, type Field, type Inventory, type Workspace } from "./schema";
 import type { RouterRow } from "../routers";
 
@@ -202,30 +201,38 @@ export function NetworkEditor({ workspace, router, canEdit, reason }: { workspac
   const [locked, setLocked] = useState(false);
   const [pendingAt, setPendingAt] = useState(""), [pendingNote, setPendingNote] = useState("");
   const rev = useRef(0);
+  const readController = useRef<AbortController | null>(null);
   useEffect(() => { setTask(choices[workspace][0]); }, [workspace]);
 
   const routerId = router?.device_id ?? "";
   const reload = useCallback(async () => {
     if (!routerId) { setLoad({ kind: "error", err: null }); return; }
+    readController.current?.abort();
+    const controller = new AbortController();
+    readController.current = controller;
+    const timer = window.setTimeout(() => controller.abort(), 20000);
     const mine = ++rev.current;
     setLoad({ kind: "loading" });
     try {
-      const data = await api.get<{ inventory: Inventory }>(`/routers/${encodeURIComponent(routerId)}/network/inventory`);
+      const data = await api.get<{ inventory: Inventory }>(`/routers/${encodeURIComponent(routerId)}/network/inventory`, controller.signal);
       let defaults: Record<string, string> = {};
-      if (workspace === "pppoe") { try { defaults = (await api.get<{ defaults?: Record<string, string> }>(`/routers/${encodeURIComponent(routerId)}/gateway/defaults`)).defaults ?? {}; } catch { /* never invent an unchecked default */ } }
+      if (workspace === "pppoe") { try { defaults = (await api.get<{ defaults?: Record<string, string> }>(`/routers/${encodeURIComponent(routerId)}/gateway/defaults`, controller.signal)).defaults ?? {}; } catch { /* never invent an unchecked default */ } }
+      if (controller.signal.aborted) throw new Error("router-read-timeout");
       if (mine === rev.current) { setLoad({ kind: "ready", inv: data.inventory, defaults }); setPendingAt(data.inventory.pending_confirm?.revert_at ?? ""); }
-    } catch (err) { if (isUnauthorized(err)) throw err; if (mine === rev.current) setLoad({ kind: "error", err }); }
+    } catch (err) { if (isUnauthorized(err)) throw err; if (mine === rev.current) setLoad({ kind: "error", err: controller.signal.aborted ? new Error("router-read-timeout") : err }); }
+    finally { window.clearTimeout(timer); if (readController.current === controller) readController.current = null; }
   }, [routerId, workspace]);
-  useEffect(() => { void reload(); }, [reload]);
+  useEffect(() => { const generation = rev; void reload(); return () => { generation.current++; readController.current?.abort(); }; }, [reload]);
 
   const finishPending = useCallback((message: string) => { setPendingAt(""); setPendingNote(message); void reload(); }, [reload]);
   const [name, lead] = workspaceInfo[workspace];
-  if (load.kind === "loading") return <Skeleton h={300} />;
-  const offline = load.kind === "error";
+  const loading = load.kind === "loading";
+  const offline = load.kind !== "ready";
   const inv = load.kind === "ready" ? load.inv : EMPTY_INVENTORY, defaults = load.kind === "ready" ? load.defaults : {};
   const s = schema[task];
   const needsHub = !router || (load.kind === "error" && load.err instanceof ApiError && (load.err.data as { code?: string } | null)?.code === "router_management_required");
-  const banner = !offline ? "" : reason ? reason : !router ? t("net.noRouterBanner") : needsHub ? t("net.connectFirst") : `${t("net.offlineBanner")} ${errMsg(load.err)}`;
+  const message = load.kind === "error" ? errMsg(load.err) : "";
+  const banner = loading ? t("r.checking") : !offline ? "" : reason ? reason : !router ? t("net.noRouterBanner") : needsHub ? t("net.connectFirst") : `${t("net.offlineBanner")} ${message === "router-read-timeout" ? t("net.readTimeout") : message}`;
   // Mirror the server's gates. Nothing is hidden: a task that cannot be applied yet
   // still shows its form, locked, with the reason above it. Only a task with nothing
   // to show (read-only, or unsupported on this router) is replaced by a note.
@@ -238,10 +245,10 @@ export function NetworkEditor({ workspace, router, canEdit, reason }: { workspac
     <div className="stack">
       {offline && (
         <div className="stack">
-          <Note kind="bad">{banner}</Note>
+          <Note kind={loading ? "warn" : "bad"}>{banner}</Note>
           <div className="row" style={{ justifyContent: "flex-start" }}>
             {needsHub && <a className="pill on" href="#/hub">{t("hub.title")}</a>}
-            {router && <button className="pill" type="button" onClick={() => void reload()}>{t("net.refresh")}</button>}
+            {router && !loading && <button className="pill" type="button" onClick={() => void reload()}>{t("net.refresh")}</button>}
           </div>
         </div>
       )}
@@ -265,7 +272,7 @@ export function NetworkEditor({ workspace, router, canEdit, reason }: { workspac
             {writeHold && <Note kind="warn">{writeHold}</Note>}
             {!writeHold && (task === "ip_address" || task === "vlan" || task === "remove_network" || task === "edit_network" || task === "move_network") && inv.address_preview_only === true && <Note kind="warn">{t("net.addressPreview")}</Note>}
             <fieldset className="nolock" disabled={offline || !!writeHold || waiting}>
-              <TaskForm key={task} kind={task} inv={inv} defaults={defaults} routerId={routerId} routerName={router?.hardware_name ?? ""} locked={locked || offline || !!writeHold || waiting} setLocked={setLocked} onPending={(at) => { setPendingNote(""); setPendingAt(at); }} />
+              <TaskForm key={task + (offline ? "-unavailable" : "-ready")} kind={task} inv={inv} defaults={defaults} routerId={routerId} routerName={router?.hardware_name ?? ""} locked={locked || offline || !!writeHold || waiting} setLocked={setLocked} onPending={(at) => { setPendingNote(""); setPendingAt(at); }} />
             </fieldset>
           </>
         )}
