@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { I18nProvider } from "../../i18n";
 import { NetworkEditor } from "./NetworkEditor";
 import { Wizard } from "./Wizard";
+import { Network } from "./index";
+import { SWRConfig } from "swr";
 
 // Pages must never hide: with no router, or one that cannot be read, every task and
 // form is still shown, locked under a banner, and nothing can reach the API.
@@ -20,11 +22,47 @@ beforeEach(() => {
     return new Response(JSON.stringify({ error: "gateway unreachable: dial 10.77.0.8:22: i/o timeout" }), { status: 502, headers: { "content-type": "application/json" } });
   }));
 });
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 const controls = (root: Element) => [...root.querySelectorAll("input, select, button, textarea")];
 
 describe("network pages without a usable router", () => {
+  it("opens Internet Setup on the settings workspace rather than a menu", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ routers: [] }), { status: 200, headers: { "content-type": "application/json" } })));
+    const { container } = wrap(<SWRConfig value={{ provider: () => new Map(), shouldRetryOnError: false }}><Network me={{ user: { user_role: "OWNER" } } as never} sub="" /></SWRConfig>);
+    await screen.findByText(/No router is connected to this account/);
+    expect(container.querySelectorAll(".task").length).toBeGreaterThan(0);
+    expect(container.querySelector('a[href="#/network/new"]')).toBeTruthy();
+  });
+  it("shows the settings while the router read is still pending, with changes locked", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+    const { container } = wrap(<NetworkEditor workspace="wan" canEdit router={router} />);
+    expect(container.querySelectorAll(".task").length).toBeGreaterThan(0);
+    expect((container.querySelector("fieldset.nolock") as HTMLFieldSetElement).disabled).toBe(true);
+  });
+
+  it("stops a stalled router read and offers a retry", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("fetch", vi.fn((_url: string, init: RequestInit) => new Promise((_resolve, reject) => {
+      init.signal?.addEventListener("abort", () => reject(new Error("aborted")));
+    })));
+    wrap(<NetworkEditor workspace="wan" canEdit router={router} />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(20000); });
+    expect(screen.getByRole("button", { name: /Refresh status/ })).toBeTruthy();
+    expect(screen.getByText(/router did not respond in time/)).toBeTruthy();
+  });
+
+  it("loads real defaults into the wizard after showing its locked form", async () => {
+    let finish!: (value: Response) => void;
+    vi.stubGlobal("fetch", vi.fn((url: string) => String(url).endsWith("/interfaces")
+      ? Promise.resolve(new Response(JSON.stringify({ interfaces: [{ name: "ether2", type: "ether" }] }), { status: 200, headers: { "content-type": "application/json" } }))
+      : new Promise<Response>((resolve) => { finish = resolve; })));
+    const { container } = wrap(<Wizard router={router} canEdit />);
+    expect((container.querySelector("fieldset") as HTMLFieldSetElement).disabled).toBe(true);
+    await act(async () => { finish(new Response(JSON.stringify({ defaults: { name: "Customers" } }), { status: 200, headers: { "content-type": "application/json" } })); });
+    expect((container.querySelector('input[name="name"]') as HTMLInputElement).value).toBe("Customers");
+    expect((container.querySelector("fieldset") as HTMLFieldSetElement).disabled).toBe(false);
+  });
   it("with no router: shows the banner, every task and a locked form, and makes no request", async () => {
     const { container } = wrap(<NetworkEditor workspace="ip" canEdit />);
     expect(await screen.findByText(/No router is connected to this account/)).toBeTruthy();
