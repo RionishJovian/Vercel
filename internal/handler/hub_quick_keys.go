@@ -5,10 +5,11 @@ import (
 	"errors"
 	"time"
 
+	"mega-magic/internal/database"
 	"mega-magic/internal/hub"
 )
 
-const quickEnrollmentKeyLifetime = 30 * time.Minute
+const quickEnrollmentKeyLifetime = database.PendingEnrollmentLifetime
 const maxPendingQuickEnrollments = 256
 
 type quickEnrollmentKey struct {
@@ -19,7 +20,7 @@ type quickEnrollmentKey struct {
 // Retain the router-local key only in bounded process memory, before the Hub
 // call. A timeout may mean the Hub reserved that public key despite returning
 // an error. Retrying must reuse the matching private half, never rotate a peer.
-// Restart/expiry still requires explicit recovery of an existing enrollment.
+// After a restart or expiry the router gets a fresh allocation and key.
 func (h *VPSHandler) quickEnrollmentKeys(businessID, deviceID string, create bool) (quickEnrollmentKey, error) {
 	if h.durableQuickKeys != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)

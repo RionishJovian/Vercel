@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -92,4 +94,73 @@ VALUES($1,$2,'guest-internet','Daily',$3,500) RETURNING id`, business, device, "
 			}
 		})
 	}
+}
+
+// Delete ends the Hub connection and hands back the cleanup script. If the Hub cannot
+// end it, the record stays, so a connection can never outlive its record again.
+func TestDBRouterDeletionEndsHubConnection(t *testing.T) {
+	db := harness_testdb(t)
+	business := insertBusiness(db)
+	gin.SetMode(gin.TestMode)
+	remove := func(h *RouterHandler, id string) *httptest.ResponseRecorder {
+		r := gin.New()
+		r.Use(func(c *gin.Context) {
+			c.Set(auth.ContextKeyBusinessID, business)
+			c.Set(auth.ContextKeyUserID, "owner")
+			c.Set(auth.ContextKeyUserRole, "OWNER")
+		})
+		r.DELETE("/routers/:id", h.DeleteRouter)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, httptest.NewRequest(http.MethodDelete, "/routers/"+id, nil))
+		return w
+	}
+	exists := func(id string) bool {
+		var found bool
+		if err := db.QueryRow(`SELECT EXISTS(SELECT 1 FROM devices WHERE device_id=$1)`, id).Scan(&found); err != nil {
+			t.Fatal(err)
+		}
+		return found
+	}
+	h := NewRouterHandler(db, database.NewDeviceRepository(db), nil, nil)
+
+	t.Run("Hub unavailable keeps the record", func(t *testing.T) {
+		device := insertGatewayNoSite(db, business)
+		h.ConfigureHubRemoval(func(context.Context, string, string, string) (string, error) { return "", errors.New("hub down") })
+		if w := remove(h, device); w.Code != http.StatusServiceUnavailable || !exists(device) {
+			t.Fatalf("status %d, record exists %v", w.Code, exists(device))
+		}
+	})
+	t.Run("success returns the cleanup script", func(t *testing.T) {
+		device := insertGatewayNoSite(db, business)
+		var called string
+		h.ConfigureHubRemoval(func(_ context.Context, biz, _, id string) (string, error) {
+			called = biz + "/" + id
+			return "cleanup-script", nil
+		})
+		w := remove(h, device)
+		if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"router_cleanup_script":"cleanup-script"`) || exists(device) {
+			t.Fatalf("status %d body %s", w.Code, w.Body.String())
+		}
+		if called != business+"/"+device {
+			t.Fatalf("removed the wrong peer: %s", called)
+		}
+	})
+	t.Run("a record with history keeps its Hub connection", func(t *testing.T) {
+		device := insertGatewayNoSite(db, business)
+		if _, err := db.Exec(`INSERT INTO vouchers(business_id,device_id,plan_key,plan_label,code,price_mmk) VALUES($1,$2,'guest-internet','Daily',$3,500)`, business, device, "HUBDEL-"+randHex(6)); err != nil {
+			t.Fatal(err)
+		}
+		var grantVoucher string
+		if err := db.QueryRow(`SELECT id FROM vouchers WHERE device_id=$1`, device).Scan(&grantVoucher); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec(`INSERT INTO guest_voucher_grants(voucher_id,business_id,device_id,minutes,data_mb) VALUES($1,$2,$3,60,1024)`, grantVoucher, business, device); err != nil {
+			t.Fatal(err)
+		}
+		called := false
+		h.ConfigureHubRemoval(func(context.Context, string, string, string) (string, error) { called = true; return "", nil })
+		if w := remove(h, device); w.Code != http.StatusConflict || called || !exists(device) {
+			t.Fatalf("status %d, Hub called %v", w.Code, called)
+		}
+	})
 }

@@ -15,7 +15,7 @@ import (
 )
 
 // Scripts keep the WireGuard private key on the router. They never reset WAN,
-// LAN, users, management services or existing firewall policy.
+// LAN, the owner's users or existing firewall policy.
 type RouterScripts struct {
 	Bootstrap  string `json:"bootstrap_script"`
 	Setup      string `json:"router_script"`
@@ -168,10 +168,14 @@ func BuildRouterScripts(deviceID string, peer Peer) (RouterScripts, error) {
 	return RouterScripts{Bootstrap: bootstrap, Setup: setup, Disconnect: disconnect}, nil
 }
 
-// BuildQuickConnectScript preserves the original one-paste operator workflow
-// while keeping the private key out of the Hub and database. The key is shown
-// only in this authenticated, no-store response and is installed locally by
-// the router. The normal ownership and route checks remain in the setup block.
+// BuildQuickConnectScript builds the one script a person pastes in WinBox. The
+// private key is shown only in this authenticated, no-store response and is
+// installed locally by the router.
+//
+// It brings the router to the wanted state from wherever it is, so pasting it
+// again is always safe: what carries this enrollment's marker is corrected, and
+// what an older Mega Magic setup left behind is replaced. Anything belonging to
+// someone else stops the script before the first change.
 func BuildQuickConnectScript(deviceID string, peer Peer, privateKey string) (string, error) {
 	if !scriptKey(privateKey) {
 		return "", fmt.Errorf("invalid router private key")
@@ -181,29 +185,94 @@ func BuildQuickConnectScript(deviceID string, peer Peer, privateKey string) (str
 	if err != nil || base64.StdEncoding.EncodeToString(public) != peer.RouterPublicKey {
 		return "", fmt.Errorf("router private key does not match allocation")
 	}
-	scripts, err := BuildRouterScripts(deviceID, peer)
-	if err != nil {
+	// Validates every value placed in the script.
+	if _, err := BuildRouterScripts(deviceID, peer); err != nil {
 		return "", err
 	}
 	name, marker, err := scriptNames(deviceID)
 	if err != nil {
 		return "", err
 	}
-	insert := fmt.Sprintf(`
-# One-paste Magic Hub setup. The private key is installed only on this router.
-:local existing [/interface/wireguard find where name="%s"]
-:if ([:len $existing] = 0) do={
-  /interface/wireguard add name="%s" mtu=1280 private-key="%s" comment="%s"
-}
-`, name, name, privateKey, marker)
-	idx := strings.Index(scripts.Setup, ":local iface")
-	if idx < 0 {
-		return "", fmt.Errorf("invalid generated setup script")
+	host, portRaw, err := net.SplitHostPort(peer.Endpoint)
+	if err != nil {
+		return "", fmt.Errorf("invalid Hub endpoint")
 	}
-	setup := scripts.Setup[:idx] + insert + scripts.Setup[idx:]
-	setup = strings.Replace(setup, "# Magic Hub step 2. Review, then paste the entire block in WinBox New Terminal.", "# Magic Hub one-paste setup. Paste the entire block in WinBox New Terminal.", 1)
-	setup = strings.Replace(setup, "STOP: run step 1 first", "STOP: Magic Hub interface creation failed", 1)
-	return setup, nil
+	var b strings.Builder
+	w := func(format string, args ...any) { fmt.Fprintf(&b, format, args...) }
+
+	w(`{
+# Magic Hub one-paste setup. Paste the entire block in WinBox New Terminal.
+# Scoped tunnel only. Does not enable SSH/REST or change WAN/LAN/firewall/users.
+:local mmOwned do={ :return ([:pick $1 0 15] = "mega-magic:mmh-") }
+
+# Check first: nothing changes if something else already uses these names or addresses.
+:foreach mmItem in=[/interface/wireguard find where name="%[1]s"] do={
+  :if ([/interface/wireguard get $mmItem comment] != "%[2]s") do={ :error "STOP: interface %[1]s belongs to another setup; nothing changed" }
+}
+:foreach mmItem in=[/interface/wireguard/peers find where interface="%[1]s"] do={
+  :if ([/interface/wireguard/peers get $mmItem comment] != "%[2]s") do={ :error "STOP: unexpected peer on the Magic Hub interface; nothing changed" }
+}
+:foreach mmItem in=[/ip/address find where address="%[3]s"] do={
+  :if (![$mmOwned [/ip/address get $mmItem comment]]) do={ :error "STOP: tunnel address already used by another interface; nothing changed" }
+}
+`, name, marker, peer.TunnelAddress)
+	for _, raw := range peer.AllowedIPs {
+		w(`:foreach mmItem in=[/ip/route find where dst-address="%s"] do={
+  :if (![$mmOwned [/ip/route get $mmItem comment]]) do={ :error "STOP: a route to the Hub already exists and is not from Magic Hub; nothing changed" }
+}
+`, raw)
+	}
+	w(`
+# Remove what an older Mega Magic setup left on this router, for example after its record was deleted.
+:foreach mmItem in=[/interface/wireguard find where name~"^mmh-"] do={
+  :local mmOldName [/interface/wireguard get $mmItem name]
+  :local mmOldComment [/interface/wireguard get $mmItem comment]
+  :if ($mmOldName != "%[1]s" && [$mmOwned $mmOldComment]) do={
+    /ip/address remove [find where interface=$mmOldName]
+    /interface/wireguard/peers remove [find where interface=$mmOldName]
+    /interface/wireguard remove $mmItem
+    :put ("Replaced an older Magic Hub tunnel: " . $mmOldName)
+  }
+}
+/ip/route remove [find where comment~"^mega-magic:mmh-" and comment!="%[2]s"]
+/ip/address remove [find where comment~"^mega-magic:mmh-" and comment!="%[2]s"]
+
+# Tunnel.
+:local mmIface [/interface/wireguard find where name="%[1]s"]
+:if ([:len $mmIface] = 0) do={
+  /interface/wireguard add name="%[1]s" mtu=1280 private-key="%[4]s" comment="%[2]s"
+  :set mmIface [/interface/wireguard find where name="%[1]s"]
+}
+:if ([/interface/wireguard get $mmIface public-key] != "%[5]s") do={ /interface/wireguard set $mmIface private-key="%[4]s" }
+/interface/wireguard set $mmIface disabled=no
+`, name, marker, peer.TunnelAddress, privateKey, peer.RouterPublicKey)
+	w(`:local mmPeer [/interface/wireguard/peers find where interface="%[1]s"]
+:if ([:len $mmPeer] = 1) do={
+  :if ([/interface/wireguard/peers get $mmPeer public-key] != "%[2]s" || [/interface/wireguard/peers get $mmPeer endpoint-address] != "%[3]s" || [:tostr [/interface/wireguard/peers get $mmPeer endpoint-port]] != "%[4]s" || [:tostr [/interface/wireguard/peers get $mmPeer allowed-address]] != "%[5]s") do={
+    /interface/wireguard/peers remove $mmPeer
+    :set mmPeer ""
+  }
+} else={
+  :if ([:len $mmPeer] > 1) do={ /interface/wireguard/peers remove $mmPeer }
+  :set mmPeer ""
+}
+:if ([:len $mmPeer] = 0) do={ /interface/wireguard/peers add interface="%[1]s" public-key="%[2]s" endpoint-address="%[3]s" endpoint-port=%[4]s allowed-address=%[6]s persistent-keepalive=25s comment="%[7]s" } else={ /interface/wireguard/peers set $mmPeer disabled=no }
+`, name, peer.HubPublicKey, host, portRaw, strings.Join(peer.AllowedIPs, ";"), strings.Join(peer.AllowedIPs, ","), marker)
+	w(`:foreach mmItem in=[/ip/address find where interface="%[1]s" and address!="%[2]s"] do={ /ip/address remove $mmItem }
+:local mmAddr [/ip/address find where address="%[2]s"]
+:if ([:len $mmAddr] = 0) do={ /ip/address add address=%[2]s interface="%[1]s" comment="%[3]s" } else={
+  :foreach mmItem in=$mmAddr do={ /ip/address set $mmItem interface="%[1]s" comment="%[3]s" disabled=no }
+}
+`, name, peer.TunnelAddress, marker)
+	for _, raw := range peer.AllowedIPs {
+		w(`:local mmRoute [/ip/route find where dst-address="%[1]s"]
+:if ([:len $mmRoute] = 0) do={ /ip/route add dst-address=%[1]s gateway="%[2]s" comment="%[3]s" } else={
+  :foreach mmItem in=$mmRoute do={ /ip/route set $mmItem gateway="%[2]s" comment="%[3]s" disabled=no }
+}
+`, raw, name, marker)
+	}
+	w(":put \"Tunnel configured.\"\n}")
+	return b.String(), nil
 }
 
 // ManagementUserName is the dedicated RouterOS account (and group) that one-paste
@@ -215,49 +284,38 @@ func ManagementUserName(businessID, deviceID string) string {
 
 var managementUserName = regexp.MustCompile(`^mm-[0-9a-f]{12}$`)
 
-// BuildDisconnectScript retires an enrollment completely: it removes the
-// management firewall rule, SSH key, user and group created by one-paste setup
-// (only when their ownership marker matches), then the tunnel. The router's
-// WireGuard interface and private key are kept for reconnection. SSH service
-// settings are not touched because the router's original state is unknown.
+// BuildDisconnectScript removes everything one-paste setup put on a router: the
+// management firewall rule, SSH key, user and group (only when their ownership
+// marker matches), then the tunnel and its key. SSH service settings are not
+// touched because the router's original state is unknown. Safe to paste again.
 func BuildDisconnectScript(deviceID string, peer Peer, managementUser string) (string, error) {
 	if _, err := BuildRouterScripts(deviceID, peer); err != nil || !managementUserName.MatchString(managementUser) {
 		return "", fmt.Errorf("invalid disconnect request")
 	}
 	marker := "mega-magic:" + managementUser
-	cleanup := fmt.Sprintf(`# Retire this Magic Hub enrollment: removes its management user, group, SSH key and
-# firewall rule, then its tunnel. The router's WireGuard interface and private key are kept,
-# and SSH service settings are left as they are. Safe to paste more than once.
-:local rule [/ip/firewall/filter find where comment="%s" and chain="input"]
-:if ([:len $rule] > 0) do={ /ip/firewall/filter remove $rule; :put "Management firewall rule removed." }
-:local account [/user find where name="%s"]
-:if ([:len $account] > 1) do={ :error "STOP: ambiguous management account" }
-:if ([:len $account] = 1) do={
-  :if ([:pick [/user get $account comment] 0 %d] = "%s:") do={
-    :local keys [/user/ssh-keys find where user="%s"]
-    :if ([:len $keys] > 0) do={ /user/ssh-keys remove $keys }
-    /user remove $account
-    :put "Management user and SSH key removed."
-  } else={ :put "A user named %s exists but is not owned by Magic Hub; left untouched." }
-}
-:local grp [/user/group find where name="%s"]
-:if ([:len $grp] = 1) do={ :do { /user/group remove $grp } on-error={ :put "Management group is still in use; left in place." } }
-`, marker, managementUser, len(marker)+1, marker, managementUser, managementUser, managementUser)
-	// Guard the tunnel removals so a repeat paste on a partly cleaned router succeeds.
 	name, tunnelMarker, err := scriptNames(deviceID)
 	if err != nil {
 		return "", err
 	}
-	tunnel := fmt.Sprintf(`:local iface [/interface/wireguard find where name="%s"]
-:if ([:len $iface] != 1) do={ :error "STOP: interface missing or ambiguous" }
-:if ([/interface/wireguard get $iface comment] != "%s" || [/interface/wireguard get $iface public-key] != "%s") do={ :error "STOP: enrollment ownership mismatch" }
-:local peers [/interface/wireguard/peers find where interface="%s" and comment="%s" and public-key="%s"]
-:if ([:len $peers] > 0) do={ /interface/wireguard/peers remove $peers }
-:local routes [/ip/route find where gateway="%s" and comment="%s"]
-:if ([:len $routes] > 0) do={ /ip/route remove $routes }
-:local addrs [/ip/address find where interface="%s" and comment="%s" and address="%s"]
-:if ([:len $addrs] > 0) do={ /ip/address remove $addrs }
-:put "Magic Hub tunnel and management access removed. The router's WireGuard key was kept."
-}`, name, tunnelMarker, peer.RouterPublicKey, name, tunnelMarker, peer.HubPublicKey, name, tunnelMarker, name, tunnelMarker, peer.TunnelAddress)
-	return "{\n" + cleanup + tunnel, nil
+	return fmt.Sprintf(`{
+# Removes this router's Magic Hub setup: its management user, group, SSH key and firewall
+# rules, then its tunnel. SSH service settings are left as they are. Safe to paste again.
+/ip/firewall/filter remove [find where comment="%[1]s"]
+/ip/firewall/nat remove [find where comment="%[1]s"]
+:local mmAccount [/user find where name="%[2]s"]
+:if ([:len $mmAccount] = 1) do={
+  :if ([:pick [/user get $mmAccount comment] 0 %[3]d] = "%[1]s:") do={
+    /user/ssh-keys remove [find where user="%[2]s"]
+    /user remove $mmAccount
+    :put "Management user and SSH key removed."
+  } else={ :put "A user named %[2]s exists but is not from Magic Hub; left untouched." }
+}
+:local mmGroup [/user/group find where name="%[2]s"]
+:if ([:len $mmGroup] = 1) do={ :do { /user/group remove $mmGroup } on-error={ :put "Management group is still in use; left in place." } }
+/ip/route remove [find where comment="%[5]s"]
+/ip/address remove [find where comment="%[5]s"]
+/interface/wireguard/peers remove [find where interface="%[4]s" and comment="%[5]s"]
+/interface/wireguard remove [find where name="%[4]s" and comment="%[5]s"]
+:put "Magic Hub setup removed from this router."
+}`, marker, managementUser, len(marker)+1, name, tunnelMarker), nil
 }

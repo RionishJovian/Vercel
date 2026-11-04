@@ -42,6 +42,12 @@ Use this if the database is lost or damaged. Read it through once before startin
 
 To rebuild on a **new server** instead: install Docker and the compose stack, create the database user and roles, restore the dump into an empty `mega_magic` the same way, then deploy. The schema is part of the dump; the migration files are not needed (and most of them cannot run on an empty database, see the audit).
 
+## Magic Hub files
+
+The nightly off-server copy also uploads the Hub's WireGuard file, peer list and settings, encrypted the same way, to folder `hub/` as `hub-state-<date>.tar.gz.age`. Without them, a lost server means every router needs a new paste.
+
+To restore on a new server: decrypt with the private age key, unpack over `/`, and start the Hub. The Hub restores WireGuard peers from its peer list at startup. Keep the same domain, and point it at the new server, so routers find the Hub by themselves.
+
 ## Off-server copy: one-time setup
 The dumps are encrypted with **age** before they leave the server. The **private key is never on the server**: only you hold it, so neither Cloudflare nor a leaked bucket nor a stolen copy of the server's files can read the dumps. **Without the private key the off-server copies cannot be opened, so keep the key file safe in at least two places (password manager and a USB stick or printout).**
 

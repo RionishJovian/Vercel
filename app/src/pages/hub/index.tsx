@@ -7,14 +7,14 @@ import { asArray, type Me } from "../../lib/types";
 import { useI18n } from "../../i18n";
 import { BackLink, Field, Note, PageHead } from "../../components/ui";
 import { Skeleton } from "../../components/Skeleton";
-import { Enrollment } from "./Enrollment";
+import { Enrollment, Script } from "./Enrollment";
 import { Maintenance } from "./Maintenance";
 import { DeviceForm, LAYERS } from "../devices/DeviceForm";
 import { enrollmentUnavailableKey } from "./messages";
 import { ConnectionCheck } from "./ConnectionCheck";
 import type { RouterRow } from "../routers";
 
-interface GW extends RouterRow { site_id?: string | null; management_ip?: string; vendor?: string; device_model?: string }
+interface GW extends RouterRow { site_id?: string | null; management_ip?: string; vendor?: string; device_model?: string; management_connected?: boolean }
 interface Capability { available?: boolean; lookup_enabled?: boolean; code?: string }
 const EDITORS = ["OWNER", "ADMIN", "DEVELOPER"];
 const errText = (e: unknown, fallback: string) => { const d = (e as { data?: { reason?: string; error?: string } } | null)?.data; return d?.reason || d?.error || (e instanceof Error ? e.message : "") || fallback; };
@@ -23,12 +23,24 @@ function Card({ r, state, canEdit, cap, openId, setOpen, onChanged }: { r: GW; s
   const { t } = useI18n();
   const [del, setDel] = useState<{ confirm: boolean; busy: boolean; err?: string }>({ confirm: false, busy: false });
   const [editing, setEditing] = useState(false), [maint, setMaint] = useState(false);
+  const [cleanup, setCleanup] = useState("");
   async function remove() {
     setDel({ confirm: true, busy: true });
-    try { await api.del(`/routers/${encodeURIComponent(r.device_id)}`); onChanged(); }
+    try {
+      const res = await api.del<{ router_cleanup_script?: string }>(`/routers/${encodeURIComponent(r.device_id)}`);
+      if (res?.router_cleanup_script) setCleanup(res.router_cleanup_script); else onChanged();
+    }
     catch (e) { if (isUnauthorized(e)) throw e; setDel({ confirm: false, busy: false, err: errText(e, t("hub.delFail")) }); }
   }
   const tone = state === "up" ? "ok" : state === "stale" ? "warn" : state === "offline" ? "bad" : "";
+  if (cleanup) return (
+    <article className="glass pad stack gw-card">
+      <h3>{t("hub.delDoneTitle")}</h3>
+      <p className="soft small">{t("hub.delDoneBody")}</p>
+      <Script title={t("hub.setupTitle")} text={cleanup} />
+      <button className="btn" type="button" onClick={onChanged}>{t("hub.delDone")}</button>
+    </article>
+  );
   return (
     <article className="glass pad stack gw-card" data-tone={tone || undefined}>
       <div className="row"><div className="who"><span className={"medal sm" + (state === "up" ? " on" : "")}><Icon name="router" /></span><div className="stack" style={{ gap: 2 }}><h2>{r.hardware_name || t("hub.unnamed")}</h2><span className="soft small">{[r.vendor, r.device_model].filter(Boolean).join(" ")}</span></div></div><span className={"chip " + tone}>{t("fl.state." + (["up", "stale", "offline"].includes(state) ? state : "unknown"))}</span></div>
@@ -38,7 +50,7 @@ function Card({ r, state, canEdit, cap, openId, setOpen, onChanged }: { r: GW; s
         <dt>{t("hub.lastSignal")}</dt><dd>{r.last_seen_at ? new Date(r.last_seen_at).toLocaleString() : t("hub.noSignal")}</dd>
       </dl>
       {canEdit && cap.lookup_enabled && <ConnectionCheck id={r.device_id} />}
-      {canEdit && (cap.available ? (
+      {r.management_connected ? <Note kind="ok">{t("hub.connected")}</Note> : canEdit && (cap.available ? (
         <>
           <button className="btn" type="button" aria-expanded={openId === r.device_id} onClick={() => setOpen(openId === r.device_id ? "" : r.device_id)}>{t("hub.connect")}</button>
           {openId === r.device_id && <Enrollment id={r.device_id} onVerified={onChanged} />}

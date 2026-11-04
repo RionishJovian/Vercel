@@ -6,93 +6,106 @@ import { Enrollment } from "./Enrollment";
 const ID = "6f69dede-53d9-478a-bc68-9911e878d440";
 const SETUP = "# complete one-paste setup script";
 let calls: Array<{ method: string; url: string; body?: Record<string, unknown> }>;
-let finishAnswer: { status: number; body: unknown }, enrollAnswer: { status: number; body: unknown };
+let liveAnswer: { status: number; body: unknown }, enrollAnswer: { status: number; body: unknown };
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+const ENROLLED = { state: "hub_peer_enrolled", router_configuration_required: true, one_paste: true, automatic_management: true, router_script: SETUP, tunnel_address: "10.77.0.20/32", hub_public_key: "HUBKEY", endpoint: "megamagic.tech:51820", allowed_ips: ["10.77.0.1/32"] };
 
 beforeEach(() => {
   localStorage.setItem("mm2_lang", "en"); calls = [];
-  finishAnswer = { status: 409, body: { code: "hub_handshake_unverified" } };
-  enrollAnswer = { status: 200, body: { state: "hub_peer_enrolled", router_configuration_required: true, one_paste: true, automatic_management: true, router_script: SETUP, tunnel_address: "10.77.0.16/32", hub_public_key: "HUBKEY", endpoint: "207.148.76.172:51820", allowed_ips: ["10.77.0.1/32"] } };
+  liveAnswer = { status: 200, body: { handshake_status: "no_recent_handshake", connection: { management: "missing" } } };
+  enrollAnswer = { status: 200, body: ENROLLED };
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
     const method = init?.method ?? "GET", path = String(url).replace("/api/v1", "");
     calls.push({ method, url: path, body: init?.body ? JSON.parse(String(init.body)) : undefined });
     if (path.endsWith("/quick-enroll")) return json(enrollAnswer.status, enrollAnswer.body);
-    if (path.endsWith("/finish")) return json(finishAnswer.status, finishAnswer.body);
-    // A one-paste setup must never create a separate router-generated key first.
+    if (path.endsWith("/live")) return json(liveAnswer.status, liveAnswer.body);
     return json(404, {});
   }));
 });
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 const open = (onVerified = vi.fn()) => { render(<I18nProvider><Enrollment id={ID} onVerified={onVerified} /></I18nProvider>); return onVerified; };
 const click = (name: string | RegExp) => fireEvent.click(screen.getByRole("button", { name }));
 const generate = async () => { fireEvent.click(screen.getByRole("checkbox")); click("Generate one-paste script"); await screen.findByDisplayValue(SETUP); };
-const toCheck = async () => { await generate(); click("I pasted it and saw no error"); await screen.findByRole("heading", { name: "3. Check the connection" }); };
+const rail = () => [...screen.getByRole("list", { name: "Connection steps" }).querySelectorAll("li")].map((li) => li.getAttribute("data-state"));
 
-describe("Magic Hub one-paste connection", () => {
-  it("creates one complete script after consent without requesting bootstrap", async () => {
-    open(); expect(calls).toEqual([]);
-    fireEvent.submit(screen.getByRole("button", { name: "Generate one-paste script" }).closest("form")!);
-    await screen.findByText("Confirm that you authorize connecting this RouterBOARD."); expect(calls).toEqual([]);
-    fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "8443" } });
+describe("one-paste connection", () => {
+  it("asks for no port and sends one enrollment request", async () => {
+    open();
+    expect(screen.queryByRole("spinbutton")).toBeNull();
     await generate();
-    expect(calls).toEqual([{ method: "POST", url: `/vps/peers/${ID}/quick-enroll`, body: { management_rest_port: 8443, confirm_enrollment: true } }]);
+    expect(calls[0]).toEqual({ method: "POST", url: `/vps/peers/${ID}/quick-enroll`, body: { management_rest_port: 443, confirm_enrollment: true } });
     expect(await screen.findByRole("heading", { name: "2. Paste the connection script" })).toBeTruthy();
+    expect(rail()).toEqual(["done", "current", "todo"]);
   });
-  it("can check an existing connection immediately without generating a script", async () => {
-    finishAnswer = { status: 200, body: { state: "management_authenticated" } };
-    const onVerified = open(); click("Check existing connection"); click("Check connection");
-    await waitFor(() => expect(onVerified).toHaveBeenCalledTimes(1));
-    expect(calls).toEqual([{ method: "POST", url: `/vps/peers/${ID}/finish`, body: {} }]);
-    const rail = screen.getByRole("list", { name: "Connection steps" }).querySelectorAll("li");
-    expect(rail[0].getAttribute("data-state")).toBe("todo"); expect(rail[1].getAttribute("data-state")).toBe("todo");
+  it("offers no Check button or repair path after the script is shown", async () => {
+    open(); await generate();
+    for (const name of [/Check/, /I pasted/, /Repair/, /Back to script/]) expect(screen.queryByRole("button", { name })).toBeNull();
+    expect(screen.getByText(/connects by itself/)).toBeTruthy();
   });
-  it("routes a saved-management conflict directly to verification", async () => {
-    enrollAnswer = { status: 409, body: { code: "hub_management_already_configured" } };
-    open(); fireEvent.click(screen.getByRole("checkbox")); click("Generate one-paste script");
-    await screen.findByRole("heading", { name: "3. Check the connection" }); expect(screen.queryByRole("textbox")).toBeNull();
-    click("Check connection"); await screen.findByText(/No recent tunnel connection is verified/);
-    expect(calls.map((c) => c.url)).toEqual([`/vps/peers/${ID}/quick-enroll`, `/vps/peers/${ID}/finish`]);
+  it("needs authorization before generating", () => {
+    open();
+    fireEvent.submit(screen.getByRole("button", { name: "Generate one-paste script" }).closest("form")!);
+    expect(calls).toHaveLength(0);
   });
-  it("keeps a failed check honest and retains the same generated script", async () => {
-    open(); await toCheck(); click("Check connection"); await screen.findByText(/No recent tunnel connection is verified/);
-    click("Back to script"); expect(await screen.findByDisplayValue(SETUP)).toBeTruthy();
-    expect(calls.filter((c) => c.url.endsWith("/quick-enroll"))).toHaveLength(1);
-  });
-  it("reports success only after verified management", async () => {
-    finishAnswer = { status: 200, body: { state: "management_authenticated" } };
-    const onVerified = open(); await toCheck(); click("Check connection");
+  it("finishes by itself once the server has connected the router", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const onVerified = open(); await generate();
+    await screen.findByText("Waiting for your router…");
+    liveAnswer = { status: 200, body: { handshake_status: "recent_handshake", connection: { management: "saved" } } };
+    await vi.advanceTimersByTimeAsync(5100);
     await waitFor(() => expect(onVerified).toHaveBeenCalledTimes(1));
     expect(screen.getByText(/Connected\. Router management is ready/)).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Check connection" }).matches(":disabled")).toBe(true);
+    expect(rail()).toEqual(["done", "done", "current"]);
   });
-  it("does not accept an unverified successful HTTP response", async () => {
-    finishAnswer = { status: 200, body: { state: "something_else" } };
-    const onVerified = open(); click("Check existing connection"); click("Check connection");
-    await screen.findByText(/not verified yet/); expect(onVerified).not.toHaveBeenCalled();
+  it("shows that the router reached the Hub, without claiming it is connected", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const onVerified = open(); await generate();
+    liveAnswer = { status: 200, body: { handshake_status: "recent_handshake", connection: { management: "missing" } } };
+    await vi.advanceTimersByTimeAsync(5100);
+    await screen.findByText(/reached Magic Hub/);
+    expect(onVerified).not.toHaveBeenCalled();
   });
-  it("requires explicit recovery consent and preserves the existing-tunnel contract", async () => {
-    enrollAnswer = { status: 409, body: { code: "hub_router_key_unavailable" } };
+  it("offers help only after waiting a while", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    open(); await generate();
+    expect(screen.queryByRole("group", { name: /help|Nothing|check/i })).toBeNull();
+    await vi.advanceTimersByTimeAsync(125000);
+    await screen.findByText(/The complete connection script finished/);
+  });
+  it("keeps waiting through a failed status read", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const onVerified = open(); await generate();
+    liveAnswer = { status: 502, body: {} };
+    await vi.advanceTimersByTimeAsync(5100);
+    liveAnswer = { status: 200, body: { connection: { management: "saved" } } };
+    await vi.advanceTimersByTimeAsync(5100);
+    await waitFor(() => expect(onVerified).toHaveBeenCalledTimes(1));
+  });
+  it("stops watching when closed", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    open(); await generate();
+    cleanup(); const before = calls.length;
+    await vi.advanceTimersByTimeAsync(20000);
+    expect(calls.length).toBe(before);
+  });
+  it("explains a router that is already connected", async () => {
+    enrollAnswer = { status: 409, body: { code: "hub_management_already_configured" } };
     open(); fireEvent.click(screen.getByRole("checkbox")); click("Generate one-paste script");
-    fireEvent.click(await screen.findByRole("checkbox", { name: /Repair installed connection/ }));
-    enrollAnswer = { status: 200, body: { state: "hub_peer_enrolled", router_configuration_required: true, one_paste: false, existing_tunnel_required: true, automatic_management: true, router_script: SETUP } };
-    click("Generate one-paste script"); await screen.findByDisplayValue(SETUP);
-    expect(calls[1].body).toEqual({ management_rest_port: 443, confirm_enrollment: true, resume_existing: true });
-    expect(screen.getByText(/needs the original Magic Hub tunnel/)).toBeTruthy(); expect(calls.some((c) => c.url.endsWith("/bootstrap"))).toBe(false);
+    await screen.findByText(/Saved management credentials exist/);
+    expect(screen.queryByRole("textbox")).toBeNull();
   });
-  it("rejects a repair response that was not explicitly requested", async () => {
-    enrollAnswer.body = { state: "hub_peer_enrolled", router_configuration_required: true, one_paste: false, existing_tunnel_required: true, automatic_management: true, router_script: SETUP };
+  it("rejects a response that is not a one-paste script", async () => {
+    enrollAnswer = { status: 200, body: { ...ENROLLED, one_paste: false } };
     open(); fireEvent.click(screen.getByRole("checkbox")); click("Generate one-paste script");
     await screen.findByText(/One-paste setup was not confirmed/); expect(screen.queryByDisplayValue(SETUP)).toBeNull();
   });
-  it("locks generation and navigation while an enrollment request is outstanding", async () => {
+  it("locks generation while a request is outstanding", async () => {
     const normalFetch = globalThis.fetch; let release!: () => void;
     const held = new Promise<void>((resolve) => { release = resolve; });
     vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => { await held; return normalFetch(url, init); }));
     open(); fireEvent.click(screen.getByRole("checkbox"));
     const form = screen.getByRole("button", { name: "Generate one-paste script" }).closest("form")!;
     fireEvent.submit(form); fireEvent.submit(form);
-    expect(screen.getByRole("button", { name: "Check existing connection" }).matches(":disabled")).toBe(true);
-    expect(screen.getByRole("spinbutton").matches(":disabled")).toBe(true);
-    release(); await screen.findByDisplayValue(SETUP); expect(calls).toHaveLength(1);
+    release(); await screen.findByDisplayValue(SETUP); expect(calls.filter((c) => c.url.endsWith("/quick-enroll"))).toHaveLength(1);
   });
 });

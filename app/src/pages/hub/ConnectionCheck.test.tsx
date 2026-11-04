@@ -14,7 +14,7 @@ afterEach(()=>{cleanup();vi.unstubAllGlobals();});
 const open=()=>{render(<I18nProvider><ConnectionCheck id="router-a" /></I18nProvider>);fireEvent.click(screen.getByRole("button",{name:"Check Magic Hub"}));};
 
 it("explains expired partial setup using a read without generating another script",async()=>{
- open();await screen.findByText(/Setup expired\. Repair works only/);
+ open();await screen.findByText(/Setup expired\. Open Connect Magic Hub/);
  expect(screen.getByText("No recent tunnel handshake")).toBeTruthy();expect(screen.getByText("No saved management access")).toBeTruthy();
  expect(requests).toEqual([{url:"/api/v1/vps/peers/router-a/live",method:"GET"}]);
 });
@@ -30,11 +30,11 @@ it("keeps absent diagnostics unknown instead of claiming setup or management is 
 });
 it("distinguishes a pending repair from expired original installation material",async()=>{
  body.connection={management:"missing",setup:"repair_pending"};open();
- await screen.findByText("Repair is awaiting verification. The original tunnel must be present on the router.");
+ await screen.findByText("Setup is waiting for the router to connect.");
  expect(screen.queryByText(/Setup expired/)).toBeNull();
 });
 it("clears stale diagnostic conclusions when a later status read fails",async()=>{
- open();await screen.findByText(/Setup expired\. Repair works only/);
+ open();await screen.findByText(/Setup expired\. Open Connect Magic Hub/);
  status=502;body={code:"hub_lookup_failed"};fireEvent.click(screen.getByRole("button",{name:"Check Magic Hub"}));
  await screen.findByText(/The lookup could not finish/);
  expect(screen.queryByText(/Setup expired/)).toBeNull();

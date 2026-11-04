@@ -19,6 +19,7 @@ import (
 )
 
 type RouterHandler struct {
+	hubRemoval       func(ctx context.Context, businessID, requester, deviceID string) (string, error)
 	SubscriptionOnly bool
 	db               *database.DB
 	deviceRepo       *database.DeviceRepository
@@ -35,6 +36,12 @@ type MessagingClient interface {
 
 func NewRouterHandler(db *database.DB, deviceRepo *database.DeviceRepository, allowRepo *database.DeviceAllowanceRepository, msg MessagingClient) *RouterHandler {
 	return &RouterHandler{db: db, deviceRepo: deviceRepo, allowRepo: allowRepo, messaging: msg}
+}
+
+// ConfigureHubRemoval makes Delete end a router's Magic Hub connection. The function
+// returns a script that removes the setup from the router, or "" when there is none.
+func (h *RouterHandler) ConfigureHubRemoval(remove func(ctx context.Context, businessID, requester, deviceID string) (string, error)) {
+	h.hubRemoval = remove
 }
 
 // withTenantTx runs fn in an RLS-bound tenant transaction (pinned conn when
@@ -336,6 +343,7 @@ func (h *RouterHandler) DeleteRouter(c *gin.Context) {
 	deviceID := c.Param("id")
 	businessID := auth.GetBusinessID(c)
 
+	cleanup := ""
 	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
 		existing, err := h.deviceRepo.GetDeviceByIDTXN(tx, deviceID)
 		if err != nil {
@@ -361,6 +369,14 @@ func (h *RouterHandler) DeleteRouter(c *gin.Context) {
 			}
 			return &httpError{status: http.StatusInternalServerError, msg: "failed to delete router"}
 		}
+		// Inside the transaction: if the Hub cannot end the connection, the record stays.
+		if h.hubRemoval != nil && existing.DeploymentLayer == "MAIN_GATEWAY" {
+			script, err := h.hubRemoval(c.Request.Context(), businessID, auth.GetUserID(c), deviceID)
+			if err != nil {
+				return &httpError{status: http.StatusServiceUnavailable, msg: "Magic Hub could not end this router's connection, so nothing was deleted. Try again."}
+			}
+			cleanup = script
+		}
 		return nil
 	})
 	if err != nil {
@@ -368,7 +384,12 @@ func (h *RouterHandler) DeleteRouter(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "router deleted"})
+	response := gin.H{"message": "router deleted"}
+	if cleanup != "" {
+		c.Header("Cache-Control", "no-store")
+		response["router_cleanup_script"] = cleanup
+	}
+	c.JSON(http.StatusOK, response)
 }
 
 // GetRouterObservations returns the latest observed inventory for a router.

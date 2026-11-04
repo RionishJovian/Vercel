@@ -146,10 +146,11 @@ func TestAutomaticEnrollmentRunsAsOneBlock(t *testing.T) {
 		if strings.Contains(combined, "\n}\n{") || !strings.HasPrefix(combined, "{\n") || !strings.HasSuffix(combined, "\n}") {
 			t.Fatal("management can execute independently of tunnel setup")
 		}
-		guard := strings.Index(combined, "Magic Hub tunnel missing or ambiguous")
-		write := strings.Index(combined, "/user/group add")
-		if guard < 0 || write < 0 || guard > write || !strings.Contains(combined, `comment] != "mega-magic:mmh-`) || !strings.Contains(combined, `public-key] != "`+key+`"`) {
-			t.Fatal("management writes precede tunnel identity checks")
+		// A user with our name that is not ours stops the script before any account change.
+		owner := strings.Index(combined, `"STOP: a user named`)
+		account := strings.Index(combined, "/user/group add")
+		if owner < 0 || account < 0 || owner > account {
+			t.Fatal("account writes precede the ownership check")
 		}
 	}
 	if _, err := automaticEnrollmentScript("router", pendingManagement{tunnelScript: ":error \"failed\""}); err == nil {

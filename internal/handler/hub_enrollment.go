@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"net/http"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 	"mega-magic/internal/auth"
@@ -17,12 +16,22 @@ type hubEnroller interface {
 	EnrollPeer(context.Context, hub.Identity, string, int) (hub.Peer, error)
 }
 
+// hubPeerRemover ends a Hub allocation so a router that never connected can start over.
+type hubPeerRemover interface {
+	RemovePeer(context.Context, hub.Identity, string) error
+}
+
 // ErrHubManagementConfigured protects an existing saved connection from being
 // overwritten by onboarding. It does not assert that the router is reachable.
 var ErrHubManagementConfigured = errors.New("management already configured; use existing connection")
 
 // Configure only after the Hub create-only contract has been staged and tested.
-func (h *VPSHandler) ConfigureHubEnrollment(client hubEnroller) { h.enrollmentHub = client }
+func (h *VPSHandler) ConfigureHubEnrollment(client hubEnroller) {
+	h.enrollmentHub = client
+	if remover, ok := client.(hubPeerRemover); ok {
+		h.enrollmentRemover = remover
+	}
+}
 
 // GatewayBootstrap produces a router-local key step only after proving tenant
 // ownership and rollout readiness. It never issues a private key or Hub peer.
@@ -162,9 +171,8 @@ func (h *VPSHandler) QuickEnrollGateway(c *gin.Context) {
 	}
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 2048)
 	var body struct {
-		Port           int  `json:"management_rest_port"`
-		Confirm        bool `json:"confirm_enrollment"`
-		ResumeExisting bool `json:"resume_existing"`
+		Port    int  `json:"management_rest_port"`
+		Confirm bool `json:"confirm_enrollment"`
 	}
 	if c.ShouldBindJSON(&body) != nil || !body.Confirm || body.Port < 1 || body.Port > 65535 {
 		c.JSON(400, gin.H{"error": "confirm one-paste enrollment with a management port"})
@@ -192,7 +200,6 @@ func (h *VPSHandler) QuickEnrollGateway(c *gin.Context) {
 	identity := hub.Identity{TenantID: biz, RouterID: device.DeviceID, RequestedBy: user}
 	var peer hub.Peer
 	var script string
-	recovery := false
 	if h.liveHub != nil {
 		peer, err = h.liveHub.InspectRouter(c.Request.Context(), identity)
 		if err != nil && !errors.Is(err, hub.ErrPeerNotFound) {
@@ -212,25 +219,26 @@ func (h *VPSHandler) QuickEnrollGateway(c *gin.Context) {
 		}
 		if key.public != "" && key.public == peer.RouterPublicKey {
 			script, err = hub.BuildQuickConnectScript(device.DeviceID, peer, key.private)
-		} else {
-			if !body.ResumeExisting {
-				c.JSON(409, gin.H{"error": "Original setup key expired. Explicitly choose repair for an already-installed tunnel; its router key will be preserved.", "code": "hub_router_key_unavailable"})
+			if err != nil {
+				c.JSON(502, gin.H{"error": "Hub allocation lacks safe script configuration"})
 				return
 			}
-			recovery = true
-			var scripts hub.RouterScripts
-			scripts, err = hub.BuildRouterScripts(device.DeviceID, peer)
-			script = scripts.Setup
+		} else {
+			// This router never finished connecting (the preflight above refuses one with a
+			// saved connection) and its setup key is gone. Give it a fresh allocation: the
+			// new script corrects whatever an earlier paste left on the router.
+			if h.enrollmentRemover == nil || h.automaticPreflight == nil {
+				c.JSON(409, gin.H{"error": "existing router key cannot be recovered; enrollment preserved", "code": "hub_router_key_unavailable"})
+				return
+			}
+			if err = h.enrollmentRemover.RemovePeer(c.Request.Context(), identity, peer.PeerID); err != nil {
+				c.JSON(503, gin.H{"error": "Hub could not replace the old allocation; try again"})
+				return
+			}
+			peer = hub.Peer{}
 		}
-		if err != nil {
-			c.JSON(409, gin.H{"error": "existing enrollment requires repair"})
-			return
-		}
-	} else {
-		if body.ResumeExisting {
-			c.JSON(409, gin.H{"error": "No existing enrollment can be repaired. Use normal one-paste setup.", "code": "hub_recovery_unavailable"})
-			return
-		}
+	}
+	if peer.PeerID == "" {
 		key, err := h.quickEnrollmentKeys(biz, device.DeviceID, true)
 		if err != nil {
 			c.JSON(503, gin.H{"error": "router key preparation temporarily unavailable"})
@@ -256,15 +264,8 @@ func (h *VPSHandler) QuickEnrollGateway(c *gin.Context) {
 		c.JSON(503, gin.H{"error": "automatic management preparation failed"})
 		return
 	}
-	// A peer record cannot recover the router private key. Only an explicitly
-	// requested repair may use the existing-interface script, and that response
-	// must never advertise itself as a fresh one-paste installation.
-	if !strings.Contains(script, "private-key=\"") && !recovery {
-		c.JSON(409, gin.H{"error": "existing router key cannot be recovered; enrollment preserved", "code": "hub_router_key_unavailable"})
-		return
-	}
 	c.JSON(200, gin.H{"peer_id": peer.PeerID, "device_id": device.DeviceID, "tunnel_address": peer.TunnelAddress,
 		"hub_public_key": peer.HubPublicKey, "endpoint": peer.Endpoint, "allowed_ips": peer.AllowedIPs,
 		"router_script": script, "state": "hub_peer_enrolled", "lan_reachability_verified": false,
-		"router_configuration_required": true, "one_paste": !recovery, "existing_tunnel_required": recovery, "automatic_management": true})
+		"router_configuration_required": true, "one_paste": true, "automatic_management": true})
 }

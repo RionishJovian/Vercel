@@ -140,35 +140,27 @@ func (c *Client) InspectRouter(ctx context.Context, id Identity) (Peer, error) {
 	return c.requestPeer(ctx, id, http.MethodGet, "/v1/peers/by-router/"+id.RouterID, "peers:inspect", nil)
 }
 
+// RemovePeer ends a router's Hub allocation. The Hub drops it from WireGuard and frees
+// its address. A peer that is already gone counts as removed.
+func (c *Client) RemovePeer(ctx context.Context, id Identity, peerID string) error {
+	if !identifier.MatchString(peerID) {
+		return errors.New("invalid peer identifier")
+	}
+	res, err := c.send(ctx, id, http.MethodDelete, "/v1/peers/"+peerID, "peers:remove", nil)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK && res.StatusCode != http.StatusNotFound {
+		return fmt.Errorf("Hub returned HTTP %d", res.StatusCode)
+	}
+	return nil
+}
+
 func (c *Client) requestPeer(ctx context.Context, id Identity, method, path, scope string, body any) (Peer, error) {
-	if !identifier.MatchString(id.TenantID) || !identifier.MatchString(id.RouterID) || !identifier.MatchString(id.RequestedBy) {
-		return Peer{}, errors.New("invalid Hub request identity")
-	}
-	var payload []byte
-	if body != nil {
-		var err error
-		payload, err = json.Marshal(body)
-		if err != nil {
-			return Peer{}, errors.New("invalid Hub request body")
-		}
-	}
-	random := make([]byte, 16)
-	if _, err := rand.Read(random); err != nil {
-		return Peer{}, errors.New("cannot generate Hub request identifier")
-	}
-	requestID := hex.EncodeToString(random)
-	timestamp := c.now().UTC().Format(time.RFC3339Nano)
-	canonical := strings.Join([]string{method, path, timestamp, requestID, scope, id.TenantID, id.RouterID, id.RequestedBy, string(payload)}, "\n")
-	req, err := http.NewRequestWithContext(ctx, method, c.base+path, bytes.NewReader(payload))
+	res, err := c.send(ctx, id, method, path, scope, body)
 	if err != nil {
-		return Peer{}, errors.New("cannot construct Hub request")
-	}
-	for k, v := range map[string]string{"x-mm-key-id": c.keyID, "x-mm-timestamp": timestamp, "x-mm-request-id": requestID, "x-mm-scope": scope, "x-mm-tenant-id": id.TenantID, "x-mm-router-id": id.RouterID, "x-mm-requested-by": id.RequestedBy, "x-mm-signature": signature(c.key, canonical), "Content-Type": "application/json"} {
-		req.Header.Set(k, v)
-	}
-	res, err := c.http.Do(req)
-	if err != nil {
-		return Peer{}, errors.New("Hub request failed")
+		return Peer{}, err
 	}
 	defer res.Body.Close()
 	// Never echo Hub error bodies, URLs, signatures or credentials into app errors.
@@ -187,6 +179,40 @@ func (c *Client) requestPeer(ctx context.Context, id Identity, method, path, sco
 		return Peer{}, errors.New("invalid or mismatched Hub peer response")
 	}
 	return peer, nil
+}
+
+// send signs and sends one request. The caller closes the response body.
+func (c *Client) send(ctx context.Context, id Identity, method, path, scope string, body any) (*http.Response, error) {
+	if !identifier.MatchString(id.TenantID) || !identifier.MatchString(id.RouterID) || !identifier.MatchString(id.RequestedBy) {
+		return nil, errors.New("invalid Hub request identity")
+	}
+	var payload []byte
+	if body != nil {
+		var err error
+		payload, err = json.Marshal(body)
+		if err != nil {
+			return nil, errors.New("invalid Hub request body")
+		}
+	}
+	random := make([]byte, 16)
+	if _, err := rand.Read(random); err != nil {
+		return nil, errors.New("cannot generate Hub request identifier")
+	}
+	requestID := hex.EncodeToString(random)
+	timestamp := c.now().UTC().Format(time.RFC3339Nano)
+	canonical := strings.Join([]string{method, path, timestamp, requestID, scope, id.TenantID, id.RouterID, id.RequestedBy, string(payload)}, "\n")
+	req, err := http.NewRequestWithContext(ctx, method, c.base+path, bytes.NewReader(payload))
+	if err != nil {
+		return nil, errors.New("cannot construct Hub request")
+	}
+	for k, v := range map[string]string{"x-mm-key-id": c.keyID, "x-mm-timestamp": timestamp, "x-mm-request-id": requestID, "x-mm-scope": scope, "x-mm-tenant-id": id.TenantID, "x-mm-router-id": id.RouterID, "x-mm-requested-by": id.RequestedBy, "x-mm-signature": signature(c.key, canonical), "Content-Type": "application/json"} {
+		req.Header.Set(k, v)
+	}
+	res, err := c.http.Do(req)
+	if err != nil {
+		return nil, errors.New("Hub request failed")
+	}
+	return res, nil
 }
 
 func signature(key []byte, canonical string) string {
