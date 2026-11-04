@@ -14,8 +14,11 @@ const stamp = (epoch?: number) => epoch ? new Date(epoch * 1000).toLocaleString(
 export function Broadband({ routerId, routerName, canEdit, onBusyChange }: { routerId: string; routerName: string; canEdit: boolean; onBusyChange?: (busy: boolean) => void }) {
  const { t } = useI18n(), base = `/routers/${encodeURIComponent(routerId)}/broadband`;
  const { data, error, mutate } = useSWR<{ accounts: Account[]; write_enabled: boolean }>(base + "/accounts", fetcher, { shouldRetryOnError: false });
- const { data: inventory } = useSWR<{ inventory?: { objects?: { ppp_profiles?: Array<{ values: { name?: string } }> } } }>(canEdit ? `/routers/${encodeURIComponent(routerId)}/network/inventory` : null, fetcher, { shouldRetryOnError: false });
+ const { data: inventory, error: inventoryError, isValidating: inventoryChecking, mutate: recheckPlans } = useSWR<{ inventory?: { available?: { ppp_profiles?: boolean }; objects?: { ppp_profiles?: Array<{ values: { name?: string } }> } } }>(canEdit ? `/routers/${encodeURIComponent(routerId)}/network/inventory` : null, fetcher, { shouldRetryOnError: false });
  const plans = (inventory?.inventory?.objects?.ppp_profiles ?? []).map((p) => p.values.name).filter((p): p is string => !!p && !p.startsWith("mm-bb-"));
+ const plansLoaded = Array.isArray(inventory?.inventory?.objects?.ppp_profiles) && inventory?.inventory?.available?.ppp_profiles !== false;
+ const managementRequired = inventoryError instanceof ApiError && (inventoryError.data as { code?: string } | null)?.code === "router_management_required";
+ const plansUnavailable = !!inventoryError || !!inventory && !plansLoaded;
  const [busy, setBusy] = useState(false), [notice, setNotice] = useState(""), [failed, setFailed] = useState(false);
  const [days, setDays] = useState(30), [amount, setAmount] = useState(0);
  const alive = useRef(true), pending = useRef(false);
@@ -31,8 +34,8 @@ export function Broadband({ routerId, routerName, canEdit, onBusyChange }: { rou
    if (!sync && result.operation?.state !== "applied") throw new Error("unverified");
    if (alive.current) { setNotice(sync ? t("bb.sync") : t("bb.done")); void mutate(); }
    return true;
-  } catch (e) { if (alive.current) { setFailed(true); setNotice(t(e instanceof ApiError && e.status === 422 ? "bb.rejected" : "bb.failed")); void mutate(); } return false; }
-  finally { pending.current = false; if (alive.current) setBusy(false); }
+  } catch (e) { if (alive.current) { setFailed(true); setNotice(t(sync ? "bb.syncFailed" : e instanceof ApiError && e.status === 422 ? "bb.rejected" : "bb.failed")); void mutate(); } return false; }
+  finally { pending.current = false; if (alive.current) { setBusy(false); if (sync) void recheckPlans(); } }
  }
  function create(e: FormEvent<HTMLFormElement>) {
   e.preventDefault(); const form = e.currentTarget, f = new FormData(form);
@@ -43,6 +46,13 @@ export function Broadband({ routerId, routerName, canEdit, onBusyChange }: { rou
  return <section className="glass pad stack" aria-label={t("bb.title")}>
   <div className="row" style={{ flexWrap: "wrap" }}><h2>{t("bb.title")}</h2><b>{routerName}</b><button className="pill" type="button" disabled={busy || !data || !canEdit} onClick={() => void act("/sync", {}, true)}>{t("bb.sync")}</button></div>
   <details><summary>{t("c.help")}</summary><p className="soft small">{t("bb.help")}</p></details>
+  {canEdit && (plansUnavailable || plansLoaded && !plans.length) && <Note kind="warn">
+   <p>{t(managementRequired ? "bb.connectFirst" : plansUnavailable ? "bb.plansFailed" : "bb.noPlans")}</p>
+   <div className="row" style={{ justifyContent: "flex-start", flexWrap: "wrap" }}>
+    {managementRequired && <a className="pill" href="#/hub">{t("hub.connect")}</a>}
+    <button className="pill" type="button" disabled={busy || inventoryChecking} onClick={() => void recheckPlans()}>{t("bb.recheck")}</button>
+   </div>
+  </Note>}
   {notice && <div role="status"><Note kind={failed ? "warn" : undefined}>{notice}</Note></div>}
   {data && !data.accounts.length && <p>{t("bb.empty")}</p>}
   {data?.accounts.map((a) => {
@@ -65,7 +75,7 @@ export function Broadband({ routerId, routerName, canEdit, onBusyChange }: { rou
     <label className="field"><span>{t("bb.amount")}</span><input className="input" type="number" min="0" max="1000000000" value={amount} disabled={busy} onChange={(e) => setAmount(Number(e.target.value))} /></label>
    </div>
    <details><summary>{t("bb.new")}</summary><form className="stack" onSubmit={create}>
-    <fieldset disabled={locked} className="nolock stack">
+    <fieldset disabled={locked || inventoryChecking || !!inventoryError || !plansLoaded || !plans.length} className="nolock stack">
      <label className="field"><span>{t("bb.user")}</span><input className="input" name="username" required maxLength={64} autoComplete="off" /></label>
      <label className="field"><span>{t("bb.password")}</span><input className="input" name="password" type="password" required minLength={10} maxLength={128} autoComplete="new-password" /></label>
      <label className="field"><span>{t("bb.profile")}</span><select className="input" name="profile" required defaultValue=""><option value="">—</option>{plans.map((p) => <option key={p} value={p}>{p}</option>)}</select><small className="soft">{t("bb.planHint")}</small></label>
