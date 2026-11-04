@@ -21,6 +21,15 @@ No customer browser receives router credentials or issues RouterOS commands.
   the account is retained.
 - An uncertain request remains pending. Use **Retry saved operation** rather than
   entering a replacement payment. The saved identity prevents repeated extensions.
+- If a success reply is lost, repeating the same installation or renewal with unchanged details on
+  the current screen reuses its unconfirmed identity. Once success is acknowledged,
+  a deliberate next renewal receives a new identity. This temporary retry state is
+  held only in memory; server-saved pending operations remain recoverable after
+  reopening the screen. Subscriber passwords are not placed in browser storage.
+  The confirmation identifies a retry of an earlier unconfirmed change. Only that
+  exact operation's acknowledgement or definite rejection clears its retry identity;
+  other actions do not clear unresolved payments. Suspend/resume retain their
+  existing request behavior and cannot replay an obsolete cached action.
 - **Refresh from router** only reconciles evidence. It never records a sale.
 
 The Revenue page has a separate PPPoE recorded-payment section. It counts applied
