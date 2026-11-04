@@ -44,9 +44,9 @@ func TestTranslate_actions(t *testing.T) {
 		wantCmd []string
 		wantNil bool // no device command
 	}{
-		{provisioner.ActionEnsureKeepalive, []string{"/interface wireguard peers set [find interface=wg-magichub] persistent-keepalive=25s"}, false},
-		{provisioner.ActionRotateListenPort, []string{"/interface wireguard set [find name=wg-magichub] listen-port=13241"}, false},
-		{provisioner.ActionResetPeer, []string{"disable [find interface=wg-magichub]", "enable [find interface=wg-magichub]"}, false},
+		{provisioner.ActionEnsureKeepalive, []string{"/interface wireguard peers set [find interface=\"wg-magichub\"] persistent-keepalive=25s"}, false},
+		{provisioner.ActionRotateListenPort, []string{"/interface wireguard set [find name=\"wg-magichub\"] listen-port=13241"}, false},
+		{provisioner.ActionResetPeer, []string{"disable [find interface=\"wg-magichub\"]", "enable [find interface=\"wg-magichub\"]"}, false},
 		{provisioner.ActionReprobe, nil, true},
 		{provisioner.ActionEscalate, nil, true},
 		{provisioner.ActionReboot, []string{"/system reboot"}, false},
@@ -146,10 +146,10 @@ func TestSnapshot_populatesFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Snapshot: %v", err)
 	}
-	if !strings.Contains(fr.joined(), "/export file=mm-snap-peer2-") {
+	if !strings.Contains(fr.joined(), "/export file=\"mm-snap-peer2-") {
 		t.Fatalf("snapshot must export to file: %q", fr.joined())
 	}
-	if !strings.Contains(fr.joined(), "/system backup save name=mm-snap-peer2-") {
+	if !strings.Contains(fr.joined(), "/system backup save name=\"mm-snap-peer2-") {
 		t.Fatalf("snapshot must save a backup: %q", fr.joined())
 	}
 	if snap.ExportFile == "" || !strings.HasSuffix(snap.ExportFile, ".rsc") {
@@ -219,10 +219,10 @@ func TestRestore_revertsAndReenables(t *testing.T) {
 	}
 	joined := fr.joined()
 	for _, want := range []string{
-		"/interface wireguard set [find name=wg-magichub] listen-port=13231",
+		"/interface wireguard set [find name=\"wg-magichub\"] listen-port=13231",
 		"persistent-keepalive=25s",
 		"allowed-address=10.99.0.1/32",
-		"/interface wireguard peers enable [find interface=wg-magichub]",
+		"/interface wireguard peers enable [find interface=\"wg-magichub\"]",
 	} {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("restore missing %q in:\n%s", want, joined)

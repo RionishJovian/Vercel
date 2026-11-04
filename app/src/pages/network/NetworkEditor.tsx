@@ -44,7 +44,7 @@ const errMsg = (e: unknown) => (e as { data?: { error?: string } } | null)?.data
 const isOn = (v?: string) => v === "yes" || v === "true";
 
 function CurrentSettings({ inv, kind }: { inv: Inventory; kind: string }) {
-  const { t } = useI18n();
+  const { t, tn } = useI18n();
   const s = schema[kind];
   const menus: Array<[string, string]> = kind === "wan" ? [["dhcp_clients", "Automatic internet connections"], ["pppoe_clients", "PPPoE internet connections"], ["routes", "Router routes"]] : s.menu ? [[s.menu, s.title]] : [];
   if (!menus.length) return null;
@@ -53,12 +53,12 @@ function CurrentSettings({ inv, kind }: { inv: Inventory; kind: string }) {
       <h3>{t("net.current")}</h3><p className="soft small">{t("net.currentNote")}</p>
       {menus.map(([menu, title]) => (
         <section key={menu} className="stack">
-          <h4>{title}</h4>
+          <h4>{tn(title)}</h4>
           {!inv.available?.[menu] ? <p className="soft small">{t("net.unavailable")}</p> : objectsOf(inv, menu).length === 0 ? <p className="soft small">{t("net.noRecords")}</p> : objectsOf(inv, menu).map((o) => (
             <article className="rowitem recordcard" key={o.id}>
               <b>{labelOf(o)}</b>
               <dl className="facts">{Object.entries(o.values ?? {}).filter(([k]) => !isSecretField(k)).map(([k, v]) => (
-                <div key={k} style={{ display: "contents" }}><dt>{currentNames[k] || s.fields.find((f) => f[0] === k)?.[1] || k}</dt><dd>{k === "disabled" ? (isOn(v) ? t("net.disabled") : t("net.enabled")) : v || t("hub.notReported")}</dd></div>
+                <div key={k} style={{ display: "contents" }}><dt>{tn(currentNames[k] || s.fields.find((f) => f[0] === k)?.[1] || k)}</dt><dd>{k === "disabled" ? (isOn(v) ? t("net.disabled") : t("net.enabled")) : v || t("hub.notReported")}</dd></div>
               ))}</dl>
             </article>
           ))}
@@ -69,7 +69,7 @@ function CurrentSettings({ inv, kind }: { inv: Inventory; kind: string }) {
 }
 
 function TaskForm({ kind, inv, defaults, routerId, routerName, locked, setLocked, onPending }: { kind: string; inv: Inventory; defaults: Record<string, string>; routerId: string; routerName: string; locked: boolean; setLocked: (b: boolean) => void; onPending: (revertAt: string) => void }) {
-  const { t } = useI18n();
+  const { t, tn } = useI18n();
   const s = schema[kind], list = useMemo(() => listFor(inv, kind), [inv, kind]);
   const [recordId, setRecordId] = useState("");
   const selected = list.find((o) => o.id === recordId);
@@ -79,7 +79,7 @@ function TaskForm({ kind, inv, defaults, routerId, routerName, locked, setLocked
   const [consent, setConsent] = useState(false), [status, setStatus] = useState("");
   const [applied, setApplied] = useState(false), [removing, setRemoving] = useState(false);
   const stamp = useRef(0);
-  useEffect(() => { setValues(start(selected)); setReview(null); setConsent(false); setStatus(""); setApplied(false); setRemoving(false); stamp.current++; }, [kind, recordId, selected, defaults]);
+  useEffect(() => { setValues(start(selected)); setReview(null); setConsent(false); setStatus(""); setApplied(false); setRemoving(false); stamp.current++; }, [kind, recordId, selected, defaults]); // eslint-disable-line react-hooks/exhaustive-deps -- start() depends only on these
 
   const portTypes = kind === "vlan" ? ["ether", "bridge", "bond"] : kind === "ip_address" ? ["ether", "bridge", "bond", "vlan"] : ["ether", "bridge", "vlan", "bond", "pppoe-out"];
   const eligible = (inv.interfaces ?? []).filter((i) => portTypes.includes(i.type));
@@ -99,7 +99,7 @@ function TaskForm({ kind, inv, defaults, routerId, routerName, locked, setLocked
     if (key === "disabled") value = isOn(value) ? "yes" : "no";
     let options: Array<[string, string]> | null = null;
     if (type === "state") options = [["no", t("net.enabledOpt")], ["yes", t("net.disabledOpt")]];
-    if (type === "select") options = arg as Array<[string, string]>;
+    if (type === "select") options = (arg as Array<[string, string]>).map(([v, label]): [string, string] => [v, tn(label)]);
     if (type === "interface") options = [["", t("net.choosePort")], ...eligible.map((i): [string, string] => [i.name, `${i.name}${i.running ? " · " + t("net.running") : ""}`])];
     if (type === "record") options = [["", t("net.chooseRecord")], ...objectsOf(inv, arg as string).filter((o) => arg !== "ppp_profiles" || !o.values.name?.startsWith("mm-bb-")).map((o): [string, string] => [o.values.name, o.values.name])];
     const id = "nf-" + key;
@@ -160,7 +160,7 @@ function TaskForm({ kind, inv, defaults, routerId, routerName, locked, setLocked
         <form className="stack" onSubmit={preview}>
           {groups.map(([title, items]) => (
             <fieldset className="glass pad stack fs" key={title} disabled={locked}><legend>{title}</legend>
-              {items.map((f) => <label className="field" key={f[0]} htmlFor={"nf-" + f[0]}><span>{f[1]}</span>{control(f)}</label>)}
+              {items.map((f) => <label className="field" key={f[0]} htmlFor={"nf-" + f[0]}><span>{tn(f[1])}</span>{control(f)}</label>)}
             </fieldset>
           ))}
           <p className="soft small">{kind === "wan" ? t("net.hint.wan") : kind === "wifi" || kind === "wireless" ? t("net.hint.wifi") : t("net.hint.default")}</p>
@@ -194,7 +194,7 @@ const EMPTY_INVENTORY: Inventory = { interfaces: [], available: {}, objects: {},
  * applied. `reason` overrides the banner when the caller already knows why.
  */
 export function NetworkEditor({ workspace, router, canEdit, reason }: { workspace: Workspace; router?: RouterRow; canEdit: boolean; reason?: string }) {
-  const { t } = useI18n();
+  const { t, tn } = useI18n();
   const kinds = choices[workspace];
   const [load, setLoad] = useState<{ kind: "loading" } | { kind: "error"; err: unknown } | { kind: "ready"; inv: Inventory; defaults: Record<string, string> }>(router ? { kind: "loading" } : { kind: "error", err: null });
   const [task, setTask] = useState(kinds[0]);
@@ -254,19 +254,19 @@ export function NetworkEditor({ workspace, router, canEdit, reason }: { workspac
       )}
       {pendingNote && !waiting && <Note>{pendingNote}</Note>}
       {waiting && <PendingPanel routerId={routerId} revertAt={pendingAt} onDone={finishPending} />}
-      <details className="glass pad"><summary>{t("net.about")}</summary><p className="soft small">{lead} {t("net.reviewRequired")}</p></details>
+      <details className="glass pad"><summary>{t("net.about")}</summary><p className="soft small">{tn(lead)} {t("net.reviewRequired")}</p></details>
       {!offline && <div className="row"><div className="stack" style={{ gap: 2 }}><b>{t("net.loaded")}</b><span className="soft small">{(inv.interfaces ?? []).length} {t("net.interfaces")}. {t("net.openingSafe")}</span></div><button className="pill" type="button" disabled={locked || waiting} onClick={() => void reload()}>{t("net.refresh")}</button></div>}
-      <div className="tasks" role="group" aria-label={name}>
+      <div className="tasks" role="group" aria-label={tn(name)}>
         {kinds.map((k) => (
           <button type="button" className="task" key={k} aria-pressed={k === task} disabled={locked || waiting} onClick={() => setTask(k)}>
-            <b>{schema[k].title}</b><span className="soft small">{descriptions[k]}</span>
+            <b>{tn(schema[k].title)}</b><span className="soft small">{tn(descriptions[k])}</span>
             {!offline && <span className="mute small">{schema[k].menu ? `${objectsOf(inv, schema[k].menu!).length} ${t("net.records")}` : t("net.wizard")}</span>}
           </button>
         ))}
       </div>
       <section className="stack" aria-live="polite">
         {!offline && <CurrentSettings inv={inv} kind={task} />}
-        <h3>{s.title}</h3><p className="soft small">{descriptions[task]}</p>
+        <h3>{tn(s.title)}</h3><p className="soft small">{tn(descriptions[task])}</p>
         {blocked ? <Note>{blocked}</Note> : (
           <>
             {writeHold && <Note kind="warn">{writeHold}</Note>}

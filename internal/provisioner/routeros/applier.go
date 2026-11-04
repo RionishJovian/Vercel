@@ -62,18 +62,18 @@ func (a *Applier) Snapshot(ctx context.Context, _, peerID string, changes []prov
 	}
 	name := snapshotName(peerID, a.now())
 
-	if _, err := a.run.Run(ctx, fmt.Sprintf("/export file=%s", name)); err != nil {
+	if _, err := a.run.Run(ctx, fmt.Sprintf("/export file=%s", routerOSQuoted(name))); err != nil {
 		return provisioner.RollbackSnapshot{}, fmt.Errorf("routeros: snapshot export: %w", err)
 	}
-	if _, err := a.run.Run(ctx, fmt.Sprintf("/system backup save name=%s", name)); err != nil {
+	if _, err := a.run.Run(ctx, fmt.Sprintf("/system backup save name=%s", routerOSQuoted(name))); err != nil {
 		return provisioner.RollbackSnapshot{}, fmt.Errorf("routeros: snapshot backup: %w", err)
 	}
 
-	wgIface, err := a.run.Run(ctx, fmt.Sprintf("/interface wireguard print value-list detail where name=%s", a.iface))
+	wgIface, err := a.run.Run(ctx, fmt.Sprintf("/interface wireguard print value-list detail where name=%s", routerOSQuoted(a.iface)))
 	if err != nil {
 		return provisioner.RollbackSnapshot{}, fmt.Errorf("routeros: snapshot wg iface: %w", err)
 	}
-	wgPeers, err := a.run.Run(ctx, fmt.Sprintf("/interface wireguard peers print value-list detail where interface=%s", a.iface))
+	wgPeers, err := a.run.Run(ctx, fmt.Sprintf("/interface wireguard peers print value-list detail where interface=%s", routerOSQuoted(a.iface)))
 	if err != nil {
 		return provisioner.RollbackSnapshot{}, fmt.Errorf("routeros: snapshot wg peers: %w", err)
 	}
@@ -141,21 +141,21 @@ func (a *Applier) Translate(c provisioner.Change) ([]Step, error) {
 	switch c.Action {
 	case provisioner.ActionEnsureKeepalive:
 		return []Step{{
-			Command: fmt.Sprintf("/interface wireguard peers set [find interface=%s] persistent-keepalive=%s", a.iface, DefaultKeepalive),
+			Command: fmt.Sprintf("/interface wireguard peers set [find interface=%s] persistent-keepalive=%s", routerOSQuoted(a.iface), DefaultKeepalive),
 			Note:    "enforce 25s keepalive (spec 4.1)",
 		}}, nil
 	case provisioner.ActionResetPeer:
 		return []Step{
-			{Command: fmt.Sprintf("/interface wireguard peers disable [find interface=%s]", a.iface), Note: "disable peer to bust a stale conntrack pinhole"},
+			{Command: fmt.Sprintf("/interface wireguard peers disable [find interface=%s]", routerOSQuoted(a.iface)), Note: "disable peer to bust a stale conntrack pinhole"},
 			{Sleep: a.resetHold, Note: "hold past the UDP timeout"},
-			{Command: fmt.Sprintf("/interface wireguard peers enable [find interface=%s]", a.iface), Note: "re-enable the peer"},
+			{Command: fmt.Sprintf("/interface wireguard peers enable [find interface=%s]", routerOSQuoted(a.iface)), Note: "re-enable the peer"},
 		}, nil
 	case provisioner.ActionRotateListenPort:
 		if a.rotatePort <= 0 {
 			return nil, fmt.Errorf("routeros: rotate_listen_port needs a target port (provisioner.applier.listen_port_rotate_to); refusing")
 		}
 		return []Step{{
-			Command: fmt.Sprintf("/interface wireguard set [find name=%s] listen-port=%d", a.iface, a.rotatePort),
+			Command: fmt.Sprintf("/interface wireguard set [find name=%s] listen-port=%d", routerOSQuoted(a.iface), a.rotatePort),
 			Note:    "rotate the WireGuard listen-port",
 		}}, nil
 	case provisioner.ActionReprobe:
@@ -252,17 +252,17 @@ func (a *Applier) Restore(ctx context.Context, _ string, snap provisioner.Rollba
 		return fmt.Errorf("routeros: nil command runner")
 	}
 	if snap.WGListenPort > 0 {
-		if _, err := a.run.Run(ctx, fmt.Sprintf("/interface wireguard set [find name=%s] listen-port=%d", a.iface, snap.WGListenPort)); err != nil {
+		if _, err := a.run.Run(ctx, fmt.Sprintf("/interface wireguard set [find name=%s] listen-port=%d", routerOSQuoted(a.iface), snap.WGListenPort)); err != nil {
 			return fmt.Errorf("routeros: restore listen-port: %w", err)
 		}
 	}
 	if snap.WGPeerKeepalive != "" {
-		if _, err := a.run.Run(ctx, fmt.Sprintf("/interface wireguard peers set [find interface=%s] persistent-keepalive=%s", a.iface, snap.WGPeerKeepalive)); err != nil {
+		if _, err := a.run.Run(ctx, fmt.Sprintf("/interface wireguard peers set [find interface=%s] persistent-keepalive=%s", routerOSQuoted(a.iface), snap.WGPeerKeepalive)); err != nil {
 			return fmt.Errorf("routeros: restore keepalive: %w", err)
 		}
 	}
 	if snap.WGPeerAllowedAddress != "" {
-		if _, err := a.run.Run(ctx, fmt.Sprintf("/interface wireguard peers set [find interface=%s] allowed-address=%s", a.iface, snap.WGPeerAllowedAddress)); err != nil {
+		if _, err := a.run.Run(ctx, fmt.Sprintf("/interface wireguard peers set [find interface=%s] allowed-address=%s", routerOSQuoted(a.iface), snap.WGPeerAllowedAddress)); err != nil {
 			return fmt.Errorf("routeros: restore allowed-address: %w", err)
 		}
 	}
@@ -286,7 +286,7 @@ func (a *Applier) Restore(ctx context.Context, _ string, snap provisioner.Rollba
 		}
 	}
 	// Rollback must leave the peer ENABLED (committed design requirement).
-	if _, err := a.run.Run(ctx, fmt.Sprintf("/interface wireguard peers enable [find interface=%s]", a.iface)); err != nil {
+	if _, err := a.run.Run(ctx, fmt.Sprintf("/interface wireguard peers enable [find interface=%s]", routerOSQuoted(a.iface))); err != nil {
 		return fmt.Errorf("routeros: restore enable peer: %w", err)
 	}
 	return nil

@@ -3,9 +3,11 @@ package handler
 import (
 	"github.com/gin-gonic/gin"
 	"mega-magic/internal/auth"
+	"mega-magic/internal/database"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestBroadbandWritesRequireGateAndExplicitConfirmation(t *testing.T) {
@@ -39,5 +41,18 @@ func TestBroadbandWritesRequireGateAndExplicitConfirmation(t *testing.T) {
 		if locked := strings.Contains(w.Body.String(), "broadband_writes_off"); locked != (tc.want == 503) {
 			t.Fatalf("gate=%q broadband=%q: %s", tc.gate, tc.broadband, w.Body.String())
 		}
+	}
+}
+
+func TestOldestObservedFirstReachesEveryAccount(t *testing.T) {
+	at := func(m int) *time.Time { v := time.Date(2026, 11, 4, 12, m, 0, 0, time.UTC); return &v }
+	accounts := []database.BroadbandAccount{{ID: "new", ObservedAt: at(30)}, {ID: "never"}, {ID: "old", ObservedAt: at(10)}, {ID: "never2"}}
+	oldestObservedFirst(accounts)
+	got := []string{}
+	for _, a := range accounts {
+		got = append(got, a.ID)
+	}
+	if strings.Join(got, ",") != "never,never2,old,new" {
+		t.Fatal(got)
 	}
 }

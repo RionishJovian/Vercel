@@ -1,0 +1,53 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { I18nProvider } from "../i18n";
+import { ThemeProvider } from "../lib/theme";
+import { SignIn } from "./SignIn";
+
+let reply: () => Response | Promise<Response>;
+let bodies: unknown[];
+beforeEach(() => {
+  const store: Record<string, string> = { mm2_lang: "en" };
+  vi.stubGlobal("localStorage", { getItem: (k: string) => store[k] ?? null, setItem: (k: string, v: string) => { store[k] = v; }, removeItem: (k: string) => { delete store[k]; } });
+  vi.stubGlobal("matchMedia", () => ({ matches: true, addEventListener: () => {}, removeEventListener: () => {} }));
+  bodies = [];
+  vi.stubGlobal("fetch", vi.fn(async (_url: string, init?: RequestInit) => { bodies.push(JSON.parse(String(init?.body))); return reply(); }));
+});
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+
+const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+const submit = (onDone = vi.fn()) => {
+  const { container } = render(<ThemeProvider><I18nProvider><SignIn onDone={onDone} /></I18nProvider></ThemeProvider>);
+  fireEvent.change(screen.getByLabelText("Email"), { target: { value: "  owner@example.com " } });
+  fireEvent.change(screen.getByLabelText("Password"), { target: { value: "a-long-password" } });
+  fireEvent.submit(container.querySelector("form")!);
+  return onDone;
+};
+
+describe("Sign in", () => {
+  it("sends the trimmed email and continues on success", async () => {
+    reply = () => json(200, {});
+    const done = submit();
+    await waitFor(() => expect(done).toHaveBeenCalled());
+    expect(bodies[0]).toEqual({ email: "owner@example.com", password: "a-long-password" });
+  });
+  it("says to check the details after a wrong password", async () => {
+    reply = () => json(401, { error: "invalid credentials" });
+    const done = submit();
+    expect((await screen.findByRole("alert")).textContent).toContain("Check your email and password");
+    expect(done).not.toHaveBeenCalled();
+  });
+  it("tells a locked-out user to wait, not to recheck their password", async () => {
+    reply = () => json(429, { error: "too many failed sign-in attempts" });
+    submit();
+    const alert = (await screen.findByRole("alert")).textContent;
+    expect(alert).toContain("Wait 15 minutes");
+    expect(alert).not.toContain("Check your email");
+  });
+  it("reports an unreachable server separately and allows a retry", async () => {
+    reply = () => Promise.reject(new TypeError("offline"));
+    submit();
+    expect((await screen.findByRole("alert")).textContent).toContain("Could not reach the server");
+    expect((screen.getByRole("button", { name: "Sign in" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+});

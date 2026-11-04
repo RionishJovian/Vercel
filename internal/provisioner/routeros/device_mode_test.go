@@ -98,3 +98,22 @@ func TestSetupsStopBeforeWritingWhenDeviceModeRefuses(t *testing.T) {
 		t.Fatal("gateway setup:", e)
 	}
 }
+
+// Finding 19: an interface name from configuration must not be able to add commands.
+func TestApplierQuotesItsInterfaceName(t *testing.T) {
+	var commands []string
+	run := runnerFunc(func(_ context.Context, cmd string) (string, error) {
+		commands = append(commands, cmd)
+		return "", nil
+	})
+	a := NewApplier(run, `wg; /system reset-configuration`, 0, 0)
+	_, _ = a.Snapshot(context.Background(), "biz", "peer", nil)
+	if len(commands) < 3 {
+		t.Fatal("snapshot ran too few commands:", commands)
+	}
+	for _, cmd := range commands {
+		if strings.Contains(cmd, "wg; /system") && !strings.Contains(cmd, `"wg; /system reset-configuration"`) {
+			t.Fatal("interface name reached the command unquoted:", cmd)
+		}
+	}
+}

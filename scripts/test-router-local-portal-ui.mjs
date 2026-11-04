@@ -58,7 +58,7 @@ function fixture({ chap = true, helper = md5, submitError = false, code = '  abc
   });
   context.window = context;
   const rendered = html.replaceAll('$(chap-id)', chap ? octal(binaryID) : '').replaceAll('$(chap-challenge)', chap ? octal(binaryChallenge) : '');
-  for (const match of rendered.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/g)) {
+  for (const match of rendered.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script[^>]*>/gi)) {
     if (!attributes(match[1]).src) vm.runInContext(match[2], context, { filename: 'router-login.html' });
   }
   return {
@@ -77,7 +77,7 @@ test('generated page submits a real form and loads the cloned router-local CHAP 
   assert.equal(visibleForm.attrs.method, 'post');
   assert.match(visibleForm.body, /<button\b[^>]*type="submit"/);
   assert.match(visibleForm.body, /<input\b[^>]*id="voucher"/);
-  const sources = [...html.matchAll(/<script\b([^>]*)>/g)].map(match => attributes(match[1]).src).filter(Boolean);
+  const sources = [...html.matchAll(/<script\b([^>]*)>/gi)].map(match => attributes(match[1]).src).filter(Boolean);
   assert.deepEqual(sources, ['md5.js']);
   assert.equal(new URL(sources[0], 'http://10.5.50.1/login').pathname, '/md5.js');
   assert.match(html, /\$\(if chap-id\)<script src="md5\.js"><\/script>\$\(endif\)/);

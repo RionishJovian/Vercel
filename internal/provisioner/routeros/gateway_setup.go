@@ -177,7 +177,7 @@ func gatewaySteps(g GatewaySetup, network *net.IPNet) (GatewayPlan, []gatewaySte
 	add("/ip dhcp-server", "name", name, "Enable DHCP on "+iface, map[string]string{"name": name, "interface": iface, "address-pool": name, "lease-time": "1h", "disabled": "no"})
 	add("/ip firewall nat", "comment", name, "Masquerade only "+network.String()+" via "+g.WAN, map[string]string{"chain": "srcnat", "action": "masquerade", "src-address": network.String(), "out-interface": g.WAN, "comment": name})
 	if g.RadiusAddress != "" {
-		add("/radius", "comment", name, "Connect Hotspot to RADIUS "+g.RadiusAddress+" (secret hidden)", map[string]string{"address": g.RadiusAddress, "service": "hotspot", "secret": g.RadiusSecret, "comment": name})
+		add("/radius", "comment", name, "Connect Hotspot to RADIUS "+g.RadiusAddress+" (secret hidden). RouterOS may refuse replies that lack Message-Authenticator, so check the server sends it", map[string]string{"address": g.RadiusAddress, "service": "hotspot", "secret": g.RadiusSecret, "comment": name})
 	}
 	if g.Hotspot {
 		radius := "no"
