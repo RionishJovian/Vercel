@@ -5,22 +5,75 @@ import { I18nProvider } from "../../i18n";
 import { Broadband } from "./Broadband";
 
 let calls: Array<{ path: string; body: Record<string, unknown> }>;
-let inventoryStatus: number, inventoryBody: unknown, syncStatus: number;
+let inventoryStatus: number, inventoryBody: unknown, syncStatus: number, accountsStatus: number;
 const id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", operation = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 beforeEach(() => {
   localStorage.setItem("mm2_lang", "en"); calls = [];
-  inventoryStatus = 200; syncStatus = 200;
+  inventoryStatus = 200; syncStatus = 200; accountsStatus = 200;
   inventoryBody = { inventory: { available: { ppp_profiles: true }, objects: { ppp_profiles: [{ values: { name: "default" } }] } } };
   vi.stubGlobal("confirm", vi.fn(() => true));
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
     if (init?.method === "POST") calls.push({ path: String(url), body: JSON.parse(String(init.body)) });
     if (String(url).endsWith("/network/inventory")) return new Response(JSON.stringify(inventoryBody), { status: inventoryStatus, headers: { "content-type": "application/json" } });
     if (String(url).endsWith("/broadband/sync")) return new Response(JSON.stringify(syncStatus === 200 ? { synchronized: 0 } : { error: "router unavailable" }), { status: syncStatus, headers: { "content-type": "application/json" } });
+    if (init?.method !== "POST" && accountsStatus !== 200) return new Response(JSON.stringify({ error: "temporarily unavailable" }), { status: accountsStatus, headers: { "content-type": "application/json" } });
     return new Response(JSON.stringify(init?.method === "POST" ? { operation: { state: "applied" } } : { accounts: [{ id, username: "home001", profile: "default", observation: null, pending_operation: operation }], write_enabled: true }), { status: 200, headers: { "content-type": "application/json" } });
   }));
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 const open = (canEdit = true) => render(<SWRConfig value={{ provider: () => new Map() }}><I18nProvider><Broadband routerId="router-a" routerName="Shop router" canEdit={canEdit} /></I18nProvider></SWRConfig>);
+
+it("recovers a failed account read without router writes, including for viewers", async () => {
+  accountsStatus = 503;
+  open(false);
+  await screen.findByText("Broadband records are unavailable. Existing services are unchanged.");
+  expect(screen.getByText("Shop router")).toBeTruthy();
+  const normalFetch = globalThis.fetch;
+  let finishRead!: () => void;
+  const held = new Promise<void>((resolve) => { finishRead = resolve; });
+  vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => { await held; return normalFetch(url, init); }));
+  const reload = screen.getByRole("button", { name: "Reload records" });
+  fireEvent.click(reload); fireEvent.click(reload);
+  expect(reload.matches(":disabled")).toBe(true);
+  accountsStatus = 200; finishRead();
+  expect(await screen.findByText("home001")).toBeTruthy();
+  expect(screen.queryByText("Broadband records are unavailable. Existing services are unchanged.")).toBeNull();
+  expect(calls).toEqual([]);
+  expect(window.confirm).not.toHaveBeenCalled();
+});
+
+it("retains form details and an uncertain paid identity across failed account reads", async () => {
+  const normalFetch = globalThis.fetch;
+  let loseReply = true;
+  vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+    if (init?.method === "POST" && loseReply) {
+      calls.push({ path: String(url), body: JSON.parse(String(init.body)) });
+      loseReply = false; accountsStatus = 503;
+      throw new TypeError("reply lost");
+    }
+    return normalFetch(url, init);
+  }));
+  open(); fireEvent.click(screen.getByText("New account", { exact: true }));
+  const install = screen.getByRole("button", { name: "Install account" });
+  await waitFor(() => expect(install.matches(":disabled")).toBe(false));
+  fireEvent.change(screen.getByLabelText("Username"), { target: { value: "home002" } });
+  fireEvent.change(screen.getByLabelText("Password"), { target: { value: "synthetic-password" } });
+  fireEvent.change(screen.getByRole("combobox"), { target: { value: "default" } });
+  fireEvent.submit(install.closest("form")!);
+  await screen.findByText("Broadband records are unavailable. Existing services are unchanged.");
+  expect((screen.getByLabelText("Username") as HTMLInputElement).value).toBe("home002");
+  expect((screen.getByLabelText("Password") as HTMLInputElement).value).toBe("synthetic-password");
+  expect(install.matches(":disabled")).toBe(true);
+  expect(screen.getByRole("button", { name: "Retry saved operation" }).matches(":disabled")).toBe(true);
+  accountsStatus = 200;
+  fireEvent.click(screen.getByRole("button", { name: "Reload records" }));
+  await waitFor(() => expect(install.matches(":disabled")).toBe(false));
+  expect(calls).toHaveLength(1);
+  fireEvent.submit(install.closest("form")!);
+  await screen.findByText("Router change verified. Payment records were not duplicated.");
+  expect(calls).toHaveLength(2);
+  expect(calls[1].body).toEqual(calls[0].body);
+});
 
 it("retries the stored operation rather than recording another payment", async () => {
   open(); fireEvent.click(await screen.findByRole("button", { name: "Retry saved operation" }));
