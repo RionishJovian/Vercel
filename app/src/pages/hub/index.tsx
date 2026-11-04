@@ -10,38 +10,14 @@ import { Skeleton } from "../../components/Skeleton";
 import { Enrollment } from "./Enrollment";
 import { Maintenance } from "./Maintenance";
 import { DeviceForm, LAYERS } from "../devices/DeviceForm";
-import { enrollmentUnavailableKey, lookupError } from "./messages";
+import { enrollmentUnavailableKey } from "./messages";
+import { ConnectionCheck } from "./ConnectionCheck";
 import type { RouterRow } from "../routers";
 
 interface GW extends RouterRow { site_id?: string | null; management_ip?: string; vendor?: string; device_model?: string }
 interface Capability { available?: boolean; lookup_enabled?: boolean; code?: string }
-interface Peer { handshake_status?: string; tunnel_address?: string; last_handshake_at?: string }
 const EDITORS = ["OWNER", "ADMIN", "DEVELOPER"];
 const errText = (e: unknown, fallback: string) => { const d = (e as { data?: { reason?: string; error?: string } } | null)?.data; return d?.reason || d?.error || (e instanceof Error ? e.message : "") || fallback; };
-
-function Lookup({ id }: { id: string }) {
-  const { t } = useI18n();
-  const [s, setS] = useState<{ busy: boolean; peer?: Peer; key?: string }>({ busy: false });
-  async function check() {
-    setS({ busy: true });
-    try { setS({ busy: false, peer: await api.get<Peer>(`/vps/peers/${encodeURIComponent(id)}/live`) }); }
-    catch (e) { if (isUnauthorized(e)) throw e; setS({ busy: false, key: lookupError(e instanceof ApiError ? e.status : undefined, (e as ApiError).data ? ((e as ApiError).data as { code?: string }).code : undefined, e instanceof Error ? e.message : "") }); }
-  }
-  const p = s.peer;
-  return (
-    <div className="stack">
-      <button className="pill" type="button" disabled={s.busy} onClick={() => void check()}>{s.busy ? t("hub.checkingHub") : t("hub.check")}</button>
-      {s.key && <Note kind="warn">{t(s.key)}</Note>}
-      {p && (
-        <div className="note" role="status">
-          <b>{p.handshake_status === "recent_handshake" ? t("hub.hs.recent") : p.handshake_status === "inactive" ? t("hub.hs.inactive") : t("hub.hs.none")}</b>
-          <dl className="facts"><dt>{t("hub.addr")}</dt><dd>{p.tunnel_address || t("hub.notReported")}</dd><dt>{t("hub.lastHs")}</dt><dd>{p.last_handshake_at ? new Date(p.last_handshake_at).toLocaleString() : t("hub.never")}</dd></dl>
-          <p className="soft small">{t("hub.lookupNote")}</p>
-        </div>
-      )}
-    </div>
-  );
-}
 
 function Card({ r, state, canEdit, cap, openId, setOpen, onChanged }: { r: GW; state: string; canEdit: boolean; cap: Capability; openId: string; setOpen: (id: string) => void; onChanged: () => void }) {
   const { t } = useI18n();
@@ -61,7 +37,7 @@ function Card({ r, state, canEdit, cap, openId, setOpen, onChanged }: { r: GW; s
         <dt>{t("hub.mgmtIp")}</dt><dd className="num">{r.management_ip || t("hub.notRegistered")}</dd>
         <dt>{t("hub.lastSignal")}</dt><dd>{r.last_seen_at ? new Date(r.last_seen_at).toLocaleString() : t("hub.noSignal")}</dd>
       </dl>
-      {canEdit && cap.lookup_enabled && <Lookup id={r.device_id} />}
+      {canEdit && cap.lookup_enabled && <ConnectionCheck id={r.device_id} />}
       {canEdit && (cap.available ? (
         <>
           <button className="btn" type="button" aria-expanded={openId === r.device_id} onClick={() => setOpen(openId === r.device_id ? "" : r.device_id)}>{t("hub.connect")}</button>

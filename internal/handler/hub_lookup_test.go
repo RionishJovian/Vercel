@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -53,6 +54,14 @@ func TestLivePeerAuthorizationAndHonestStatus(t *testing.T) {
 			h := &VPSHandler{livePlan: func(string) bool { return tc.plan }, liveDevice: func(*gin.Context, string, string) (*model.Device, error) {
 				return &model.Device{DeviceID: "gateway-a", BusinessID: tc.business, DeploymentLayer: tc.layer}, nil
 			}}
+			stateReads := 0
+			h.ConfigureHubConnectionState(func(_ context.Context, biz, id string) (HubConnectionState, error) {
+				stateReads++
+				if biz != "business-a" || id != "gateway-a" {
+					t.Fatal("untrusted diagnostic identity")
+				}
+				return HubConnectionState{Management: "missing", Setup: "expired"}, nil
+			})
 			if tc.enabled {
 				h.liveHub = s
 			}
@@ -70,9 +79,50 @@ func TestLivePeerAuthorizationAndHonestStatus(t *testing.T) {
 			if tc.want != 200 && s.calls != 0 {
 				t.Fatal("unauthorized Hub call")
 			}
+			if tc.want != 200 && stateReads != 0 {
+				t.Fatal("unauthorized diagnostics read")
+			}
+			if tc.want == 200 && (stateReads != 1 || !strings.Contains(w.Body.String(), `"connection":{"management":"missing","setup":"expired"}`) || w.Header().Get("Cache-Control") != "no-store") {
+				t.Fatal("connection diagnostics absent or cached", w.Body.String())
+			}
 			if tc.want == 200 && (s.calls != 1 || !strings.Contains(w.Body.String(), tc.status) || !strings.Contains(w.Body.String(), `"lan_reachability_verified":false`)) {
 				t.Fatal(w.Body.String())
 			}
 		})
+	}
+}
+
+func TestLivePeerDiagnosticFailureRetainsHandshakeWithoutSecrets(t *testing.T) {
+	now := time.Now()
+	for _, foreign := range []bool{false, true} {
+		s := &lookupStub{peer: hub.Peer{TenantID: "business-a", RouterID: "gateway-a", State: "active", LastHandshakeAt: &now}}
+		if foreign {
+			s.peer.TenantID = "business-b"
+		}
+		h := &VPSHandler{liveHub: s, livePlan: func(string) bool { return true }, liveDevice: func(*gin.Context, string, string) (*model.Device, error) {
+			return &model.Device{DeviceID: "gateway-a", BusinessID: "business-a", DeploymentLayer: "MAIN_GATEWAY"}, nil
+		}}
+		reads := 0
+		h.ConfigureHubConnectionState(func(context.Context, string, string) (HubConnectionState, error) {
+			reads++
+			return HubConnectionState{}, errors.New("PRIVATE fixture must not escape")
+		})
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest("GET", "/", nil)
+		c.Params = gin.Params{{Key: "deviceId", Value: "gateway-a"}}
+		c.Set(auth.ContextKeyBusinessID, "business-a")
+		c.Set(auth.ContextKeyUserID, "owner-a")
+		c.Set(auth.ContextKeyUserRole, "OWNER")
+		h.LivePeer(c)
+		if foreign {
+			if w.Code != 502 || reads != 0 {
+				t.Fatal("foreign Hub identity read diagnostics", w.Body.String())
+			}
+			continue
+		}
+		if w.Code != 200 || reads != 1 || !strings.Contains(w.Body.String(), `"handshake_status":"recent_handshake"`) || !strings.Contains(w.Body.String(), `"connection":{"management":"unknown","setup":"unknown"}`) || strings.Contains(w.Body.String(), "PRIVATE") {
+			t.Fatal(w.Code, w.Body.String())
+		}
 	}
 }

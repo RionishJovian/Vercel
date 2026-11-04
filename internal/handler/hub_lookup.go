@@ -16,6 +16,16 @@ type hubInspector interface {
 	InspectRouter(context.Context, hub.Identity) (hub.Peer, error)
 }
 
+// Labels describe app-side records, never proof of router authentication.
+type HubConnectionState struct {
+	Management string `json:"management"`
+	Setup      string `json:"setup"`
+}
+
+func (h *VPSHandler) ConfigureHubConnectionState(read func(context.Context, string, string) (HubConnectionState, error)) {
+	h.liveConnectionState = read
+}
+
 // ConfigureHubLookup enables only inspection, not enrollment or router writes.
 func (h *VPSHandler) ConfigureHubLookup(client hubInspector) {
 	h.liveHub = client
@@ -34,6 +44,7 @@ func (h *VPSHandler) ConfigureHubLookup(client hubInspector) {
 // LivePeer uses the actual Hub allocation. A configured peer is not necessarily
 // online and a recent handshake is not evidence of LAN or REST reachability.
 func (h *VPSHandler) LivePeer(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
 	businessID, userID := auth.GetBusinessID(c), auth.GetUserID(c)
 	if businessID == "" || userID == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
@@ -79,5 +90,14 @@ func (h *VPSHandler) LivePeer(c *gin.Context) {
 			status = "recent_handshake"
 		}
 	}
-	c.JSON(http.StatusOK, gin.H{"device_id": device.DeviceID, "peer_id": peer.PeerID, "tunnel_address": peer.TunnelAddress, "state": peer.State, "handshake_status": status, "last_handshake_at": peer.LastHandshakeAt, "rx_bytes": peer.RXBytes, "tx_bytes": peer.TXBytes, "lan_reachability_verified": false})
+	connection := HubConnectionState{Management: "unknown", Setup: "unknown"}
+	if h.liveConnectionState != nil {
+		read, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+		value, e := h.liveConnectionState(read, businessID, device.DeviceID)
+		cancel()
+		if e == nil {
+			connection = value
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"device_id": device.DeviceID, "peer_id": peer.PeerID, "tunnel_address": peer.TunnelAddress, "state": peer.State, "handshake_status": status, "last_handshake_at": peer.LastHandshakeAt, "rx_bytes": peer.RXBytes, "tx_bytes": peer.TXBytes, "lan_reachability_verified": false, "connection": connection})
 }

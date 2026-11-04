@@ -3,13 +3,14 @@ import { join } from "node:path";
 import base from "./dict.json";
 import extra from "./extra";
 import broadband from "./broadband";
+import hubConnection from "./hubConnection";
 
 // Every t("key") used in the app must exist in both languages; otherwise the raw key shows on screen.
 function sources(dir: string): string[] {
   return readdirSync(dir).flatMap((f) => { const p = join(dir, f); return statSync(p).isDirectory() ? sources(p) : /\.tsx?$/.test(f) && !f.endsWith(".test.ts") ? [p] : []; });
 }
-const en = new Set([...Object.keys(base.en), ...Object.keys(extra.en), ...Object.keys(broadband.en)]);
-const my = new Set([...Object.keys(base.my), ...Object.keys(extra.my), ...Object.keys(broadband.my)]);
+const en = new Set([...Object.keys(base.en), ...Object.keys(extra.en), ...Object.keys(broadband.en), ...Object.keys(hubConnection.en)]);
+const my = new Set([...Object.keys(base.my), ...Object.keys(extra.my), ...Object.keys(broadband.my), ...Object.keys(hubConnection.my)]);
 
 describe("i18n keys", () => {
   // A key reused with a different meaning silently renames an older screen's label.
