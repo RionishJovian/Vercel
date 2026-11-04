@@ -138,7 +138,7 @@ func (h *SecurityHandler) Broadband(c *gin.Context) {
 			return broadband.ErrState
 		}
 		if action == "create" {
-			if !broadbandName(in.Username) || !broadbandName(in.Profile) || len(in.Password) < 10 || len(in.Password) > 128 || strings.ContainsAny(in.Password, "\r\n\x00") {
+			if !broadbandName(in.Username) || !broadband.ValidProfileName(in.Profile) || len(in.Password) < 10 || len(in.Password) > 128 || strings.ContainsAny(in.Password, "\r\n\x00") {
 				return broadband.ErrState
 			}
 			if _, e := tx.Exec(`INSERT INTO broadband_accounts(id,business_id,device_id,username,profile) VALUES($1,$2,$3,$4,$5) ON CONFLICT(business_id,id) DO NOTHING`, account, biz, device, in.Username, in.Profile); e != nil {

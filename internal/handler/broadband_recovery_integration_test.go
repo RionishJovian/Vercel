@@ -83,7 +83,7 @@ func TestBroadbandRecoversLostReplyWithoutDuplicatePayment(t *testing.T) {
 		r.ServeHTTP(w, req)
 		return w
 	}
-	w := call("/routers/"+device+"/broadband/accounts", `{"operation_id":"`+op+`","username":"home001","password":"test-password-only","profile":"default","period_days":30,"amount_mmk":15000,"confirm":true}`)
+	w := call("/routers/"+device+"/broadband/accounts", `{"operation_id":"`+op+`","username":"home001","password":"test-password-only","profile":"Home 20M","period_days":30,"amount_mmk":15000,"confirm":true}`)
 	if w.Code != 502 {
 		t.Fatal(w.Code, w.Body.String())
 	}
@@ -107,6 +107,13 @@ func TestBroadbandRecoversLostReplyWithoutDuplicatePayment(t *testing.T) {
 		t.Fatal("unknown/foreign router reached provisioning", w.Code, router.writes)
 	}
 	if e = withTenant(db, biz, func(tx *sql.Tx) error {
+		var profile string
+		if e := tx.QueryRow(`SELECT profile FROM broadband_accounts WHERE business_id=$1 AND id=$2`, biz, op).Scan(&profile); e != nil {
+			return e
+		}
+		if profile != "Home 20M" {
+			t.Fatal("profile label was changed", profile)
+		}
 		var n, total int
 		e := tx.QueryRow(`SELECT count(*),sum(amount_mmk) FROM broadband_operations WHERE business_id=$1 AND state='applied'`, biz).Scan(&n, &total)
 		if n != 1 || total != 15000 {

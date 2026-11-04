@@ -16,7 +16,7 @@ const bbMarker = "mega-magic:broadband:v1"
 func bbProfile(id string) string { return "mm-bb-" + strings.ReplaceAll(id, "-", "") }
 
 func validBBSpec(s broadband.Spec) bool {
-	if !broadband.UUID.MatchString(s.AccountID) || !broadband.UUID.MatchString(s.OperationID) || !gatewayInterfacePattern.MatchString(s.Username) || len(s.Username) > 64 || !gatewayInterfacePattern.MatchString(s.Profile) {
+	if !broadband.UUID.MatchString(s.AccountID) || !broadband.UUID.MatchString(s.OperationID) || !gatewayInterfacePattern.MatchString(s.Username) || len(s.Username) > 64 || !broadband.ValidProfileName(s.Profile) {
 		return false
 	}
 	switch s.Action {
