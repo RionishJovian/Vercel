@@ -693,7 +693,19 @@ func TestCHRLabNetworkForms(t *testing.T) {
 			return NetworkRequest{Kind: "pppoe_client", Values: map[string]string{"name": "isp2", "interface": "lan0", "user": "labisp", "password": "lab-test-password", "distance": "5", "disabled": "yes"}}
 		}},
 		{"edit customer network", func(t *testing.T) NetworkRequest {
-			return NetworkRequest{Kind: "edit_network", ID: id(t, "dhcp", "name", "mm-labnet"), Values: map[string]string{"pool_start": "10.60.0.20", "pool_end": "10.60.0.210", "lease-time": "2h", "dns": "1.1.1.1,8.8.8.8", "disabled": "no"}}
+			// The network survives between runs, and the app rightly refuses a change that
+			// changes nothing, so choose a lease time the router does not have yet.
+			inv, e := a.ReadNetwork(ctx, biz, dev)
+			if e != nil {
+				t.Fatal(e)
+			}
+			lease := "2h"
+			for _, o := range inv.Objects["dhcp"] {
+				if o.Values["name"] == "mm-labnet" && networkEqual("lease-time", o.Values["lease-time"], "2h") {
+					lease = "3h"
+				}
+			}
+			return NetworkRequest{Kind: "edit_network", ID: id(t, "dhcp", "name", "mm-labnet"), Values: map[string]string{"pool_start": "10.60.0.20", "pool_end": "10.60.0.210", "lease-time": lease, "dns": "1.1.1.1,8.8.8.8", "disabled": "no"}}
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) { apply(t, tc.req(t)) })
