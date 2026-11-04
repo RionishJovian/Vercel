@@ -5,6 +5,7 @@ import { asArray, num, type Me } from "../lib/types";
 import { useI18n } from "../i18n";
 import { BackLink, Field, Note, PageHead } from "../components/ui";
 import { Skeleton } from "../components/Skeleton";
+import { errorText } from "../lib/errors";
 
 const SiteMap = lazy(() => import("../components/SiteMap"));
 
@@ -12,7 +13,6 @@ interface Site { site_id: string; name: string; location?: string | null; timezo
 interface Conn { site_id?: string | null; cloud_status?: string; cloud_last_seen_at?: string }
 const EDITORS = ["OWNER", "ADMIN", "DEVELOPER"];
 const SELECTED = "mm_selected_site";
-const errText = (e: unknown, fallback: string) => { const d = (e as { data?: { error?: string } } | null)?.data; return d?.error || (e instanceof Error ? e.message : "") || fallback; };
 
 /** A path is live only when its last report is recent (5 minutes) and not from the future. */
 export function connectionIsFresh(c: Conn, now = Date.now()): boolean {
@@ -35,7 +35,7 @@ function SiteForm({ site, coords, setCoords, onDone, onCancel }: { site: Site | 
     if ((body.latitude === null) !== (body.longitude === null)) { setMsg(t("site.bothCoords")); return; }
     setBusy(true); setMsg("");
     try { if (site) await api.put("/sites/" + encodeURIComponent(site.site_id), body); else await api.post("/sites", body); onDone(); }
-    catch (err) { if (isUnauthorized(err)) throw err; setMsg(errText(err, t("site.saveFail"))); setBusy(false); }
+    catch (err) { if (isUnauthorized(err)) throw err; setMsg(errorText(err, t("site.saveFail"))); setBusy(false); }
   }
   return (
     <form className="glass pad stack" onSubmit={save}>
@@ -79,7 +79,7 @@ export function Sites({ me }: { me: Me }) {
   async function remove(id: string) {
     setErr("");
     try { await api.del("/sites/" + encodeURIComponent(id)); setConfirmDel(""); if (selected === id) pick(""); void sitesRes.mutate(); }
-    catch (e) { if (isUnauthorized(e)) throw e; setErr(errText(e, t("site.delFail"))); setConfirmDel(""); }
+    catch (e) { if (isUnauthorized(e)) throw e; setErr(errorText(e, t("site.delFail"))); setConfirmDel(""); }
   }
 
   return (

@@ -3,8 +3,9 @@ import useSWR from "swr";
 import { api, fetcher, isUnauthorized } from "../lib/api";
 import { asArray, mmk } from "../lib/types";
 import { useI18n } from "../i18n";
-import { Note } from "../components/ui";
+import { Note, SectionHead } from "../components/ui";
 import { Skeleton } from "../components/Skeleton";
+import { errorText } from "../lib/errors";
 
 interface Summary { today: number; last7: number; last30: number; all_time: number; total: number; approved: number; pending: number; rejected: number; days: Array<{ key: string; amount: number }>; plans: Array<{ key: string; requests: number; approved: number; revenue: number }> }
 interface Req { id: string; created_at?: string; decided_at?: string; plan_key?: string; amount?: number; bank_reference?: string; tx_last6?: string; status?: string }
@@ -15,7 +16,6 @@ export const validSummary = (c: unknown): Summary | null => { const s = c as Sum
 /** A cell starting with = + - @ would run as a formula in a spreadsheet, so it is prefixed with an apostrophe. */
 export const csvCell = (value: unknown) => { let text = String(value == null ? "" : value); if (/^(?:\s*[=+\-@]|\t|\r)/.test(text)) text = "'" + text; return `"${text.replaceAll('"', '""')}"`; };
 const dayLabel = (k: string) => new Date(`${k}T12:00:00+06:30`).toLocaleDateString(undefined, { weekday: "short", timeZone: "Asia/Yangon" });
-const errText = (e: unknown, f: string) => { const m = e instanceof Error ? e.message : ""; return m && !/^http-\d+$/.test(m) ? m : f; };
 
 export function RevenuePayments({ canDecide }: { canDecide: boolean }) {
   const { t } = useI18n();
@@ -27,7 +27,7 @@ export function RevenuePayments({ canDecide }: { canDecide: boolean }) {
   async function decide(id: string, action: "approve" | "reject") {
     setBusy(id + action); setMsg(`${t(action === "approve" ? "rp.approving" : "rp.rejecting")}…`);
     try { await api.post(`/guest-wifi/${action}/${encodeURIComponent(id)}`, {}); setMsg(""); await Promise.all([inbox.mutate(), sum.mutate()]); }
-    catch (e) { if (isUnauthorized(e)) throw e; setMsg(errText(e, t(action === "approve" ? "rp.approveFail" : "rp.rejectFail"))); }
+    catch (e) { if (isUnauthorized(e)) throw e; setMsg(errorText(e, t(action === "approve" ? "rp.approveFail" : "rp.rejectFail"))); }
     setBusy("");
   }
   function exportCsv() {
@@ -41,13 +41,13 @@ export function RevenuePayments({ canDecide }: { canDecide: boolean }) {
   const max = Math.max(1, ...(s?.days ?? []).map((d) => Number(d.amount)));
   return (
     <>
-      <h2>{t("rp.title")}</h2>
+      <SectionHead title={t("rp.title")} help={t("rp.help")} />
       {!s ? <Note kind="warn">{t("rp.noTotals")}</Note> : (
         <>
           <div className="capsules wrap">
             {([["today", s.today, "rp.today"], ["last7", s.last7, "h.last7"], ["last30", s.last30, "h.last30"], ["all", s.all_time, "rv.all"]] as const).map(([k, v, label]) => <div className="capsule" key={k}><span className="soft small">{t(label)}</span><b className="num">{mmk(v)}</b></div>)}
           </div>
-          <p className="soft small">{t("rp.help")} {s.approved} {t("rp.approvedSales")}</p>
+          <p className="soft small">{s.approved} {t("rp.approvedSales")}</p>
           <section className="glass pad stack"><h3>{t("rp.sevenDay")}</h3>
             <div className="bars" role="img" aria-label={t("rp.sevenDay")}>{s.days.map((d) => <div className="bar-col" key={d.key} title={`${d.key} · ${mmk(Number(d.amount))}`}><span className="small num">{Number(d.amount) ? mmk(Number(d.amount)) : "—"}</span><i style={{ height: Math.max(Number(d.amount) ? 8 : 2, Math.round((Number(d.amount) / max) * 120)) }} /><span className="soft small">{dayLabel(d.key)}</span></div>)}</div>
           </section>
@@ -60,8 +60,7 @@ export function RevenuePayments({ canDecide }: { canDecide: boolean }) {
           </section>
         </>
       )}
-      <section className="stack"><div className="row"><h2>{t("rp.inbox")}</h2><button className="pill" type="button" disabled={!reqs.length} onClick={exportCsv}>{t("rp.export")}</button></div>
-        <p className="soft small">{t("rp.inboxHelp")}</p>
+      <section className="stack"><div className="row"><SectionHead title={t("rp.inbox")} help={t("rp.inboxHelp")} /><button className="pill" type="button" disabled={!reqs.length} onClick={exportCsv}>{t("rp.export")}</button></div>
         {inbox.error && <Note kind="warn">{t("rp.inboxDown")}</Note>}
         {msg && <p className="note" role="status">{msg}</p>}
         {!reqs.length && !inbox.error ? <Note>{t("rp.none")}</Note> : reqs.map((r) => {

@@ -3,8 +3,8 @@ import { api, isUnauthorized } from "../../lib/api";
 import { useI18n } from "../../i18n";
 import { Note } from "../../components/ui";
 import { Migration } from "./Migration";
+import { errorText } from "../../lib/errors";
 
-const errText = (e: unknown, f: string) => (e as { data?: { error?: string } } | null)?.data?.error || (e instanceof Error && !/^http-\d+$/.test(e.message) ? e.message : "") || f;
 
 /** Recovery and maintenance for one gateway. Reboot is queued for approval; restore lives in Backups. */
 export function Maintenance({ id, name, canEdit }: { id: string; name: string; canEdit: boolean }) {
@@ -13,7 +13,7 @@ export function Maintenance({ id, name, canEdit }: { id: string; name: string; c
   async function reboot() {
     setBusy(true); setMsg(null);
     try { const r = await api.post<{ status?: string }>(`/topology/${encodeURIComponent(id)}/reboot`, {}); setMsg({ bad: false, text: r?.status || t("mt.queued") }); setConfirm(false); }
-    catch (e) { if (isUnauthorized(e)) throw e; setMsg({ bad: true, text: errText(e, t("mt.failed")) }); }
+    catch (e) { if (isUnauthorized(e)) throw e; setMsg({ bad: true, text: errorText(e, t("mt.failed")) }); }
     setBusy(false);
   }
   return (

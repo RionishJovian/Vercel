@@ -5,6 +5,7 @@ import { asArray, type Me } from "../lib/types";
 import { useI18n } from "../i18n";
 import { BackLink, Note, PageHead, IconTile } from "../components/ui";
 import { Skeleton } from "../components/Skeleton";
+import { errorText } from "../lib/errors";
 
 interface Incident { id: string; severity?: string; kind?: string; subject_label?: string; subject_id?: string; detail?: string; opened_at?: string; suggested_action?: { kind?: string } }
 const FIX = new Set(["reboot", "restore_backup", "reprovision_peer"]);
@@ -41,7 +42,7 @@ export function Incidents({ me }: { me: Me }) {
   async function act(id: string, kind: "acknowledge" | "resolve") {
     setBusy(id + kind); setErr("");
     try { await api.post(`/incidents/${encodeURIComponent(id)}/${kind}`); await mutate(); }
-    catch (e) { if (isUnauthorized(e)) throw e; setErr(e instanceof Error ? e.message : t("c.loadFailed")); }
+    catch (e) { if (isUnauthorized(e)) throw e; setErr(errorText(e, t("c.loadFailed"))); }
     setBusy("");
   }
   return (

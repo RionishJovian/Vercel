@@ -3,7 +3,7 @@ import useSWR from "swr";
 import { api, ApiError, fetcher, isUnauthorized } from "../lib/api";
 import { asArray, mmk, type Me } from "../lib/types";
 import { useI18n } from "../i18n";
-import { BackLink, Field, Note, IconTile } from "../components/ui";
+import { BackLink, Field, Note, IconTile, SectionHead } from "../components/ui";
 import { Skeleton } from "../components/Skeleton";
 import { AccountPass, type Pass } from "./store/AccountPass";
 
@@ -61,7 +61,7 @@ function AddonSection({ me }: { me: Me }) {
   const pendingIds = new Set(requests.filter((r) => r.status === "pending").map((r) => r.addon_id));
   return (
     <>
-      <h2>{t("st.addons")}</h2><p className="soft">{t("st.help")}</p>
+      <SectionHead title={t("st.addons")} help={t("st.help")} />
       {bankList.length > 0 && <section className="glass pad stack"><h2>{t("st.pay")}</h2>{bankList.map((b, i) => <div className="row small" key={i}><span className="soft">{b.bank_name} {b.holder_name}</span><b className="num">{b.account_number}</b></div>)}</section>}
       {!addons.length && <Note>{t("st.empty")}</Note>}
       <div className="store-grid">{addons.map((a) => <AddonCard key={a.id} a={a} pending={pendingIds.has(a.id)} canBuy={canBuy} onDone={() => void store.mutate()} />)}</div>
@@ -88,7 +88,7 @@ function LegacyHistory() {
   const list = asArray<Purchase>(data?.purchases);
   return (
     <section className="glass pad stack">
-      <h2>{t("st.legacy")}</h2><p className="soft small">{t("st.legacyNote")}</p>
+      <SectionHead title={t("st.legacy")} help={t("st.legacyNote")} />
       {error ? <Note kind="warn">{t("st.legacyFail")}</Note> : !list.length ? <p className="soft small">{t("st.legacyNone")}</p> : list.map((p, i) => (
         <div className="rowitem" key={p.id ?? i}><div className="stack" style={{ gap: 2 }}><b className="small">{p.product ?? "—"}</b><span className="soft small">{p.created_at ? new Date(p.created_at).toLocaleString() : ""} · {p.status}</span></div><span className="num small">{p.amount_mmk != null ? mmk(p.amount_mmk) : ""}</span></div>
       ))}

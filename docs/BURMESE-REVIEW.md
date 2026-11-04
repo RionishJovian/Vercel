@@ -119,3 +119,21 @@ The other `fw.*` keys (preview-only note, checking, applying, failure texts) fol
 ## Network form labels (2026-11-04)
 
 All Burmese text for the Internet Setup forms is in `app/src/i18n/networkLabels.ts`, next to its English wording. Please review that file as a whole.
+
+## Console cleanup (2026-11-05)
+
+| Key | English | Burmese (to review) |
+|---|---|---|
+| `c.pageFailed` | This page could not be shown | ဤစာမျက်နှာကို ပြ၍မရပါ |
+| `c.pageFailedHelp` | Reload to try again. The tabs below still work. | ပြန်ဖွင့်ပြီး ထပ်စမ်းကြည့်ပါ။ အောက်ရှိ tab များ ဆက်သုံးနိုင်ပါသည်။ |
+| `c.reload` | Reload | ပြန်ဖွင့်ရန် |
+| `c.actionFailed` | That did not work. Try again. | မအောင်မြင်ပါ။ ထပ်စမ်းကြည့်ပါ။ |
+| `r.mapTitle` | Network map | ကွန်ရက်မြေပုံ |
+| `nw.firewallNote` | Existing firewall rules may need a separate review before guests can reach the internet. | ဧည့်သည်များ အင်တာနက်ရောက်မီ ရှိပြီးသား firewall စည်းမျဉ်းများကို သီးခြားစစ်ရနိုင်သည်။ |
+| `more.title` | More | နောက်ထပ် |
+| `v.ws.vouchers` | Codes | ကုဒ်များ |
+| `v.ws.guest` | Internet guest page | အင်တာနက် ဧည့်သည် စာမျက်နှာ |
+| `j.ws.vouchers` | Media vouchers | မီဒီယာ ဗောင်ချာများ |
+| `j.ws.guest` | Media guest page | မီဒီယာ ဧည့်သည် စာမျက်နှာ |
+| `dev.tm.title` | Team | အဖွဲ့ |
+| `net.records` | records | မှတ်တမ်း |

@@ -6,6 +6,7 @@ import { useI18n } from "../i18n";
 import { BackLink, Note, PageHead } from "../components/ui";
 import { Skeleton } from "../components/Skeleton";
 import { project, type GatewayRef, type Graph, type Label, type ObsInventory, type TNode } from "./topology/project";
+import { errorText } from "../lib/errors";
 
 interface Dev extends GatewayRef { site_id?: string | null; deployment_layer?: string; category?: string }
 interface TreeNode { device?: Dev; children?: TreeNode[] }
@@ -56,7 +57,7 @@ export function Topology() {
         if (mine !== rev.current) return;
         const g = project(d, obs.inventory ?? {}, asArray<Label>(labels.labels));
         setGraph(g); setStatus(g.unavailable.length ? `${t("tp.someUnavailable")} ${g.unavailable.map((s) => s.replaceAll("_", " ")).join(", ")}.` : t("tp.done"));
-      } catch (e) { if (isUnauthorized(e)) throw e; if (mine === rev.current) setStatus(e instanceof Error && e.message ? e.message : t("tp.failed")); }
+      } catch (e) { if (isUnauthorized(e)) throw e; if (mine === rev.current) setStatus(errorText(e, t("tp.failed"))); }
       finally { if (mine === rev.current) setReading(false); }
     })();
   }, [device?.device_id, t]); // eslint-disable-line react-hooks/exhaustive-deps

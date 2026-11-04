@@ -5,13 +5,13 @@ import { asArray, type Me, type Router } from "../lib/types";
 import { useI18n } from "../i18n";
 import { BackLink, Note, PageHead, Avatar } from "../components/ui";
 import { Skeleton } from "../components/Skeleton";
+import { errorText } from "../lib/errors";
 
 interface RouterX extends Router { site_id?: string | null }
 interface Session { id?: string; values?: Record<string, string> }
 type Source = { gateway: RouterX; ok: true; sessions: Session[]; writable: boolean } | { gateway: RouterX; ok: false };
 interface Observations { inventory?: { available?: Record<string, boolean>; objects?: Record<string, Session[]>; write_enabled?: boolean } }
 const EDITORS = ["OWNER", "ADMIN", "DEVELOPER"];
-const msgOf = (e: unknown) => { const d = (e as { data?: { error?: string } } | null)?.data; return d?.error || (e instanceof Error ? e.message : "") || "failed"; };
 
 export function Guests({ me }: { me: Me }) {
   const { t } = useI18n();
@@ -64,7 +64,7 @@ export function Guests({ me }: { me: Me }) {
       const r = await api.post<{ verified?: boolean }>(`/routers/${encodeURIComponent(s.gateway.device_id)}/guests/disconnect`, { id: session.id, mac: v["mac-address"], address: v.address, user: v.user, confirm: true });
       if (r.verified !== true) throw new Error("not verified");
       note = t("gu.disconnected");
-    } catch (e) { if (isUnauthorized(e)) throw e; note = `${t("gu.failed")} ${msgOf(e)}`; }
+    } catch (e) { if (isUnauthorized(e)) throw e; note = `${t("gu.failed")} ${errorText(e, "")}`; }
     setBusy(false); await reload(); setStatus(note);
   }
 

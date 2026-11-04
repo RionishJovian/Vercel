@@ -3,11 +3,12 @@ import { api, isUnauthorized } from "../../lib/api";
 import { useI18n } from "../../i18n";
 import { Field, Note } from "../../components/ui";
 import type { RouterRow } from "../routers";
+import { errorText } from "../../lib/errors";
 
 export interface DeviceRec extends RouterRow { device_model?: string; management_ip?: string; mac_address?: string; vendor?: string; category?: string }
 export const LAYERS = ["MAIN_GATEWAY", "DOWNSTREAM_SWITCH", "ACCESS_POINT", "CONTROLLER"] as const;
 export const CATEGORY: Record<string, string> = { MAIN_GATEWAY: "gateway", DOWNSTREAM_SWITCH: "switch", ACCESS_POINT: "ap", CONTROLLER: "controller" };
-const errText = (e: unknown) => { const e2 = e as { status?: number; data?: { reason?: string; error?: string } } | null; return e2?.status === 403 ? "OWNER/ADMIN required." : e2?.data?.reason || e2?.data?.error || (e instanceof Error ? e.message : "") || "failed"; };
+const errText = (e: unknown, fallback: string) => (e as { status?: number } | null)?.status === 403 ? "OWNER/ADMIN required." : errorText(e, fallback);
 
 /** Create or edit one device record. A record alone does not connect a device or grant management access. */
 export function DeviceForm({ rec, layers, onDone, onCancel, blocked }: { rec?: DeviceRec; layers: readonly string[]; onDone: () => void; onCancel: () => void; blocked?: (layer: string) => string }) {
@@ -25,7 +26,7 @@ export function DeviceForm({ rec, layers, onDone, onCancel, blocked }: { rec?: D
       : { hardware_name: s("name"), device_model: s("model") || null, deployment_layer: layer, management_ip: s("ip") || null, mac_address: s("mac") || null, vendor: "mikrotik", category: CATEGORY[layer], transport: "direct" };
     setBusy(true); setMsg("");
     try { if (rec) await api.put(`/routers/${encodeURIComponent(rec.device_id)}`, body); else await api.post("/routers", body); onDone(); }
-    catch (err) { if (isUnauthorized(err)) throw err; setMsg(errText(err)); setBusy(false); }
+    catch (err) { if (isUnauthorized(err)) throw err; setMsg(errText(err, t("c.actionFailed"))); setBusy(false); }
   }
   return (
     <form className="glass pad stack" onSubmit={save}>

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { api, isUnauthorized } from "../../lib/api";
 import { useI18n } from "../../i18n";
 import { Note } from "../../components/ui";
+import { errorText } from "../../lib/errors";
 
 interface Menu { supported?: boolean; configured?: boolean; count?: number }
 interface Caps { device_id?: string; detected?: boolean; board_name?: string; routeros_version?: string; dhcp_server?: Menu; hotspot?: Menu; radius?: Menu; modern_wifi?: { count?: number }; legacy_wireless?: { count?: number }; modern_capsman?: { supported?: boolean }; legacy_capsman?: { supported?: boolean }; device_mode?: { known?: boolean; mode?: string; hotspot?: boolean; scheduler?: boolean }; webfig?: { https_enabled?: boolean; https_port?: number; trusted_only?: boolean }; error?: string }
@@ -20,7 +21,7 @@ export function Capabilities({ id }: { id: string }) {
       setS({ k: "ready", caps });
     } catch (e) {
       if (isUnauthorized(e)) throw e;
-      const m = (e as { data?: { error?: string } } | null)?.data?.error || (e instanceof Error ? e.message : "");
+      const m = errorText(e, "");
       setS({ k: "error", msg: m === "timeout" ? t("cap.timeout") : m || t("cap.failed") });
     }
   }

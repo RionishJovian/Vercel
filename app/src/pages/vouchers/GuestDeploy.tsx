@@ -3,10 +3,10 @@ import useSWR from "swr";
 import { api, fetcher, isUnauthorized } from "../../lib/api";
 import { asArray, type Router } from "../../lib/types";
 import { useI18n } from "../../i18n";
-import { Note } from "../../components/ui";
+import { Note, SectionHead } from "../../components/ui";
+import { errorText } from "../../lib/errors";
 
 interface Plan { profile: string; steps: string[]; file?: string; version: string; confirmation: string; preview_html?: string; media_host?: string; media_port?: string }
-const errText = (e: unknown, f: string) => { const d = (e as { data?: { error?: string; reason?: string } } | null)?.data; return d?.error || d?.reason || (e instanceof Error && !/^http-\d+$/.test(e.message) ? e.message : "") || f; };
 
 /** Installs the saved guest login page on a gateway: review first, then a backed-up, read-back-verified apply. */
 export function GuestDeploy() {
@@ -28,14 +28,14 @@ export function GuestDeploy() {
       if (mine !== rev.current) return;
       const list = asArray<string>(r.profiles); setProfiles(list);
       if (list.length === 1) { setProfile(list[0]); setStatus(t("gd2.profileFound")); } else setStatus(list.length ? "" : t("gd2.noProfile"));
-    }).catch((e) => { if (isUnauthorized(e)) throw e; if (mine === rev.current) { setProfiles([]); setStatus(errText(e, t("gd2.connectFirst"))); } });
+    }).catch((e) => { if (isUnauthorized(e)) throw e; if (mine === rev.current) { setProfiles([]); setStatus(errorText(e, t("gd2.connectFirst"))); } });
   }, [gw?.device_id, t]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function review() {
     if (!gw || !profile) return;
     setBusy(true); setPlan(null); setStatus(t("gd2.preparing"));
     try { const r = await api.post<{ plan: Plan }>(`/routers/${encodeURIComponent(gw.device_id)}/portal/preview`, { profile, media_host: "", media_port: "" }); setPlan(r.plan); setStatus(t("gd2.reviewReady")); }
-    catch (e) { if (isUnauthorized(e)) throw e; setStatus(errText(e, t("gd2.reviewFail"))); }
+    catch (e) { if (isUnauthorized(e)) throw e; setStatus(errorText(e, t("gd2.reviewFail"))); }
     setBusy(false);
   }
   async function apply() {
@@ -49,19 +49,18 @@ export function GuestDeploy() {
     } catch (e) {
       if (isUnauthorized(e)) throw e;
       const rolled = (e as { data?: { result?: { rolled_back?: boolean } } } | null)?.data?.result?.rolled_back;
-      setStatus(`${errText(e, t("gd2.applyFail"))} ${rolled ? t("gd2.rolledBack") : t("gd2.checkRouter")}`);
+      setStatus(`${errorText(e, t("gd2.applyFail"))} ${rolled ? t("gd2.rolledBack") : t("gd2.checkRouter")}`);
     }
     setBusy(false);
   }
 
   return (
     <section className="glass pad stack">
-      <h2>{t("gd2.title")}</h2><p className="soft small">{t("gd2.lead")}</p>
+      <SectionHead title={t("gd2.title")} help={t("gd2.lead") + " " + t("gd2.internetOnly")} />
       {!gateways.length && !routers.isLoading ? <Note>{t("gd2.noGateway")} <a className="link" href="#/hub">{t("hub.title")}</a></Note> : (
         <>
           {gateways.length > 1 && <label className="field"><span>{t("v.f.gateway")}</span><select className="input" value={gw?.device_id ?? ""} disabled={busy} onChange={(e) => { setId(e.target.value); try { sessionStorage.setItem("mm_selected_router", e.target.value); } catch { /* ignore */ } }}><option value="">{t("net.chooseRouter")}</option>{gateways.map((g) => <option key={g.device_id} value={g.device_id}>{g.hardware_name || g.device_id}</option>)}</select></label>}
           <label className="field"><span>{t("gd2.profile")}</span><select className="input" value={profile} disabled={busy || !profiles?.length} onChange={(e) => { setProfile(e.target.value); setPlan(null); setStatus(""); }}><option value="">{profiles === null ? t("gd2.selectGateway") : t("gd2.selectProfile")}</option>{(profiles ?? []).map((p) => <option key={p} value={p}>{p}</option>)}</select></label>
-          <p className="soft small">{t("gd2.internetOnly")}</p>
           <button className="btn quiet" type="button" disabled={busy || !profile} onClick={() => void review()}>{t("gd2.review")}</button>
           {plan && (
             <div className="stack" role="region" aria-label={t("gd2.reviewTitle")}>

@@ -5,6 +5,7 @@ import { asArray, mmk, type Me } from "../../lib/types";
 import { useI18n } from "../../i18n";
 import { Note } from "../../components/ui";
 import { Skeleton } from "../../components/Skeleton";
+import { errorText } from "../../lib/errors";
 
 export interface Pass { state?: string; kind?: string; authorized_login?: boolean; activated_at?: string; expires_at?: string; transition_expires_at?: string; trial_expires_at?: string }
 interface Renewal { id?: string; plan: string; status: string; created_at?: string; amount_mmk?: number; bank_reference?: string; idempotency_key?: string }
@@ -13,7 +14,6 @@ interface Options { available?: boolean; plans?: Record<string, { amount_mmk?: n
 interface Draft { plan: "monthly" | "annual"; bank_account_id: string; bank_reference: string; expected_amount_mmk?: number; idempotency_key: string }
 const when = (v?: string) => (v ? new Date(v).toLocaleString() : "");
 const price = (v: unknown, none: string) => (Number.isInteger(v) && (v as number) > 0 ? `${mmk(v as number)} MMK` : none);
-const errText = (e: unknown, f: string) => { const m = e instanceof Error ? e.message : ""; return m && !/^http-\d+$/.test(m) && m !== "network-unreachable" ? m : f; };
 
 /** Monthly/annual pass checkout. The request ID is stored BEFORE sending, so a lost response is retried with the same
  *  details and never asks the client to transfer money twice. */
@@ -68,7 +68,7 @@ export function AccountPass({ me, pass, onRefresh }: { me: Me; pass: Pass; onRef
       setDraft(null); setForm((f) => ({ ...f, open: false, ref: "", confirmed: false })); setStatus(""); void hist.mutate(); onRefresh();
     } catch (err) {
       if (isUnauthorized(err)) throw err;
-      const detail = errText(err, t("ap.notConfirmed"));
+      const detail = errorText(err, t("ap.notConfirmed"));
       if (err instanceof ApiError && [400, 403, 409].includes(err.status)) { try { sessionStorage.removeItem(key); } catch { /* ignore */ } setDraft(null); void hist.mutate(); onRefresh(); }
       setStatus(detail);
     }

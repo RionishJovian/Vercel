@@ -5,6 +5,7 @@ import { useRoute } from "./lib/route";
 import type { Me } from "./lib/types";
 import { useI18n } from "./i18n";
 import { Shell } from "./components/Shell";
+import { PageBoundary } from "./components/PageBoundary";
 import { SignIn } from "./pages/SignIn";
 import { Home } from "./pages/Home";
 const Revenue = lazy(() => import("./pages/Revenue").then(m => ({ default: m.Revenue })));
@@ -38,6 +39,14 @@ const Coins = lazy(() => import("./pages/dev/Coins").then(m => ({ default: m.Coi
 const Team = lazy(() => import("./pages/dev/Team").then(m => ({ default: m.Team })));
 import { Skeleton } from "./components/Skeleton";
 
+const PAGE_TITLES: Record<string, string> = {
+  home: "title.home", router: "title.router", vouchers: "title.vouchers", jellyfin: "title.jellyfin", more: "title.more", revenue: "title.revenue", store: "title.store",
+  platform: "title.platform", network: "title.network", sites: "title.sites", fleet: "fl.title", guests: "gu.title", incidents: "inc.title", events: "ev.title", security: "sec.title",
+  backups: "bk.title", topology: "tp.title", devices: "dv.title", "managed-devices": "dm.title", profile: "pf.title", guide: "gd.title", hub: "hub.title", templates: "dev.tpl.title",
+  termlog: "dev.tl.title", scans: "dev.sc.title", aiusage: "dev.ai.title", unlockkeys: "dev.uk.title", i18n: "dev.tr.title", coins: "dev.co.title", team: "dev.tm.title",
+};
+const titleKey = (name: string, sub: string) => (name === "router" && sub === "map" ? "r.mapTitle" : PAGE_TITLES[name]);
+
 type Auth = { state: "loading" } | { state: "out"; notice?: string } | { state: "in"; me: Me };
 
 export function App() {
@@ -50,6 +59,9 @@ export function App() {
     try { setAuth({ state: "in", me: await api.get<Me>("/me") }); } catch { setAuth({ state: "out" }); }
   }, []);
   useEffect(() => { void boot(); }, [boot]);
+  const key = auth.state === "out" ? "title.signin" : auth.state === "in" ? titleKey(route.name, route.sub) : undefined;
+  const pageTitle = key ? t(key) : "";
+  useEffect(() => { document.title = pageTitle ? pageTitle + " · Mega Magic" : "Mega Magic"; }, [pageTitle]);
 
   if (auth.state === "loading") return <div className="shell"><Skeleton h={240} /></div>;
   if (auth.state === "out") return <SignIn notice={auth.notice} onDone={() => { void mutate(() => true, undefined, { revalidate: false }); void boot(); }} />;
@@ -90,5 +102,5 @@ export function App() {
     case "home": page = <Home me={me} />; break;
     default: location.replace("#/home"); page = null;
   }
-  return <Shell active={tab}><Suspense fallback={<Skeleton h={240} />}>{page}</Suspense></Shell>;
+  return <Shell active={tab}><PageBoundary key={route.name + "/" + route.sub}><Suspense fallback={<Skeleton h={240} />}>{page}</Suspense></PageBoundary></Shell>;
 }

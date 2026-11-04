@@ -6,6 +6,7 @@ import { useI18n } from "../i18n";
 import { BackLink, Note, PageHead } from "../components/ui";
 import { Skeleton } from "../components/Skeleton";
 import type { RouterRow } from "./routers";
+import { errorText } from "../lib/errors";
 
 interface Inv { available?: Record<string, boolean>; objects?: Record<string, Array<{ values?: Record<string, string> }>> }
 interface Label { mac: string; name: string; kind: string }
@@ -78,7 +79,7 @@ export function Devices({ me }: { me: Me }) {
       let labels: Label[] = [], labelsFailed = false;
       try { labels = asArray<Label>((await api.get<{ labels?: Label[] }>(`/routers/${encodeURIComponent(rid)}/discovery-labels`)).labels); } catch { labelsFailed = true; }
       if (mine === rev.current) setState({ kind: "ready", rows: discoveryRows(inventory), labels, partial: sources.some((k) => inventory.available?.[k] !== true), labelsFailed, at: new Date().toLocaleString() });
-    } catch (e) { if (isUnauthorized(e)) throw e; if (mine === rev.current) setState({ kind: "error", msg: e instanceof Error && e.message ? e.message : t("dv.failed") }); }
+    } catch (e) { if (isUnauthorized(e)) throw e; if (mine === rev.current) setState({ kind: "error", msg: errorText(e, t("dv.failed")) }); }
   }, [t]);
   useEffect(() => { if (selected) void read(selected.device_id); else setState({ kind: "idle" }); }, [selected?.device_id, read]); // eslint-disable-line react-hooks/exhaustive-deps
 

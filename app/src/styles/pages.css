@@ -169,6 +169,12 @@
 .task { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; text-align: left; padding: 14px 16px; border-radius: var(--r-row); border: 1px solid var(--edge-soft); background: var(--glass); color: var(--ink); transition: border-color var(--t-fast), background var(--t-base); }
 .task[aria-pressed="true"] { border-color: var(--jade); background: color-mix(in srgb, var(--jade) 12%, var(--glass)); }
 .task[disabled] { opacity: .6; cursor: not-allowed; }
+.tasks.compact { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.tasks.compact .task { padding: 10px 12px; gap: 2px; overflow-wrap: anywhere; }
+.hint summary { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; cursor: pointer; list-style: none; color: var(--ink-soft); }
+.hint .helpbtn { display: inline-grid; place-items: center; }
+.hint summary::-webkit-details-marker { display: none; }
+.hint[open] .helpbtn { background: var(--jade); color: var(--on-jade); border-color: var(--jade); }
 .fs { border: 1px solid var(--edge-soft); min-width: 0; } .fs legend { padding: 0 8px; font-weight: 650; }
 .steps { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
 .recordcard { flex-direction: column; align-items: stretch; }
