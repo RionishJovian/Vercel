@@ -51,6 +51,10 @@ export function Routers({ sub, params }: { sub: string; params: URLSearchParams 
     <>
       <h1>{t("title.router")}</h1>
       {tabs}
+      {list.length > 0 && <div className="row" style={{ justifyContent: "flex-start", flexWrap: "wrap" }}>
+        {list.some((d) => d.deployment_layer === "MAIN_GATEWAY") && <a className="pill" href="#/hub">{t("hub.delete")} · {t("hub.title")}</a>}
+        {list.some((d) => d.deployment_layer !== "MAIN_GATEWAY") && <a className="pill" href="#/managed-devices">{t("hub.delete")} · {t("dm.title")}</a>}
+      </div>}
       {!list.length && <Note>{t("r.empty")}</Note>}
       <div className="router-grid">
         {list.map((d) => (
