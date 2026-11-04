@@ -8,6 +8,11 @@ const inv: Inventory = { objects: {
 } };
 
 describe("network task records", () => {
+  it("keeps paid broadband accounts and profiles out of generic editors", () => {
+    const paid: Inventory = { objects: { subscribers: [{ id: "paid", values: { name: "home001", comment: "mm-bb-v1,account" } }, { id: "old", values: { name: "alice" } }], ppp_profiles: [{ id: "p", values: { name: "mm-bb-account" } }, { id: "q", values: { name: "business" } }] } };
+    expect(listFor(paid, "subscriber").map((o) => o.id)).toEqual(["old"]);
+    expect(listFor(paid, "ppp_profile").map((o) => o.id)).toEqual(["q"]);
+  });
   it("offers only the app's own protection rules", () => { expect(listFor(inv, "firewall").map((o) => o.id)).toEqual(["a"]); });
   it("keeps fairshare and plain queues apart", () => { expect(listFor(inv, "fairshare").map((o) => o.id)).toEqual(["q1"]); expect(listFor(inv, "queue").map((o) => o.id)).toEqual(["q2"]); });
   it("hides dynamic DHCP leases", () => { expect(listFor(inv, "lease").map((o) => o.id)).toEqual(["l2"]); });

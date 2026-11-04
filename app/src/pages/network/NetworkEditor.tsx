@@ -102,7 +102,7 @@ function TaskForm({ kind, inv, defaults, routerId, routerName, locked, setLocked
     if (type === "state") options = [["no", t("net.enabledOpt")], ["yes", t("net.disabledOpt")]];
     if (type === "select") options = arg as Array<[string, string]>;
     if (type === "interface") options = [["", t("net.choosePort")], ...eligible.map((i): [string, string] => [i.name, `${i.name}${i.running ? " · " + t("net.running") : ""}`])];
-    if (type === "record") options = [["", t("net.chooseRecord")], ...objectsOf(inv, arg as string).map((o): [string, string] => [o.values.name, o.values.name])];
+    if (type === "record") options = [["", t("net.chooseRecord")], ...objectsOf(inv, arg as string).filter((o) => arg !== "ppp_profiles" || !o.values.name?.startsWith("mm-bb-")).map((o): [string, string] => [o.values.name, o.values.name])];
     const id = "nf-" + key;
     return options
       ? <select className="input" id={id} name={key} required disabled={locked || fixed(key)} value={value} onChange={(e) => change(key, e.target.value)}>{options.map(([v, label]) => <option key={v} value={v}>{label}</option>)}</select>

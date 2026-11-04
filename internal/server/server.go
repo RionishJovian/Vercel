@@ -36,6 +36,7 @@ import (
 )
 
 type Server struct {
+	broadband         *handler.SecurityHandler
 	cfg               *config.Config
 	log               *logger.Logger
 	sugar             *zap.SugaredLogger
@@ -385,6 +386,9 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	}
 
 	securityHandler := handler.NewSecurityHandler(db, database.NewDeviceRepository(db))
+	if bbBox, bbErr := secretbox.New(cfg.Provisioner.Applier.CredentialKey); bbErr == nil {
+		securityHandler.EnableBroadbandSecrets(bbBox)
+	}
 	if err := configureManagementMoves(securityHandler, db, cfg, managementHubClient); err != nil {
 		return nil, err
 	}
@@ -552,6 +556,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		authHandler:    authHandler,
 		evaluator:      evaluator,
 		voucherHandler: voucherHandler,
+		broadband:      securityHandler,
 		sweep:          sweepWorker,
 		quotaSweep:     quotaSweep,
 		recovery:       recoveryService,
@@ -640,6 +645,7 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 			protected.GET("/me/app-pass/renewals", authHandler.AccountRenewals)
 			protected.POST("/me/app-pass/renewals", authHandler.RequestAccountRenewal)
 			protected.GET("/me", authHandler.Me)
+			protected.GET("/broadband/report", auth.RequireMinRole(model.RoleAdmin), securityHandler.BroadbandReport)
 			protected.POST("/me/presence", authHandler.Presence)
 			protected.GET("/me/profile", authHandler.Profile)
 			protected.PUT("/me/profile", authHandler.UpdateProfile)
@@ -661,6 +667,10 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 				handler.RegisterManagementMigrationRoutes(routers, securityHandler)
 				routers.GET("/:id/telemetry", auth.RequireMinRole(model.RoleAdmin), securityHandler.RouterTelemetry)
 				routers.GET("/:id/quick-config", securityHandler.ReadQuickConfig)
+				routers.GET("/:id/broadband/:command", auth.RequireMinRole(model.RoleAdmin), securityHandler.Broadband)
+				routers.POST("/:id/broadband/:command", auth.RequireMinRole(model.RoleAdmin), securityHandler.Broadband)
+				routers.POST("/:id/broadband/accounts/:accountId/:command", auth.RequireMinRole(model.RoleAdmin), securityHandler.Broadband)
+				routers.POST("/:id/broadband/operations/:operationId/:command", auth.RequireMinRole(model.RoleAdmin), securityHandler.Broadband)
 				routers.GET("/:id/network/:action", auth.RequireMinRole(model.RoleAdmin), securityHandler.NetworkControl)
 				routers.POST("/:id/network/:action", auth.RequireMinRole(model.RoleAdmin), securityHandler.NetworkControl)
 				routers.GET("/:id/firmware/:action", auth.RequireMinRole(model.RoleAdmin), securityHandler.FirmwareControl)
@@ -1036,6 +1046,9 @@ func (s *Server) Start() error {
 		return fmt.Errorf("voucher login synchronization worker: %w", err)
 	}
 	defer s.stopGuestVoucherSyncWorker()
+	bbCtx, bbCancel := context.WithCancel(context.Background())
+	defer bbCancel()
+	go s.runBroadbandSync(bbCtx)
 	s.sugar.Infow("Starting HTTP server", "addr", s.http.Addr)
 	return s.http.ListenAndServe()
 }

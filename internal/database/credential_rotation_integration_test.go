@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"encoding/hex"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -85,13 +86,36 @@ func TestDBRotateCredentialKeyIsAtomicVerifiedAndReversibleUntilCommit(t *testin
 		return s
 	}
 	before := sealedOf(devA)
+	// Broadband provisioning retries also use the credential key. A rotation
+	// must not make a saved operation impossible to recover.
+	var bbExists bool
+	if err := db.QueryRow(`SELECT to_regclass('public.broadband_operations') IS NOT NULL`).Scan(&bbExists); err != nil {
+		t.Fatal(err)
+	}
+	if !bbExists {
+		src, e := os.ReadFile("../../db/migrations/20261104000000_broadband.sql")
+		if e != nil {
+			t.Fatal(e)
+		}
+		if _, e = db.Exec(string(src)); e != nil {
+			t.Fatal(e)
+		}
+	}
+	bbID := "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+	bbSealed, _ := oldBox.Seal("saved-broadband-operation")
+	mustExec(`INSERT INTO broadband_accounts(id,business_id,device_id,username,profile) VALUES($1,$2,$3,'rotation-customer','default')`, bbID, bizA, devA)
+	mustExec(`INSERT INTO broadband_operations(id,business_id,device_id,account_id,kind,period_days,request_hash,payload_ciphertext) VALUES($1,$2,$3,$1,'create',30,'rotation-test',$4)`, bbID, bizA, devA, bbSealed)
+	t.Cleanup(func() {
+		_, _ = db.Exec(`DELETE FROM broadband_operations WHERE business_id=$1`, bizA)
+		_, _ = db.Exec(`DELETE FROM broadband_accounts WHERE business_id=$1`, bizA)
+	})
 
 	// A faithful dry run: counts and verifies everything, changes nothing.
 	r, err := db.RotateCredentialKey(ctx, oldBox, newBox, false, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r.Applied || r.DeviceSecrets < 2 || r.PendingEnrollments < 1 || r.ExpiredEnrollments < 1 || r.VerifiedUnderNewKey != r.DeviceSecrets+r.PendingEnrollments+r.BotTokens+r.WebhookSecrets {
+	if r.Applied || r.DeviceSecrets < 2 || r.PendingEnrollments < 1 || r.ExpiredEnrollments < 1 || r.VerifiedUnderNewKey != r.DeviceSecrets+r.PendingEnrollments+r.BotTokens+r.WebhookSecrets+1 {
 		t.Fatalf("dry-run report = %+v", r)
 	}
 	if sealedOf(devA) != before {
@@ -122,6 +146,13 @@ func TestDBRotateCredentialKeyIsAtomicVerifiedAndReversibleUntilCommit(t *testin
 	}
 	if _, err := oldBox.Open(sealedOf(devA)); err == nil {
 		t.Fatal("the retired key still opens stored data")
+	}
+	var rotatedBB string
+	if err := db.QueryRow(`SELECT payload_ciphertext FROM broadband_operations WHERE business_id=$1 AND id=$2`, bizA, bbID).Scan(&rotatedBB); err != nil {
+		t.Fatal(err)
+	}
+	if plain, e := newBox.Open(rotatedBB); e != nil || plain != "saved-broadband-operation" {
+		t.Fatal("broadband operation lost after key rotation", e)
 	}
 	for dev, want := range map[string]string{devA: "secret-A", devB: "-----BEGIN KEY-----\nsecret-B\n-----END KEY-----"} {
 		got, err := newBox.Open(sealedOf(dev))

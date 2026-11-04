@@ -422,6 +422,18 @@ func buildNetworkPlan(ctx context.Context, r CommandRunner, request NetworkReque
 		err = add("pppoe_servers", "service-name", owned, "Enable authenticated PPPoE service on dedicated customer interface", map[string]string{"service-name": owned, "interface": v["interface"], "default-profile": owned, "authentication": "chap,mschap2", "one-session-per-host": "yes", "disabled": "no"})
 		warnings = append(warnings, "The physical PPPoE customer interface deliberately receives no IP address or DHCP server. Create subscribers next. Upstream NAT/firewall policy must permit subscriber internet traffic.")
 	case "subscriber":
+		if strings.HasPrefix(v["profile"], "mm-bb-") {
+			return nil, nil, fmt.Errorf("paid broadband profiles cannot be assigned to other subscribers")
+		}
+		if request.ID != "" {
+			owned, e := networkReadOne(ctx, r, "subscribers", request.ID, map[string]string{"comment": ""})
+			if e != nil {
+				return nil, nil, e
+			}
+			if strings.HasPrefix(owned["comment"], "mm-bb-v1,") {
+				return nil, nil, fmt.Errorf("use Paid broadband accounts to change this managed subscriber")
+			}
+		}
 		if name == "" || !networkText(v["password"], 128) || !gatewayInterfacePattern.MatchString(v["profile"]) || !boolValue(v["disabled"]) {
 			return nil, nil, fmt.Errorf("provide subscriber name, password, PPP profile and enabled state")
 		}
@@ -475,6 +487,15 @@ func buildNetworkPlan(ctx context.Context, r CommandRunner, request NetworkReque
 		}
 		warnings = append(warnings, "Changing the SSID/password disconnects wireless clients. Country must match the physical installation. Remote APs must be managed as their own registered devices; a radio-free CHR cannot broadcast Wi-Fi.")
 	default:
+		if request.Kind == "ppp_profile" && request.ID != "" {
+			owned, e := networkReadOne(ctx, r, "ppp_profiles", request.ID, map[string]string{"name": "", "comment": ""})
+			if e != nil {
+				return nil, nil, e
+			}
+			if strings.HasPrefix(owned["name"], "mm-bb-") || owned["comment"] == bbMarker {
+				return nil, nil, fmt.Errorf("paid broadband profiles are managed by the subscriber lifecycle")
+			}
+		}
 		key := map[string]string{"pppoe_service": "pppoe_servers", "ppp_profile": "ppp_profiles", "dhcp": "dhcp", "pool": "pools", "dhcp_network": "dhcp_networks", "hotspot": "hotspots", "hotspot_profile": "hotspot_profiles", "lease": "leases", "queue": "queues"}[request.Kind]
 		values := map[string]string{}
 		for field, value := range v {
@@ -541,6 +562,9 @@ func buildNetworkPlan(ctx context.Context, r CommandRunner, request NetworkReque
 		}
 		for field, menu := range map[string]string{"address-pool": "/ip pool", "remote-address": "/ip pool", "profile": "/ip hotspot profile", "default-profile": "/ppp profile", "server": "/ip dhcp-server"} {
 			if value, ok := values[field]; ok {
+				if field == "default-profile" && strings.HasPrefix(value, "mm-bb-") {
+					return nil, nil, fmt.Errorf("choose a shared service plan, not an account-owned broadband profile")
+				}
 				n, e := networkCount(ctx, r, menu+" print count-only where name="+routerOSQuoted(value))
 				if e != nil || n != 1 {
 					return nil, nil, fmt.Errorf("select an existing %s record", field)
