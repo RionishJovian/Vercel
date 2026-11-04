@@ -217,11 +217,11 @@ export function NetworkEditor({ workspace, router, canEdit, reason }: { workspac
       const data = await api.get<{ inventory: Inventory }>(`/routers/${encodeURIComponent(routerId)}/network/inventory`, controller.signal);
       let defaults: Record<string, string> = {};
       if (workspace === "pppoe") { try { defaults = (await api.get<{ defaults?: Record<string, string> }>(`/routers/${encodeURIComponent(routerId)}/gateway/defaults`, controller.signal)).defaults ?? {}; } catch { /* never invent an unchecked default */ } }
-      if (controller.signal.aborted) throw new Error(t("net.readTimeout"));
+      if (controller.signal.aborted) throw new Error("router-read-timeout");
       if (mine === rev.current) { setLoad({ kind: "ready", inv: data.inventory, defaults }); setPendingAt(data.inventory.pending_confirm?.revert_at ?? ""); }
-    } catch (err) { if (isUnauthorized(err)) throw err; if (mine === rev.current) setLoad({ kind: "error", err: controller.signal.aborted ? new Error(t("net.readTimeout")) : err }); }
+    } catch (err) { if (isUnauthorized(err)) throw err; if (mine === rev.current) setLoad({ kind: "error", err: controller.signal.aborted ? new Error("router-read-timeout") : err }); }
     finally { window.clearTimeout(timer); if (readController.current === controller) readController.current = null; }
-  }, [routerId, workspace, t]);
+  }, [routerId, workspace]);
   useEffect(() => { const generation = rev; void reload(); return () => { generation.current++; readController.current?.abort(); }; }, [reload]);
 
   const finishPending = useCallback((message: string) => { setPendingAt(""); setPendingNote(message); void reload(); }, [reload]);
@@ -231,7 +231,8 @@ export function NetworkEditor({ workspace, router, canEdit, reason }: { workspac
   const inv = load.kind === "ready" ? load.inv : EMPTY_INVENTORY, defaults = load.kind === "ready" ? load.defaults : {};
   const s = schema[task];
   const needsHub = !router || (load.kind === "error" && load.err instanceof ApiError && (load.err.data as { code?: string } | null)?.code === "router_management_required");
-  const banner = loading ? t("r.checking") : !offline ? "" : reason ? reason : !router ? t("net.noRouterBanner") : needsHub ? t("net.connectFirst") : `${t("net.offlineBanner")} ${load.kind === "error" ? errMsg(load.err) : ""}`;
+  const message = load.kind === "error" ? errMsg(load.err) : "";
+  const banner = loading ? t("r.checking") : !offline ? "" : reason ? reason : !router ? t("net.noRouterBanner") : needsHub ? t("net.connectFirst") : `${t("net.offlineBanner")} ${message === "router-read-timeout" ? t("net.readTimeout") : message}`;
   // Mirror the server's gates. Nothing is hidden: a task that cannot be applied yet
   // still shows its form, locked, with the reason above it. Only a task with nothing
   // to show (read-only, or unsupported on this router) is replaced by a note.

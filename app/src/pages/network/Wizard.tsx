@@ -28,15 +28,15 @@ export function Wizard({ router, canEdit, reason }: { router?: RouterRow; canEdi
     const timer = window.setTimeout(() => controller.abort(), 20000);
     Promise.all([api.get<{ interfaces?: Iface[] }>(base + "interfaces", controller.signal), api.get<{ defaults?: Defaults }>(base + "defaults", controller.signal)])
       .then(([i, d]) => { if (live) setLoad({ k: "ready", ifaces: asArray<Iface>(i.interfaces), d: d.defaults ?? {} }); })
-      .catch((e) => { if (isUnauthorized(e)) throw e; if (live) setLoad({ k: "error", msg: controller.signal.aborted ? t("net.readTimeout") : errText(e) }); })
+      .catch((e) => { if (isUnauthorized(e)) throw e; if (live) setLoad({ k: "error", msg: controller.signal.aborted ? "router-read-timeout" : errText(e) }); })
       .finally(() => window.clearTimeout(timer));
     return () => { live = false; controller.abort(); window.clearTimeout(timer); };
-  }, [base, t, retry]);
+  }, [base, retry]);
 
   if (!canEdit) return <Note>{t("nw.needAdmin")}</Note>;
   // Nothing is hidden: with no router, or one that cannot be read, the whole form
   // is shown locked under a banner and cannot be submitted.
-  const offline = load.k === "loading" ? t("r.checking") : load.k === "error" ? (reason || (!router ? t("net.noRouterBanner") : `${t("nw.readFail")} ${load.msg}`)) : "";
+  const offline = load.k === "loading" ? t("r.checking") : load.k === "error" ? (reason || (!router ? t("net.noRouterBanner") : `${t("nw.readFail")} ${load.msg === "router-read-timeout" ? t("net.readTimeout") : load.msg}`)) : "";
   const ifaces = load.k === "ready" ? load.ifaces : [], d: Defaults = load.k === "ready" ? load.d : {};
   const opt = (list: Iface[]) => [<option key="" value="">{t("nw.chooseIface")}</option>, ...list.map((i) => <option key={i.name} value={i.name}>{i.name} · {i.type || "interface"}{i.running ? ` · ${t("net.running")}` : ""}</option>)];
   const payload = () => {
