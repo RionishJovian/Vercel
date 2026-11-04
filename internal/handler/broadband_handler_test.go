@@ -35,5 +35,9 @@ func TestBroadbandWritesRequireGateAndExplicitConfirmation(t *testing.T) {
 		if w.Code != tc.want {
 			t.Fatal(w.Code, w.Body.String())
 		}
+		// A later check also answers 503 here, so the lock must be identified by its own code.
+		if locked := strings.Contains(w.Body.String(), "broadband_writes_off"); locked != (tc.want == 503) {
+			t.Fatalf("gate=%q broadband=%q: %s", tc.gate, tc.broadband, w.Body.String())
+		}
 	}
 }
