@@ -335,7 +335,7 @@ func TestGuestVoucherSync_anchorsFirstUseFromRouterEvidence(t *testing.T) {
 		Scan(&state, &firstUsed, &activated); err != nil {
 		t.Fatal(err)
 	}
-	if state != "active" || !firstUsed.Equal(old) || !activated.Equal(old) {
+	if state != "expired" || !firstUsed.Equal(old) || !activated.Equal(old) {
 		t.Fatalf("historical first use must record activation, got state=%q first=%v activated=%v", state, firstUsed, activated)
 	}
 	if w := callSync(h, biz, device); w.Code != 200 {

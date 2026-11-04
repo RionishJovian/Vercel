@@ -7,6 +7,7 @@ import { Skeleton } from "../components/Skeleton";
 import { useCountUp } from "../lib/useCountUp";
 import { RevenuePayments } from "./RevenuePayments";
 import type { Me } from "../lib/types";
+import { BroadbandRevenue } from "./BroadbandRevenue";
 
 const STATES = [
   ["available_count", "rv.available", "s-available"], ["reserved_count", "rv.reserved", "s-reserved"], ["activated_count", "rv.activated", "s-activated"],
@@ -64,6 +65,7 @@ export function Revenue({ me }: { me: Me }) {
         </section>
       ) : null}
       <RevenuePayments canDecide={["ADMIN", "OWNER", "DEVELOPER"].includes(me.user?.user_role ?? "")} />
+      {["ADMIN", "OWNER", "DEVELOPER"].includes(me.user?.user_role ?? "") && <BroadbandRevenue />}
     </>
   );
 }

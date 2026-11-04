@@ -9,6 +9,7 @@ import { NetworkEditor } from "./NetworkEditor";
 import { Wizard } from "./Wizard";
 import { workspaceInfo, workspaces, type Workspace } from "./schema";
 import type { RouterRow } from "../routers";
+import { Broadband } from "./Broadband";
 
 const EDITORS = ["OWNER", "ADMIN", "DEVELOPER"];
 const KEY = "mm_selected_router";
@@ -21,6 +22,7 @@ export function Network({ me, sub }: { me: Me; sub: string }) {
   const { data, error, isLoading } = useSWR<{ routers?: RouterRow[] }>("/routers", fetcher);
   const gateways = asArray<RouterRow>(data?.routers).filter((r) => r.deployment_layer === "MAIN_GATEWAY");
   const [id, setId] = useState(read());
+  const [broadbandBusy, setBroadbandBusy] = useState(false);
   useEffect(() => { if (gateways.length && !gateways.some((g) => g.device_id === id)) setId(gateways.length === 1 ? gateways[0].device_id : ""); }, [gateways, id]);
   const pickRouter = (v: string) => { setId(v); try { if (v) sessionStorage.setItem(KEY, v); } catch { /* ignore */ } };
   const back = <BackLink href="#/router">{t("title.router")}</BackLink>;
@@ -35,7 +37,7 @@ export function Network({ me, sub }: { me: Me; sub: string }) {
     <>
       {back}<h1>{isNew ? t("nw.title") : ws ? workspaceInfo[ws][0] : t("net.title")}</h1>
       {!ws && !isNew && <p className="soft">{t("net.lead")}</p>}
-      {gateways.length > 1 && <label className="field"><span>{t("net.working")}</span><select className="input" value={id} onChange={(e) => pickRouter(e.target.value)}><option value="">{t("net.chooseRouter")}</option>{gateways.map((g) => <option key={g.device_id} value={g.device_id}>{g.hardware_name}</option>)}</select></label>}
+      {gateways.length > 1 && <label className="field"><span>{t("net.working")}</span><select className="input" value={id} disabled={broadbandBusy} onChange={(e) => pickRouter(e.target.value)}><option value="">{t("net.chooseRouter")}</option>{gateways.map((g) => <option key={g.device_id} value={g.device_id}>{g.hardware_name}</option>)}</select></label>}
       {gateways.length === 1 && <p className="soft small">{gateways[0].hardware_name}</p>}
       {isNew ? (
         <Wizard key={router?.device_id ?? "none"} router={router} canEdit={canEdit} reason={reason} />
@@ -45,6 +47,7 @@ export function Network({ me, sub }: { me: Me; sub: string }) {
         <>
           <div className="scroll-x">{workspaces.map((k) => <a key={k} className="pill" href={"#/network/" + k} aria-current={k === ws ? "page" : undefined}>{workspaceInfo[k][0]}</a>)}</div>
           <NetworkEditor key={(router?.device_id ?? "none") + ws} workspace={ws} router={router} canEdit={canEdit} reason={reason} />
+          {ws === "pppoe" && router && <Broadband key={router.device_id} routerId={router.device_id} routerName={router.hardware_name ?? router.device_id} canEdit={canEdit} onBusyChange={setBroadbandBusy} />}
         </>
       )}
     </>

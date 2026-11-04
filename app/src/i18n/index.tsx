@@ -1,11 +1,12 @@
 import { createContext, use, useCallback, useMemo, useState, type ReactNode } from "react";
 import base from "./dict.json";
 import extra from "./extra";
+import broadband from "./broadband";
 
 export type Lang = "my" | "en";
 const dict: Record<Lang, Record<string, string>> = {
-  en: { ...(base as { en: Record<string, string> }).en, ...extra.en },
-  my: { ...(base as { my: Record<string, string> }).my, ...extra.my },
+  en: { ...(base as { en: Record<string, string> }).en, ...extra.en, ...broadband.en },
+  my: { ...(base as { my: Record<string, string> }).my, ...extra.my, ...broadband.my },
 };
 const KEY = "mm2_lang";
 const initial = (): Lang => { try { const s = localStorage.getItem(KEY); if (s === "en" || s === "my") return s; } catch { /* storage blocked */ } return "my"; };

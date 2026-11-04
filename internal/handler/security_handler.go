@@ -14,6 +14,7 @@ import (
 	"mega-magic/internal/provisioner"
 	"mega-magic/internal/provisioner/routeros"
 	"mega-magic/internal/routertelemetry"
+	"mega-magic/internal/secretbox"
 	"mega-magic/internal/security"
 )
 
@@ -72,6 +73,7 @@ func (h *SecurityHandler) ConfigureWebFig(c *gin.Context) {
 // the code held on the day it was written. The stored value is still returned as
 // `posture_stored` so drift between the two is visible rather than hidden.
 type SecurityHandler struct {
+	broadbandBox    *secretbox.Box
 	db              *database.DB
 	deviceRepo      *database.DeviceRepository
 	apply           *provisioner.ApplyService

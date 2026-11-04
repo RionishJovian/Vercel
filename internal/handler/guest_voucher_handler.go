@@ -332,6 +332,15 @@ func (h *GuestVoucherHandler) syncGatewayVouchers(ctx context.Context, biz, devi
 						return e
 					}
 					applied = append(applied, "grant:claimed", "grant:activated")
+					// A complete first-use/expiry cycle can happen while the app
+					// is offline. Preserve historical activation for Revenue, but
+					// do not briefly report this exhausted account as active.
+					if exhausted || !now.Before(anchor.Add(time.Duration(grant.Minutes)*time.Minute)) {
+						if e := grants.SyncExpireTXN(tx, biz, observation.VoucherID); e != nil {
+							return e
+						}
+						applied = append(applied, "grant:expired")
+					}
 				case grant.State == "active" && (exhausted || !eligible || grant.ExpiresAt != nil && !now.Before(*grant.ExpiresAt)):
 					if e := grants.SyncExpireTXN(tx, biz, observation.VoucherID); e != nil {
 						return e

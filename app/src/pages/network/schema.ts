@@ -93,6 +93,8 @@ export function listFor(inv: Inventory, kind: string): NetObject[] {
   if (kind === "shield") list = list.filter((o) => o.values.type === "bypassed" && !yes(o.values.disabled) && !/^mm-/i.test(o.values.comment || ""));
   if (kind === "fairshare") list = list.filter((o) => o.values.comment?.startsWith("mm-fairshare-v1:"));
   if (kind === "queue") list = list.filter((o) => !o.values.comment?.startsWith("mm-fairshare-v1:"));
+  if (kind === "subscriber") list = list.filter((o) => !o.values.comment?.startsWith("mm-bb-v1,"));
+  if (kind === "ppp_profile") list = list.filter((o) => !o.values.name?.startsWith("mm-bb-"));
   if (kind === "remove_network" || kind === "edit_network" || kind === "move_network") list = list.filter((o) => /^mm-[A-Za-z0-9_-]{1,24}$/.test(o.values.name || ""));
   if (kind === "lease" || kind === "ip_address") list = list.filter((o) => !yes(o.values.dynamic));
   return list;

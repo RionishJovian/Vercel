@@ -21,6 +21,7 @@ type CredentialRotationReport struct {
 	ExpiredEnrollments  int // expired pending enrollments deleted (already unusable)
 	BotTokens           int // Telegram bot tokens re-sealed
 	WebhookSecrets      int // webhook signing secrets re-sealed
+	BroadbandOperations int // saved provisioning operations re-sealed
 	VerifiedUnderNewKey int // values opened again with the new key before commit
 }
 
@@ -195,6 +196,44 @@ func (d *DB) RotateCredentialKey(ctx context.Context, oldBox, newBox *secretbox.
 		}
 	}
 
+	var broadbandExists bool
+	if err := tx.QueryRowContext(ctx, `SELECT to_regclass('public.broadband_operations') IS NOT NULL`).Scan(&broadbandExists); err != nil {
+		return report, err
+	}
+	if broadbandExists {
+		if _, err := tx.ExecContext(ctx, `LOCK TABLE broadband_operations IN SHARE ROW EXCLUSIVE MODE`); err != nil {
+			return report, err
+		}
+		rows, err := tx.QueryContext(ctx, `SELECT business_id::text,id::text,payload_ciphertext FROM broadband_operations ORDER BY business_id,id`)
+		if err != nil {
+			return report, err
+		}
+		type savedOperation struct{ business, id, sealed string }
+		var saved []savedOperation
+		for rows.Next() {
+			var op savedOperation
+			if err := rows.Scan(&op.business, &op.id, &op.sealed); err != nil {
+				rows.Close()
+				return report, err
+			}
+			saved = append(saved, op)
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return report, err
+		}
+		rows.Close()
+		for _, op := range saved {
+			next, err := reseal("broadband operation "+op.id, op.sealed)
+			if err != nil {
+				return report, err
+			}
+			if _, err := tx.ExecContext(ctx, `UPDATE broadband_operations SET payload_ciphertext=$3 WHERE business_id=$1 AND id=$2`, op.business, op.id, next); err != nil {
+				return report, err
+			}
+			report.BroadbandOperations++
+		}
+	}
 	// Final pass over what is now in the database, not what we meant to write.
 	if err := verifyAllUnderKey(ctx, tx, newBox, report); err != nil {
 		return report, err
@@ -211,12 +250,20 @@ func (d *DB) RotateCredentialKey(ctx context.Context, oldBox, newBox *secretbox.
 
 func verifyAllUnderKey(ctx context.Context, tx *sql.Tx, box *secretbox.Box, want CredentialRotationReport) error {
 	count := 0
-	for _, q := range []string{
+	queries := []string{
 		`SELECT ssh_secret_ciphertext FROM devices WHERE ssh_secret_ciphertext IS NOT NULL`,
 		`SELECT ciphertext FROM hub_pending_enrollments`,
 		`SELECT substr(bot_token, 8) FROM business_telegram_bots WHERE bot_token IS NOT NULL AND bot_token <> ''`,
 		`SELECT substr(secret, 8) FROM webhook_endpoints WHERE secret IS NOT NULL AND secret <> ''`,
-	} {
+	}
+	var broadbandExists bool
+	if err := tx.QueryRowContext(ctx, `SELECT to_regclass('public.broadband_operations') IS NOT NULL`).Scan(&broadbandExists); err != nil {
+		return err
+	}
+	if broadbandExists {
+		queries = append(queries, `SELECT payload_ciphertext FROM broadband_operations`)
+	}
+	for _, q := range queries {
 		rows, err := tx.QueryContext(ctx, q)
 		if err != nil {
 			return err
@@ -239,7 +286,7 @@ func verifyAllUnderKey(ctx context.Context, tx *sql.Tx, box *secretbox.Box, want
 		}
 		rows.Close()
 	}
-	if want := want.DeviceSecrets + want.PendingEnrollments + want.BotTokens + want.WebhookSecrets; count != want {
+	if want := want.DeviceSecrets + want.PendingEnrollments + want.BotTokens + want.WebhookSecrets + want.BroadbandOperations; count != want {
 		return fmt.Errorf("verification saw %d sealed values, expected %d; nothing was changed", count, want)
 	}
 	return nil
