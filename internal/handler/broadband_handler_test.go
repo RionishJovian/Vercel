@@ -11,10 +11,17 @@ import (
 func TestBroadbandWritesRequireGateAndExplicitConfirmation(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	for _, tc := range []struct {
-		gate, body string
-		want       int
-	}{{"", `{}`, 503}, {"true", `{"operation_id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}`, 400}} {
+		gate, broadband, body string
+		want                  int
+	}{
+		{"", "", `{}`, 503},
+		{"true", "", `{"confirm":true}`, 503}, // the general switch alone does not open paid PPPoE
+		{"", "true", `{"confirm":true}`, 503}, // nor does this one alone
+		{"true", "false", `{"confirm":true}`, 503},
+		{"true", "true", `{"operation_id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}`, 400},
+	} {
 		t.Setenv("MM_NETWORK_CONTROLS_ENABLED", tc.gate)
+		t.Setenv("MM_BROADBAND_WRITES_ENABLED", tc.broadband)
 		r := gin.New()
 		h := NewSecurityHandler(nil, nil)
 		r.POST("/routers/:id/broadband/accounts", func(c *gin.Context) {

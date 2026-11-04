@@ -451,6 +451,9 @@ func ensureVoucherLoginGuard(ctx context.Context, r CommandRunner) error {
 	if _, err := probeVoucherGuardClock(ctx, r); err != nil {
 		return err
 	}
+	if err := requireDeviceFeatures(ctx, r, true, true); err != nil {
+		return err
+	}
 	// Install login hook script
 	scriptLoginAdd := "name=" + routerOSQuoted(voucherGuardLoginScript) +
 		" policy=read,write dont-require-permissions=yes source=" + routerOSQuoted(voucherGuardSourceLogin)

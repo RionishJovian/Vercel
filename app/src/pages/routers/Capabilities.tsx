@@ -4,7 +4,7 @@ import { useI18n } from "../../i18n";
 import { Note } from "../../components/ui";
 
 interface Menu { supported?: boolean; configured?: boolean; count?: number }
-interface Caps { device_id?: string; detected?: boolean; board_name?: string; routeros_version?: string; dhcp_server?: Menu; hotspot?: Menu; radius?: Menu; modern_wifi?: { count?: number }; legacy_wireless?: { count?: number }; modern_capsman?: { supported?: boolean }; legacy_capsman?: { supported?: boolean }; webfig?: { https_enabled?: boolean; https_port?: number; trusted_only?: boolean }; error?: string }
+interface Caps { device_id?: string; detected?: boolean; board_name?: string; routeros_version?: string; dhcp_server?: Menu; hotspot?: Menu; radius?: Menu; modern_wifi?: { count?: number }; legacy_wireless?: { count?: number }; modern_capsman?: { supported?: boolean }; legacy_capsman?: { supported?: boolean }; device_mode?: { known?: boolean; mode?: string; hotspot?: boolean; scheduler?: boolean }; webfig?: { https_enabled?: boolean; https_port?: number; trusted_only?: boolean }; error?: string }
 const TIMEOUT = 30000;
 
 /** What the router reports it can do. Read on request because it probes the live router. */
@@ -39,9 +39,11 @@ export function Capabilities({ id }: { id: string }) {
           <dt>{t("cap.dhcp")}</dt><dd>{menu(c.dhcp_server)}</dd><dt>Hotspot</dt><dd>{menu(c.hotspot)}</dd><dt>RADIUS</dt><dd>{menu(c.radius)}</dd>
           <dt>{t("cap.radios")}</dt><dd>{radios || t("cap.none")}</dd><dt>CAPsMAN</dt><dd>{capsman ? t("cap.capsmanYes") : t("cap.notDetected")}</dd>
           <dt>{t("cap.webfig")}</dt><dd>{c.webfig?.https_enabled ? t("cap.enabled") : t("cap.notEnabled")}{c.webfig?.https_port ? ` · ${c.webfig.https_port}` : ""}</dd>
+          <dt>{t("cap.deviceMode")}</dt><dd>{c.device_mode?.known ? c.device_mode.mode : t("c.unknown")}</dd>
           <dt>{t("cap.trusted")}</dt><dd>{c.webfig?.trusted_only ? t("cap.yes") : t("cap.attention")}</dd>
         </dl>
       )}
+      {c?.device_mode?.known && (!c.device_mode.hotspot || !c.device_mode.scheduler) && <Note kind="warn">{t("cap.dmWarn")}</Note>}
       {c && <p className="soft small">{radios ? t("cap.localRadios") : t("cap.externalAps")}</p>}
     </section>
   );

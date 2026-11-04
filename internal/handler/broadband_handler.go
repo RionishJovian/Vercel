@@ -36,6 +36,15 @@ type broadbandInput struct {
 	Confirm     bool   `json:"confirm"`
 }
 
+// broadbandWritesEnabled keeps paid PPPoE changes off by default. These scripts
+// run unattended on customer routers and can disconnect paying subscribers, so
+// they have their own switch, set only after a real router trial has passed
+// (docs/BROADBAND-PHYSICAL-TRIAL-20261104.md). The general router-write switch
+// must be on as well. Reading saved records and synchronizing stay available.
+func broadbandWritesEnabled() bool {
+	return os.Getenv("MM_NETWORK_CONTROLS_ENABLED") == "true" && os.Getenv("MM_BROADBAND_WRITES_ENABLED") == "true"
+}
+
 // Broadband handles only explicit paid-account operations. No login, observation
 // or Store purchase can create an implicit payment or entitlement here.
 func (h *SecurityHandler) Broadband(c *gin.Context) {
@@ -55,8 +64,8 @@ func (h *SecurityHandler) Broadband(c *gin.Context) {
 	}
 	var in broadbandInput
 	if c.Request.Method == http.MethodPost && command != "sync" {
-		if os.Getenv("MM_NETWORK_CONTROLS_ENABLED") != "true" {
-			c.JSON(503, gin.H{"error": "Router changes are disabled"})
+		if !broadbandWritesEnabled() {
+			c.JSON(503, gin.H{"error": "Paid PPPoE changes are switched off until they pass a real router trial", "code": "broadband_writes_off"})
 			return
 		}
 		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 4096)
@@ -83,7 +92,7 @@ func (h *SecurityHandler) Broadband(c *gin.Context) {
 			c.JSON(503, gin.H{"error": "Broadband schema is not available; existing services are unchanged"})
 			return
 		}
-		c.JSON(200, gin.H{"accounts": accounts, "write_enabled": os.Getenv("MM_NETWORK_CONTROLS_ENABLED") == "true"})
+		c.JSON(200, gin.H{"accounts": accounts, "write_enabled": broadbandWritesEnabled()})
 		return
 	}
 	controller, ok := h.quickConfig.(broadbandRouter)
