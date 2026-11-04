@@ -186,6 +186,9 @@ func parseBroadbandSession(raw string) (*broadband.SessionUsage, error) {
 	return &broadband.SessionUsage{ID: p[0], UptimeSeconds: int64(up), DownloadBytes: down, UploadBytes: upload}, nil
 }
 func ensureBBGuard(ctx context.Context, r CommandRunner) error {
+	if e := requireDeviceFeatures(ctx, r, false, true); e != nil {
+		return e
+	}
 	if _, e := probeVoucherGuardClock(ctx, r); e != nil {
 		return e
 	}
@@ -283,30 +286,35 @@ func applyBroadband(ctx context.Context, r CommandRunner, s broadband.Spec) (bro
 			return broadband.Observation{}, fmt.Errorf("subscriber installation not confirmed; retry the saved operation")
 		}
 	} else {
-		// Mutation is computed on the router from its latest first-use state, not
-		// a stale app observation. The expected marker is checked again atomically
-		// in this command; every retry carries the same operation identity.
-		command := `:local u [/ppp secret find where name=` + routerOSQuoted(s.Username) + `]; :if ([:len $u] != 1) do={ :error "account missing"; }; :local a [:toarray [/ppp secret get $u comment]]; ` +
-			`:if ([:len $a] != 8) do={ :error "invalid state"; }; :if (($a->1) != ` + routerOSQuoted(s.AccountID) + ` or ($a->2) != ` + routerOSQuoted(s.ExpectedOperation) + ` or [/ppp secret get $u profile] != ` + routerOSQuoted(profile) + `) do={ :error "state changed"; }; ` +
-			bbClockSource + `:if ($clockOK = false) do={ :error "clock unverified"; }; :local period [:tonum ($a->3)]; :local first [:tonum ($a->4)]; :local expiry [:tonum ($a->5)]; :local suspended [:tonum ($a->6)]; :local seen [:tonum ($a->7)]; ` +
-			`:if ($now < $seen) do={ :error "clock unverified"; }; :local anchor [:toarray [/ppp profile get ` + routerOSQuoted(profile) + ` comment]]; ` +
-			`:if ($first = 0 and [:len $anchor] = 2) do={ :set first [:tonum ($anchor->1)]; :set expiry ($first + $period); }; `
-		switch s.Action {
-		case "renew":
-			command += fmt.Sprintf(`:if ($first = 0) do={ :set period ($period + %d); :if ($period > 316224000) do={ :error "period too large"; }; } else={ :if ($expiry < $now) do={ :set expiry $now; }; :set expiry ($expiry + %d); :if ($expiry > 4102444800 or $expiry > ($now + 316224000)) do={ :error "period too large"; }; }; `, s.PeriodSeconds, s.PeriodSeconds)
-		case "suspend":
-			command += `:set suspended 1; `
-		case "resume":
-			command += `:set suspended 0; `
-		}
-		command += `:local disabled false; :if ($suspended != 0 or ($first > 0 and $now >= $expiry)) do={ :set disabled true; }; ` +
-			`/ppp secret set $u comment=("mm-bb-v1," . ($a->1) . "," . ` + routerOSQuoted(s.OperationID) + ` . "," . $period . "," . $first . "," . $expiry . "," . $suspended . "," . $now) disabled=$disabled; ` +
-			`:if ($disabled) do={ /ppp active remove [find where name=` + routerOSQuoted(s.Username) + ` service=pppoe]; }`
+		command := bbMutationCommand(s, profile)
 		if _, e := r.Run(ctx, command); e != nil {
 			return broadband.Observation{}, fmt.Errorf("subscriber change not confirmed; retry the saved operation")
 		}
 	}
 	return settleBroadband(ctx, r, s)
+}
+
+// bbMutationCommand is computed on the router from its latest first-use state, not
+// a stale app observation. The expected marker is checked again atomically in this
+// command; every retry carries the same operation identity. It must stay on one
+// line: see the script rules in broadband_scripts.go.
+func bbMutationCommand(s broadband.Spec, profile string) string {
+	command := `:local u [/ppp secret find where name=` + routerOSQuoted(s.Username) + `]; :if ([:len $u] != 1) do={ :error "account missing"; }; :local a [:toarray [/ppp secret get $u comment]]; ` +
+		`:if ([:len $a] != 8) do={ :error "invalid state"; }; :if ([:tostr ($a->1)] != ` + routerOSQuoted(s.AccountID) + ` or [:tostr ($a->2)] != ` + routerOSQuoted(s.ExpectedOperation) + ` or [/ppp secret get $u profile] != ` + routerOSQuoted(profile) + `) do={ :error "state changed"; }; ` +
+		bbClockSource + `:if ($clockOK = false) do={ :error "clock unverified"; }; :local period [:tonum ($a->3)]; :local first [:tonum ($a->4)]; :local expiry [:tonum ($a->5)]; :local paused [:tonum ($a->6)]; :local seen [:tonum ($a->7)]; ` +
+		`:if ($now < $seen) do={ :error "clock unverified"; }; :local anchor [:toarray [/ppp profile get ` + routerOSQuoted(profile) + ` comment]]; ` +
+		`:if ($first = 0 and [:len $anchor] = 2) do={ :set first [:tonum ($anchor->1)]; :set expiry ($first + $period); }; `
+	switch s.Action {
+	case "renew":
+		command += fmt.Sprintf(`:if ($first = 0) do={ :set period ($period + %d); :if ($period > 316224000) do={ :error "period too large"; }; } else={ :if ($expiry < $now) do={ :set expiry $now; }; :set expiry ($expiry + %d); :if ($expiry > 4102444800 or $expiry > ($now + 316224000)) do={ :error "period too large"; }; }; `, s.PeriodSeconds, s.PeriodSeconds)
+	case "suspend":
+		command += `:set paused 1; `
+	case "resume":
+		command += `:set paused 0; `
+	}
+	return command + `:local deny false; :if ($paused != 0 or ($first > 0 and $now >= $expiry)) do={ :set deny true; }; ` +
+		`/ppp secret set $u comment=("mm-bb-v1," . [:tostr ($a->1)] . "," . ` + routerOSQuoted(s.OperationID) + ` . "," . $period . "," . $first . "," . $expiry . "," . $paused . "," . $now) disabled=$deny; ` +
+		`:if ($deny) do={ /ppp active remove [find where name=` + routerOSQuoted(s.Username) + ` service=pppoe]; }`
 }
 
 func (a *DeviceApplier) ApplyBroadband(ctx context.Context, biz, device string, s broadband.Spec) (broadband.Observation, error) {

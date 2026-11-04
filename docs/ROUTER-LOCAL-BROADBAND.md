@@ -1,7 +1,11 @@
 # Router-local broadband accounts
 
-Implementation date: 2026-11-04. This document describes local source changes,
-not a production deployment or physical RouterBOARD acceptance result.
+**Writes are switched off.** Installing, renewing, suspending and resuming need `MM_BROADBAND_WRITES_ENABLED=true` as well as `MM_NETWORK_CONTROLS_ENABLED=true`. Leave it unset until the [physical trial](BROADBAND-PHYSICAL-TRIAL-20261104.md) has passed: the scripts have never run on a real router, and they run unattended on customer routers. Reading saved records and synchronizing stay available.
+
+The first release of these scripts had a defect a router trial must confirm is gone: a `:local name` variable made `where name=$name` match every record, so one expired account would have disconnected every PPPoE session on the router. No router ever received that version (production had 0 accounts when it was replaced).
+
+Implementation date: 2026-11-04. Deployed to production with writes later switched
+off (see above). This is not a physical RouterBOARD acceptance result.
 
 ## Owner workflow
 
@@ -146,7 +150,8 @@ Expiry is a periodic check, not a hard real-time deadline; its nominal interval 
 For a separately authorized release: preserve a database backup and the current
 release, apply the additive migration using `deploy/server/mm-migrate up`, run the
 existing runtime grants step, then release the API and `/v2/` build together. Keep
-the existing credential key and explicit `MM_NETWORK_CONTROLS_ENABLED` gate. The
+the existing credential key and the explicit `MM_NETWORK_CONTROLS_ENABLED` and
+`MM_BROADBAND_WRITES_ENABLED` gates. The
 saved management applier must be enabled for router operations/background reads.
 Missing schema leaves this new section unavailable without altering existing
 product data. Do not undo this feature by deleting live accounts, tables or router

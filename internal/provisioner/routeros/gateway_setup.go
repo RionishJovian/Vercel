@@ -214,6 +214,13 @@ func radiusHostReachable(ctx context.Context, r CommandRunner, address string) (
 }
 
 func gatewayPreflight(ctx context.Context, r CommandRunner, g GatewaySetup, network *net.IPNet, steps []gatewayStep) error {
+	if g.Hotspot {
+		// Vouchers on this Hotspot need Scheduler too. Ask for both at once: every
+		// device-mode change needs someone at the router.
+		if e := requireDeviceFeatures(ctx, r, true, true); e != nil {
+			return e
+		}
+	}
 	count := func(command string) (int, error) {
 		out, e := r.Run(ctx, command)
 		if e != nil {

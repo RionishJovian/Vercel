@@ -107,3 +107,10 @@ The other `fw.*` keys (preview-only note, checking, applying, failure texts) fol
 | `g.plan.up` | Upload speed (Mbps) | အပ်လုဒ် မြန်နှုန်း (Mbps) |
 | `g.plan.speedHint` | Leave both at 0 for no speed limit. A speed applies to guests who buy this plan, from their next login. | မြန်နှုန်းကန့်သတ်ချက် မလိုပါက နှစ်ခုလုံး 0 ထားပါ။ ဤ plan ဝယ်သူများအတွက် နောက်တစ်ကြိမ် login မှစ၍ သက်ရောက်သည်။ |
 | `g.plan.speedBad` | Plan speed needs both download and upload between 1 and 10000 Mbps, or both 0 for no limit. | Plan မြန်နှုန်းတွင် ဒေါင်းလုဒ်နှင့် အပ်လုဒ် နှစ်ခုလုံး Mbps ၁ မှ ၁၀၀၀၀ အတွင်း ဖြစ်ရမည်၊ မကန့်သတ်လိုပါက နှစ်ခုလုံး 0 ထားပါ။ |
+
+## Device mode and PPPoE lock (2026-11-05)
+
+| Key | English | Burmese (to review) |
+|---|---|---|
+| `cap.dmWarn` | Device mode turns off Hotspot or Scheduler, which vouchers need. In WinBox New Terminal run /system/device-mode/update hotspot=yes scheduler=yes, then within 5 minutes press the reset or mode button, or unplug the power. A normal reboot cancels the change. | Device mode က ဘောက်ချာအတွက် လိုအပ်သော Hotspot သို့မဟုတ် Scheduler ကို ပိတ်ထားသည်။ WinBox New Terminal တွင် /system/device-mode/update hotspot=yes scheduler=yes ကို ရိုက်ပြီး ၅ မိနစ်အတွင်း reset သို့မဟုတ် mode ခလုတ်ကို နှိပ်ပါ၊ သို့မဟုတ် ပါဝါကြိုးကို ဖြုတ်ပါ။ ပုံမှန် reboot လုပ်လျှင် ပြောင်းလဲမှု ပယ်ဖျက်သွားမည်။ |
+| `bb.locked` | Paid PPPoE changes are switched off until they pass a real router trial. Saved records stay visible. | Router အမှန်ဖြင့် စမ်းသပ်အောင်မြင်သည်အထိ ငွေပေးချေ PPPoE ပြောင်းလဲမှုများကို ပိတ်ထားသည်။ သိမ်းထားသော မှတ်တမ်းများကို ကြည့်နိုင်သည်။ |

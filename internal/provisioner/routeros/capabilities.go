@@ -45,6 +45,7 @@ type RouterCapabilities struct {
 	ModernCAPsMAN     MenuCapability   `json:"modern_capsman"`
 	LegacyCAPsMAN     MenuCapability   `json:"legacy_capsman"`
 	WebFig            WebFigCapability `json:"webfig"`
+	DeviceMode        DeviceModeFacts  `json:"device_mode"`
 	ExternalAPsLikely bool             `json:"external_aps_likely"`
 	Notes             []string         `json:"notes"`
 }
@@ -158,6 +159,11 @@ func (p *DeviceProber) InspectCapabilities(ctx context.Context, businessID, peer
 		services := capabilityServices(serviceOut)
 		caps.WebFig.HTTPEnabled, _, _ = enabledService(services, "www")
 		caps.WebFig.HTTPSEnabled, caps.WebFig.HTTPSPort, caps.WebFig.TrustedOnly = enabledService(services, "www-ssl")
+	}
+
+	caps.DeviceMode = readDeviceMode(ctx, runner)
+	if caps.DeviceMode.Known && (!caps.DeviceMode.Hotspot || !caps.DeviceMode.Scheduler) {
+		caps.Notes = append(caps.Notes, "Device mode turns off a feature Mega Magic needs for vouchers.")
 	}
 
 	localRadio := caps.ModernWiFi.Count+caps.LegacyWireless.Count > 0

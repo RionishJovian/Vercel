@@ -63,6 +63,7 @@ func TestBroadbandRecoversLostReplyWithoutDuplicatePayment(t *testing.T) {
 		t.Fatal(e)
 	}
 	t.Setenv("MM_NETWORK_CONTROLS_ENABLED", "true")
+	t.Setenv("MM_BROADBAND_WRITES_ENABLED", "true")
 	h := NewSecurityHandler(db, database.NewDeviceRepository(db))
 	box, e := secretbox.New(base64.StdEncoding.EncodeToString([]byte(strings.Repeat("x", 32))))
 	if e != nil {

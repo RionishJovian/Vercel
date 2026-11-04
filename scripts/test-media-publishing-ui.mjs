@@ -43,13 +43,13 @@ const server=createServer(async(req,res)=>{
  }
  try{const path=resolve(root,'.'+u.pathname);if(!path.startsWith(root+'/'))return json(404,{});const data=await readFile(path);res.writeHead(200,{'Content-Type':({'.html':'text/html','.js':'text/javascript','.css':'text/css'})[extname(path)]||'application/octet-stream'});res.end(data);}catch(_){json(404,{});}
 });
-const wait=async(fn,label)=>{const end=Date.now()+12000;while(Date.now()<end){if(await fn())return;await new Promise(r=>setTimeout(r,50));}throw new Error('timeout: '+label);};
+const wait=async(fn,label,ms=12000)=>{const end=Date.now()+ms;while(Date.now()<end){if(await fn())return;await new Promise(r=>setTimeout(r,50));}throw new Error('timeout: '+label);};
 let browser,profile,ws;
 try{
  await new Promise(r=>server.listen(0,'127.0.0.1',r));const port=server.address().port;
  profile=await mkdtemp(join(tmpdir(),'mm-media-publish-'));const debugPort=9700+Math.floor(Math.random()*300);
  browser=spawn(process.env.CHROME_BIN||'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',['--headless=new','--no-first-run','--disable-background-networking',`--remote-debugging-port=${debugPort}`,`--user-data-dir=${profile}`,'about:blank'],{stdio:'ignore'});
- await wait(async()=>{try{return(await fetch(`http://127.0.0.1:${debugPort}/json/version`)).ok;}catch(_){return false;}},'Chrome');
+ await wait(async()=>{try{return(await fetch(`http://127.0.0.1:${debugPort}/json/version`)).ok;}catch(_){return false;}},'Chrome',45000); // Chrome starts slowly on loaded CI runners; page checks keep the 12 s limit.
  const tab=await fetch(`http://127.0.0.1:${debugPort}/json/new?about:blank`,{method:'PUT'}).then(r=>r.json());ws=new WebSocket(tab.webSocketDebuggerUrl);
  await new Promise((ok,bad)=>{ws.addEventListener('open',ok,{once:true});ws.addEventListener('error',bad,{once:true});});
  let serial=0;const pending=new Map(),errors=[];

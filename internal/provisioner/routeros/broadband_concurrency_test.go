@@ -13,13 +13,13 @@ func TestBroadbandFirstLoginCannotOverwriteRenewalMarker(t *testing.T) {
 }
 
 func TestBroadbandGuardRecoversClockPauseWithoutOpeningDeniedAccounts(t *testing.T) {
-	if !strings.Contains(bbEnforceOneSource, `} else={ /ppp secret set [find where name=$name comment=$raw profile=$p service=pppoe] disabled=no; }`) {
+	if !strings.Contains(bbEnforceOneSource, `/ppp secret set [find where name=$bbUser comment=$raw profile=$p service=pppoe] disabled=no;`) {
 		t.Fatal("a valid account stays disabled after startup clock synchronization")
 	}
 	if strings.Contains(bbEnforceOneSource, `set $u disabled=no`) {
 		t.Fatal("a stale guard snapshot can reopen a subsequently suspended account")
 	}
-	for _, condition := range []string{`$clockOK = false`, `($a->6) != "0"`, `$now >= $expiry`, `$now < $seen`} {
+	for _, condition := range []string{`$clockOK = false`, `$paused != 0`, `$now >= $expiry`, `$now < $seen`} {
 		if !strings.Contains(bbEnforceOneSource, condition) {
 			t.Fatal("automatic recovery lost a denial condition", condition)
 		}

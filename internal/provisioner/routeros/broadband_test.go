@@ -3,6 +3,8 @@ package routeros
 import (
 	"context"
 	"mega-magic/internal/broadband"
+	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -110,5 +112,71 @@ func TestGenericSubscriberCannotBorrowPaidProfile(t *testing.T) {
 	_, _, e := buildNetworkPlan(context.Background(), r, NetworkRequest{Kind: "subscriber", ID: "*3", Values: map[string]string{"name": "alice", "password": "replacement", "profile": "mm-bb-aaaaaaaaaaaa4aaa8aaaaaaaaaaaaaaa", "disabled": "no"}})
 	if e == nil {
 		t.Fatal("generic subscriber borrowed a paid account's first-use hook")
+	}
+}
+
+// Properties of /ppp secret, /ppp active and /ppp profile (RouterOS CLI reference).
+// Inside `where`, a variable with one of these names reads the record's own property,
+// so `where name=$name` matches every record and would disconnect every subscriber.
+var bbReservedNames = []string{"name", "service", "caller-id", "address", "uptime", "encoding", "session-id", "password", "profile", "comment", "disabled", "routes", "local-address", "remote-address", "only-one", "rate-limit", "on-up", "on-down", "id", "bytes", "packets", "type"}
+
+func bbRouterSources() map[string]string {
+	sources := map[string]string{"guard": bbGuardSource, "hook": bbOnUp("home001", "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")}
+	for _, action := range []string{"renew", "suspend", "resume"} {
+		sources[action] = bbMutationCommand(broadband.Spec{AccountID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", OperationID: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", ExpectedOperation: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", Action: action, Username: "home001", PeriodSeconds: 86400}, "mm-bb-x")
+	}
+	return sources
+}
+
+func TestBroadbandScriptsDoNotReadRecordPropertiesByAccident(t *testing.T) {
+	local := regexp.MustCompile(`:local ([A-Za-z0-9-]+)`)
+	where := regexp.MustCompile(`where [^\]]*`)
+	variable := regexp.MustCompile(`=\$"?([A-Za-z0-9-]+)`)
+	for source, text := range bbRouterSources() {
+		for _, m := range local.FindAllStringSubmatch(text, -1) {
+			if slices.Contains(bbReservedNames, m[1]) {
+				t.Errorf("%s declares :local %s, a RouterOS property name", source, m[1])
+			}
+		}
+		for _, clause := range where.FindAllString(text, -1) {
+			for _, m := range variable.FindAllStringSubmatch(clause, -1) {
+				if slices.Contains(bbReservedNames, m[1]) {
+					t.Errorf("%s filters with $%s, which reads each record's own property: %s", source, m[1], clause)
+				}
+			}
+		}
+	}
+}
+
+func TestBroadbandSSHCommandsStayOnOneLine(t *testing.T) {
+	if strings.Contains(bbClockSource, "\n") {
+		t.Error("the clock check is sent over SSH, so it must stay on one line")
+	}
+	for source, text := range bbRouterSources() {
+		if source != "guard" && source != "hook" && strings.ContainsAny(text, "\r\n") {
+			t.Errorf("%s is sent over SSH with a line break: it fails before RouterOS 7.25", source)
+		}
+	}
+	// Scripts stored on the router may span lines; they travel quoted.
+	if quoted := routerOSQuoted(bbGuardSource); strings.ContainsAny(quoted, "\r\n") {
+		t.Error("stored guard source reached the SSH command unescaped")
+	}
+}
+
+func TestBroadbandScriptsDoNotDependOnArrayElementTypes(t *testing.T) {
+	for source, text := range bbRouterSources() {
+		for _, risky := range []string{`($a->1) !=`, `($a->2) !=`, `($a->6) !=`, `($anchor->0) =`, ":return"} {
+			if strings.Contains(text, risky) {
+				t.Errorf("%s relies on undocumented behaviour: %s", source, risky)
+			}
+		}
+	}
+}
+
+func TestBroadbandGuardWritesFlashOnlyOnChange(t *testing.T) {
+	for _, want := range []string{`:if ($off != "true" and $off != "yes") do={ /ppp secret set $u disabled=yes; };`, `:if ($off = "true" or $off = "yes") do={ /ppp secret set [find where name=$bbUser`} {
+		if !strings.Contains(bbEnforceOneSource, want) {
+			t.Error("the 15-second guard rewrites the secret without checking it first:", want)
+		}
 	}
 }
