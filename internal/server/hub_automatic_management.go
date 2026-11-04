@@ -63,6 +63,16 @@ func configureAutomaticHubManagement(h *handler.VPSHandler, source *database.Dev
 	if len(options) > 0 {
 		option = options[0]
 	}
+	h.ConfigureHubConnectionState(func(ctx context.Context, biz, id string) (handler.HubConnectionState, error) {
+		if option.store == nil {
+			return handler.HubConnectionState{Management: "unknown", Setup: "unknown"}, nil
+		}
+		metadata, e := option.store.Inspect(ctx, biz, id)
+		if e != nil {
+			return handler.HubConnectionState{}, e
+		}
+		return hubConnectionState(metadata), nil
+	})
 	h.ConfigureAutomaticPreflight(func(ctx context.Context, biz, id string) error {
 		if _, e := configuredManagementSource(interfaceName, option.sourceCIDR); e != nil {
 			return e

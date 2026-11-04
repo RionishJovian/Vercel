@@ -40,6 +40,8 @@ type VPSHandler struct {
 	automaticVerify    func(context.Context, string, string, string, string) error
 	quickKeysMu        sync.Mutex
 	quickKeys          map[string]quickEnrollmentKey
+
+	liveConnectionState func(context.Context, string, string) (HubConnectionState, error)
 }
 
 func NewVPSHandler(db *database.DB, deviceRepo *database.DeviceRepository, quotaRepo *database.BusinessMeteredQuotaRepository, mon *monitoring.MonitoringService, wg config.WireGuardConfig, endpointHost string) *VPSHandler {

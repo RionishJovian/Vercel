@@ -16,6 +16,49 @@ type PendingEnrollmentStore struct {
 	DB  *DB
 	Box *secretbox.Box
 }
+type PendingEnrollmentStatus struct {
+	RouterKey, Management string
+	ManagementSaved       bool
+}
+
+// Inspect reads expiry labels only; no installation material is returned.
+func (s PendingEnrollmentStore) Inspect(ctx context.Context, biz, device string) (PendingEnrollmentStatus, error) {
+	status := PendingEnrollmentStatus{RouterKey: "missing", Management: "missing"}
+	if !uuidRe.MatchString(biz) || !uuidRe.MatchString(device) {
+		return PendingEnrollmentStatus{}, errors.New("invalid pending enrollment identity")
+	}
+	e := s.DB.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM devices WHERE business_id=$1 AND device_id=$2
+ AND management_ip IS NOT NULL AND COALESCE(ssh_username,'')<>'' AND COALESCE(ssh_secret_ciphertext,'')<>'')`, biz, device).Scan(&status.ManagementSaved)
+	if e != nil {
+		return PendingEnrollmentStatus{}, e
+	}
+	rows, e := s.DB.QueryContext(ctx, `SELECT purpose,expires_at > now() FROM hub_pending_enrollments WHERE business_id=$1 AND device_id=$2`, biz, device)
+	if e != nil {
+		return PendingEnrollmentStatus{}, e
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var purpose string
+		var ready bool
+		if e = rows.Scan(&purpose, &ready); e != nil {
+			return PendingEnrollmentStatus{}, e
+		}
+		state := "expired"
+		if ready {
+			state = "ready"
+		}
+		switch purpose {
+		case "router_key":
+			status.RouterKey = state
+		case "management":
+			status.Management = state
+		default:
+			return PendingEnrollmentStatus{}, errors.New("invalid pending enrollment purpose")
+		}
+	}
+	return status, rows.Err()
+}
+
 type pendingEnvelope struct {
 	Business, Device, Purpose, Value string
 	Expires                          time.Time

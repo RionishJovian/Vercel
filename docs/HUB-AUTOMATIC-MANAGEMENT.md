@@ -13,6 +13,15 @@ pasting another script. A saved-management conflict also opens verification
 directly. Opening the check step does not mark the script steps complete.
 Only a `management_authenticated` server response confirms connection success.
 
+**Check Magic Hub** also shows separate app-side management and setup labels.
+These are read from tenant/router-scoped saved-record and expiry metadata without
+decrypting credentials or connecting to the router. An expired original setup
+and an unexpired repair awaiting verification are distinguished. Saved credentials
+are labelled saved, never proof of current authentication. Failed or unavailable
+diagnostics remain unknown; they do not change independent handshake evidence.
+The status read never generates installation material, renews its lifetime or
+requests peer/key changes.
+
 The backend requires tenant administrator permissions and a recent authenticated
 Hub handshake. It derives the destination from the signed Hub allocation, checks
 the outbound CIDR policy, authenticates using the generated SSH key, and requires
@@ -23,9 +32,10 @@ This replaces manual LAN fingerprint entry with trust through the authenticated
 WireGuard peer plus the locally pasted enrollment proof; it is not independent
 verification over the LAN.
 
-Pending scripts and keys have a 30-minute lifetime and use the encrypted pending
-enrollment store in the configured production path, preserving an unexpired
-attempt across backend restarts. Regeneration reuses the pending identity; it
+Management setup material has a 30-minute lifetime. In the configured production
+path, the pending router installation key is retained for 24 hours; the legacy
+in-memory fallback retains it for 30 minutes. Encrypted pending records preserve
+an unexpired attempt across backend restarts. Regeneration reuses the pending identity; it
 does not rotate an established peer. Expired installation material requires the
 explicit existing-tunnel repair workflow, which only works when the router still
 has the original allocated key. Verified management credentials survive application
