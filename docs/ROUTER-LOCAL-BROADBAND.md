@@ -46,6 +46,9 @@ create/renew operations once, using the original request date for “today” in
 Asia/Yangon. Pending operations are shown separately. These amounts are entered by
 the owner; they are not bank settlement or inferred session/usage revenue. Existing
 Hotspot activation and payment summaries retain their own definitions.
+The PPPoE report's **Reload records** action only reads these saved totals. A
+failed read keeps any last loaded totals visible with an explicit warning;
+unavailable totals are never substituted with zero or treated as new payments.
 
 ## Persistence and isolation
 

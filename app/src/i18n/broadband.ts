@@ -1,6 +1,8 @@
 // Burmese additions are a draft for the existing native-speaker review workflow.
 const broadband = {
  en: {
+  "bb.reportFailed":"Payment totals could not be refreshed.",
+  "bb.savedReport":"Showing last loaded payment totals.",
   "bb.reload":"Reload records",
   "bb.savedRecords":"Showing last loaded records. Reload before making changes.",
   "bb.retryPrevious":"Retry the earlier unconfirmed change with these details.",
@@ -13,6 +15,8 @@ const broadband = {
   "bb.rejected":"Account was not installed. Choose a different username or PPP plan, then try again.", "bb.session":"Observed session traffic", "bb.title":"Paid broadband accounts", "bb.new":"New account", "bb.user":"Username", "bb.password":"Password", "bb.profile":"PPP plan", "bb.days":"Period (days)", "bb.amount":"Payment received (MMK)", "bb.install":"Install account", "bb.sync":"Refresh from router", "bb.retry":"Retry saved operation", "bb.renew":"Renew", "bb.suspend":"Suspend", "bb.resume":"Resume", "bb.empty":"No paid broadband accounts yet.", "bb.unknown":"Awaiting router confirmation", "bb.observed":"Last router observation", "bb.first":"First connection", "bb.expiry":"Paid until", "bb.unused":"Starts at first connection", "bb.active":"Active", "bb.expired":"Expired", "bb.suspended":"Suspended", "bb.clock":"Clock needs review", "bb.done":"Router change verified. Payment records were not duplicated.", "bb.failed":"Change not confirmed. Refresh and retry the saved operation before making another payment.", "bb.confirm":"Apply this change to the displayed router? For installation or renewal, confirm the entered payment has been received.", "bb.help":"Installed accounts authenticate locally. New accounts start at first connection; early renewals extend the expiry. Refresh updates observed status without creating a payment.", "bb.report":"PPPoE recorded payments", "bb.total":"Total recorded", "bb.today":"Recorded today", "bb.pending":"Pending router confirmation", "bb.reportHelp":"Owner-recorded installation and renewal payments, shown separately from Hotspot voucher activation and bank settlement.", "bb.locked":"Router changes are disabled.", "bb.loadFailed":"Broadband records are unavailable. Existing services are unchanged.", "bb.review":"Review the username, plan, period, amount and router before applying.", "bb.planHint":"Existing PPP profile name; profiles with custom connection scripts are preserved and cannot be used here."
  },
  my: {
+  "bb.reportFailed":"လက်ခံငွေစုစုပေါင်းကို ပြန်မဖတ်နိုင်ပါ။",
+  "bb.savedReport":"နောက်ဆုံးဖတ်ထားသည့် လက်ခံငွေစုစုပေါင်းကို ပြထားသည်။",
   "bb.reload":"စာရင်း ပြန်ဖတ်မည်",
   "bb.savedRecords":"နောက်ဆုံးဖတ်ထားသည့် စာရင်းကို ပြထားသည်။ မပြောင်းလဲမီ စာရင်း ပြန်ဖတ်ပါ။",
   "bb.retryPrevious":"ဤအချက်အလက်များဖြင့် ယခင်အတည်မပြုနိုင်သေးသော လုပ်ဆောင်ချက်ကို ပြန်လုပ်ပါ။",
