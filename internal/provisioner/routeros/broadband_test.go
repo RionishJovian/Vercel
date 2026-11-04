@@ -17,6 +17,40 @@ func TestBroadbandRejectsInvalidRequestBeforeIO(t *testing.T) {
 		t.Fatal("invalid request accepted")
 	}
 }
+
+func TestBroadbandAcceptsExistingProfileLabels(t *testing.T) {
+	s := broadband.Spec{AccountID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", OperationID: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", Action: "create", Username: "home001", Password: "test-password-only", PeriodSeconds: 86400}
+	for _, profile := range []string{"default", "Home 20M", "Plan (30 days)", "မြန်မာ Plan", `Home "A" $plan`} {
+		s.Profile = profile
+		if !validBBSpec(s) {
+			t.Errorf("existing profile label was rejected: %q", profile)
+		}
+	}
+}
+
+func TestBroadbandProfileLookupKeepsQuotedLabelLiteral(t *testing.T) {
+	profile := `Home "A" $plan`
+	r := runnerFunc(func(_ context.Context, command string) (string, error) {
+		if command != `/ppp profile print value-list detail where name="Home \"A\" \$plan"` {
+			t.Fatal("profile label escaped its literal selector", command)
+		}
+		return "name: " + profile + "\non-up: \non-down: \n", nil
+	})
+	fields, e := readNamedValueList(context.Background(), r, "/ppp profile", profile)
+	if e != nil || fields["name"] != profile {
+		t.Fatal(fields, e)
+	}
+}
+
+func TestBroadbandRejectsUnsafeSourceProfilesBeforeIO(t *testing.T) {
+	s := broadband.Spec{AccountID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", OperationID: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", Action: "create", Username: "home001", Password: "test-password-only", PeriodSeconds: 86400}
+	for _, profile := range []string{"", " Home", "Home ", "Home\nPlan", "Home\tPlan", "Home\x00Plan", strings.Repeat("p", 65)} {
+		s.Profile = profile
+		if validBBSpec(s) {
+			t.Errorf("unsafe profile accepted: %q", profile)
+		}
+	}
+}
 func TestBroadbandRetryDoesNotApplyRenewalTwice(t *testing.T) {
 	id, op := "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
 	now := time.Now().Unix()

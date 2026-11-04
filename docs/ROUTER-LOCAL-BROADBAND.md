@@ -11,6 +11,11 @@ enter the period in days and payment received, then confirm the displayed router
 The backend uses the saved Magic Hub management connection to install the account.
 No customer browser receives router credentials or issues RouterOS commands.
 
+Existing PPP-plan labels may contain spaces, punctuation and Unicode within the
+existing 64-character database limit. Labels are preserved exactly and passed as
+quoted RouterOS values. Empty names, control characters and leading/trailing
+whitespace are rejected; subscriber username rules are unchanged.
+
 - New accounts start their purchased period at the first successful connection.
 - One day means 24 hours; a purchase accepts 1–366 days.
 - Renewing an unused account adds prepaid days without starting its clock.
