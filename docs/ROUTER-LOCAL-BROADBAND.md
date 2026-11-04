@@ -36,6 +36,10 @@ whitespace are rejected; subscriber username rules are unchanged.
   other actions do not clear unresolved payments. Suspend/resume retain their
   existing request behavior and cannot replay an obsolete cached action.
 - **Refresh from router** only reconciles evidence. It never records a sale.
+- If account records cannot be loaded, **Reload records** retries only the app's
+  saved account read. Last loaded records are labelled stale, entered form values
+  and uncertain payment identities remain in memory, and router actions stay
+  locked until the read succeeds. Viewers can also reload without write access.
 
 The Revenue page has a separate PPPoE recorded-payment section. It counts applied
 create/renew operations once, using the original request date for “today” in

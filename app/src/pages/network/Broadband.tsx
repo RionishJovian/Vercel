@@ -13,7 +13,7 @@ const stamp = (epoch?: number) => epoch ? new Date(epoch * 1000).toLocaleString(
 
 export function Broadband({ routerId, routerName, canEdit, onBusyChange }: { routerId: string; routerName: string; canEdit: boolean; onBusyChange?: (busy: boolean) => void }) {
  const { t } = useI18n(), base = `/routers/${encodeURIComponent(routerId)}/broadband`;
- const { data, error, mutate } = useSWR<{ accounts: Account[]; write_enabled: boolean }>(base + "/accounts", fetcher, { shouldRetryOnError: false });
+ const { data, error, isValidating: recordsChecking, mutate } = useSWR<{ accounts: Account[]; write_enabled: boolean }>(base + "/accounts", fetcher, { shouldRetryOnError: false });
  const { data: inventory, error: inventoryError, isValidating: inventoryChecking, mutate: recheckPlans } = useSWR<{ inventory?: { available?: { ppp_profiles?: boolean }; objects?: { ppp_profiles?: Array<{ values: { name?: string } }> } } }>(canEdit ? `/routers/${encodeURIComponent(routerId)}/network/inventory` : null, fetcher, { shouldRetryOnError: false });
  const plans = (inventory?.inventory?.objects?.ppp_profiles ?? []).map((p) => p.values.name).filter((p): p is string => !!p && !p.startsWith("mm-bb-"));
  const plansLoaded = Array.isArray(inventory?.inventory?.objects?.ppp_profiles) && inventory?.inventory?.available?.ppp_profiles !== false;
@@ -31,7 +31,7 @@ export function Broadband({ routerId, routerName, canEdit, onBusyChange }: { rou
   for (const [key, value] of unconfirmed.current) if (value === id) unconfirmed.current.delete(key);
  }
  async function act(path: string, body: Record<string, unknown>, sync = false) {
-  if (pending.current) return false;
+  if (pending.current || error) return false;
   const recoveryID = path.match(/^\/operations\/([0-9a-f-]{36})\/retry$/)?.[1];
   const account = data?.accounts.find((a) => path.includes(a.id) || !!recoveryID && a.pending_operation === recoveryID);
   const { operation_id, ...intent } = body;
@@ -61,10 +61,14 @@ export function Broadband({ routerId, routerName, canEdit, onBusyChange }: { rou
   e.preventDefault(); const form = e.currentTarget, f = new FormData(form);
   void act("/accounts", { operation_id: crypto.randomUUID(), username: String(f.get("username")), password: String(f.get("password")), profile: String(f.get("profile")), period_days: days, amount_mmk: amount }).then((applied) => { if (applied && form.isConnected) form.reset(); });
  }
- if (error) return <Note kind="warn">{t("bb.loadFailed")}</Note>;
- const locked = busy || !canEdit || data?.write_enabled !== true;
+ const locked = busy || !!error || !canEdit || data?.write_enabled !== true;
  return <section className="glass pad stack" aria-label={t("bb.title")}>
-  <div className="row" style={{ flexWrap: "wrap" }}><h2>{t("bb.title")}</h2><b>{routerName}</b><button className="pill" type="button" disabled={busy || !data || !canEdit} onClick={() => void act("/sync", {}, true)}>{t("bb.sync")}</button></div>
+  <div className="row" style={{ flexWrap: "wrap" }}><h2>{t("bb.title")}</h2><b>{routerName}</b><button className="pill" type="button" disabled={busy || !!error || !data || !canEdit} onClick={() => void act("/sync", {}, true)}>{t("bb.sync")}</button></div>
+  {error && <Note kind="warn">
+   <p>{t("bb.loadFailed")}</p>
+   {data && <p>{t("bb.savedRecords")}</p>}
+   <button className="pill" type="button" disabled={busy || recordsChecking} onClick={() => void mutate()}>{t("bb.reload")}</button>
+  </Note>}
   <details><summary>{t("c.help")}</summary><p className="soft small">{t("bb.help")}</p></details>
   {canEdit && (plansUnavailable || plansLoaded && !plans.length) && <Note kind="warn">
    <p>{t(managementRequired ? "bb.connectFirst" : plansUnavailable ? "bb.plansFailed" : "bb.noPlans")}</p>
@@ -91,8 +95,8 @@ export function Broadband({ routerId, routerName, canEdit, onBusyChange }: { rou
   {canEdit && <>
    {!data?.write_enabled && data && <Note>{t("bb.locked")}</Note>}
    <div className="row">
-    <label className="field"><span>{t("bb.days")}</span><input className="input" type="number" min="1" max="366" value={days} disabled={busy} onChange={(e) => setDays(Number(e.target.value))} /></label>
-    <label className="field"><span>{t("bb.amount")}</span><input className="input" type="number" min="0" max="1000000000" value={amount} disabled={busy} onChange={(e) => setAmount(Number(e.target.value))} /></label>
+    <label className="field"><span>{t("bb.days")}</span><input className="input" type="number" min="1" max="366" value={days} disabled={busy || !!error} onChange={(e) => setDays(Number(e.target.value))} /></label>
+    <label className="field"><span>{t("bb.amount")}</span><input className="input" type="number" min="0" max="1000000000" value={amount} disabled={busy || !!error} onChange={(e) => setAmount(Number(e.target.value))} /></label>
    </div>
    <details><summary>{t("bb.new")}</summary><form className="stack" onSubmit={create}>
     <fieldset disabled={locked || inventoryChecking || !!inventoryError || !plansLoaded || !plans.length} className="nolock stack">
