@@ -53,6 +53,18 @@ describe("Vouchers table", () => {
     expect(screen.getByText("Page 3 · 201–202 of 505")).toBeTruthy();
   });
 
+  it("stays on the page chosen right after opening, and a new search returns to page 1", async () => {
+    pages = { 1: { vouchers: [row(1)], total: 505, status_counts: { unused: 505 } }, 3: { vouchers: [row(201)], total: 505, status_counts: { unused: 505 } } };
+    open();
+    await screen.findByText("CODE1");
+    fireEvent.click(screen.getByRole("button", { name: "Page 3" }));
+    await screen.findByText("CODE201");
+    await new Promise((r) => setTimeout(r, 400)); // Longer than the search box's wait.
+    expect(screen.getByText("Page 3 · 201–201 of 505")).toBeTruthy();
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "ABC" } });
+    await waitFor(() => expect(calls.some((c) => c.url.includes("page=1") && c.url.includes("q=ABC"))).toBe(true));
+  });
+
   it("keeps a selection across pages and prints it", async () => {
     pages = { 1: { vouchers: [row(1)], total: 150, status_counts: { unused: 150 } }, 2: { vouchers: [row(101)], total: 150, status_counts: { unused: 150 } } };
     const print = vi.spyOn(printing, "printCodes").mockImplementation(() => undefined);

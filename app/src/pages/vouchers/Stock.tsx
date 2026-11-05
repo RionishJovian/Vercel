@@ -47,9 +47,11 @@ export function Stock() {
   const [handed, setHanded] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
-    const id = setTimeout(() => { setQ(search.trim().slice(0, 64)); setPage(1); }, 300);
+    const next = search.trim().slice(0, 64);
+    if (next === q) return undefined; // Only a changed search may return to page 1.
+    const id = setTimeout(() => { setQ(next); setPage(1); }, 300);
     return () => clearTimeout(id);
-  }, [search]);
+  }, [search, q]);
 
   const incomplete = asArray<Pending>(batchesRes.data?.batches);
   const batches = useMemo(() => asArray<StockBatch>(batchesRes.data?.stock_batches).slice().sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))), [batchesRes.data]);
