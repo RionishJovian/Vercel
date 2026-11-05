@@ -1,27 +1,51 @@
 package handler
 
 import (
+	"regexp"
 	"strings"
 	"unicode"
 
 	"mega-magic/internal/model"
 )
 
-// Keep these labels and role restrictions aligned with the app navigation (app/src/pages/More.tsx).
+type magicDudePage struct{ Key, Label string }
+
+// These mirror the console's own labels; TestMagicDudePagesMatchTheApp fails when
+// the app renames or removes one.
+var (
+	magicDudeTabs     = []magicDudePage{{"tab.home", "Home"}, {"tab.router", "Router"}, {"tab.vouchers", "Vouchers"}, {"tab.jellyfin", "Jellyfin"}, {"tab.more", "More"}}
+	magicDudeJellyfin = []magicDudePage{{"j.ws.dash", "Dashboard"}, {"j.ws.vouchers", "Vouchers"}, {"j.ws.guest", "Guest page"}}
+	magicDudeMore     = []magicDudePage{
+		{"title.revenue", "Revenue"}, {"title.store", "Store"}, {"title.sites", "Sites"}, {"hub.title", "Magic Hub"},
+		{"title.network", "Internet setup"}, {"tp.title", "Topology"}, {"dv.title", "Devices"}, {"dm.title", "Managed devices"},
+		{"gu.title", "Guests"}, {"fl.title", "Fleet health"}, {"inc.title", "Incidents"}, {"sec.title", "Security"},
+		{"bk.title", "Backups"}, {"ev.title", "Event log"}, {"dev.sc.title", "Fleet scans"},
+		{"pf.title", "Your profile"}, {"gd.title", "Guide"},
+	}
+	magicDudeStaff     = []magicDudePage{{"dev.tpl.title", "RouterOS reference"}, {"dev.tl.title", "Terminal log"}, {"dev.ai.title", "AI usage"}}
+	magicDudeDeveloper = []magicDudePage{{"dev.tm.title", "Team (legacy)"}, {"dev.tr.title", "Translations"}, {"title.platform", "Platform"}}
+)
+
+func magicDudeLabels(pages []magicDudePage) string {
+	labels := make([]string, len(pages))
+	for i, p := range pages {
+		labels[i] = p.Label
+	}
+	return strings.Join(labels, ", ")
+}
+
 func magicDudeSystemPrompt(role model.UserRole, snapshot string) string {
 	var guide strings.Builder
-	guide.WriteString("Available app navigation (exact sidebar labels):\n" +
-		"Overview: fleet summary; Fleet health: device health; Topology: network relationships; Incidents: problems; " +
-		"Sites: physical locations and map pins; Gateways: gateway records, Magic Hub checks and configuration; " +
-		"Downstream devices: switches and access points behind gateways; Security: security posture; Backups: backups; " +
-		"Fleet scans: inspection results; Captive portal: guest internet portal; Vouchers: internet vouchers; " +
-		"Store: purchases; Revenue: business revenue; Magic Coins: balance; Unlock keys: access keys; " +
-		"Event log: activity; Product guide: help; Profile: account and Telegram approval settings.\n")
+	guide.WriteString("Available app navigation (exact labels):\n" +
+		"Main tabs: " + magicDudeLabels(magicDudeTabs) + ".\n" +
+		"Jellyfin tab sections: " + magicDudeLabels(magicDudeJellyfin) + ". Libraries are shown on Dashboard; guests' libraries are chosen on Guest page; new libraries are added in Jellyfin on the media computer.\n" +
+		"Vouchers tab also holds the Internet guest page. Connect a router with More > Magic Hub.\n" +
+		"Pages under More: " + magicDudeLabels(magicDudeMore) + ".\n")
 	if magicDudeIncluded(role) {
-		guide.WriteString("Admin/owner workspaces: Magic Media > Connection: pair the Jellyfin computer; Magic Media > Libraries: load/add/scan libraries; Magic Media > Guest design: guest homepage appearance; Templates; Terminal log; AI usage; Team.\n")
+		guide.WriteString("Owner/admin pages under More: " + magicDudeLabels(magicDudeStaff) + ".\n")
 	}
 	if role == model.RoleDeveloper {
-		guide.WriteString("Developer workspaces: Platform; Translations.\n")
+		guide.WriteString("Platform operator pages under More: " + magicDudeLabels(magicDudeDeveloper) + ".\n")
 	}
 	return "You are Magic Dude, the read-only assistant inside Mega Magic. " +
 		"Always reply in natural Burmese (Myanmar), even when the user writes another language or asks you to switch. " +
@@ -30,10 +54,11 @@ func magicDudeSystemPrompt(role model.UserRole, snapshot string) string {
 		"Default to 1-3 short sentences, no greeting repeated each turn, no filler, and at most one emoji. " +
 		"For instructions, give at most 3 short steps; ask one short question if essential information is missing. " +
 		"Give more detail only when needed for safety or explicitly requested. " +
-		"When asked where a feature is, give its exact sidebar label and tab/button path from the guide. " +
+		"When asked where a feature is, give its exact tab and page label from the guide. " +
 		"Do not invent pages, buttons, links or completed integrations. Navigation visibility does not prove feature entitlement or readiness. " +
 		"If unavailable for this role, suggest asking an owner/admin; do not suggest bypassing access controls. " +
 		"Use only the tenant snapshot, navigation guide and general networking/Jellyfin knowledge. " +
+		"Each device line gives its connection state. Recent tunnel contact proves only that the router reached Magic Hub, not its LAN or guest internet; if the state is unknown, say so instead of guessing. You have no voucher or sales data. " +
 		"Never claim you inspected absent data; clearly label uncertainty. Never claim to have run, changed, rebooted, " +
 		"backed up, restored or configured anything. Do not provide commands that disable authentication, firewalls, logging or security controls. " +
 		"State-changing recommendations require safe checks and explicit approval in Mega Magic. " +
@@ -61,27 +86,46 @@ func magicDudeLocalizedAnswer(answer string) string {
 
 const magicDudeLanguageFallback = "မြန်မာလို အဖြေ မရသေးဘူး။ မေးခွန်းကို တစ်ခါလောက် ပြန်မေးပေးပါနော်။ ပြင်ဆင်မှု မလုပ်ထားပါဘူး။"
 
-// Common navigation questions get vetted Burmese directions, independent of
-// provider language quality. Never interpret these as permission to act.
+var magicDudeWord = regexp.MustCompile(`[a-z0-9]+`)
+
+// Words that mean something is wrong, so the question needs a real answer, not directions.
+var magicDudeProblemWords = map[string]bool{
+	"api": true, "broken": true, "disconnected": true, "down": true, "error": true, "errors": true, "fail": true, "failed": true, "failing": true,
+	"key": true, "lose": true, "losing": true, "lost": true, "offline": true, "password": true, "slow": true, "why": true,
+}
+
+// Common navigation questions get vetted Burmese directions, independent of the
+// provider. They match whole English words, so "website" is not "site". Never
+// interpret these as permission to act.
 func magicDudeNavigationAnswer(role model.UserRole, question string) string {
 	q := strings.ToLower(question)
-	if !strings.Contains(q, "where") && !strings.Contains(q, "ဘယ်") {
+	words := map[string]bool{}
+	for _, w := range magicDudeWord.FindAllString(q, -1) {
+		words[w] = true
+		if magicDudeProblemWords[w] {
+			return ""
+		}
+	}
+	if strings.Contains(q, "မရ") || strings.Contains(q, "ပျက်") {
 		return ""
 	}
-	if strings.Contains(q, "library") || strings.Contains(q, "libraries") {
+	if !words["where"] && !strings.Contains(q, "ဘယ်မှာ") && !strings.Contains(q, "ဘယ်နေရာ") {
+		return ""
+	}
+	if words["library"] || words["libraries"] {
 		if !magicDudeIncluded(role) {
-			return "Magic Media ကို Owner နဲ့ Admin တွေ သုံးနိုင်ပါတယ်။ သင့်လုပ်ငန်းရဲ့ Admin ကို မေးပေးပါနော်။"
+			return "Jellyfin library ကို Owner နဲ့ Admin တွေ စီမံနိုင်ပါတယ်။ သင့်လုပ်ငန်းရဲ့ Admin ကို မေးပေးပါနော်။"
 		}
-		return "ဘယ်ဘက်မီနူးက Magic Media → Libraries ကို ဖွင့်ပါ။ Add library မှာ သင့်မီဒီယာစက်ပေါ်က ဖိုင်တွဲ ထည့်နိုင်ပါတယ်။ 🙂"
+		return "Library အသစ်ကို သင့်မီဒီယာစက်ပေါ်က Jellyfin မှာ ထည့်ပါ။ ပြီးရင် Jellyfin → Dashboard မှာ Scan libraries ကို နှိပ်ပါ။ 🙂"
 	}
-	if strings.Contains(q, "gateway") || strings.Contains(q, "magic hub") {
-		return "ဘယ်ဘက်မီနူးက Gateways ကို ဖွင့်ပါ။ Connection record သိမ်းရုံနဲ့ Magic Hub ချိတ်ပြီး မဖြစ်သေးပါဘူးနော်။"
+	if words["gateway"] || words["gateways"] || words["hub"] {
+		return "More → Magic Hub ကို ဖွင့်ပါ။ Connect Magic Hub ကို နှိပ်ပြီး script ကို WinBox Terminal မှာ paste လုပ်ပါ။"
 	}
-	if strings.Contains(q, "telegram") {
-		return "ဘယ်ဘက်အောက်က သင့်အကောင့်ကို နှိပ်ပြီး Profile → Telegram action approvals မှာ ကြည့်ပါ။"
+	if words["telegram"] {
+		return "More → Your profile ကို ဖွင့်ပြီး Telegram အပိုင်းမှာ ကြည့်ပါ။"
 	}
-	if strings.Contains(q, "pin") || strings.Contains(q, "site") {
-		return "ဘယ်ဘက်မီနူးက Sites ကို ဖွင့်ပါ။ နေရာထည့်တဲ့အခါ မြေပုံပေါ်မှာ pin ချပြီး ဆွဲရွှေ့နိုင်ပါတယ်။"
+	if words["pin"] || words["pins"] || words["site"] || words["sites"] {
+		return "More → Sites ကို ဖွင့်ပါ။ နေရာထည့်တဲ့အခါ မြေပုံပေါ်မှာ pin ချပြီး ဆွဲရွှေ့နိုင်ပါတယ်။"
 	}
 	return ""
 }

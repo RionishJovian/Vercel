@@ -261,3 +261,14 @@ Printed on the receipt itself, in `printCodes.ts` (Burmese and English together,
 | Price | စျေးနှုန်း |
 | Valid | သက်တမ်း |
 | Support | ဆက်သွယ်ရန် |
+
+## Magic Dude (2026-11-05)
+
+| English | Burmese |
+|---|---|
+| Ask about your devices, Jellyfin, or where things are in the app. | သင့်စက်များ၊ Jellyfin သို့မဟုတ် App ထဲက နေရာတွေအကြောင်း မေးနိုင်ပါတယ်။ |
+| Owners and admins manage Jellyfin libraries. Please ask your business's admin. | Jellyfin library ကို Owner နဲ့ Admin တွေ စီမံနိုင်ပါတယ်။ သင့်လုပ်ငန်းရဲ့ Admin ကို မေးပေးပါနော်။ |
+| Add a new library in Jellyfin on your media computer. Then press Scan libraries in Jellyfin → Dashboard. | Library အသစ်ကို သင့်မီဒီယာစက်ပေါ်က Jellyfin မှာ ထည့်ပါ။ ပြီးရင် Jellyfin → Dashboard မှာ Scan libraries ကို နှိပ်ပါ။ |
+| Open More → Magic Hub. Press Connect Magic Hub and paste the script in the WinBox Terminal. | More → Magic Hub ကို ဖွင့်ပါ။ Connect Magic Hub ကို နှိပ်ပြီး script ကို WinBox Terminal မှာ paste လုပ်ပါ။ |
+| Open More → Your profile and look in the Telegram section. | More → Your profile ကို ဖွင့်ပြီး Telegram အပိုင်းမှာ ကြည့်ပါ။ |
+| Open More → Sites. When adding a place you can drop a pin on the map and drag it. | More → Sites ကို ဖွင့်ပါ။ နေရာထည့်တဲ့အခါ မြေပုံပေါ်မှာ pin ချပြီး ဆွဲရွှေ့နိုင်ပါတယ်။ |
