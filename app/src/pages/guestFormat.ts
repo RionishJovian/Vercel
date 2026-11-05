@@ -33,6 +33,6 @@ export function parseSeconds(raw: string | undefined): number | null {
 }
 
 /** At or above this, a session counts as idle. */
-export const IDLE_SECONDS = 5 * 60;
+export const IDLE_SECONDS = 15 * 60;
 /** At or below this, a session counts as near expiry. */
 export const NEAR_EXPIRY_SECONDS = 15 * 60;

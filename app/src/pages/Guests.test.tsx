@@ -68,7 +68,7 @@ describe("Live users", () => {
   });
 
   it("counts idle sessions and takes time left from the router when the app has no expiry", async () => {
-    observations = { guest_actions_enabled: true, inventory: { available: { hotspot_sessions: true, hotspot_session_times: true }, objects: { hotspot_sessions: [SESSION, SOON], hotspot_session_times: [{ id: "*1", values: { "idle-time": "00:06:00", "session-time-left": "1h" } }, { id: "*2", values: { "idle-time": "10s", "session-time-left": "" } }] } } };
+    observations = { guest_actions_enabled: true, inventory: { available: { hotspot_sessions: true, hotspot_session_times: true }, objects: { hotspot_sessions: [SESSION, SOON], hotspot_session_times: [{ id: "*1", values: { "idle-time": "00:15:00", "session-time-left": "1h" } }, { id: "*2", values: { "idle-time": "00:14:59", "session-time-left": "" } }] } } };
     open("OWNER");
     await screen.findByText("ABCDEFGH");
     fireEvent.click(await screen.findByRole("button", { name: /^Idle · 1/ }));
