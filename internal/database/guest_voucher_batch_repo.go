@@ -5,6 +5,8 @@ import (
 	"errors"
 	"time"
 
+	"github.com/lib/pq"
+
 	"mega-magic/internal/model"
 )
 
@@ -193,11 +195,15 @@ func (GuestVoucherBatchRepository) AnnotateTXN(tx *sql.Tx, businessID string, vo
 	if err := tx.QueryRow(`SELECT to_regclass('public.guest_voucher_batch_resellers') IS NOT NULL`).Scan(&resellerSchema); err != nil {
 		return err
 	}
-	query := `SELECT voucher_id,batch_id,install_state,'','','' FROM guest_voucher_issue_items WHERE business_id=$1`
+	query := `SELECT voucher_id,batch_id,install_state,'','','' FROM guest_voucher_issue_items WHERE business_id=$1 AND voucher_id=ANY($2)`
 	if resellerSchema {
-		query = `SELECT i.voucher_id,i.batch_id,i.install_state,COALESCE(a.reseller_id::text,''),COALESCE(a.shop_name,''),COALESCE(a.code_prefix,'') FROM guest_voucher_issue_items i LEFT JOIN guest_voucher_batch_resellers a ON a.business_id=i.business_id AND a.batch_id=i.batch_id WHERE i.business_id=$1`
+		query = `SELECT i.voucher_id,i.batch_id,i.install_state,COALESCE(a.reseller_id::text,''),COALESCE(a.shop_name,''),COALESCE(a.code_prefix,'') FROM guest_voucher_issue_items i LEFT JOIN guest_voucher_batch_resellers a ON a.business_id=i.business_id AND a.batch_id=i.batch_id WHERE i.business_id=$1 AND i.voucher_id=ANY($2)`
 	}
-	rows, err := tx.Query(query, businessID)
+	ids := make([]string, 0, len(vouchers))
+	for _, v := range vouchers {
+		ids = append(ids, v.ID)
+	}
+	rows, err := tx.Query(query, businessID, pq.Array(ids))
 	if err != nil {
 		return err
 	}
