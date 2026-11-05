@@ -14,7 +14,7 @@ type magicDudePage struct{ Key, Label string }
 // the app renames or removes one.
 var (
 	magicDudeTabs     = []magicDudePage{{"tab.home", "Home"}, {"tab.router", "Router"}, {"tab.vouchers", "Vouchers"}, {"tab.jellyfin", "Jellyfin"}, {"tab.more", "More"}}
-	magicDudeJellyfin = []magicDudePage{{"j.ws.dash", "Dashboard"}, {"j.ws.vouchers", "Vouchers"}, {"j.ws.guest", "Guest page"}}
+	magicDudeJellyfin = []magicDudePage{{"j.ws.dash", "Dashboard"}, {"j.ws.vouchers", "Media vouchers"}, {"j.ws.guest", "Media guest page"}}
 	magicDudeMore     = []magicDudePage{
 		{"title.revenue", "Revenue"}, {"title.store", "Store"}, {"title.sites", "Sites"}, {"hub.title", "Magic Hub"},
 		{"title.network", "Internet setup"}, {"tp.title", "Topology"}, {"dv.title", "Devices"}, {"dm.title", "Managed devices"},
@@ -23,7 +23,7 @@ var (
 		{"pf.title", "Your profile"}, {"gd.title", "Guide"},
 	}
 	magicDudeStaff     = []magicDudePage{{"dev.tpl.title", "RouterOS reference"}, {"dev.tl.title", "Terminal log"}, {"dev.ai.title", "AI usage"}}
-	magicDudeDeveloper = []magicDudePage{{"dev.tm.title", "Team (legacy)"}, {"dev.tr.title", "Translations"}, {"title.platform", "Platform"}}
+	magicDudeDeveloper = []magicDudePage{{"dev.tm.title", "Team"}, {"dev.tr.title", "Translations"}, {"title.platform", "Platform"}}
 )
 
 func magicDudeLabels(pages []magicDudePage) string {
@@ -38,7 +38,7 @@ func magicDudeSystemPrompt(role model.UserRole, snapshot string) string {
 	var guide strings.Builder
 	guide.WriteString("Available app navigation (exact labels):\n" +
 		"Main tabs: " + magicDudeLabels(magicDudeTabs) + ".\n" +
-		"Jellyfin tab sections: " + magicDudeLabels(magicDudeJellyfin) + ". Libraries are shown on Dashboard; guests' libraries are chosen on Guest page; new libraries are added in Jellyfin on the media computer.\n" +
+		"Jellyfin tab sections: " + magicDudeLabels(magicDudeJellyfin) + ". Libraries are shown on Dashboard; guests' libraries are chosen on Media guest page; new libraries are added in Jellyfin on the media computer.\n" +
 		"Vouchers tab also holds the Internet guest page. Connect a router with More > Magic Hub.\n" +
 		"Pages under More: " + magicDudeLabels(magicDudeMore) + ".\n")
 	if magicDudeIncluded(role) {
