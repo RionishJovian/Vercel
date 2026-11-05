@@ -1,44 +1,18 @@
-import { useEffect, useState } from "react";
-import { api } from "./api";
+import { asArray } from "./types";
+import type { FleetData, FleetPeer } from "./useFleet";
 
-/**
- * Whether a router's Magic Hub tunnel has a recent handshake. This is the only live
- * signal for "reachable" the app has: the router row's own online flag is not kept
- * up to date, so it is never used for the label. A failed or disabled lookup is
- * "unknown", never "offline".
- */
+/** The shared fleet status in the form the Router tab's chip shows. */
 export type HubState = "up" | "down" | "unknown";
 export interface HubStatus { state: HubState; at?: string }
 
-interface LivePeer { handshake_status?: string; last_handshake_at?: string }
-
-export function hubStatusOf(peer: LivePeer | null): HubStatus {
+export function hubStatusOf(peer?: FleetPeer): HubStatus {
   if (!peer) return { state: "unknown" };
-  if (peer.handshake_status === "recent_handshake") return { state: "up", at: peer.last_handshake_at };
-  if (peer.handshake_status === "inactive" || peer.handshake_status === "no_recent_handshake") return { state: "down", at: peer.last_handshake_at };
-  return { state: "unknown" };
+  const at = peer.source === "hub_tunnel" ? peer.last_contact_at : undefined;
+  if (peer.state === "up") return { state: "up", at };
+  if (peer.state === "offline") return { state: "down", at };
+  return { state: "unknown", at };
 }
 
-const REFRESH_MS = 30_000;
-
-/** Looks up each gateway once, then every 30 s while the page is open and visible. */
-export function useHubStatus(gatewayIds: string[]): Record<string, HubStatus> {
-  const key = gatewayIds.join(",");
-  const [status, setStatus] = useState<Record<string, HubStatus>>({});
-  useEffect(() => {
-    const ids = key ? key.split(",") : [];
-    let live = true;
-    async function lookup() {
-      if (document.visibilityState === "hidden") return;
-      const next = await Promise.all(ids.map(async (id): Promise<[string, HubStatus]> => {
-        try { return [id, hubStatusOf(await api.get<LivePeer>(`/vps/peers/${encodeURIComponent(id)}/live`))]; }
-        catch { return [id, { state: "unknown" }]; }
-      }));
-      if (live) setStatus(Object.fromEntries(next));
-    }
-    void lookup();
-    const timer = window.setInterval(() => void lookup(), REFRESH_MS);
-    return () => { live = false; window.clearInterval(timer); };
-  }, [key]);
-  return status;
+export function hubStatusFrom(fleet?: FleetData): Record<string, HubStatus> {
+  return Object.fromEntries(asArray<FleetPeer>(fleet?.peers).filter((p) => p.device_id).map((p) => [p.device_id as string, hubStatusOf(p)]));
 }

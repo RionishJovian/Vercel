@@ -26,6 +26,15 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 const open = () => render(<SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}><I18nProvider><Fleet /></I18nProvider></SWRConfig>);
 
 describe("Fleet", () => {
+  it("shows where each state came from and how fresh it is", async () => {
+    fleet = { isLoading: false, data: { total_peers: 2, up: 1, overall_state: "up", peers: [
+      { device_id: "d1", hardware_name: "Shop gateway", state: "up", source: "hub_tunnel", last_contact_at: "2026-11-06T01:00:00Z", checked_at: "2026-11-06T01:01:00Z" },
+      { device_id: "d2", hardware_name: "New router", state: "unknown", source: "none" },
+    ] } };
+    open();
+    await screen.findByText(/Source: Magic Hub tunnel/);
+    screen.getByText(/Last contact:/); screen.getByText(/Checked:/); screen.getByText(/Source: No signal yet/);
+  });
   it("shows each router's state and what needs attention", async () => {
     fleet = { isLoading: false, data: { total_peers: 3, up: 1, stale: 1, offline: 1, overall_state: "offline", peers: [
       { device_id: "d1", hardware_name: "Shop gateway", state: "up" },

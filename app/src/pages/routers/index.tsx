@@ -9,7 +9,8 @@ import { Icon, type IconName } from "../../components/icons";
 import { workspaceInfo, workspaces, type Workspace } from "../network/schema";
 import { Detail } from "./Detail";
 import { NetworkMap } from "./NetworkMap";
-import { useHubStatus } from "../../lib/hubStatus";
+import { hubStatusFrom, type HubStatus } from "../../lib/hubStatus";
+import { useFleet, type FleetData } from "../../lib/useFleet";
 import { HubChip } from "./HubChip";
 
 export interface RouterRow extends Router { is_online?: boolean; transport?: string; last_seen_at?: string }
@@ -30,12 +31,16 @@ function InternetSetup() {
   );
 }
 
+// Once the status has loaded, a router it does not list is "unavailable", not "checking".
+const hubStatusFromFleet = (fleet: FleetData | undefined, routers: RouterRow[]): Record<string, HubStatus> => ({ ...Object.fromEntries(routers.map((d): [string, HubStatus] => [d.device_id, { state: "unknown" }])), ...hubStatusFrom(fleet) });
+
 const seenAt = (value: string | undefined, never: string) => (value && !Number.isNaN(new Date(value).getTime()) ? new Date(value).toLocaleString() : never);
 
 export function Routers({ sub, params }: { sub: string; params: URLSearchParams }) {
   const { t } = useI18n();
   const { data, error, isLoading } = useSWR<{ routers?: RouterRow[] }>("/routers", fetcher);
-  const hub = useHubStatus(asArray<RouterRow>(data?.routers).filter((d) => d.deployment_layer === "MAIN_GATEWAY").map((d) => d.device_id));
+  const fleet = useFleet({ shouldRetryOnError: false });
+  const hub = fleet.data || fleet.error ? hubStatusFromFleet(fleet.data, asArray<RouterRow>(data?.routers)) : {};
   if (isLoading) return <Skeleton h={260} />;
   if (error) return <Note kind="bad">{t("c.loadFailed")}</Note>;
   const list = asArray<RouterRow>(data?.routers);

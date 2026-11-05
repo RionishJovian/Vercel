@@ -86,6 +86,16 @@ describe("Magic Hub card", () => {
     await screen.findByText(/stay on its record/);
     expect(screen.queryByRole("button", { name: "Done" })).toBeNull();
   });
+  it("keeps the cleanup script when the connection ended but the record did not change", async () => {
+    deleteAnswer = { status: 503, body: { error: "Press Delete again to finish.", code: "hub_ended_record_unchanged", router_cleanup_script: "# remove the setup" } };
+    open();
+    await startDelete();
+    await screen.findByText("Connection ended. Record not updated.");
+    await screen.findByDisplayValue("# remove the setup");
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    await screen.findByText("Press Delete again to finish.");
+    screen.getByRole("button", { name: "Delete record" });
+  });
   it("shows why a delete was refused and keeps the card", async () => {
     deleteAnswer = { status: 503, body: { error: "Magic Hub could not end this router's connection, so nothing was deleted. Try again." } };
     open();

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import { I18nProvider } from "../i18n";
 import { HubChip } from "../pages/routers/HubChip";
-import { hubStatusOf } from "./hubStatus";
+import { hubStatusFrom, hubStatusOf } from "./hubStatus";
 
 beforeEach(() => {
   const store: Record<string, string> = { mm2_lang: "en" };
@@ -10,13 +10,15 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
-describe("router online label comes from the Magic Hub handshake", () => {
-  it("maps the lookup result", () => {
-    expect(hubStatusOf({ handshake_status: "recent_handshake", last_handshake_at: "2026-11-02T01:00:00Z" })).toEqual({ state: "up", at: "2026-11-02T01:00:00Z" });
-    expect(hubStatusOf({ handshake_status: "no_recent_handshake" }).state).toBe("down");
-    expect(hubStatusOf({ handshake_status: "inactive" }).state).toBe("down");
-    expect(hubStatusOf({}).state).toBe("unknown");
-    expect(hubStatusOf(null).state).toBe("unknown");
+describe("the Router tab's label comes from the shared fleet status", () => {
+  it("maps the shared status", () => {
+    expect(hubStatusOf({ state: "up", source: "hub_tunnel", last_contact_at: "2026-11-02T01:00:00Z" })).toEqual({ state: "up", at: "2026-11-02T01:00:00Z" });
+    expect(hubStatusOf({ state: "up", source: "router_read", last_contact_at: "2026-11-02T01:00:00Z" })).toEqual({ state: "up", at: undefined });
+    expect(hubStatusOf({ state: "offline", source: "hub_tunnel" }).state).toBe("down");
+    expect(hubStatusOf({ state: "stale" }).state).toBe("unknown");
+    expect(hubStatusOf({ state: "unknown" }).state).toBe("unknown");
+    expect(hubStatusOf(undefined).state).toBe("unknown");
+    expect(hubStatusFrom({ peers: [{ device_id: "a", state: "up" }, { state: "up" }] })).toEqual({ a: { state: "up", at: undefined } });
   });
   it("shows Online, Offline, and never claims Offline when the lookup is unavailable", () => {
     const show = (status?: Parameters<typeof HubChip>[0]["status"]) => { cleanup(); render(<I18nProvider><HubChip status={status} /></I18nProvider>); return document.body.textContent; };

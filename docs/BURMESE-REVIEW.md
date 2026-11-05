@@ -289,3 +289,16 @@ Printed on the receipt itself, in `printCodes.ts` (Burmese and English together,
 | Open More → Magic Hub. Press Connect Magic Hub and paste the script in the WinBox Terminal. | More → Magic Hub ကို ဖွင့်ပါ။ Connect Magic Hub ကို နှိပ်ပြီး script ကို WinBox Terminal မှာ paste လုပ်ပါ။ |
 | Open More → Your profile and look in the Telegram section. | More → Your profile ကို ဖွင့်ပြီး Telegram အပိုင်းမှာ ကြည့်ပါ။ |
 | Open More → Sites. When adding a place you can drop a pin on the map and drag it. | More → Sites ကို ဖွင့်ပါ။ နေရာထည့်တဲ့အခါ မြေပုံပေါ်မှာ pin ချပြီး ဆွဲရွှေ့နိုင်ပါတယ်။ |
+
+## Router status and delete recovery (2026-11-06)
+
+| English | Burmese |
+|---|---|
+| Source | အရင်းအမြစ် |
+| Last contact | နောက်ဆုံးချိတ်ဆက်ချိန် |
+| Checked | စစ်ဆေးချိန် |
+| Router check | Router စစ်ဆေးမှု |
+| Router read | Router ဖတ်မှု |
+| No signal yet | အချက်ပြမှု မရသေးပါ |
+| Connection ended. Record not updated. | ချိတ်ဆက်မှု ရပ်ပြီးပါပြီ။ မှတ်တမ်းကို မပြင်ရသေးပါ။ |
+| Paste this in the router's WinBox Terminal to remove the old setup. Then press Delete record again to finish. | setup ဟောင်းကို ဖယ်ဖို့ ဒါကို Router ရဲ့ WinBox Terminal မှာ paste လုပ်ပါ။ ပြီးရင် Delete record ကို ထပ်နှိပ်ပြီး အပြီးသတ်ပါ။ |

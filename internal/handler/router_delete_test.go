@@ -12,6 +12,7 @@ import (
 	"mega-magic/internal/auth"
 	"mega-magic/internal/database"
 	"mega-magic/internal/model"
+	"mega-magic/internal/provisioner/routeros"
 )
 
 func TestDBRouterDeletionPreservesLinkedHistory(t *testing.T) {
@@ -220,4 +221,96 @@ func TestDBRouterDeletionEndsHubConnection(t *testing.T) {
 			t.Fatalf("status %d body %s", w.Code, w.Body.String())
 		}
 	})
+}
+
+// A commit that fails after the Hub has ended the connection must say so, keep the only
+// copy of the cleanup script, and leave a state that pressing Delete again can finish.
+func TestDBRouterDeleteCommitFailsAfterHubEnded(t *testing.T) {
+	db := harness_testdb(t)
+	business := insertBusiness(db)
+	device := insertGatewayNoSite(db, business)
+	gin.SetMode(gin.TestMode)
+	// A deferred trigger runs at COMMIT, so this is a genuine commit failure.
+	for _, statement := range []string{
+		`CREATE OR REPLACE FUNCTION test_fail_router_delete_commit() RETURNS trigger LANGUAGE plpgsql AS $f$ BEGIN RAISE EXCEPTION 'commit refused for test'; END $f$`,
+		`DROP TRIGGER IF EXISTS test_fail_router_delete ON devices`,
+		`CREATE CONSTRAINT TRIGGER test_fail_router_delete AFTER DELETE ON devices DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN (OLD.device_id = '` + device + `') EXECUTE FUNCTION test_fail_router_delete_commit()`,
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	dropTrigger := func() {
+		if _, err := db.Exec(`DROP TRIGGER IF EXISTS test_fail_router_delete ON devices`); err != nil {
+			t.Fatal(err)
+		}
+	}
+	defer dropTrigger()
+
+	peerExists := true
+	h := NewRouterHandler(db, database.NewDeviceRepository(db), nil, nil)
+	h.ConfigureHubRemoval(func(context.Context, string, string, string) (string, error) {
+		if !peerExists {
+			return "", nil
+		}
+		peerExists = false
+		return "cleanup-script", nil
+	})
+	remove := func() *httptest.ResponseRecorder {
+		r := gin.New()
+		r.Use(func(c *gin.Context) {
+			c.Set(auth.ContextKeyBusinessID, business)
+			c.Set(auth.ContextKeyUserID, "owner")
+			c.Set(auth.ContextKeyUserRole, "OWNER")
+		})
+		r.DELETE("/routers/:id", h.DeleteRouter)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, httptest.NewRequest(http.MethodDelete, "/routers/"+device, nil))
+		return w
+	}
+	exists := func() bool {
+		var found bool
+		if err := db.QueryRow(`SELECT EXISTS(SELECT 1 FROM devices WHERE device_id=$1)`, device).Scan(&found); err != nil {
+			t.Fatal(err)
+		}
+		return found
+	}
+
+	w := remove()
+	if w.Code != http.StatusServiceUnavailable || !strings.Contains(w.Body.String(), "hub_ended_record_unchanged") || !strings.Contains(w.Body.String(), `"router_cleanup_script":"cleanup-script"`) {
+		t.Fatalf("status %d body %s", w.Code, w.Body)
+	}
+	if strings.Contains(w.Body.String(), "commit refused") {
+		t.Fatalf("leaked a database error: %s", w.Body)
+	}
+	if w.Header().Get("Cache-Control") != "no-store" {
+		t.Fatal("the cleanup script must not be cached")
+	}
+	if peerExists || !exists() {
+		t.Fatalf("peer exists %v, record exists %v", peerExists, exists())
+	}
+
+	dropTrigger()
+	w = remove()
+	if w.Code != http.StatusOK || strings.Contains(w.Body.String(), "router_cleanup_script") || exists() {
+		t.Fatalf("second delete: status %d body %s, record exists %v", w.Code, w.Body, exists())
+	}
+}
+
+func TestInventoryAnswered(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		inv  routeros.NetworkInventory
+		want bool
+	}{
+		{"nothing read", routeros.NetworkInventory{}, false},
+		{"time but no answer", routeros.NetworkInventory{ObservedAt: "now", Available: map[string]bool{"arp": false}}, false},
+		{"answer without a time", routeros.NetworkInventory{Health: map[string]string{"version": "7.25"}}, false},
+		{"version read", routeros.NetworkInventory{ObservedAt: "now", Health: map[string]string{"version": "7.25"}}, true},
+		{"a source read", routeros.NetworkInventory{ObservedAt: "now", Available: map[string]bool{"arp": true}}, true},
+	} {
+		if got := inventoryAnswered(tc.inv); got != tc.want {
+			t.Errorf("%s: got %v", tc.name, got)
+		}
+	}
 }

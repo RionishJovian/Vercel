@@ -27,7 +27,7 @@ func (h *FleetHandler) FleetHealth(c *gin.Context) {
 		return
 	}
 
-	health, err := h.fleetSvc.Health(c.Request.Context(), businessID)
+	health, err := h.fleetSvc.Health(c.Request.Context(), businessID, auth.GetUserID(c))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to build fleet health: " + err.Error()})
 		return
@@ -44,7 +44,7 @@ func (h *FleetHandler) OfflineHealth(c *gin.Context) {
 		return
 	}
 
-	health, err := h.fleetSvc.Health(c.Request.Context(), businessID)
+	health, err := h.fleetSvc.Health(c.Request.Context(), businessID, auth.GetUserID(c))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to build fleet health: " + err.Error()})
 		return

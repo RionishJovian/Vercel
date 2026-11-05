@@ -35,6 +35,10 @@ A router with voucher or PPPoE history can't lose that history, so Delete keeps 
 
 If a script's key has ended and the router never connected, a new script gets a fresh Hub allocation and key. The new script corrects whatever an earlier paste left. This never happens to a router with a saved login: new scripts are refused for those.
 
+## Router status
+
+`/fleet/health` is the one source of a router's connection state, and every console page reads it. For a gateway it uses the Hub's live handshake, where contact in the last 5 minutes is Online. If the Hub has no peer or cannot answer, it uses the router check, then a successful router read in the last 5 minutes. Each row names its source and, where known, its last contact and check times. A successful read is a separate fact from the tunnel: when the Hub answers, its state wins.
+
 ## Delete
 
 Delete removes the record and ends the Hub connection in one step. If the Hub cannot end it, the record stays. The user then gets a script that removes the setup from the router, and can skip it if the same router will connect again.
@@ -48,3 +52,7 @@ The Hub's peer list is the source of truth. At startup and every 30 seconds it r
 ## Not proven yet
 
 Tested on a RouterOS 7.24.6 CHR without a real tunnel, because that would add a peer to the production Hub. A real router must still prove the handshake, the login over the tunnel, older RouterOS versions, and a paste through WinBox itself.
+
+### When the Hub step succeeds and the database commit fails
+
+The connection is gone and the record is unchanged, so the API returns 503 with `hub_ended_record_unchanged` and the cleanup script, and logs the failure. The console keeps showing the script. Pressing Delete again finishes the job, because the Hub then has nothing left to end. Nothing retries by itself, so until then the card can still say it is connected while Fleet health shows the true state.

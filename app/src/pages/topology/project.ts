@@ -94,7 +94,7 @@ export function project(device: GatewayRef, inv: ObsInventory = {}, labels: Labe
   const board = inv.health?.["board-name"] || device.device_model || "";
   const read = !!inv.observed_at && !!(inv.health?.version || Object.values(inv.available ?? {}).some(Boolean));
   return {
-    root: { id: device.device_id, name: device.hardware_name || "RouterBOARD", ip: "", model: board, kind: "router", image: productForName(board, device.hardware_name)?.image ?? "switch.svg", state: read ? "Management reachable" : "Not read", sources: ["Pinned management connection"], ports: [], connection: "", direct: true, upstream: false },
+    root: { id: device.device_id, name: device.hardware_name || "RouterBOARD", ip: "", model: board, kind: "router", image: productForName(board, device.hardware_name)?.image ?? "switch.svg", state: read ? "Router read" : "Not read", sources: ["Pinned management connection"], ports: [], connection: "", direct: true, upstream: false },
     devices: all, observedAt: inv.observed_at,
     unavailable: Object.entries(inv.available ?? {}).filter(([k, ok]) => !ok && !NOT_A_SOURCE.has(k)).map(([k]) => k),
     ports, controlsEnabled: inv.device_controls_enabled === true, pendingAt: inv.pending_confirm?.revert_at ?? "",

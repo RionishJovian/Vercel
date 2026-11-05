@@ -20,5 +20,5 @@ describe("topology projection", () => {
   it("places a Wi-Fi client on its radio", () => { expect(g.devices.find((d) => d.name === "Phone")).toMatchObject({ ports: ["wifi2"], state: "Wi-Fi associated", direct: true }); });
   it("applies saved names and kinds only to non-upstream devices", () => { expect(g.devices.find((d) => d.mac === "B8:27:EB:11:22:44")).toMatchObject({ name: "Cashier PC", kind: "computer" }); });
   it("reports unreadable sources instead of guessing", () => { expect(g.unavailable).toEqual(["neighbors"]); });
-  it("marks the router read only when the router actually answered", () => { expect(g.root.state).toBe("Management reachable"); expect(project(gw).root.state).toBe("Not read"); });
+  it("marks the router read only when the router actually answered", () => { expect(g.root.state).toBe("Router read"); expect(project(gw).root.state).toBe("Not read"); });
 });

@@ -22,6 +22,7 @@ import (
 type RouterHandler struct {
 	hubRemoval       func(ctx context.Context, businessID, requester, deviceID string) (string, error)
 	hubForget        func(ctx context.Context, businessID, deviceID string) error
+	recordRouterRead func(ctx context.Context, businessID, deviceID string, at time.Time) error
 	SubscriptionOnly bool
 	db               *database.DB
 	deviceRepo       *database.DeviceRepository
@@ -351,7 +352,7 @@ func (h *RouterHandler) DeleteRouter(c *gin.Context) {
 	deviceID := c.Param("id")
 	businessID := auth.GetBusinessID(c)
 
-	cleanup, kept := "", false
+	cleanup, kept, hubEnded := "", false, false
 	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
 		existing, err := h.deviceRepo.GetDeviceByIDTXN(tx, deviceID)
 		if err != nil {
@@ -399,11 +400,24 @@ func (h *RouterHandler) DeleteRouter(c *gin.Context) {
 			if err != nil {
 				return &httpError{status: http.StatusServiceUnavailable, msg: "Magic Hub could not end this router's connection, so nothing was deleted. Try again."}
 			}
-			cleanup = script
+			cleanup, hubEnded = script, true
 		}
 		return nil
 	})
 	if err != nil {
+		// The Hub step is last, so this means only the commit failed. The connection is
+		// gone and the record is unchanged. Pressing Delete again finishes it: the Hub
+		// then has nothing left to end. This is the only copy of the cleanup script.
+		if hubEnded {
+			log.Printf("router delete: Hub connection ended for %s but the record was not updated: %v", deviceID, err)
+			response := gin.H{"error": "Magic Hub ended this router's connection, but its record could not be updated. Press Delete again to finish.", "code": "hub_ended_record_unchanged"}
+			if cleanup != "" {
+				c.Header("Cache-Control", "no-store")
+				response["router_cleanup_script"] = cleanup
+			}
+			c.JSON(http.StatusServiceUnavailable, response)
+			return
+		}
 		respondErr(c, err)
 		return
 	}
@@ -461,6 +475,11 @@ func (h *RouterHandler) GetRouterObservations(c *gin.Context) {
 	if err != nil {
 		c.JSON(502, gin.H{"error": "Router observations could not be read", "code": "observations_unavailable"})
 		return
+	}
+	if h.recordRouterRead != nil && inventoryAnswered(inventory) {
+		if err := h.recordRouterRead(c.Request.Context(), businessID, deviceID, time.Now()); err != nil {
+			log.Printf("router read: could not record for %s: %v", deviceID, err)
+		}
 	}
 	inventory.DeviceControlsEnabled = deviceControlsEnabled()
 	inventory.WriteEnabled = false
@@ -570,6 +589,27 @@ func (h *RouterHandler) DisconnectGuest(c *gin.Context) {
 	defer cancel()
 	err := h.guestActions.DisconnectGuest(ctx, businessID, deviceID, routeros.GuestSession{ID: req.ID, MAC: strings.ToUpper(req.MAC), Address: req.Address, User: req.User})
 	h.finishGuestAction(c, businessID, deviceID, "router.guest.disconnected", "Owner disconnected guest MAC "+strings.ToUpper(req.MAC), err)
+}
+
+// inventoryAnswered reports whether the router itself answered, not just the request.
+func inventoryAnswered(inventory routeros.NetworkInventory) bool {
+	if inventory.ObservedAt == "" {
+		return false
+	}
+	if inventory.Health["version"] != "" {
+		return true
+	}
+	for _, available := range inventory.Available {
+		if available {
+			return true
+		}
+	}
+	return false
+}
+
+// ConfigureRouterReadRecorder feeds successful reads into the shared status source.
+func (h *RouterHandler) ConfigureRouterReadRecorder(record func(ctx context.Context, businessID, deviceID string, at time.Time) error) {
+	h.recordRouterRead = record
 }
 
 // EnableObservations supplies a read-only interface, separately from router writes.

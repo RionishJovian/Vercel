@@ -23,7 +23,7 @@ function Card({ r, state, canEdit, cap, openId, setOpen, onChanged }: { r: GW; s
   const { t } = useI18n();
   const [del, setDel] = useState<{ confirm: boolean; busy: boolean; err?: string }>({ confirm: false, busy: false });
   const [editing, setEditing] = useState(false), [maint, setMaint] = useState(false);
-  const [cleanup, setCleanup] = useState(""), [kept, setKept] = useState(false);
+  const [cleanup, setCleanup] = useState(""), [kept, setKept] = useState(false), [partial, setPartial] = useState("");
   async function remove() {
     setDel({ confirm: true, busy: true });
     try {
@@ -31,9 +31,23 @@ function Card({ r, state, canEdit, cap, openId, setOpen, onChanged }: { r: GW; s
       if (res?.record_kept) { setKept(true); setDel({ confirm: false, busy: false }); }
       if (res?.router_cleanup_script) setCleanup(res.router_cleanup_script); else onChanged();
     }
-    catch (e) { if (isUnauthorized(e)) throw e; setDel({ confirm: false, busy: false, err: errorText(e, t("hub.delFail")) }); }
+    catch (e) {
+      if (isUnauthorized(e)) throw e;
+      setDel({ confirm: false, busy: false, err: errorText(e, t("hub.delFail")) });
+      // The connection ended but the record did not change. This is the only copy of the script.
+      const script = e instanceof ApiError ? (e.data as { router_cleanup_script?: string } | null)?.router_cleanup_script : undefined;
+      if (script) { setPartial(script); onChanged(); }
+    }
   }
   const tone = state === "up" ? "ok" : state === "stale" ? "warn" : state === "offline" ? "bad" : "";
+  if (partial) return (
+    <article className="glass pad stack gw-card">
+      <h3>{t("hub.partialTitle")}</h3>
+      <p className="soft small">{t("hub.partialBody")}</p>
+      <Script title={t("hub.setupTitle")} text={partial} />
+      <button className="btn" type="button" onClick={() => setPartial("")}>{t("hub.delDone")}</button>
+    </article>
+  );
   if (cleanup) return (
     <article className="glass pad stack gw-card">
       <h3>{t(kept ? "hub.keptTitle" : "hub.delDoneTitle")}</h3>
@@ -134,7 +148,7 @@ export function Hub({ me }: { me: Me }) {
     <>
       {back}<PageHead title={t("hub.title")} help={t("hub.lead")} />
       {!gateways.length && <Note>{t("hub.none")}</Note>}
-      <div className="router-grid">{gateways.map((r) => <Card key={r.device_id} r={r} state={states.get(r.device_id) ?? (r.is_online ? "up" : "unknown")} canEdit={canEdit} cap={capability} openId={openId} setOpen={setOpen} onChanged={refresh} />)}</div>
+      <div className="router-grid">{gateways.map((r) => <Card key={r.device_id} r={r} state={states.get(r.device_id) ?? "unknown"} canEdit={canEdit} cap={capability} openId={openId} setOpen={setOpen} onChanged={refresh} />)}</div>
       {canEdit && <AddGateway sites={sites} onDone={(id) => { refresh(); if (id) setOpen(id); }} />}
     </>
   );
