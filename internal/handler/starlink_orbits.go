@@ -7,9 +7,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -22,13 +24,20 @@ const (
 	starlinkSourceURL = "https://celestrak.org/NORAD/elements/gp.php?GROUP=starlink&FORMAT=json"
 	// CelesTrak allows one download per update (about every 2 hours), answers a
 	// repeat with 403, firewalls an IP after 50 errors in 2 hours, and asks
-	// automated clients to stop on any non-200. A failed attempt therefore waits
-	// the same full interval as a successful one, and is never retried sooner.
+	// automated clients to stop on any non-200. Any answer it does give, good or
+	// bad, therefore waits the full interval.
 	starlinkRefreshEvery = 6 * time.Hour
+	// No answer at all (CelesTrak has been seen silent for over 40 s) is not one of
+	// those errors. The request may still have counted as the download for this
+	// update, so wait past the next update, which comes about every 2 hours.
+	starlinkRetryNoAnswer = 2*time.Hour + 15*time.Minute
 	// Past this age a request waits for the refresh instead of receiving old data first.
 	starlinkWaitWhenOlder = 48 * time.Hour
-	starlinkFetchTimeout  = 45 * time.Second
-	starlinkMaxBody       = 32 << 20
+	starlinkFetchTimeout  = 120 * time.Second
+	// A request waits this long for a download, then says it is still running. It
+	// must stay under the server's write timeout (30 s), which would cut the connection.
+	starlinkWaitForDownload = 20 * time.Second
+	starlinkMaxBody         = 32 << 20
 	// A real catalog holds thousands of objects. Fewer means a partial or wrong response.
 	starlinkMinObjects  = 1000
 	starlinkStoreTTL    = 7 * 24 * time.Hour
@@ -81,7 +90,11 @@ func NewStarlinkOrbits(store StarlinkOrbitStore) *StarlinkOrbits {
 // Serve is the one route. The download only ever starts from a real request, so
 // nothing is fetched unless someone has turned the layer on.
 func (s *StarlinkOrbits) Serve(c *gin.Context) {
-	snap := s.snapshot(c.Request.Context())
+	snap, downloading := s.snapshot(c.Request.Context())
+	if snap == nil && downloading {
+		c.JSON(http.StatusAccepted, gin.H{"status": "downloading"})
+		return
+	}
 	if snap == nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "starlink_orbits_unavailable"})
 		return
@@ -106,7 +119,7 @@ func (s *StarlinkOrbits) Serve(c *gin.Context) {
 	c.Data(http.StatusOK, "application/json", plain)
 }
 
-func (s *StarlinkOrbits) snapshot(ctx context.Context) *starlinkSnapshot {
+func (s *StarlinkOrbits) snapshot(ctx context.Context) (*starlinkSnapshot, bool) {
 	s.mu.Lock()
 	if !s.restored {
 		s.restored = true
@@ -125,34 +138,48 @@ func (s *StarlinkOrbits) snapshot(ctx context.Context) *starlinkSnapshot {
 	s.mu.Unlock()
 
 	if wait != nil && (current == nil || now.Sub(current.FetchedAt) > starlinkWaitWhenOlder) {
+		timer := time.NewTimer(starlinkWaitForDownload)
+		defer timer.Stop()
 		select {
 		case <-wait:
+		case <-timer.C:
 		case <-ctx.Done():
 		}
 		s.mu.Lock()
-		current = s.current
+		current, wait = s.current, s.inflight
 		s.mu.Unlock()
 	}
-	return current
+	return current, wait != nil
 }
 
 func (s *StarlinkOrbits) refresh(done chan struct{}) {
 	ctx, cancel := context.WithTimeout(context.Background(), starlinkFetchTimeout)
 	defer cancel()
 	snap, err := s.download(ctx)
+	retryIn := starlinkRefreshEvery
 	if err != nil {
-		log.Printf("starlink orbits: download failed, not retrying for %s: %v", starlinkRefreshEvery, err)
+		if errors.Is(err, errStarlinkNoAnswer) {
+			retryIn = starlinkRetryNoAnswer
+		}
+		log.Printf("starlink orbits: download failed, not retrying for %s: %v", retryIn, err)
 	} else {
 		s.save(snap)
 	}
 	s.mu.Lock()
 	if err == nil {
 		s.current = snap
+	} else if retryIn != starlinkRefreshEvery {
+		s.nextAttempt = s.now().Add(retryIn)
+		s.saveNotBefore(s.nextAttempt)
 	}
 	s.inflight = nil
 	s.mu.Unlock()
 	close(done)
 }
+
+// errStarlinkNoAnswer marks a download that ended without a complete answer: no
+// connection, no response, or a response that stalled.
+var errStarlinkNoAnswer = errors.New("no answer")
 
 // celestrakGP lists only the fields the browser's SGP4 needs.
 type celestrakGP struct {
@@ -178,7 +205,7 @@ func (s *StarlinkOrbits) download(ctx context.Context) (*starlinkSnapshot, error
 	req.Header.Set("User-Agent", "MegaMagic-orbit-cache/1.0")
 	res, err := s.client.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %w", errStarlinkNoAnswer, err)
 	}
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
@@ -186,6 +213,10 @@ func (s *StarlinkOrbits) download(ctx context.Context) (*starlinkSnapshot, error
 	}
 	var objects []celestrakGP
 	if err := json.NewDecoder(io.LimitReader(res.Body, starlinkMaxBody)).Decode(&objects); err != nil {
+		var timeout net.Error
+		if errors.As(err, &timeout) && timeout.Timeout() {
+			return nil, fmt.Errorf("%w: %w", errStarlinkNoAnswer, err)
+		}
 		return nil, fmt.Errorf("decode: %w", err)
 	}
 	return buildStarlinkSnapshot(objects, s.now())

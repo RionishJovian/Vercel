@@ -289,3 +289,95 @@ func TestStarlinkOrbitsWaitsForRefreshWhenDataIsVeryOld(t *testing.T) {
 		t.Fatal("very old data should be replaced before answering")
 	}
 }
+
+func TestStarlinkOrbitsRetriesSoonerWhenThereIsNoAnswer(t *testing.T) {
+	var calls atomic.Int32
+	release := make(chan struct{})
+	// Deferred so it runs before the test servers' cleanups, which wait for these handlers.
+	defer close(release)
+	cases := map[string]http.HandlerFunc{
+		"silent": func(http.ResponseWriter, *http.Request) { calls.Add(1); <-release },
+		"stalls mid-body": func(w http.ResponseWriter, _ *http.Request) {
+			calls.Add(1)
+			w.Write([]byte(`[{"NORAD_CAT_ID":1,`))
+			w.(http.Flusher).Flush()
+			<-release
+		},
+	}
+	for name, h := range cases {
+		calls.Store(0)
+		store := &memoryOrbitStore{}
+		s, c := orbitsFixture(t, h, store)
+		s.client.Timeout = 50 * time.Millisecond
+		if w := getOrbits(s, nil); w.Code != http.StatusServiceUnavailable {
+			t.Fatalf("%s: status %d", name, w.Code)
+		}
+		c.add(starlinkRetryNoAnswer - time.Minute)
+		getOrbits(s, nil)
+		if calls.Load() != 1 {
+			t.Fatalf("%s: attempts = %d before the shorter wait ended", name, calls.Load())
+		}
+
+		// A new process honours the shorter wait too.
+		second, _ := orbitsFixture(t, h, store)
+		second.now, second.client.Timeout = c.now, 50*time.Millisecond
+		getOrbits(second, nil)
+		if calls.Load() != 1 {
+			t.Fatalf("%s: restart attempted early: %d", name, calls.Load())
+		}
+
+		c.add(2 * time.Minute)
+		getOrbits(s, nil)
+		waitIdle(s)
+		if calls.Load() != 2 {
+			t.Fatalf("%s: attempts = %d after the shorter wait", name, calls.Load())
+		}
+	}
+	if starlinkRetryNoAnswer <= 2*time.Hour || starlinkRetryNoAnswer >= starlinkRefreshEvery {
+		t.Fatalf("wait %s must pass the next update and stay under the full interval", starlinkRetryNoAnswer)
+	}
+}
+
+func TestStarlinkOrbitsBadBodyStillWaitsTheFullInterval(t *testing.T) {
+	var calls atomic.Int32
+	s, c := orbitsFixture(t, func(w http.ResponseWriter, _ *http.Request) { calls.Add(1); w.Write([]byte("not json")) }, nil)
+	getOrbits(s, nil)
+	c.add(starlinkRetryNoAnswer + time.Minute)
+	getOrbits(s, nil)
+	if calls.Load() != 1 {
+		t.Fatalf("attempts = %d, want 1", calls.Load())
+	}
+}
+
+func TestStarlinkOrbitsStopsWaitingBeforeTheServerWriteTimeout(t *testing.T) {
+	if starlinkWaitForDownload >= 30*time.Second || starlinkFetchTimeout <= starlinkWaitForDownload {
+		t.Fatalf("wait %s, fetch %s", starlinkWaitForDownload, starlinkFetchTimeout)
+	}
+	release := make(chan struct{})
+	var once sync.Once
+	finish := func() { once.Do(func() { close(release) }) }
+	defer finish()
+	s, _ := orbitsFixture(t, func(w http.ResponseWriter, _ *http.Request) { <-release; w.Write(celestrakBody(2000)) }, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	snap, downloading := s.snapshot(ctx)
+	if snap != nil || !downloading {
+		t.Fatalf("snap %v, downloading %v", snap != nil, downloading)
+	}
+	// While it runs, the route says so instead of reporting a failure.
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.GET("/map/starlink", s.Serve)
+	reqCtx, reqCancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer reqCancel()
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/map/starlink", nil).WithContext(reqCtx))
+	if w.Code != http.StatusAccepted || !strings.Contains(w.Body.String(), "downloading") {
+		t.Fatalf("status %d: %s", w.Code, w.Body.String())
+	}
+	finish()
+	waitIdle(s)
+	if got := getOrbits(s, nil); got.Code != http.StatusOK {
+		t.Fatalf("after the download: %d", got.Code)
+	}
+}
