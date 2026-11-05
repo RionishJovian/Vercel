@@ -4,11 +4,11 @@ import { asArray, type Me } from "../../lib/types";
 import { useI18n } from "../../i18n";
 import { Field, Note } from "../../components/ui";
 import { FilterBar, Loading, Page, Select, usePaged } from "./Paged";
+import { errorText } from "../../lib/errors";
 
 interface Tpl { id: string; name: string; category: string; method: string; path: string; is_builtin?: boolean }
 interface Res { templates?: Tpl[]; categories?: string[]; count?: number; builtin?: number; custom?: number }
 const EDITORS = ["OWNER", "ADMIN", "DEVELOPER"];
-const errText = (e: unknown) => (e as { data?: { error?: string } } | null)?.data?.error || (e instanceof Error ? e.message : "") || "failed";
 
 export function Templates({ me }: { me: Me }) {
   const { t } = useI18n();
@@ -22,11 +22,11 @@ export function Templates({ me }: { me: Me }) {
     const body = { name: v("name"), category: v("category"), method: v("method"), path: v("path"), description: v("desc") || null, body: v("body") || null };
     if (!body.name || !body.category || !body.path) { setMsg(t("dev.tpl.required")); return; }
     setBusy(true); setMsg("");
-    try { await api.post("/terminal-templates", body); setForm(false); void p.mutate(); } catch (err) { if (isUnauthorized(err)) throw err; setMsg(errText(err)); }
+    try { await api.post("/terminal-templates", body); setForm(false); void p.mutate(); } catch (err) { if (isUnauthorized(err)) throw err; setMsg(errorText(err, t("c.actionFailed"))); }
     setBusy(false);
   }
   async function remove(id: string) {
-    try { await api.del("/terminal-templates/" + encodeURIComponent(id)); setConfirmId(""); void p.mutate(); } catch (err) { if (isUnauthorized(err)) throw err; setMsg(errText(err)); setConfirmId(""); }
+    try { await api.del("/terminal-templates/" + encodeURIComponent(id)); setConfirmId(""); void p.mutate(); } catch (err) { if (isUnauthorized(err)) throw err; setMsg(errorText(err, t("c.actionFailed"))); setConfirmId(""); }
   }
   return (
     <Page title={t("dev.tpl.title")} lead={t("dev.tpl.lead")}>

@@ -13,11 +13,11 @@ import { DeviceForm, LAYERS } from "../devices/DeviceForm";
 import { enrollmentUnavailableKey } from "./messages";
 import { ConnectionCheck } from "./ConnectionCheck";
 import type { RouterRow } from "../routers";
+import { errorText } from "../../lib/errors";
 
 interface GW extends RouterRow { site_id?: string | null; management_ip?: string; vendor?: string; device_model?: string; management_connected?: boolean }
 interface Capability { available?: boolean; lookup_enabled?: boolean; code?: string }
 const EDITORS = ["OWNER", "ADMIN", "DEVELOPER"];
-const errText = (e: unknown, fallback: string) => { const d = (e as { data?: { reason?: string; error?: string } } | null)?.data; return d?.reason || d?.error || (e instanceof Error ? e.message : "") || fallback; };
 
 function Card({ r, state, canEdit, cap, openId, setOpen, onChanged }: { r: GW; state: string; canEdit: boolean; cap: Capability; openId: string; setOpen: (id: string) => void; onChanged: () => void }) {
   const { t } = useI18n();
@@ -31,7 +31,7 @@ function Card({ r, state, canEdit, cap, openId, setOpen, onChanged }: { r: GW; s
       if (res?.record_kept) { setKept(true); setDel({ confirm: false, busy: false }); }
       if (res?.router_cleanup_script) setCleanup(res.router_cleanup_script); else onChanged();
     }
-    catch (e) { if (isUnauthorized(e)) throw e; setDel({ confirm: false, busy: false, err: errText(e, t("hub.delFail")) }); }
+    catch (e) { if (isUnauthorized(e)) throw e; setDel({ confirm: false, busy: false, err: errorText(e, t("hub.delFail")) }); }
   }
   const tone = state === "up" ? "ok" : state === "stale" ? "warn" : state === "offline" ? "bad" : "";
   if (cleanup) return (
@@ -93,9 +93,9 @@ function AddGateway({ sites, onDone }: { sites: Array<{ site_id: string; name: s
     try {
       const res = await api.post<{ router?: { device_id?: string } }>("/routers", { hardware_name: name, device_model: null, deployment_layer: "MAIN_GATEWAY", management_ip: null, mac_address: null, vendor: "mikrotik", category: "gateway", transport: "tunnel" });
       const id = res.router?.device_id;
-      if (id) { try { await api.put(`/vps/peers/${encodeURIComponent(id)}/site`, { site_id: site }); } catch (err) { if (isUnauthorized(err)) throw err; setMsg(errText(err, t("hub.siteFail"))); } }
+      if (id) { try { await api.put(`/vps/peers/${encodeURIComponent(id)}/site`, { site_id: site }); } catch (err) { if (isUnauthorized(err)) throw err; setMsg(errorText(err, t("hub.siteFail"))); } }
       form.reset(); onDone(id ?? "");
-    } catch (err) { if (isUnauthorized(err)) throw err; setMsg(err instanceof ApiError && err.status === 403 ? t("hub.forbidden") : errText(err, t("hub.addFail"))); }
+    } catch (err) { if (isUnauthorized(err)) throw err; setMsg(err instanceof ApiError && err.status === 403 ? t("hub.forbidden") : errorText(err, t("hub.addFail"))); }
     setBusy(false);
   }
   return (

@@ -5,6 +5,7 @@ import { asArray } from "../../lib/types";
 import { useI18n } from "../../i18n";
 import { Note, Avatar } from "../../components/ui";
 import { Skeleton } from "../../components/Skeleton";
+import { errorText } from "../../lib/errors";
 
 interface Acc {
   user_id: string; email?: string; full_name?: string; user_role?: string; company_name?: string; is_active?: boolean; presence?: string;
@@ -16,7 +17,6 @@ interface Acc {
 interface Res { accounts?: Acc[]; total?: number; as_of?: string }
 const when = (v?: string) => (v ? new Date(v).toLocaleString() : "—");
 const n = (v: unknown) => (typeof v === "number" ? v.toLocaleString() : "—");
-const errText = (e: unknown, f: string) => { const m = e instanceof Error ? e.message : ""; return m && !/^http-\d+$/.test(m) ? m : f; };
 
 function AccountCard({ a, onChanged }: { a: Acc; onChanged: () => void }) {
   const { t } = useI18n();
@@ -27,7 +27,7 @@ function AccountCard({ a, onChanged }: { a: Acc; onChanged: () => void }) {
     const plan = String(new FormData(form).get("plan"));
     setBusy(true); setMsg(null);
     try { await api.put(`/platform/accounts/${encodeURIComponent(a.user_id)}/pass`, { plan, action, revision: Number(p.revision ?? 0) }); onChanged(); }
-    catch (err) { if (isUnauthorized(err)) throw err; setMsg({ k: "pass", text: errText(err, t("pa.passFail")) }); }
+    catch (err) { if (isUnauthorized(err)) throw err; setMsg({ k: "pass", text: errorText(err, t("pa.passFail")) }); }
     setBusy(false);
   }
   async function authorize(e: FormEvent<HTMLFormElement>) {
@@ -35,7 +35,7 @@ function AccountCard({ a, onChanged }: { a: Acc; onChanged: () => void }) {
     const reason = String(new FormData(e.currentTarget).get("reason")).trim();
     setBusy(true); setMsg(null);
     try { await api.put(`/platform/accounts/${encodeURIComponent(a.user_id)}/authorized-login`, { expected_primary_user_id: a.primary_login_id ?? "", reason }); onChanged(); }
-    catch (err) { if (isUnauthorized(err)) throw err; setMsg({ k: "auth", text: errText(err, t("pa.authFail")) }); }
+    catch (err) { if (isUnauthorized(err)) throw err; setMsg({ k: "auth", text: errorText(err, t("pa.authFail")) }); }
     setBusy(false);
   }
   const tone = a.presence === "online" ? "ok" : a.presence === "idle" ? "warn" : "";

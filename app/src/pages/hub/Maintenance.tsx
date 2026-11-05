@@ -4,9 +4,9 @@ import { api, fetcher, isUnauthorized } from "../../lib/api";
 import { useI18n } from "../../i18n";
 import { Note } from "../../components/ui";
 import { Migration } from "./Migration";
+import { errorText } from "../../lib/errors";
 
 const outcomeAfter = (changes: Change[] | undefined, since: number) => (changes ?? []).find((c) => /^router\.reboot\.(applied|denied|failed|unverified)$/.test(c.action ?? "") && new Date(c.timestamp ?? 0).getTime() >= since);
-const errText = (e: unknown, f: string) => (e as { data?: { error?: string } } | null)?.data?.error || (e instanceof Error && !/^http-\d+$/.test(e.message) ? e.message : "") || f;
 
 interface Change { action?: string; reason?: string; timestamp?: string }
 // A result, once one exists, comes from the router's change history. Stop asking after the approval window has long passed.
@@ -23,7 +23,7 @@ export function Maintenance({ id, name, canEdit }: { id: string; name: string; c
   async function reboot() {
     setBusy(true); setMsg(null);
     try { await api.post(`/topology/${encodeURIComponent(id)}/reboot`, {}); setMsg({ bad: false, text: t("mt.queued") }); setConfirm(false); setAskedAt(Date.now() - 2000); void changes.mutate(); }
-    catch (e) { if (isUnauthorized(e)) throw e; setMsg({ bad: true, text: errText(e, t("mt.failed")) }); }
+    catch (e) { if (isUnauthorized(e)) throw e; setMsg({ bad: true, text: errorText(e, t("mt.failed")) }); }
     setBusy(false);
   }
   return (

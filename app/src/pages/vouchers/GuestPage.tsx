@@ -3,7 +3,7 @@ import useSWR from "swr";
 import { api, fetcher, isUnauthorized } from "../../lib/api";
 import { asArray } from "../../lib/types";
 import { useI18n } from "../../i18n";
-import { Field, Note } from "../../components/ui";
+import { Field, Note, Section, SectionHead } from "../../components/ui";
 import { speedOk, speedValue } from "./planSpeed";
 import { Skeleton } from "../../components/Skeleton";
 import { GuestDeploy } from "./GuestDeploy";
@@ -45,8 +45,6 @@ function previewConfig(d: Draft, c: Config) {
     consent_required: !!c.consent_required, consent_text: c.consent_text ?? "", preview_sample: !has,
   };
 }
-
-function Section({ title, children }: { title: string; children: ReactNode }) { return <section className="glass pad stack"><h2>{title}</h2>{children}</section>; }
 
 export function GuestPage() {
   const { t, lang } = useI18n();
@@ -130,7 +128,6 @@ export function GuestPage() {
 
       <div className="stack gp-form">
       <form className="stack" onSubmit={save}>
-        <p className="soft small">{t("g.hint")}</p>
         <Section title={t("g.brand")}>
           {text("name", t("g.name"), { maxLength: 120 })}{text("welcome", t("g.welcome"), { maxLength: 240 })}{text("terms", t("g.terms"), { maxLength: 500 })}
           <div className="two">
@@ -143,14 +140,12 @@ export function GuestPage() {
           <label className="check"><span>{t("g.mobilePay")}</span><input type="checkbox" checked={draft.payment} onChange={(e) => set("payment", e.target.checked)} /></label>
           <p className="soft small">{t("g.methodsHint")}</p>
         </Section>
-        <Section title={t("g.pay")}>
+        <Section title={t("g.pay")} help={t("g.instrHint") + " " + t("g.graceHint")}>
           {text("bankName", t("g.bank"), { maxLength: 120 })}{text("bankHolder", t("g.holder"), { maxLength: 120 })}{text("bankAcc", t("g.acc"), { maxLength: 60, inputMode: "numeric" })}{text("mmqr", t("g.mmqr"), { maxLength: 500, placeholder: "https://…/mmqr.jpg" })}
           <Field label={t("g.instr")} htmlFor="gp-instr"><textarea className="input" id="gp-instr" maxLength={600} rows={4} value={draft.instructions} onChange={(e) => set("instructions", e.target.value)} style={{ padding: "12px 16px", minHeight: 104 }} /></Field>
-          <p className="soft small">{t("g.instrHint")}</p>
           <div className="two">{text("graceMin", t("g.graceMin"), { type: "number", min: 1, max: 1440, inputMode: "numeric" })}{text("graceData", t("g.graceData"), { type: "number", min: 1, max: 10240, inputMode: "numeric" })}</div>
-          <p className="soft small">{t("g.graceHint")}</p>
         </Section>
-        <section className="stack"><h2>{t("g.plans")}</h2>
+        <section className="stack"><SectionHead title={t("g.plans")} help={t("g.plan.speedHint")} />
           {draft.plans.map((p, i) => (
             <div className="glass pad stack" key={i}>
               <div className="two"><Field label={t("g.plan.key")}><input className="input" value={p.key} onChange={(e) => setPlan(i, { key: e.target.value })} /></Field><Field label={t("g.plan.label")}><input className="input" value={p.label} onChange={(e) => setPlan(i, { label: e.target.value })} /></Field></div>
@@ -163,7 +158,6 @@ export function GuestPage() {
                 <Field label={t("g.plan.down")}><input className="input" type="number" min={0} max={10000} inputMode="numeric" value={p.speed_down_mbps ?? 0} onChange={(e) => setPlan(i, { speed_down_mbps: speedValue(e.target.value) })} /></Field>
                 <Field label={t("g.plan.up")}><input className="input" type="number" min={0} max={10000} inputMode="numeric" value={p.speed_up_mbps ?? 0} onChange={(e) => setPlan(i, { speed_up_mbps: speedValue(e.target.value) })} /></Field>
               </div>
-              <p className="soft small">{t("g.plan.speedHint")}</p>
               <button className="pill danger" type="button" onClick={() => set("plans", draft.plans.filter((_, j) => j !== i))}>{t("g.plan.remove")}</button>
             </div>
           ))}

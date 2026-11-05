@@ -5,9 +5,9 @@ import { asArray, mmk } from "../../lib/types";
 import { useI18n } from "../../i18n";
 import { Note } from "../../components/ui";
 import { Skeleton } from "../../components/Skeleton";
+import { errorText } from "../../lib/errors";
 
 interface Req { id: string; email?: string; plan?: string; created_at?: string; amount_mmk?: number; bank_reference?: string; bank_snapshot?: { bank_name?: string; account_number?: string; holder_name?: string } }
-const errText = (e: unknown, f: string) => { const m = e instanceof Error ? e.message : ""; return m && !/^http-\d+$/.test(m) ? m : f; };
 
 function Item({ r, onDone }: { r: Req; onDone: () => void }) {
   const { t } = useI18n();
@@ -18,7 +18,7 @@ function Item({ r, onDone }: { r: Req; onDone: () => void }) {
     const approve = (e.nativeEvent as SubmitEvent).submitter?.getAttribute("data-decision") === "approve";
     setBusy(true); setMsg(t("pr.recording"));
     try { await api.post(`/platform/account-renewals/${encodeURIComponent(r.id)}/decision`, { approve, ...(paid && approve ? { payment_verified: true } : {}) }); onDone(); }
-    catch (err) { if (isUnauthorized(err)) throw err; setMsg(errText(err, t("pr.notConfirmed"))); setBusy(false); }
+    catch (err) { if (isUnauthorized(err)) throw err; setMsg(errorText(err, t("pr.notConfirmed"))); setBusy(false); }
   }
   return (
     <form className="glass pad stack" onSubmit={decide}>

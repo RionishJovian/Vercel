@@ -8,6 +8,7 @@ import { Skeleton } from "../components/Skeleton";
 import { project, type DeviceRecord, type GatewayRef, type Graph, type Label, type ObsInventory, type TNode } from "./topology/project";
 import { DeviceControls, RouterPorts } from "./topology/Controls";
 import { PendingPanel } from "./network/NetworkEditor";
+import { errorText } from "../lib/errors";
 
 const EDITORS = ["OWNER", "ADMIN", "DEVELOPER"];
 interface Dev extends GatewayRef, DeviceRecord { site_id?: string | null; deployment_layer?: string; category?: string }
@@ -63,7 +64,7 @@ export function Topology({ me }: { me: Me }) {
       const records = allRef.current.filter((r) => r.device_id !== d.device_id && r.deployment_layer !== "MAIN_GATEWAY" && (!r.site_id || r.site_id === d.site_id));
       const g = project(d, obs.inventory ?? {}, asArray<Label>(labels.labels), records);
       setGraph(g); setGuestActions(obs.guest_actions_enabled === true); setPendingAt(g.pendingAt); setStatus(g.unavailable.length ? `${t("tp.someUnavailable")} ${g.unavailable.map((s) => s.replaceAll("_", " ")).join(", ")}.` : t("tp.done"));
-    } catch (e) { if (isUnauthorized(e)) throw e; if (mine === rev.current) setStatus(e instanceof Error && e.message ? e.message : t("tp.failed")); }
+    } catch (e) { if (isUnauthorized(e)) throw e; if (mine === rev.current) setStatus(errorText(e, t("tp.failed"))); }
     finally { if (mine === rev.current) setReading(false); }
   }, [t]);
   useEffect(() => {

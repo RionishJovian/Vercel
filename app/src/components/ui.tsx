@@ -19,18 +19,35 @@ export function BackLink({ href, children }: { href: string; children: ReactNode
 }
 
 /** Page title with optional Help: the explanation stays one tap away instead of filling the page. */
-export function PageHead({ title, help }: { title: string; help?: string }) {
+function HelpTitle({ Tag, title, help }: { Tag: "h1" | "h2" | "h3"; title: string; help?: string }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   return (
     <header className="pagehead">
       <div className="row">
-        <h1>{title}</h1>
+        <Tag>{title}</Tag>
         {help ? <button type="button" className="helpbtn" aria-expanded={open} aria-label={t("c.help")} onClick={() => setOpen((o) => !o)}>?</button> : null}
       </div>
       {help && open ? <p className="soft help-text">{help}</p> : null}
     </header>
   );
+}
+
+/** A page title. Its explanation stays behind the ? button, so the page opens on its controls. */
+export function PageHead({ title, help }: { title: string; help?: string }) { return <HelpTitle Tag="h1" title={title} help={help} />; }
+
+/** The same for a heading inside a page. */
+export function SectionHead({ title, help, level = 2 }: { title: string; help?: string; level?: 2 | 3 }) { return <HelpTitle Tag={level === 3 ? "h3" : "h2"} title={title} help={help} />; }
+
+/** A glass card with a heading. */
+export function Section({ title, help, children }: { title: string; help?: string; children: ReactNode }) {
+  return <section className="glass pad stack"><SectionHead title={title} help={help} />{children}</section>;
+}
+
+/** Help for a group of form fields that has no heading of its own to sit beside. */
+export function Hint({ children }: { children: ReactNode }) {
+  const { t } = useI18n();
+  return <details className="hint"><summary><span className="helpbtn" aria-hidden="true">?</span>{t("c.help")}</summary><p className="soft help-text">{children}</p></details>;
 }
 
 /** A small rounded tile with an icon; the tone tints it for status (ok, warn, bad). */

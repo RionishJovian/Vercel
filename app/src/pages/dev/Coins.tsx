@@ -6,12 +6,12 @@ import { useI18n } from "../../i18n";
 import { Field, Note } from "../../components/ui";
 import { Skeleton } from "../../components/Skeleton";
 import { Page, when } from "./Paged";
+import { errorText } from "../../lib/errors";
 
 interface Tx { created_at?: string; kind?: string; delta?: number; balance_after?: number; note?: string }
 interface Member { user_id: string; full_name?: string; email?: string }
 const amt = (n: unknown) => Number(n || 0).toFixed(2);
 const KINDS = ["agent_earn", "agent_reversal", "service_payment", "service_refund", "feature_key_purchase", "purchase_credit", "manual_credit", "manual_debit"];
-const errText = (e: unknown) => (e as { data?: { error?: string } } | null)?.data?.error || (e instanceof Error ? e.message : "") || "failed";
 
 export function Coins({ me }: { me: Me }) {
   const { t } = useI18n();
@@ -30,7 +30,7 @@ export function Coins({ me }: { me: Me }) {
     if (note.length < 3) { setMsg(t("dev.co.reason")); return; }
     setBusy(true); setMsg("");
     try { await api.post("/magic-coins/adjust", { user_id: user, amount, kind: String(f.get("kind")), note }); form.reset(); void wallet.mutate(); void txs.mutate(); }
-    catch (err) { if (isUnauthorized(err)) throw err; setMsg(errText(err)); }
+    catch (err) { if (isUnauthorized(err)) throw err; setMsg(errorText(err, t("c.actionFailed"))); }
     setBusy(false);
   }
   return (

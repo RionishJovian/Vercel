@@ -27,8 +27,11 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 const open = async (workspace: "ip" | "vlan", label: RegExp) => {
   const view = render(<I18nProvider><NetworkEditor workspace={workspace} canEdit router={router} /></I18nProvider>);
-  const task = await waitFor(() => { const t = [...view.container.querySelectorAll(".task")].find((b) => label.test(b.textContent ?? "")); if (!t) throw new Error("task not shown"); return t; });
-  fireEvent.click(task);
+  // A page with one task opens directly on it, with no task buttons to choose from.
+  if (workspace !== "vlan") {
+    const task = await waitFor(() => { const t = [...view.container.querySelectorAll(".task")].find((b) => label.test(b.textContent ?? "")); if (!t) throw new Error("task not shown"); return t; });
+    fireEvent.click(task);
+  }
   return view;
 };
 

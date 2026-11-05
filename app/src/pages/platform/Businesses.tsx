@@ -5,15 +5,15 @@ import { asArray, type Me } from "../../lib/types";
 import { useI18n } from "../../i18n";
 import { Field, Note } from "../../components/ui";
 import { Skeleton } from "../../components/Skeleton";
+import { errorText } from "../../lib/errors";
 
 interface Biz { business_id: string; company_name?: string; owner_email?: string; access_tier?: string; device_quota_limit?: number; is_active?: boolean; created_at?: string }
 interface State { company_name?: string; access_tier?: string; is_active?: boolean; owner_email?: string; device_count?: number; device_quota_limit?: number; open_incidents?: number; purchased_extra_slots?: number; ai_token_balance?: number }
-const errText = (e: unknown, f: string) => (e as { data?: { error?: string } } | null)?.data?.error || (e instanceof Error && e.message ? e.message : f);
 
 function Row({ b, self, onChanged }: { b: Biz; self: boolean; onChanged: () => void }) {
   const { t } = useI18n();
   const [pw, setPw] = useState<string | null>(null), [st, setSt] = useState<State | null>(null), [msg, setMsg] = useState(""), [busy, setBusy] = useState(false);
-  const run = async (fn: () => Promise<unknown>, ok?: string) => { setBusy(true); setMsg(""); try { await fn(); if (ok) setMsg(ok); onChanged(); } catch (e) { if (isUnauthorized(e)) throw e; setMsg(errText(e, t("pb.failed"))); } setBusy(false); };
+  const run = async (fn: () => Promise<unknown>, ok?: string) => { setBusy(true); setMsg(""); try { await fn(); if (ok) setMsg(ok); onChanged(); } catch (e) { if (isUnauthorized(e)) throw e; setMsg(errorText(e, t("pb.failed"))); } setBusy(false); };
   return (
     <article className="glass pad stack">
       <div className="row"><b>{b.company_name}</b><span className={"chip " + (b.is_active ? "ok" : "")}>{b.is_active ? t("dev.tm.active") : t("pb.suspended")}</span></div>
@@ -21,7 +21,7 @@ function Row({ b, self, onChanged }: { b: Biz; self: boolean; onChanged: () => v
       <div className="row" style={{ justifyContent: "flex-start", flexWrap: "wrap" }}>
         {self ? <span className="soft small">{t("pb.yours")}</span> : <button className="pill" type="button" disabled={busy} onClick={() => void run(() => api.post(`/platform/businesses/${encodeURIComponent(b.business_id)}/${b.is_active ? "suspend" : "unsuspend"}`, {}))}>{b.is_active ? t("pb.suspend") : t("pb.unsuspend")}</button>}
         <button className="pill" type="button" onClick={() => setPw(pw === null ? "" : null)}>{t("pb.resetPw")}</button>
-        <button className="pill" type="button" disabled={busy} onClick={() => void (async () => { try { setSt(await api.get<State>(`/platform/businesses/${encodeURIComponent(b.business_id)}/state`)); } catch (e) { if (isUnauthorized(e)) throw e; setMsg(errText(e, t("pb.failed"))); } })()}>{t("pb.state")}</button>
+        <button className="pill" type="button" disabled={busy} onClick={() => void (async () => { try { setSt(await api.get<State>(`/platform/businesses/${encodeURIComponent(b.business_id)}/state`)); } catch (e) { if (isUnauthorized(e)) throw e; setMsg(errorText(e, t("pb.failed"))); } })()}>{t("pb.state")}</button>
       </div>
       {pw !== null && (
         <div className="note stack"><input className="input" type="password" autoComplete="new-password" minLength={10} value={pw} onChange={(e) => setPw(e.target.value)} aria-label={t("pb.newPw")} placeholder={t("pb.newPw")} />
@@ -46,7 +46,7 @@ export function Businesses({ me }: { me: Me }) {
     const body = { company_name: String(f.get("company")).trim(), owner_email: String(f.get("email")).trim(), owner_password: String(f.get("pass")), access_tier: "SMALL_WISP", device_quota_limit: 1 };
     if (!body.company_name || !body.owner_email || body.owner_password.length < 10) { setMsg(t("pb.required")); return; }
     setBusy(true); setMsg("");
-    try { await api.post("/platform/businesses", body); form.reset(); void mutate(); } catch (err) { if (isUnauthorized(err)) throw err; setMsg(errText(err, t("pb.failed"))); }
+    try { await api.post("/platform/businesses", body); form.reset(); void mutate(); } catch (err) { if (isUnauthorized(err)) throw err; setMsg(errorText(err, t("pb.failed"))); }
     setBusy(false);
   }
   return (

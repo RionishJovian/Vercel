@@ -6,12 +6,12 @@ import { useI18n } from "../../i18n";
 import { BackLink, Note, PageHead } from "../../components/ui";
 import { Skeleton } from "../../components/Skeleton";
 import { DeviceForm, LAYERS, type DeviceRec } from "./DeviceForm";
+import { errorText } from "../../lib/errors";
 
 interface Allowance { routers: number | null; controllers: number | null; sites: number | null; used_routers: number; used_controllers: number; used_sites: number; used_access_points: number; included_router_name?: string }
 interface Request { id: string; kind: string; quantity?: number; user_email?: string; reason?: string; status: string; decided_at?: string }
 const EDITORS = ["OWNER", "ADMIN", "DEVELOPER"];
 const DOWNSTREAM = LAYERS.filter((l) => l !== "MAIN_GATEWAY");
-const errText = (e: unknown) => (e as { data?: { error?: string } } | null)?.data?.error || (e instanceof Error ? e.message : "") || "failed";
 
 function Row({ label, granted, used }: { label: string; granted: number | null; used: number }) {
   const { t } = useI18n();
@@ -41,14 +41,14 @@ export function ManagedDevices({ me }: { me: Me }) {
     return granted !== null && used >= granted ? `${t("dm.noCapacity")} ${kind}. ${t("dm.requestFirst")}` : "";
   };
   const refresh = () => { setForm(null); void routers.mutate(); void al.mutate(); };
-  async function remove(id: string) { try { await api.del(`/routers/${encodeURIComponent(id)}`); setConfirmId(""); refresh(); } catch (e) { if (isUnauthorized(e)) throw e; setErr(errText(e)); setConfirmId(""); } }
+  async function remove(id: string) { try { await api.del(`/routers/${encodeURIComponent(id)}`); setConfirmId(""); refresh(); } catch (e) { if (isUnauthorized(e)) throw e; setErr(errorText(e, t("c.actionFailed"))); setConfirmId(""); } }
   async function submitRequest(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const f = new FormData(e.currentTarget), quantity = parseInt(String(f.get("qty")), 10);
     if (!Number.isInteger(quantity) || quantity < 1 || quantity > 100) { setReqMsg(t("dm.qtyRange")); return; }
-    try { await api.post("/device-requests", { kind: String(f.get("kind")), quantity, reason: String(f.get("reason")).trim() || null }); setReqOpen(false); setReqMsg(""); void rq.mutate(); } catch (er) { if (isUnauthorized(er)) throw er; setReqMsg(errText(er)); }
+    try { await api.post("/device-requests", { kind: String(f.get("kind")), quantity, reason: String(f.get("reason")).trim() || null }); setReqOpen(false); setReqMsg(""); void rq.mutate(); } catch (er) { if (isUnauthorized(er)) throw er; setReqMsg(errorText(er, t("c.actionFailed"))); }
   }
-  async function decide(id: string, status: "approved" | "rejected") { try { await api.post(`/device-requests/${encodeURIComponent(id)}/decide`, { status }); void rq.mutate(); void al.mutate(); } catch (e) { if (isUnauthorized(e)) throw e; setErr(errText(e)); } }
+  async function decide(id: string, status: "approved" | "rejected") { try { await api.post(`/device-requests/${encodeURIComponent(id)}/decide`, { status }); void rq.mutate(); void al.mutate(); } catch (e) { if (isUnauthorized(e)) throw e; setErr(errorText(e, t("c.actionFailed"))); } }
 
   return (
     <>

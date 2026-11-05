@@ -4,10 +4,10 @@ import { asArray, type Me } from "../../lib/types";
 import { useI18n } from "../../i18n";
 import { Field, Note } from "../../components/ui";
 import { FilterBar, Loading, Page, Pager, Select, tok, usePaged, when } from "./Paged";
+import { errorText } from "../../lib/errors";
 
 interface Ov { id: string; locale: string; namespace: string; key: string; value: string; updated_at?: string }
 interface Res { overrides?: Ov[]; locales?: string[]; namespaces?: string[]; by_locale?: Record<string, number>; by_namespace?: Record<string, number>; total?: number; has_more?: boolean }
-const errText = (e: unknown) => (e as { data?: { error?: string } } | null)?.data?.error || (e instanceof Error && !e.message.startsWith("http-") ? e.message : "") || "failed";
 
 function Editor({ item, locales, namespaces, onDone }: { item: Ov | null; locales: string[]; namespaces: string[]; onDone: () => void }) {
   const { t } = useI18n();
@@ -20,7 +20,7 @@ function Editor({ item, locales, namespaces, onDone }: { item: Ov | null; locale
     if (!body.value.trim()) { setMsg(t("dev.tr.valueNeeded")); return; }
     setBusy(true); setMsg("");
     try { if (item) await api.put("/i18n-overrides/" + item.id, body); else await api.post("/i18n-overrides", body); onDone(); }
-    catch (err) { if (isUnauthorized(err)) throw err; setMsg(errText(err)); setBusy(false); }
+    catch (err) { if (isUnauthorized(err)) throw err; setMsg(errorText(err, t("c.actionFailed"))); setBusy(false); }
   }
   return (
     <form className="glass pad stack" onSubmit={save}>
@@ -44,7 +44,7 @@ export function Translations({ me }: { me: Me }) {
   const [edit, setEdit] = useState<Ov | "new" | null>(null), [err, setErr] = useState("");
   const items = asArray<Ov>(p.data?.overrides), locales = asArray<string>(p.data?.locales).length ? asArray<string>(p.data?.locales) : ["en", "my"], namespaces = asArray<string>(p.data?.namespaces).length ? asArray<string>(p.data?.namespaces) : ["ui", "copy"];
   const facet = (o?: Record<string, number>) => (o && Object.keys(o).length ? Object.entries(o).map(([k, v]) => `${k} ${v}`).join(", ") : t("dev.none"));
-  async function remove(id: string) { try { await api.del("/i18n-overrides/" + id); void p.mutate(); } catch (e) { if (isUnauthorized(e)) throw e; setErr(errText(e)); } }
+  async function remove(id: string) { try { await api.del("/i18n-overrides/" + id); void p.mutate(); } catch (e) { if (isUnauthorized(e)) throw e; setErr(errorText(e, t("c.actionFailed"))); } }
   return (
     <Page title={t("dev.tr.title")}>
       <Note kind="warn"><b>{t("dev.tr.global")}</b> {isDev ? t("dev.tr.careful") : t("dev.tr.devOnly")}</Note>

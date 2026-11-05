@@ -2,7 +2,7 @@ import useSWR from "swr";
 import { fetcher } from "../../lib/api";
 import { asArray, type Router } from "../../lib/types";
 import { useI18n } from "../../i18n";
-import { Note, WorkspaceTabs, BackLink } from "../../components/ui";
+import { Note, SectionHead, WorkspaceTabs, BackLink } from "../../components/ui";
 import { Skeleton } from "../../components/Skeleton";
 import { deviceImage } from "../../lib/deviceImage";
 import { Icon, type IconName } from "../../components/icons";
@@ -45,7 +45,7 @@ export function Routers({ sub, params }: { sub: string; params: URLSearchParams 
   const tabs = <WorkspaceTabs items={[{ href: "#/router", label: t("r.ws.list"), current: !onMap }, { href: "#/router/map", label: t("r.ws.map"), current: onMap }, { href: "#/network", label: t("title.network"), current: false }]} />;
   if (onMap) {
     const gateways = list.filter((d) => d.deployment_layer === "MAIN_GATEWAY");
-    return <>{tabs}{gateways.length ? <NetworkMap gateways={gateways} selected={params.get("id")} hub={hub} /> : <Note kind="warn">{t("v.noGateway")}</Note>}</>;
+    return <><h1>{t("r.mapTitle")}</h1>{tabs}{gateways.length ? <NetworkMap gateways={gateways} selected={params.get("id")} hub={hub} /> : <Note kind="warn">{t("v.noGateway")}</Note>}</>;
   }
   return (
     <>
@@ -72,7 +72,7 @@ export function Routers({ sub, params }: { sub: string; params: URLSearchParams 
         ))}
       </div>
       <InternetSetup />
-      <section className="glass pad stack"><h2>{t("r.tools")}</h2><p className="soft small">{t("r.toolsHelp")}</p><div className="scroll-x"><a className="pill" href="#/hub">{t("hub.title")}</a><a className="pill" href="#/network">{t("title.network")}</a><a className="pill" href="#/topology">{t("tp.title")}</a></div></section>
+      <section className="glass pad stack"><SectionHead title={t("r.tools")} help={t("r.toolsHelp")} /><div className="scroll-x"><a className="pill" href="#/hub">{t("hub.title")}</a><a className="pill" href="#/network">{t("title.network")}</a><a className="pill" href="#/topology">{t("tp.title")}</a></div></section>
     </>
   );
 }

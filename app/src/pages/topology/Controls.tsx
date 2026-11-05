@@ -1,5 +1,6 @@
+import { errorText } from "../../lib/errors";
 import { useState, type FormEvent } from "react";
-import { api, isUnauthorized } from "../../lib/api";
+import { ApiError, api, isUnauthorized } from "../../lib/api";
 import { useI18n } from "../../i18n";
 import { Note } from "../../components/ui";
 import type { PortInfo, TNode } from "./project";
@@ -7,7 +8,6 @@ import type { PortInfo, TNode } from "./project";
 interface Review { steps: string[]; warnings: string[]; confirmation: string }
 interface Context { routerId: string; routerName: string; locked: boolean; guestLocked: boolean; onChanged: () => void; onPending: (revertAt: string) => void }
 
-const errMsg = (e: unknown, fallback: string) => (e as { data?: { error?: string } } | null)?.data?.error || (e instanceof Error && !/^http-\d+$/.test(e.message) ? e.message : "") || fallback;
 const KINDS = ["other", "switch", "ap", "computer", "printer", "controller"];
 
 /** Review, consent, apply: the same gate as every other router change. The server re-checks the plan on apply. */
@@ -18,7 +18,7 @@ function Reviewed({ ctx, kind, values, label, done, danger, disabled }: { ctx: C
   async function preview() {
     setBusy(true); setMsg(null); setReview(null); setConsent(false);
     try { const r = await api.post<{ review?: Review }>(path("preview"), { kind, id: "", values }); setReview(r.review ?? null); }
-    catch (e) { if (isUnauthorized(e)) throw e; setMsg({ bad: true, text: errMsg(e, t("dc.failed")) }); }
+    catch (e) { if (isUnauthorized(e)) throw e; setMsg({ bad: true, text: errorText(e, t("dc.failed")) }); }
     setBusy(false);
   }
   async function apply() {
@@ -26,11 +26,11 @@ function Reviewed({ ctx, kind, values, label, done, danger, disabled }: { ctx: C
     setBusy(true); setMsg(null);
     try {
       const r = await api.post<{ result?: { verified?: boolean; pending_confirm?: boolean; revert_at?: string } }>(path("apply"), { kind, id: "", values, confirmation: review.confirmation });
-      if (!r.result?.verified) throw new Error(t("dc.notVerified"));
+      if (!r.result?.verified) throw new ApiError(t("dc.notVerified"));
       setReview(null); setConsent(false);
       if (r.result.pending_confirm && r.result.revert_at) ctx.onPending(r.result.revert_at); else setMsg({ bad: false, text: done });
       ctx.onChanged();
-    } catch (e) { if (isUnauthorized(e)) throw e; setReview(null); setMsg({ bad: true, text: errMsg(e, t("dc.failed")) }); }
+    } catch (e) { if (isUnauthorized(e)) throw e; setReview(null); setMsg({ bad: true, text: errorText(e, t("dc.failed")) }); }
     setBusy(false);
   }
   return (
@@ -86,9 +86,9 @@ function GuestAction({ ctx, path, body, label, confirm, done, danger }: { ctx: C
     setBusy(true); setMsg(null);
     try {
       const r = await api.post<{ verified?: boolean }>(`/routers/${encodeURIComponent(ctx.routerId)}/guests/${path}`, { ...body, confirm: true });
-      if (r.verified !== true) throw new Error(t("dc.notVerified"));
+      if (r.verified !== true) throw new ApiError(t("dc.notVerified"));
       setMsg({ bad: false, text: done }); ctx.onChanged();
-    } catch (e) { if (isUnauthorized(e)) throw e; setMsg({ bad: true, text: errMsg(e, t("dc.failed")) }); }
+    } catch (e) { if (isUnauthorized(e)) throw e; setMsg({ bad: true, text: errorText(e, t("dc.failed")) }); }
     setConfirming(false); setBusy(false);
   }
   const style = "pill" + (danger ? " danger" : "");

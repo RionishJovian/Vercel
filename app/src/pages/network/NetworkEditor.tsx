@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { api, ApiError, isUnauthorized } from "../../lib/api";
 import { useI18n } from "../../i18n";
-import { Note } from "../../components/ui";
+import { Note, SectionHead } from "../../components/ui";
 import { choices, currentNames, descriptions, editNetworkValues, initialValues, moveNetworkValues, isSecretField, labelOf, listFor, objectsOf, payloadValues, schema, workspaceInfo, type Field, type Inventory, type Workspace } from "./schema";
 import type { RouterRow } from "../routers";
+import { errorText } from "../../lib/errors";
 
 interface Review { steps: string[]; warnings: string[]; confirmation: string }
 
@@ -24,7 +25,7 @@ export function PendingPanel({ routerId, revertAt, onDone }: { routerId: string;
     try {
       await api.post(`/routers/${encodeURIComponent(routerId)}/network/${action}`, {});
       onDone(action === "confirm" ? t("net.kept") : t("net.reverted"));
-    } catch (err) { if (isUnauthorized(err)) throw err; setError(errMsg(err)); }
+    } catch (err) { if (isUnauthorized(err)) throw err; setError(errorText(err, t("c.actionFailed"))); }
     finally { setBusy(false); }
   }
   return (
@@ -40,7 +41,6 @@ export function PendingPanel({ routerId, revertAt, onDone }: { routerId: string;
     </div>
   );
 }
-const errMsg = (e: unknown) => (e as { data?: { error?: string } } | null)?.data?.error || (e instanceof Error ? e.message : "") || "Request failed";
 const isOn = (v?: string) => v === "yes" || v === "true";
 
 function CurrentSettings({ inv, kind }: { inv: Inventory; kind: string }) {
@@ -128,7 +128,7 @@ function TaskForm({ kind, inv, defaults, routerId, routerName, locked, setLocked
       const data = await api.post<{ review?: Review }>(`/routers/${encodeURIComponent(routerId)}/network/preview`, { kind: wireKind(remove), id: selected?.id ?? "", values: wireValues(remove) });
       if (mine !== stamp.current || !data.review) return;
       setReview(data.review); setStatus("");
-    } catch (err) { if (isUnauthorized(err)) throw err; if (mine === stamp.current) setStatus(`${t("net.reviewFail")} ${errMsg(err)}`); }
+    } catch (err) { if (isUnauthorized(err)) throw err; if (mine === stamp.current) setStatus(`${t("net.reviewFail")} ${errorText(err, "")}`); }
   }
   async function apply() {
     if (locked || !review || !routerId) return;
@@ -144,7 +144,7 @@ function TaskForm({ kind, inv, defaults, routerId, routerName, locked, setLocked
     } catch (err) {
       if (isUnauthorized(err)) throw err;
       const rolled = err instanceof ApiError && (err.data as { result?: { rolled_back?: boolean } } | null)?.result?.rolled_back;
-      if (mine === stamp.current) setStatus(`${t("net.applyFail")} ${errMsg(err)} ${rolled ? t("net.rolledBack") : t("net.rollbackUnconfirmed")}`);
+      if (mine === stamp.current) setStatus(`${t("net.applyFail")} ${errorText(err, "")} ${rolled ? t("net.rolledBack") : t("net.rollbackUnconfirmed")}`);
     } finally { setLocked(false); }
   }
 
@@ -228,14 +228,15 @@ export function NetworkEditor({ workspace, router, canEdit, reason, prefill }: {
   useEffect(() => { const generation = rev; void reload(); return () => { generation.current++; readController.current?.abort(); }; }, [reload]);
 
   const finishPending = useCallback((message: string) => { setPendingAt(""); setPendingNote(message); void reload(); }, [reload]);
-  const [name, lead] = workspaceInfo[workspace];
+  const [name] = workspaceInfo[workspace];
   const loading = load.kind === "loading";
   const offline = load.kind !== "ready";
   const inv = load.kind === "ready" ? load.inv : EMPTY_INVENTORY, defaults = load.kind === "ready" ? load.defaults : {};
   const s = schema[task];
   const needsHub = !router || (load.kind === "error" && load.err instanceof ApiError && (load.err.data as { code?: string } | null)?.code === "router_management_required");
-  const message = load.kind === "error" ? errMsg(load.err) : "";
-  const banner = loading ? t("r.checking") : !offline ? "" : reason ? reason : !router ? t("net.noRouterBanner") : needsHub ? t("net.connectFirst") : `${t("net.offlineBanner")} ${message === "router-read-timeout" ? t("net.readTimeout") : message}`;
+  const timedOut = load.kind === "error" && load.err instanceof Error && load.err.message === "router-read-timeout";
+  const message = load.kind === "error" ? errorText(load.err, "") : "";
+  const banner = loading ? t("r.checking") : !offline ? "" : reason ? reason : !router ? t("net.noRouterBanner") : needsHub ? t("net.connectFirst") : `${t("net.offlineBanner")} ${timedOut ? t("net.readTimeout") : message}`;
   // Mirror the server's gates. Nothing is hidden: a task that cannot be applied yet
   // still shows its form, locked, with the reason above it. Only a task with nothing
   // to show (read-only, or unsupported on this router) is replaced by a note.
@@ -257,19 +258,18 @@ export function NetworkEditor({ workspace, router, canEdit, reason, prefill }: {
       )}
       {pendingNote && !waiting && <Note>{pendingNote}</Note>}
       {waiting && <PendingPanel routerId={routerId} revertAt={pendingAt} onDone={finishPending} />}
-      <details className="glass pad"><summary>{t("net.about")}</summary><p className="soft small">{tn(lead)} {t("net.reviewRequired")}</p></details>
-      {!offline && <div className="row"><div className="stack" style={{ gap: 2 }}><b>{t("net.loaded")}</b><span className="soft small">{(inv.interfaces ?? []).length} {t("net.interfaces")}. {t("net.openingSafe")}</span></div><button className="pill" type="button" disabled={locked || waiting} onClick={() => void reload()}>{t("net.refresh")}</button></div>}
-      <div className="tasks" role="group" aria-label={tn(name)}>
+      {!offline && <div className="row"><span className="soft small">{t("net.loaded")}: {(inv.interfaces ?? []).length} {t("net.interfaces")}</span><button className="pill" type="button" disabled={locked || waiting} onClick={() => void reload()}>{t("net.refresh")}</button></div>}
+      {kinds.length > 1 && <div className="tasks compact" role="group" aria-label={tn(name)}>
         {kinds.map((k) => (
           <button type="button" className="task" key={k} aria-pressed={k === task} disabled={locked || waiting} onClick={() => setTask(k)}>
-            <b>{tn(schema[k].title)}</b><span className="soft small">{tn(descriptions[k])}</span>
+            <b>{tn(schema[k].title)}</b>
             {!offline && <span className="mute small">{schema[k].menu ? `${objectsOf(inv, schema[k].menu!).length} ${t("net.records")}` : t("net.wizard")}</span>}
           </button>
         ))}
-      </div>
+      </div>}
       <section className="stack" aria-live="polite">
+        {kinds.length > 1 && <SectionHead level={3} title={tn(s.title)} help={tn(descriptions[task])} />}
         {!offline && <CurrentSettings inv={inv} kind={task} />}
-        <h3>{tn(s.title)}</h3><p className="soft small">{tn(descriptions[task])}</p>
         {blocked ? <Note>{blocked}</Note> : (
           <>
             {writeHold && <Note kind="warn">{writeHold}</Note>}

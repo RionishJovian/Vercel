@@ -4,6 +4,7 @@ import { asArray, mmk, num, type VoucherReport } from "../lib/types";
 import { useI18n } from "../i18n";
 import { Icon } from "../components/icons";
 import { Skeleton } from "../components/Skeleton";
+import { PageHead } from "../components/ui";
 import { useCountUp } from "../lib/useCountUp";
 import { RevenuePayments } from "./RevenuePayments";
 import type { Me } from "../lib/types";
@@ -26,7 +27,7 @@ export function Revenue({ me }: { me: Me }) {
   return (
     <>
       <a className="backlink" href="#/home"><Icon name="back" />{t("rv.back")}</a>
-      <h1>{t("rv.title")}</h1>
+      <PageHead title={t("rv.title")} help={t("rv.help")} />
 
       <section className="glass pad ledger" aria-labelledby="rv-used">
         <h2 id="rv-used" className="mute small">{t("rv.used")}</h2>
@@ -37,7 +38,6 @@ export function Revenue({ me }: { me: Me }) {
           <div className="capsule"><span className="mute small">{t("h.last30")}</span><b className="num">{mmk(num(r.activation_last30) ?? 0)}</b></div>
           <div className="capsule"><span className="mute small">{t("rv.all")}</span><b className="num">{mmk(num(r.activation_value) ?? 0)}</b></div>
         </div>
-        <p className="mute small">{t("rv.help")}</p>
         {(num(r.activation_time_unknown_count) ?? 0) > 0 ? <p className="note warn">{r.activation_time_unknown_count} {t("rv.unknown")}</p> : null}
       </section>
 

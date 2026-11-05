@@ -5,11 +5,11 @@ import { asArray, type Router } from "../lib/types";
 import { useI18n } from "../i18n";
 import { BackLink, Note, PageHead, IconTile } from "../components/ui";
 import { Skeleton } from "../components/Skeleton";
+import { errorText } from "../lib/errors";
 
 interface Backup { id: string; label?: string; kind?: string; size_bytes?: number; created_at?: string }
 interface BackupRes { backups?: Backup[]; restore_available?: boolean; capture_available?: boolean }
 interface Change { timestamp?: string; user_role?: string; action?: string; reason?: string }
-const errText = (e: unknown) => (e as { data?: { error?: string } } | null)?.data?.error || (e instanceof Error ? e.message : "") || "failed";
 
 export function Backups() {
   const { t } = useI18n();
@@ -28,14 +28,14 @@ export function Backups() {
 
   async function capture() {
     setBusy(true); setMsg(null);
-    try { await api.post(`/devices/${encodeURIComponent(id)}/backups`, {}); await bk.mutate(); await ch.mutate(); } catch (e) { if (isUnauthorized(e)) throw e; setMsg({ bad: true, text: errText(e) }); }
+    try { await api.post(`/devices/${encodeURIComponent(id)}/backups`, {}); await bk.mutate(); await ch.mutate(); } catch (e) { if (isUnauthorized(e)) throw e; setMsg({ bad: true, text: errorText(e, t("c.actionFailed")) }); }
     setBusy(false);
   }
   async function restore() {
     if (!restoring) return;
     setBusy(true); setMsg(null);
     try { await api.post(`/devices/${encodeURIComponent(id)}/restore/${encodeURIComponent(restoring.id)}`, { otp: restoring.otp }); setMsg({ bad: false, text: t("bk.restored") }); setRestoring(null); await ch.mutate(); }
-    catch (e) { if (isUnauthorized(e)) throw e; setMsg({ bad: true, text: errText(e) }); }
+    catch (e) { if (isUnauthorized(e)) throw e; setMsg({ bad: true, text: errorText(e, t("c.actionFailed")) }); }
     setBusy(false);
   }
   return (

@@ -6,16 +6,16 @@ import { useI18n } from "../../i18n";
 import { Field, Note, Avatar } from "../../components/ui";
 import { Skeleton } from "../../components/Skeleton";
 import { Page } from "./Paged";
+import { errorText } from "../../lib/errors";
 
 interface User { user_id: string; full_name?: string; email?: string; user_role?: string; is_active?: boolean }
 const ROLES = ["OWNER", "ADMIN", "VIEWER"];
-const errText = (e: unknown) => (e as { data?: { error?: string } } | null)?.data?.error || (e instanceof Error ? e.message : "") || "failed";
 
 function Member({ u, onChanged, onError }: { u: User; onChanged: () => void; onError: (m: string) => void }) {
   const { t } = useI18n();
   const [role, setRole] = useState(u.user_role ?? ""), [busy, setBusy] = useState(false);
   const managed = ROLES.includes(u.user_role ?? "");
-  const run = async (fn: () => Promise<unknown>) => { setBusy(true); try { await fn(); onChanged(); } catch (e) { if (isUnauthorized(e)) throw e; onError(errText(e)); } setBusy(false); };
+  const run = async (fn: () => Promise<unknown>) => { setBusy(true); try { await fn(); onChanged(); } catch (e) { if (isUnauthorized(e)) throw e; onError(errorText(e, t("c.actionFailed"))); } setBusy(false); };
   return (
     <div className="glass pad stack">
       <div className="row"><div className="who"><Avatar name={u.full_name || u.email} /><b>{u.full_name}</b></div><span className={"chip " + (u.is_active ? "ok" : "")}>{u.is_active ? t("dev.tm.active") : t("dev.tm.disabled")}</span></div>
@@ -44,7 +44,7 @@ export function Team() {
     const form = e.currentTarget, f = new FormData(form);
     setBusy(true); setMsg("");
     try { await api.post("/team", { full_name: String(f.get("name")), email: String(f.get("email")), password: String(f.get("pass")), user_role: String(f.get("role")) }); form.reset(); void mutate(); }
-    catch (err) { if (isUnauthorized(err)) throw err; setMsg(errText(err)); }
+    catch (err) { if (isUnauthorized(err)) throw err; setMsg(errorText(err, t("c.actionFailed"))); }
     setBusy(false);
   }
   return (

@@ -5,11 +5,11 @@ import { asArray } from "../lib/types";
 import { useI18n } from "../i18n";
 import { BackLink, Note, PageHead, IconTile } from "../components/ui";
 import { Skeleton } from "../components/Skeleton";
+import { errorText } from "../lib/errors";
 
 interface Adv { id: string; title: string; fix_unavailable?: boolean }
 interface Dev { device_id: string; hardware_name?: string; posture?: string; routeros_version?: string; routeros_channel?: string; unpatchable?: boolean; exploited?: boolean; fix_first?: string; advisories?: Adv[]; version_checked_at?: string }
 interface Posture { devices?: Dev[]; count?: number; affected?: number; safe?: number; unknown?: number; unpatchable?: number; exploited?: number; controls_enabled?: boolean }
-const errText = (e: unknown) => (e as { data?: { error?: string } } | null)?.data?.error || (e instanceof Error ? e.message : "") || "failed";
 // Worst first: an unfixable finding outranks a fixable one, which outranks "could not tell", which outranks fine.
 export const rank = (d: Dev) => (d.posture === "affected" ? (d.unpatchable ? 0 : 1) : d.posture === "unknown" ? 2 : 3);
 
@@ -20,7 +20,7 @@ function Row({ d, controls }: { d: Dev; controls: boolean }) {
   const id = encodeURIComponent(d.device_id);
   async function run(kind: string, fn: () => Promise<{ bad: boolean; text: string; detail?: string }>) {
     setBusy(kind); setRes(null);
-    try { setRes(await fn()); } catch (e) { if (isUnauthorized(e)) throw e; setRes({ bad: true, text: errText(e) }); }
+    try { setRes(await fn()); } catch (e) { if (isUnauthorized(e)) throw e; setRes({ bad: true, text: errorText(e, t("c.actionFailed")) }); }
     setBusy("");
   }
   const verify = () => run("verify", async () => { const r = await api.post<{ reachable?: boolean; detail?: string; state?: string }>(`/devices/${id}/security/verify`, {}); return { bad: !r.reachable, text: r.reachable ? t("sec.verified") : t("sec.verifyFail"), detail: r.detail || `${t("sec.state")} ${r.state || "unknown"}` }; });

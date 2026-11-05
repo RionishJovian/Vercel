@@ -5,6 +5,7 @@ import { asArray, type Me, type Router } from "../lib/types";
 import { useI18n } from "../i18n";
 import { BackLink, Note, PageHead } from "../components/ui";
 import { Skeleton } from "../components/Skeleton";
+import { errorText } from "../lib/errors";
 import { HeadCheck } from "../components/DenseTable";
 import { fmtBytes, fmtDuration, fmtUptime, IDLE_SECONDS, NEAR_EXPIRY_SECONDS, parseSeconds } from "./guestFormat";
 
@@ -19,7 +20,6 @@ interface VoucherFact { expires_at?: string; over: boolean }
 const BAN_COMMENT = "mega-magic:ban";
 const EDITORS = ["OWNER", "ADMIN", "DEVELOPER"];
 const CODE_CHUNK = 200;
-const msgOf = (e: unknown) => { const d = (e as { data?: { error?: string } } | null)?.data; return d?.error || (e instanceof Error ? e.message : "") || "failed"; };
 
 /** What the app holds about each code: time limit and saved use against the data limit. */
 async function readVoucherFacts(codes: string[]): Promise<Map<string, VoucherFact>> {
@@ -118,7 +118,7 @@ export function Guests({ me }: { me: Me }) {
       const res = await api.post<{ verified?: boolean }>(`/routers/${encodeURIComponent(r.s.gateway.device_id)}/guests/disconnect`, { id: r.session.id, mac: v["mac-address"], address: v.address, user: v.user, confirm: true });
       if (res.verified !== true) throw new Error("not verified");
       return null;
-    } catch (e) { if (isUnauthorized(e)) throw e; return msgOf(e); }
+    } catch (e) { if (isUnauthorized(e)) throw e; return errorText(e, ""); }
   }
   async function setBan(s: Readable, mac: string, block: boolean) {
     if (busy || reading || !window.confirm(t(block ? "lu.banConfirm" : "lu.unbanConfirm").replace("{mac}", mac))) return;
@@ -128,7 +128,7 @@ export function Guests({ me }: { me: Me }) {
       const res = await api.post<{ verified?: boolean }>(`/routers/${encodeURIComponent(s.gateway.device_id)}/guests/${block ? "block" : "unblock"}`, { mac, confirm: true });
       if (res.verified !== true) throw new Error("not verified");
       note = t(block ? "lu.bannedDone" : "lu.unbanned");
-    } catch (e) { if (isUnauthorized(e)) throw e; note = `${t("lu.banFailed")} ${msgOf(e)}`; }
+    } catch (e) { if (isUnauthorized(e)) throw e; note = `${t("lu.banFailed")} ${errorText(e, "")}`; }
     setBusy(false); await reload(); setStatus(note);
   }
   async function kickOne(r: Row) {
