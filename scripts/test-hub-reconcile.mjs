@@ -51,6 +51,21 @@ test("a peer still being enrolled is not touched", () => {
   assert.deepEqual(plan, { add: [], remove: [], unknown: [] });
 });
 
+test("entries sharing a key become one peer holding all their addresses", () => {
+  const plan = planReconcile({ peers: [peer("A", 2), peer("A", 3), peer("A", 4)], live: parseLive("A\t10.77.0.4/32\n"), addressesOf });
+  assert.deepEqual(plan.add, [{ key: "A", addresses: ["10.77.0.2/32", "10.77.0.3/32", "10.77.0.4/32"] }]);
+});
+
+test("a shared key already holding all its addresses is left alone", () => {
+  const plan = planReconcile({ peers: [peer("A", 2), peer("A", 3)], live: parseLive("A\t10.77.0.3/32 10.77.0.2/32\n"), addressesOf });
+  assert.deepEqual(plan.add, []);
+});
+
+test("a shared key is left alone while any of its entries is migrating", () => {
+  const migrating = peer("A", 2, "active", { managementMigration: { phase: "staged" } });
+  assert.deepEqual(planReconcile({ peers: [migrating, peer("A", 3)], live: parseLive("A\t10.77.0.2/32\n"), addressesOf }).add, []);
+});
+
 function fakeHub({ peers, live, saved }) {
   const state = { live: new Map(live), saved, saves: 0 };
   const render = (map) => [...map].map(([k, a]) => `${k}\t${a.join(" ")}`).join("\n");
@@ -76,6 +91,14 @@ test("after a crash: restores the missing peer and saves the file", () => {
 test("saves a peer that is live but missing from the file", () => {
   const hub = fakeHub({ peers: [peer("A", 2)], live: [["A", ["10.77.0.2/32"]]], saved: "[Interface]\n" });
   assert.equal(reconcileHub(hub.args).saved, true);
+  assert.equal(hub.state.saves, 1);
+});
+
+test("a shared key settles after one pass instead of changing every time", () => {
+  const hub = fakeHub({ peers: [peer("A", 2), peer("A", 3), peer("A", 4), peer("B", 5)], live: [["A", ["10.77.0.4/32"]], ["B", ["10.77.0.5/32"]]], saved: "[Interface]\n[Peer]\nPublicKey = A\nAllowedIPs = 10.77.0.4/32\n\n[Peer]\nPublicKey = B\nAllowedIPs = 10.77.0.5/32\n" });
+  assert.deepEqual(reconcileHub(hub.args), { added: 1, removed: 0, unknown: 0, saved: true });
+  assert.deepEqual(hub.state.live.get("B"), ["10.77.0.5/32"]);
+  assert.deepEqual(reconcileHub(hub.args), { added: 0, removed: 0, unknown: 0, saved: false });
   assert.equal(hub.state.saves, 1);
 });
 
