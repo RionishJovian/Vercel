@@ -201,3 +201,56 @@ func TestStateSince(t *testing.T) {
 		t.Fatalf("history failure: %+v", got)
 	}
 }
+
+type fakeAlerts struct {
+	due     []*database.RouterAlert
+	stored  map[string]bool
+	created int
+	dueErr  error
+}
+
+func (f *fakeAlerts) DueRouterAlerts(grace time.Duration) ([]*database.RouterAlert, error) {
+	if grace != routerAlertGrace {
+		return nil, errors.New("wrong grace")
+	}
+	return f.due, f.dueErr
+}
+func (f *fakeAlerts) CreateRouterAlert(a *database.RouterAlert) (bool, error) {
+	key := a.DeviceID + a.Kind
+	if f.stored[key] {
+		return false, nil
+	}
+	f.stored[key] = true
+	f.created++
+	return true, nil
+}
+
+func TestRaiseRouterAlerts(t *testing.T) {
+	alerts := &fakeAlerts{stored: map[string]bool{}, due: []*database.RouterAlert{
+		{DeviceID: "d1", Kind: database.RouterAlertOffline, HardwareName: "Shop", CompanyName: "Family", Detail: "Last contact 09:00."},
+		{DeviceID: "d2", Kind: database.RouterAlertRecovered, HardwareName: "Cafe", CompanyName: "Ax2"},
+	}}
+	var sent []string
+	s := &FleetService{alerts: alerts}
+	if err := s.RaiseRouterAlerts(); err != nil || alerts.created != 2 {
+		t.Fatalf("without messages: err %v, created %d", err, alerts.created)
+	}
+	alerts.stored = map[string]bool{"d2recovered": true}
+	s.ConfigureAlertMessages(func(m string) error { sent = append(sent, m); return nil })
+	if err := s.RaiseRouterAlerts(); err != nil {
+		t.Fatal(err)
+	}
+	if len(sent) != 1 || sent[0] != "Router offline: Shop (Family). Last contact 09:00." {
+		t.Fatalf("sent %v", sent)
+	}
+	if got := routerAlertMessage(alerts.due[1]); got != "Router back online: Cafe (Ax2)." {
+		t.Fatalf("recovery message %q", got)
+	}
+
+	// A failed send is reported, and the alert stays stored so it isn't sent again.
+	alerts.stored = map[string]bool{"d2recovered": true}
+	s.ConfigureAlertMessages(func(string) error { return errors.New("telegram down") })
+	if err := s.RaiseRouterAlerts(); err == nil || !alerts.stored["d1offline"] {
+		t.Fatalf("err %v, stored %v", err, alerts.stored)
+	}
+}

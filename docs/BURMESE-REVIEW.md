@@ -316,6 +316,22 @@ Printed on the receipt itself, in `printCodes.ts` (Burmese and English together,
 |---|---|
 | This state since | ဒီအခြေအနေ စတင်ချိန် |
 
+## Router alerts (2026-11-06)
+
+| English | Burmese |
+|---|---|
+| Router alerts | Router သတိပေးချက်များ |
+| Connected routers that stayed down for 15 minutes, and when they came back. Customers don't see this. | ချိတ်ဆက်ထားရာမှ ၁၅ မိနစ် ပြုတ်နေသော Router များနှင့် ပြန်တက်ချိန်။ ဖောက်သည်များ မမြင်ရပါ။ |
+| No router alerts yet. | Router သတိပေးချက် မရှိသေးပါ။ |
+| Offline | အော့ဖ်လိုင်း |
+| Back online | ပြန်အွန်လိုင်းဖြစ်ပြီ |
+| New | အသစ် |
+| Drop detected | ပြုတ်သွားတာ တွေ့ချိန် |
+| Mark all read | အားလုံး ဖတ်ပြီးအဖြစ် မှတ်မည် |
+| Could not mark the alerts read. Try again. | ဖတ်ပြီးအဖြစ် မမှတ်နိုင်ပါ။ ပြန်ကြိုးစားပါ။ |
+| New router alerts: | Router သတိပေးချက်အသစ်: |
+| Open | ဖွင့်မည် |
+
 ## Starlink map layer (2026-11-06)
 
 | English | Burmese |

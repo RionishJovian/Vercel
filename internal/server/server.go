@@ -466,6 +466,12 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	// independently of any request, feeding stale/offline states to the evaluator.
 	sweepWorker := monitoring.NewSweep(database.NewDeviceRepository(db), monitoringService, sugar, cfg.Monitoring.StateSweepInterval)
 	sweepWorker.Start()
+	if cfg.AI.NotifyTelegramEnabled && cfg.AI.NotifyTelegramBotToken != "" && cfg.AI.NotifyTelegramChatID != 0 {
+		target := strconv.FormatInt(cfg.AI.NotifyTelegramChatID, 10)
+		if msg, ok := telegram.ConfigMessenger(cfg.AI.NotifyTelegramBotToken, target, 30*time.Second); ok {
+			fleetService.ConfigureAlertMessages(func(text string) error { return msg.SendMessage(target, text) })
+		}
+	}
 	fleetService.StartConnectionHistory(cfg.Monitoring.StateSweepInterval, sugar.Warnf)
 	sugar.Infow("State sweep started", "interval", cfg.Monitoring.StateSweepInterval)
 
@@ -985,6 +991,8 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 			platform.POST("/account-renewals/:id/decision", platformHandler.DecideAccountRenewal)
 			platform.GET("/incidents", platformHandler.ListOpenIncidents)
 			platform.GET("/incidents/counts", platformHandler.CountIncidents)
+			platform.GET("/router-alerts", platformHandler.ListRouterAlerts)
+			platform.POST("/router-alerts/read", platformHandler.MarkRouterAlertsRead)
 			// Admin console (tenant management). Same strongest gate as the group:
 			// RequireRole(DEVELOPER) — NO customer role reaches these.
 			platform.POST("/businesses", platformHandler.CreateBusiness)

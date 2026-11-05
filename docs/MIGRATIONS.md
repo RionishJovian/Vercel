@@ -31,7 +31,7 @@ Connection: `MM_DB_URL=postgres://user:pass@host/db`, or `MM_PSQL_BASE="docker e
 
 ## Tests
 
-`bash deploy/server/test-mm-migrate.sh` with `MM_TEST_DB_URL` pointing at any disposable Postgres 17 (CI provides one). 63 checks cover ordering, rollback, tamper detection and the baseline logic.
+`bash deploy/server/test-mm-migrate.sh` with `MM_TEST_DB_URL` pointing at any disposable Postgres 17 (CI provides one). 64 checks cover ordering, rollback, tamper detection and the baseline logic.
 
 ## Deploys
 

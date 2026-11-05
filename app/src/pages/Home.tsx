@@ -6,6 +6,8 @@ import { useI18n } from "../i18n";
 import { Ring } from "../components/Ring";
 import { Skeleton } from "../components/Skeleton";
 import { useCountUp } from "../lib/useCountUp";
+import { Note } from "../components/ui";
+import type { RouterAlertsData } from "./platform/RouterAlerts";
 
 /** Today against the owner's own 7-day daily average. Half the dial is "on pace". Returns null when there is nothing to compare. */
 export function pace(today: number, last7: number): { ratio: number; fraction: number } | null {
@@ -29,6 +31,7 @@ export function Home({ me }: { me: Me }) {
   const { t } = useI18n();
   const report = useSWR<VoucherReport>("/voucher-report", fetcher);
   const fleet = useFleet();
+  const alerts = useSWR<RouterAlertsData>(me.user?.user_role === "DEVELOPER" ? "/platform/router-alerts" : null, fetcher, { refreshInterval: 60000, shouldRetryOnError: false });
   const routers = useSWR<{ routers?: Router[] }>("/routers", fetcher);
   const todayShown = useCountUp(num(report.data?.activation_today));
   const name = me.user?.full_name || (me.user?.email ?? "").split("@")[0];
@@ -42,6 +45,7 @@ export function Home({ me }: { me: Me }) {
 
   return (
     <>
+      {(alerts.data?.unread ?? 0) > 0 && <Note kind="warn">{t("ra.banner")} <b className="num">{alerts.data?.unread}</b> <a className="link" href="#/platform/alerts">{t("ra.open")}</a></Note>}
       <div className="greet">
         <h1>{t("h.greet")} <span className="accent">{name}</span></h1>
       </div>

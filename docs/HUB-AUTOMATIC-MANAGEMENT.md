@@ -43,7 +43,13 @@ If a script's key has ended and the router never connected, a new script gets a 
 
 Each monitoring sweep asks the Hub about every gateway and adds a `router.connection.up` or `router.connection.offline` row to `device_change_events` when the state differs from the last row. A row is written only when the Hub answers, so a failed lookup is not a router drop. `/fleet/health` returns `state_since` from these rows. The offline row's reason holds the last contact time, because the row itself is written up to 5 minutes after the drop.
 
-These rows raise no incidents or alerts. Writing `peer_heartbeats` instead would feed `ClassifyPeerState` and start critical incidents for every offline router, so that stays a separate decision.
+These rows raise no incidents. Writing `peer_heartbeats` instead would feed `ClassifyPeerState` and start critical incidents for every offline router, so that stays a separate decision.
+
+## Router alerts
+
+The platform owner is told when a router that was connected stays down for 15 minutes, and once when it returns. Alerts are stored in `platform_router_alerts`, which tenants can't read, and appear under Platform > Router alerts and on Home. A router first seen offline never alerts, so an existing dead connection stays quiet. Customers aren't told.
+
+If `ai.notify_telegram_enabled`, `ai.notify_telegram_bot_token` and `ai.notify_telegram_chat_id` are set, each new alert also goes to that Telegram chat. A failed send is logged, the alert stays in the console, and it isn't sent again.
 
 ## Delete
 

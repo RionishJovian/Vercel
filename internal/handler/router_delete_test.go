@@ -5,8 +5,10 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"mega-magic/internal/auth"
@@ -357,3 +359,94 @@ func TestDBConnectionHistoryStore(t *testing.T) {
 	}
 }
 
+func TestDBRouterAlerts(t *testing.T) {
+	db := harness_testdb(t)
+	repo := database.NewDeviceRepository(db)
+	// The handler test database doesn't run db/migrations, so apply the real file.
+	migration, err := os.ReadFile("../../db/migrations/20261106130000_platform_router_alerts.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`DROP TABLE IF EXISTS platform_router_alerts`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(string(migration)); err != nil {
+		t.Fatal(err)
+	}
+	business := insertBusiness(db)
+	add := func(device, action, age string) {
+		t.Helper()
+		if _, err := db.Exec(`INSERT INTO device_change_events(business_id,device_id,user_role,action,reason,created_at) VALUES($1,$2,'SYSTEM',$3,'Last contact earlier.',now() - $4::interval)`, business, device, action, age); err != nil {
+			t.Fatal(err)
+		}
+	}
+	due := func() map[string]*database.RouterAlert {
+		t.Helper()
+		alerts, err := repo.DueRouterAlerts(15 * time.Minute)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := map[string]*database.RouterAlert{}
+		for _, a := range alerts {
+			if a.BusinessID == business {
+				out[a.DeviceID+"/"+a.Kind] = a
+			}
+		}
+		return out
+	}
+	up, offline := database.ActionConnectionUp, database.ActionConnectionOffline
+
+	dropped := insertGatewayNoSite(db, business)
+	add(dropped, up, "2 hours")
+	add(dropped, offline, "20 minutes")
+	brief := insertGatewayNoSite(db, business)
+	add(brief, up, "2 hours")
+	add(brief, offline, "5 minutes")
+	firstSeen := insertGatewayNoSite(db, business)
+	add(firstSeen, offline, "2 hours")
+	blip := insertGatewayNoSite(db, business)
+	add(blip, up, "3 hours")
+	add(blip, offline, "2 hours")
+	add(blip, up, "1 hour 55 minutes")
+
+	got := due()
+	alert := got[dropped+"/offline"]
+	if len(got) != 1 || alert == nil || alert.Detail != "Last contact earlier." {
+		t.Fatalf("due %v", got)
+	}
+
+	created, err := repo.CreateRouterAlert(alert)
+	if err != nil || !created {
+		t.Fatalf("create: %v %v", created, err)
+	}
+	if created, err := repo.CreateRouterAlert(alert); err != nil || created {
+		t.Fatalf("a repeat must not be new: %v %v", created, err)
+	}
+	if got := due(); len(got) != 0 {
+		t.Fatalf("already alerted: %v", got)
+	}
+
+	add(dropped, up, "1 minute")
+	got = due()
+	back := got[dropped+"/recovered"]
+	if len(got) != 1 || back == nil || !back.OfflineSince.Equal(alert.OfflineSince) {
+		t.Fatalf("recovery %v", got)
+	}
+	if created, err := repo.CreateRouterAlert(back); err != nil || !created {
+		t.Fatalf("create recovery: %v %v", created, err)
+	}
+	if got := due(); len(got) != 0 {
+		t.Fatalf("recovery sent twice: %v", got)
+	}
+
+	list, unread, err := repo.ListRouterAlerts(100)
+	if err != nil || unread < 2 || len(list) < 2 || list[0].HardwareName == "" || list[0].CompanyName == "" {
+		t.Fatalf("list %d, unread %d, err %v", len(list), unread, err)
+	}
+	if err := repo.MarkRouterAlertsRead(); err != nil {
+		t.Fatal(err)
+	}
+	if _, unread, err := repo.ListRouterAlerts(100); err != nil || unread != 0 {
+		t.Fatalf("unread %d, err %v", unread, err)
+	}
+}
