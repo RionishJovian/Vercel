@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"regexp"
 	"strings"
@@ -88,7 +90,14 @@ func (c *GeminiChatClient) Chat(ctx context.Context, systemPrompt string, histor
 	req.Header.Set("x-goog-api-key", c.apiKey)
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("ai: Gemini request failed")
+		var netErr net.Error
+		if errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &netErr) && netErr.Timeout()) {
+			return nil, fmt.Errorf("ai: Gemini request timed out")
+		}
+		if errors.Is(err, context.Canceled) {
+			return nil, fmt.Errorf("ai: Gemini request was cancelled")
+		}
+		return nil, fmt.Errorf("ai: Gemini could not be reached")
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -114,7 +123,8 @@ func (c *GeminiChatClient) Chat(ctx context.Context, systemPrompt string, histor
 		return nil, fmt.Errorf("ai: Gemini returned no answer")
 	}
 	if reason := out.Candidates[0].FinishReason; reason != "STOP" && reason != "MAX_TOKENS" {
-		return nil, fmt.Errorf("ai: Gemini could not complete the answer")
+		// The finish reason is a provider enum, never user text, so it is safe to log.
+		return nil, fmt.Errorf("ai: Gemini could not complete the answer: %.32s", reason)
 	}
 	var answer strings.Builder
 	for _, part := range out.Candidates[0].Content.Parts {

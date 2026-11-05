@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 
 import { api, ApiError } from "../lib/api";
 import { useI18n } from "../i18n";
 
-type Turn = { role: "user" | "assistant"; content: string };
+type Turn = { role: "user" | "assistant"; content: string; failed?: boolean };
 
 const PROMPTS = ["md.p1", "md.p2", "md.p3"] as const;
 
@@ -28,7 +28,8 @@ export function MagicDude() {
   async function send(q: string) {
     const question = q.trim();
     if (!question || pending) return;
-    const history = turns.slice(-6);
+    // Failed exchanges are this screen's own messages, not part of the conversation.
+    const history = turns.filter(m => !m.failed).slice(-6).map(({ role, content }) => ({ role, content: content.slice(0, 4000) }));
     setTurns(h => [...h, { role: "user", content: question }]);
     setText(""); setPending(true); setNote("");
     try {
@@ -38,7 +39,7 @@ export function MagicDude() {
       const code = e instanceof ApiError && e.data && typeof e.data === "object" ? (e.data as { code?: string }).code : "";
       const status = e instanceof ApiError ? e.status : 0;
       const key = status === 403 && code === "MAGIC_DUDE_UNLOCK_REQUIRED" ? "md.locked" : status === 429 ? "md.limit" : "md.fail";
-      setTurns(h => [...h, { role: "assistant", content: t(key) }]);
+      setTurns(h => [...h.slice(0, -1), { ...h[h.length - 1], failed: true }, { role: "assistant", content: t(key), failed: true }]);
       setNote(t(key === "md.fail" ? "md.failNote" : key));
     } finally { setPending(false); }
   }

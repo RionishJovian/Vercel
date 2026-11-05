@@ -59,3 +59,12 @@ func TestGeminiChatFailsClosedWithoutKeyOrWithUnsafeModel(t *testing.T) {
 		}
 	}
 }
+
+func TestGeminiChatNamesATimeout(t *testing.T) {
+	c := NewGeminiChatClient("key", "gemini-test")
+	c.http = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) { return nil, context.DeadlineExceeded })}
+	_, err := c.Chat(context.Background(), "system", nil, "question")
+	if err == nil || !strings.Contains(err.Error(), "timed out") || strings.Contains(err.Error(), "question") {
+		t.Fatalf("got %v", err)
+	}
+}

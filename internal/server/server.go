@@ -348,6 +348,9 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		cfg.VPS.EndpointHost,
 	)
 
+	magicDudeHandler.ConfigureDailyLimit(func(ctx context.Context, businessID string) (bool, error) {
+		return cacheClient.CheckRateLimit(ctx, cacheClient.Key(businessID, "magic_dude:daily"), handler.MagicDudeDailyLimit, 24*time.Hour)
+	})
 	var managementHubClient *hub.Client
 	if cfg.VPS.HubLookupEnabled {
 		client, err := hub.New(hub.Options{URL: cfg.VPS.HubURL, KeyID: cfg.VPS.HubKeyID, SigningKey: cfg.VPS.HubSigningKey})
@@ -356,6 +359,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		}
 		managementHubClient = client
 		vpsHandler.ConfigureHubLookup(client)
+		magicDudeHandler.ConfigureHubSignal(client)
 		if cfg.VPS.HubEnrollmentEnabled {
 			vpsHandler.ConfigureHubEnrollment(client)
 			if err := configureHubManagement(vpsHandler, db, cfg); err != nil {

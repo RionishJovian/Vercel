@@ -33,4 +33,20 @@ If using OpenRouter, set `AI_MAGIC_DUDE_PROVIDER=openrouter` and keep its protec
 `AI_OPENROUTER_API_KEY` and configured free-model ID. Do not put a Google key in
 the OpenRouter field. Provider switching does not modify router configuration.
 
+## Limits and diagnosis
+
+One account may make 100 provider calls in 24 hours (`MagicDudeDailyLimit`, kept
+in Redis; if Redis is unavailable the call is allowed and the failure is logged).
+Stored directions for common "where is..." questions use no provider call and do
+not count. Provider failures log `magic dude: provider failed`, with the account,
+elapsed time and a status or fixed reason, never the question or prompt:
+
+```sh
+docker logs mega-magic-go-restored-api-1 2>&1 | grep 'magic dude:'
+```
+
+Device status in answers comes from the Hub's live tunnel state, read for up to 10
+gateways within 4 seconds. Anything not read is reported as unknown. Page names in
+the prompt are checked against the console by `TestMagicDudePagesMatchTheApp`.
+
 Reference: [Google Gemini API](https://ai.google.dev/api).
