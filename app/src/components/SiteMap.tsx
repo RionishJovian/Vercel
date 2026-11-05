@@ -1,6 +1,7 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
+import StarlinkLayer from "./StarlinkLayer";
 
 export interface MapSite { site_id: string; name: string; latitude?: number | null; longitude?: number | null }
 export type PathState = "online" | "offline" | "unassigned";
@@ -18,6 +19,10 @@ export default function SiteMap({ sites, states, selected, onSelect, pick }: Pro
   const draft = useRef<maplibregl.Marker | null>(null);
   const handlers = useRef({ onSelect, pick });
   handlers.current = { onSelect, pick };
+  const [loaded, setLoaded] = useState<maplibregl.Map | null>(null);
+  // While the Starlink layer holds the Myanmar view, a status update must not pull the map back to a site.
+  const overview = useRef(false), lastSelected = useRef(selected);
+  const onOverview = useCallback((on: boolean) => { overview.current = on; }, []);
   const positioned = sites.filter(validCoordinates);
 
   useEffect(() => {
@@ -27,8 +32,9 @@ export default function SiteMap({ sites, states, selected, onSelect, pick }: Pro
     m.addControl(new maplibregl.AttributionControl({ compact: false }));
     m.addControl(new maplibregl.NavigationControl({ visualizePitch: false }), "top-right");
     m.on("click", (e) => { const p = handlers.current.pick; if (!p) return; p.onPick(e.lngLat.lat, e.lngLat.lng); });
+    m.on("style.load", () => setLoaded(m));
     map.current = m;
-    return () => { markers.current.forEach((x) => x.remove()); draft.current?.remove(); draft.current = null; m.remove(); map.current = null; };
+    return () => { setLoaded(null); markers.current.forEach((x) => x.remove()); draft.current?.remove(); draft.current = null; m.remove(); map.current = null; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Pins: rebuilt when sites, states or the selection change.
@@ -42,6 +48,9 @@ export default function SiteMap({ sites, states, selected, onSelect, pick }: Pro
       b.addEventListener("click", (ev) => { ev.stopPropagation(); if (!handlers.current.pick) handlers.current.onSelect(s.site_id); });
       markers.current.push(new maplibregl.Marker({ element: b, anchor: "bottom" }).setLngLat([Number(s.longitude), Number(s.latitude)]).addTo(m));
     }
+    const keepView = overview.current && lastSelected.current === selected;
+    lastSelected.current = selected;
+    if (keepView) return;
     const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches, duration = reduced ? 0 : 500;
     const sel = positioned.find((s) => s.site_id === selected);
     if (sel) m.easeTo({ center: [Number(sel.longitude), Number(sel.latitude)], zoom: Math.max(m.getZoom(), 12), duration });
@@ -60,5 +69,10 @@ export default function SiteMap({ sites, states, selected, onSelect, pick }: Pro
     } else draft.current.setLngLat([lng, lat]);
   }, [pick?.lat, pick?.lng, !!pick]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return <div ref={box} className="site-map" role="region" aria-label="Site map" />;
+  return (
+    <div className="site-map-frame">
+      <div ref={box} className="site-map" role="region" aria-label="Site map" />
+      {loaded && !pick && <StarlinkLayer map={loaded} onActive={onOverview} />}
+    </div>
+  );
 }
