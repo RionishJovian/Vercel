@@ -226,3 +226,142 @@ func TestCHRLabGuestActions(t *testing.T) {
 		}
 	})
 }
+
+// Delete on logins made by the app's real provisioning, as a guest would meet them.
+// Needs a synchronized clock on the CHR. See docs/CHR-LAB.md.
+func TestCHRLabVoucherDeleteRealLogins(t *testing.T) {
+	target := os.Getenv("MM_CHR_SSH")
+	if target == "" {
+		t.Skip("set MM_CHR_SSH to run against a disposable CHR")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
+	defer cancel()
+	r := chrRunner{target}
+	l := chrLab{t, r, ctx}
+	a := NewDeviceApplier(capabilitySource{}, 60*time.Second, func(SSHConfig) CommandRunner { return r }, DefaultInterface, 0, 0)
+	const biz, dev = "biz-1", "dev-1"
+
+	guestMAC := strings.ToUpper(l.put(`:put [/interface get [find name=m4] mac-address]`))
+	traffic := func() { r.Run(ctx, `/ping 1.1.1.1 vrf=guest count=2`) }
+	activeFor := func(code string) string {
+		return l.put(`:put [:len [/ip hotspot active find where user=` + routerOSQuoted(code) + `]]`)
+	}
+	userCount := func(code string) string {
+		return l.put(`:put [:len [/ip hotspot user find where name=` + routerOSQuoted(code) + `]]`)
+	}
+	// Nothing else may log this guest in: the earlier lab tests leave a user named after its MAC.
+	clearGuest := func() {
+		r.Run(ctx, `/ip hotspot active remove [find where mac-address=`+guestMAC+`]`)
+		r.Run(ctx, `/ip hotspot user remove [find where name=`+routerOSQuoted(guestMAC)+`]`)
+	}
+	clearGuest()
+	// RouterOS can take a while to list the host again, so this waits for the host, not the login.
+	login := func(code string) (string, error) {
+		end := time.Now().Add(90 * time.Second)
+		for time.Now().Before(end) {
+			traffic()
+			if l.put(`:put [:len [/ip hotspot host find where mac-address=`+guestMAC+`]]`) != "0" {
+				break
+			}
+		}
+		return r.Run(ctx, `/ip hotspot active login user=`+routerOSQuoted(code)+` password=`+routerOSQuoted(code)+` mac-address=`+guestMAC+` ip=10.60.0.50`)
+	}
+
+	now := time.Now().Unix()
+	letters := func(n int64) string {
+		const set = "ABCDEFGHJKMNPQRSTVWXYZ"
+		out := []byte("LBABCDEF")
+		for i := 2; i < len(out); i, n = i+1, n/int64(len(set)) {
+			out[i] = set[n%int64(len(set))]
+		}
+		return string(out)
+	}
+	unused := VoucherLogin{VoucherID: fmt.Sprintf("aaaaaaaa-aaaa-4aaa-8aaa-%012x", now), Code: letters(now), Minutes: 60, DataMB: 500}
+	used := VoucherLogin{VoucherID: fmt.Sprintf("bbbbbbbb-bbbb-4bbb-8bbb-%012x", now), Code: letters(now + 1), Minutes: 60, DataMB: 500}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		for _, code := range []string{unused.Code, used.Code} {
+			r.Run(ctx, `/ip hotspot active remove [find where user=`+routerOSQuoted(code)+`]`)
+			r.Run(ctx, `/ip hotspot user remove [find where name=`+routerOSQuoted(code)+`]`)
+		}
+	})
+	if e := a.ProvisionVoucherLogins(ctx, biz, dev, []VoucherLogin{unused, used}); e != nil {
+		t.Fatalf("provision: %v", e)
+	}
+
+	t.Run("an unused code is removed and then refused at login", func(t *testing.T) {
+		if out, e := login(unused.Code); e != nil {
+			t.Logf("login before delete: %q %v", out, e)
+		}
+		if activeFor(unused.Code) == "0" {
+			t.Fatal("a provisioned code could not log in, so the refusal below would prove nothing")
+		}
+		r.Run(ctx, `/ip hotspot active remove [find where user=`+routerOSQuoted(unused.Code)+`]`)
+		// That login made this code used, so use a fresh one for the real check.
+		fresh := VoucherLogin{VoucherID: fmt.Sprintf("cccccccc-cccc-4ccc-8ccc-%012x", now), Code: letters(now + 2), Minutes: 60, DataMB: 500}
+		t.Cleanup(func() {
+			r.Run(context.Background(), `/ip hotspot user remove [find where name=`+routerOSQuoted(fresh.Code)+`]`)
+		})
+		if e := a.ProvisionVoucherLogins(ctx, biz, dev, []VoucherLogin{fresh}); e != nil {
+			t.Fatalf("provision: %v", e)
+		}
+		if e := a.RemoveVoucherLogin(ctx, biz, dev, fresh); e != nil {
+			t.Fatal(e)
+		}
+		if userCount(fresh.Code) != "0" {
+			t.Error("the login is still listed")
+		}
+		out, e := login(fresh.Code)
+		t.Logf("login after delete: %q %v", out, e)
+		if activeFor(fresh.Code) != "0" {
+			t.Error("a deleted code logged in")
+		}
+		if e := a.RemoveVoucherLogin(ctx, biz, dev, fresh); e != nil {
+			t.Errorf("a repeat must be safe: %v", e)
+		}
+	})
+
+	t.Run("a code that is online is refused", func(t *testing.T) {
+		if out, e := login(used.Code); e != nil {
+			t.Fatalf("login: %q %v", out, e)
+		}
+		if activeFor(used.Code) == "0" {
+			t.Fatal("the guest is not online")
+		}
+		traffic()
+		if e := a.RemoveVoucherLogin(ctx, biz, dev, used); !errors.Is(e, ErrVoucherLoginInUse) {
+			t.Errorf("err = %v", e)
+		}
+		if userCount(used.Code) != "1" {
+			t.Error("removed a login that is online")
+		}
+	})
+
+	t.Run("a code used and logged out is still refused", func(t *testing.T) {
+		time.Sleep(3 * time.Second)
+		l.put(`/ip hotspot active remove [find where user=` + routerOSQuoted(used.Code) + `]`)
+		time.Sleep(3 * time.Second)
+		states, e := a.ReadVoucherLogins(ctx, biz, dev, []VoucherLogin{used})
+		if e != nil || len(states) != 1 {
+			t.Fatalf("read: %+v %v", states, e)
+		}
+		t.Logf("after logout: %+v", states[0])
+		if e := a.RemoveVoucherLogin(ctx, biz, dev, used); !errors.Is(e, ErrVoucherLoginInUse) {
+			t.Errorf("err = %v", e)
+		}
+		if userCount(used.Code) != "1" {
+			t.Error("removed a used login")
+		}
+	})
+
+	t.Run("usage refresh still works after a delete", func(t *testing.T) {
+		states, e := a.ReadVoucherLogins(ctx, biz, dev, []VoucherLogin{unused, used})
+		if e != nil || len(states) != 2 {
+			t.Fatalf("read: %+v %v", states, e)
+		}
+		if errs := l.scriptErrors(""); strings.Contains(errs, "voucher") {
+			t.Errorf("guard script errors: %s", errs)
+		}
+	})
+}
