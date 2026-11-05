@@ -53,6 +53,10 @@ func (h *SecurityHandler) NetworkControl(c *gin.Context) {
 				return
 			}
 		}
+		if routeros.IsDeviceControlKind(request.Kind) && !deviceControlsEnabled() {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Device controls are held until they have been tested on a router; no router was changed"})
+			return
+		}
 		if (request.Kind == "wifi" || request.Kind == "wireless") && os.Getenv("MM_NETWORK_WIFI_CONTROLS_ENABLED") != "true" {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Wi-Fi writes are held for physical-radio acceptance; no router was changed"})
 			return
@@ -104,6 +108,7 @@ func (h *SecurityHandler) NetworkControl(c *gin.Context) {
 		addressMode := os.Getenv("MM_NETWORK_ADDRESS_CONTROLS_ENABLED")
 		inventory.AddressWriteEnabled = enabled && (addressMode == "true" || addressMode == "preview")
 		inventory.AddressPreviewOnly = enabled && addressMode == "preview"
+		inventory.DeviceControlsEnabled = deviceControlsEnabled()
 		c.JSON(http.StatusOK, gin.H{"inventory": inventory})
 	case "confirm", "revert":
 		// Never gated by the write switches: keeping or undoing a change that is
@@ -172,6 +177,11 @@ func (h *SecurityHandler) NetworkControl(c *gin.Context) {
 	default:
 		c.Status(http.StatusNotFound)
 	}
+}
+
+// deviceControlsEnabled is the switch for changes made for devices behind the router.
+func deviceControlsEnabled() bool {
+	return os.Getenv("MM_NETWORK_CONTROLS_ENABLED") == "true" && os.Getenv("MM_DEVICE_CONTROLS_ENABLED") == "true"
 }
 
 // Missing management setup is an expected prerequisite, not an upstream outage.

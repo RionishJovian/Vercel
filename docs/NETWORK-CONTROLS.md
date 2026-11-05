@@ -55,6 +55,32 @@ lookup remain mandatory; a feature flag does not grant a role or device access.
 The production drop-in enables network controls and explicitly holds Wi-Fi
 writes false. This is a partial tested rollout, not whole-app certification.
 
+## Controls for devices behind the router (added 2026-11-05)
+
+These change the router, for a device it can see. The app holds no login for the
+device itself, so the device's own settings are out of reach. They are held by
+`MM_DEVICE_CONTROLS_ENABLED=true` on top of `MM_NETWORK_CONTROLS_ENABLED=true`;
+absent means every one answers 503 before any router lookup. Leave it off until
+the owner approves a trial on a real router.
+
+| Operation | What it does on the router | Refused when |
+|---|---|---|
+| `device_block` / `device_unblock` (devices not on a Hotspot) | Adds or removes a `chain=forward action=drop src-mac-address=` rule, commented `mm-block-<MAC>`, as the first static rule so FastTrack cannot skip it. Then ends the device's tracked connections. | The MAC is the router's own, or is seen on an internet uplink, or the check cannot be read. |
+| `port_label` | Sets the comment on an Ethernet port. | Not Ethernet. Non-ASCII labels. |
+| `port_state` | Turns an Ethernet port on or off. Off keeps the router's restore timer armed for 5 minutes until the owner presses Keep. | Turning off an uplink. Not Ethernet. |
+| `poe_cycle` | `/interface ethernet poe power-cycle <id> duration=5s`. One-shot, so no backup or timer. Verified means the command was taken and `poe-out` is unchanged, not that the device came back. | No PoE on the port, output off, or an uplink. |
+
+Hotspot guests use the guest actions instead (`/guests/disconnect`, `/guests/block`, `/guests/unblock`, held by `MM_GUEST_ACTIONS_ENABLED`, see docs/GUEST-ACTIONS-TRIAL-20261105.md). The map picks those for a device with a Hotspot session or an existing guest ban, because an IP binding only acts on a Hotspot network, and the firewall rule for everything else.
+
+Port labels, block rules and PoE each have their own read in `/observations`, so one failing never takes the port list or another screen's data with it.
+
+Limits to keep stating honestly:
+- A block stops traffic through the router. Devices on the same switch or Wi-Fi network can still reach each other, and a changed MAC gets past it.
+- Forum reports say `power-cycle` failed on some older hardware (fixed for RB960GSP in 6.47.3), so check it on each PoE model before trusting it.
+- Writes are refused while another script job runs. A router with the broadband guard (every 15 s) can refuse now and then; trying again works.
+
+Tested on CHR 7.24.6 by `TestCHRLabDeviceControls`: a blocked device's replies went 4, 0, 4 across block and unblock. Not yet run on hardware: turning a port off, because the CHR's only Ethernet port is its management link, and PoE, because a CHR has none.
+
 ## Implemented operations
 
 - IPv4 two-WAN recursive-probe failover or equal-cost balancing in the main

@@ -462,6 +462,7 @@ func (h *RouterHandler) GetRouterObservations(c *gin.Context) {
 		c.JSON(502, gin.H{"error": "Router observations could not be read", "code": "observations_unavailable"})
 		return
 	}
+	inventory.DeviceControlsEnabled = deviceControlsEnabled()
 	inventory.WriteEnabled = false
 	inventory.WiFiWriteEnabled = false
 	inventory.AddressWriteEnabled = false

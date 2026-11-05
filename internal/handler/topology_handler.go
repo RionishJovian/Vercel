@@ -27,7 +27,12 @@ type TopologyHandler struct {
 	deviceRepo       *database.DeviceRepository
 	quotaRepo        *database.BusinessMeteredQuotaRepository
 	msg              *messaging.Client
+	actionsLive      bool
 }
+
+// EnableActions records that a consumer is listening. Without one a queued reboot
+// would wait forever while the owner is told it was accepted.
+func (h *TopologyHandler) EnableActions() { h.actionsLive = true }
 
 func NewTopologyHandler(db *database.DB, deviceRepo *database.DeviceRepository, quotaRepo *database.BusinessMeteredQuotaRepository, msg *messaging.Client) *TopologyHandler {
 	return &TopologyHandler{db: db, deviceRepo: deviceRepo, quotaRepo: quotaRepo, msg: msg}
@@ -114,8 +119,8 @@ func (h *TopologyHandler) Reboot(c *gin.Context) {
 		return
 	}
 
-	if h.msg == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "provisioning bus unavailable"})
+	if h.msg == nil || !h.actionsLive {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Reboot from Mega Magic is not available on this server; no router was changed", "code": "reboot_unavailable"})
 		return
 	}
 	data, jerr := json.Marshal(map[string]string{
@@ -133,9 +138,13 @@ func (h *TopologyHandler) Reboot(c *gin.Context) {
 		return
 	}
 
+	auditErr := runInTenant(c, h.db, businessID, func(tx *sql.Tx) error {
+		return h.deviceRepo.RecordChangeTXN(tx, businessID, deviceID, auth.GetUserRole(c), "router.reboot.requested", "Reboot requested; waiting for approval")
+	})
 	c.JSON(http.StatusAccepted, gin.H{
-		"device_id": deviceID,
-		"status":    "reboot intent queued for approval",
-		"action":    provisioner.ActionReboot,
+		"device_id":      deviceID,
+		"status":         "reboot intent queued for approval",
+		"action":         provisioner.ActionReboot,
+		"audit_recorded": auditErr == nil,
 	})
 }
