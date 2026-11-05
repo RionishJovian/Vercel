@@ -20,16 +20,19 @@ func (a *DeviceApplier) ReadObservations(ctx context.Context, businessID, device
 
 var observationMenus = map[string]networkMenu{
 	"hotspot_sessions": {"/ip hotspot active", []string{"user", "address", "mac-address", "uptime", "bytes-in", "bytes-out", "server"}},
-	"discovery_leases": {"/ip dhcp-server lease", []string{"address", "mac-address", "host-name", "status", "server"}},
-	"arp":              {"/ip arp", []string{"address", "mac-address", "interface"}},
-	"neighbors":        {"/ip neighbor", []string{"address", "mac-address", "identity", "platform", "board", "interface"}},
-	"bridge_hosts":     {"/interface bridge host", []string{"mac-address", "on-interface", "bridge", "local"}},
-	"wifi_clients":     {"/interface wifi registration-table", []string{"mac-address", "interface", "signal"}},
-	"wifi_interfaces":  {"/interface wifi", []string{"name", "configuration.mode", "configuration.ssid", "disabled", "running"}},
-	"interfaces":       {"/interface", []string{"name", "type", "mac-address", "running", "disabled"}},
+	// Separate reads from hotspot_sessions, so a field that fails on one RouterOS cannot lose the session list.
+	"hotspot_session_times": {"/ip hotspot active", []string{"idle-time", "session-time-left"}},
+	"hotspot_bindings":      {"/ip hotspot ip-binding", []string{"mac-address", "type", "comment", "disabled"}},
+	"discovery_leases":      {"/ip dhcp-server lease", []string{"address", "mac-address", "host-name", "status", "server"}},
+	"arp":                   {"/ip arp", []string{"address", "mac-address", "interface"}},
+	"neighbors":             {"/ip neighbor", []string{"address", "mac-address", "identity", "platform", "board", "interface"}},
+	"bridge_hosts":          {"/interface bridge host", []string{"mac-address", "on-interface", "bridge", "local"}},
+	"wifi_clients":          {"/interface wifi registration-table", []string{"mac-address", "interface", "signal"}},
+	"wifi_interfaces":       {"/interface wifi", []string{"name", "configuration.mode", "configuration.ssid", "disabled", "running"}},
+	"interfaces":            {"/interface", []string{"name", "type", "mac-address", "running", "disabled"}},
 }
 
-var observationOrder = []string{"hotspot_sessions", "discovery_leases", "arp", "neighbors", "bridge_hosts", "wifi_clients", "wifi_interfaces", "interfaces"}
+var observationOrder = []string{"hotspot_sessions", "hotspot_session_times", "hotspot_bindings", "discovery_leases", "arp", "neighbors", "bridge_hosts", "wifi_clients", "wifi_interfaces", "interfaces"}
 
 func readObservations(ctx context.Context, r CommandRunner) (NetworkInventory, error) {
 	result := NetworkInventory{ObservedAt: time.Now().UTC().Format(time.RFC3339), Objects: map[string][]NetworkObject{}, Available: map[string]bool{}}

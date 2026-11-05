@@ -30,6 +30,7 @@ type RouterHandler struct {
 	observations     interface {
 		ReadObservations(context.Context, string, string) (routeros.NetworkInventory, error)
 	}
+	guestActions GuestRouterActions
 }
 
 type MessagingClient interface {
@@ -465,7 +466,7 @@ func (h *RouterHandler) GetRouterObservations(c *gin.Context) {
 	inventory.WiFiWriteEnabled = false
 	inventory.AddressWriteEnabled = false
 	inventory.AddressPreviewOnly = false
-	c.JSON(200, gin.H{"inventory": inventory})
+	c.JSON(200, gin.H{"inventory": inventory, "guest_actions_enabled": h.guestActionsReady()})
 }
 
 // GetDiscoveryLabels returns saved friendly names and types for discovered devices.
@@ -542,42 +543,32 @@ type DisconnectGuestRequest struct {
 	Confirm bool   `json:"confirm" binding:"required"`
 }
 
-// DisconnectGuest refuses unverified actions until a router write connector is accepted.
+// DisconnectGuest ends one session, and only reports success once the router confirms it.
 func (h *RouterHandler) DisconnectGuest(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
 	deviceID := c.Param("id")
 	businessID := auth.GetBusinessID(c)
-
-	var device *model.Device
-	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
-		d, err := h.deviceRepo.GetDeviceByIDTXN(tx, deviceID)
-		if err != nil {
-			return &httpError{status: http.StatusInternalServerError, msg: "database error"}
-		}
-		device = d
-		return nil
-	})
-	if err != nil {
-		respondErr(c, err)
+	if !h.guestGateway(c, businessID, deviceID) {
 		return
 	}
-	if device == nil || device.BusinessID != businessID {
-		c.JSON(http.StatusNotFound, gin.H{"error": "router not found"})
-		return
-	}
-
 	var req DisconnectGuestRequest
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 4096)
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-
 	if !req.Confirm {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "confirmation required"})
 		return
 	}
-
-	// Report unavailability as an error, never as successful disconnection.
-	c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Guest disconnection is unavailable until the router action has passed acceptance", "code": "guest_disconnect_unavailable", "verified": false})
+	if !h.guestActionsReady() {
+		guestActionsOff(c)
+		return
+	}
+	ctx, cancel := context.WithTimeout(c.Request.Context(), guestActionTimeout)
+	defer cancel()
+	err := h.guestActions.DisconnectGuest(ctx, businessID, deviceID, routeros.GuestSession{ID: req.ID, MAC: strings.ToUpper(req.MAC), Address: req.Address, User: req.User})
+	h.finishGuestAction(c, businessID, deviceID, "router.guest.disconnected", "Owner disconnected guest MAC "+strings.ToUpper(req.MAC), err)
 }
 
 // EnableObservations supplies a read-only interface, separately from router writes.

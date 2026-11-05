@@ -6,9 +6,11 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
+	"mega-magic/internal/auth"
 	"mega-magic/internal/database"
 )
 
@@ -73,6 +75,8 @@ func (h *VoucherHandler) listVouchersPage(c *gin.Context, businessID string) {
 	var page *database.VoucherPage
 	var usage map[string]database.GuestVoucherUsage
 	var limits map[string]int
+	var handouts map[string]time.Time
+	var handoutsReady bool
 	err = h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
 		p, err := h.voucherRepo.ListVouchersPageTXN(tx, businessID, req.filter)
 		if err != nil {
@@ -92,6 +96,14 @@ func (h *VoucherHandler) listVouchersPage(c *gin.Context, businessID string) {
 		if limits, err = repo.DataLimitsForVouchersTXN(tx, businessID, ids); err != nil {
 			return err
 		}
+		if handoutsReady, err = h.voucherRepo.HandoutsReadyTXN(tx); err != nil {
+			return err
+		}
+		if handoutsReady {
+			if handouts, err = h.voucherRepo.HandoutsForVouchersTXN(tx, businessID, ids); err != nil {
+				return err
+			}
+		}
 		page = p
 		return nil
 	})
@@ -100,5 +112,58 @@ func (h *VoucherHandler) listVouchersPage(c *gin.Context, businessID string) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"vouchers": page.Vouchers, "total": page.Total, "page": req.page, "per_page": req.perPage,
-		"status_counts": page.StatusCounts, "usage": usage, "data_limits_mb": limits})
+		"status_counts": page.StatusCounts, "usage": usage, "data_limits_mb": limits,
+		"handed_out": handouts, "hand_out_enabled": handoutsReady, "router_delete_enabled": guestActionsEnabled()})
+}
+
+// SetVoucherHandout records whether the owner has handed out a code. App data only:
+// the router and the voucher's status do not change.
+func (h *VoucherHandler) SetVoucherHandout(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
+	businessID, id := auth.GetBusinessID(c), strings.ToLower(c.Param("id"))
+	if businessID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	var body struct {
+		HandedOut *bool `json:"handed_out"`
+	}
+	if !guestVoucherUUID.MatchString(id) || c.ShouldBindJSON(&body) != nil || body.HandedOut == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "voucher and handed_out required"})
+		return
+	}
+	status := http.StatusOK
+	message := ""
+	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
+		ready, err := h.voucherRepo.HandoutsReadyTXN(tx)
+		if err != nil {
+			return err
+		}
+		if !ready {
+			status, message = http.StatusServiceUnavailable, "hand out records are not available yet"
+			return nil
+		}
+		v, err := h.voucherRepo.GetVoucherByIDTXN(tx, id)
+		if err != nil {
+			return err
+		}
+		if v == nil || v.BusinessID != businessID {
+			status, message = http.StatusNotFound, "voucher not found"
+			return nil
+		}
+		if *body.HandedOut && v.Status != "unused" {
+			status, message = http.StatusConflict, "only an unused code can be handed out"
+			return nil
+		}
+		return h.voucherRepo.SetHandoutTXN(tx, businessID, id, *body.HandedOut)
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "voucher records unavailable"})
+		return
+	}
+	if message != "" {
+		c.JSON(status, gin.H{"error": message})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"handed_out": *body.HandedOut})
 }

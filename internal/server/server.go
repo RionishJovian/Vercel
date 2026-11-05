@@ -768,6 +768,7 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 				vouchers.GET("/:code", voucherHandler.GetVoucherByCode)
 				vouchers.PUT("/:id", auth.RequireMinRole(model.RoleAdmin), voucherHandler.UpdateVoucherStatus)
 				vouchers.DELETE("/:id", auth.RequireMinRole(model.RoleAdmin), voucherHandler.DeleteVoucher)
+				vouchers.PUT("/:id/hand-out", auth.RequireMinRole(model.RoleAdmin), voucherHandler.SetVoucherHandout)
 				vouchers.POST("/:code/redeem", voucherHandler.RedeemVoucher) // For voucher redemption
 			}
 

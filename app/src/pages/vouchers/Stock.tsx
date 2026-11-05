@@ -17,7 +17,7 @@ interface StockBatch { batch_id: string; device_id?: string; plan_label?: string
 interface Batches { batches?: Pending[]; stock_batches?: StockBatch[] }
 export interface Voucher extends PrintVoucher { id: string; status?: string; issue_batch_id?: string; install_state?: string; reseller_shop?: string }
 interface Usage { voucher_id?: string; bytes_used?: number; uptime_seconds?: number; observed_at?: string }
-interface PageRes { vouchers?: Voucher[]; total?: number; status_counts?: Record<string, number>; usage?: Record<string, Usage>; data_limits_mb?: Record<string, number> }
+interface PageRes { vouchers?: Voucher[]; total?: number; status_counts?: Record<string, number>; usage?: Record<string, Usage>; data_limits_mb?: Record<string, number>; handed_out?: Record<string, string> | null; hand_out_enabled?: boolean; router_delete_enabled?: boolean }
 
 const fmtMB = (bytes: number) => (bytes / 1_000_000).toLocaleString(undefined, { maximumFractionDigits: bytes < 10_000_000 ? 1 : 0 });
 const bump = (s: string, n: number | string) => s.replace("{n}", String(n));
@@ -44,6 +44,7 @@ export function Stock() {
   const [live, setLive] = useState<Record<string, Usage>>({});
   const [busy, setBusy] = useState(false), [retrying, setRetrying] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ kind: "" | "ok" | "warn" | "bad"; text: string } | null>(null);
+  const [handed, setHanded] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     const id = setTimeout(() => { setQ(search.trim().slice(0, 64)); setPage(1); }, 300);
@@ -66,14 +67,21 @@ export function Stock() {
   const firstUse = t("v.validFirstUse");
   /** Same guard as batch printing: never print a code the router has not verified, or one from an unfinished batch. */
   const canSlip = (v: Voucher) => !!batchesRes.data && !!layoutRes.data && !!v.issue_batch_id && v.install_state === "verified" && !unfinished.has(v.issue_batch_id) && (v.status === "unused" || v.status === "active");
-  /** A batch code cannot be deleted: its issue record protects batch recovery, and the login would stay live on the router. */
-  const canDelete = (v: Voucher) => !v.issue_batch_id && v.status !== "used";
+  const routerDelete = list.data?.router_delete_enabled === true, handOutOn = list.data?.hand_out_enabled === true;
+  const isHanded = (v: Voucher) => handed[v.id] ?? !!list.data?.handed_out?.[v.id];
+  /** A code on the router is deleted by removing its login there; the voucher stays on record as revoked, which keeps batch recovery and sales history. */
+  const canDelete = (v: Voucher) => (v.issue_batch_id
+    ? routerDelete && v.status === "unused" && v.install_state === "verified" && !!batchesRes.data && !unfinished.has(v.issue_batch_id)
+    : v.status !== "used");
+  const deleteNote = (v: Voucher) => (v.issue_batch_id && !routerDelete ? t("vt.deleteOff") : t("vt.deleteUnused"));
+  const canHandOut = (v: Voucher) => handOutOn && (v.status === "unused" || isHanded(v));
   const hidden = (v: Voucher) => !!v.install_state && v.install_state !== "verified";
 
   const pageIds = rows.map((v) => v.id);
   const pagePicked = pageIds.filter((id) => picked.has(id)).length;
   const selected = [...picked.values()];
   const slips = selected.filter(canSlip), deletable = selected.filter(canDelete);
+  const toHandOut = selected.filter((v) => handOutOn && v.status === "unused" && !isHanded(v));
 
   function toggle(v: Voucher, on: boolean) { setPicked((m) => { const n = new Map(m); if (on) n.set(v.id, v); else n.delete(v.id); return n; }); }
   function togglePage(on: boolean) { setPicked((m) => { const n = new Map(m); for (const v of rows) { if (on) n.set(v.id, v); else n.delete(v.id); } return n; }); }
@@ -94,17 +102,36 @@ export function Stock() {
     setBusy(false);
   }
   async function remove(targets: Voucher[]) {
-    if (!targets.length || !window.confirm(bump(t("vt.deleteConfirm"), targets.length))) return;
+    const onRouter = targets.some((v) => v.issue_batch_id);
+    if (!targets.length || !window.confirm(bump(t(onRouter ? "vt.deleteRouterConfirm" : "vt.deleteConfirm"), targets.length))) return;
     setBusy(true); setMsg(null);
     let ok = 0;
     const left = new Map(picked);
     for (const v of targets) {
-      try { await api.del(`/vouchers/${encodeURIComponent(v.id)}`); ok++; left.delete(v.id); }
+      try {
+        if (v.issue_batch_id) {
+          const r = await api.post<{ verified?: boolean }>(`/guest-vouchers/codes/${encodeURIComponent(v.id)}/retire`, { confirm: true });
+          if (r.verified !== true) continue;
+        } else await api.del(`/vouchers/${encodeURIComponent(v.id)}`);
+        ok++; left.delete(v.id);
+      }
       catch (e) { if (isUnauthorized(e)) throw e; }
     }
     setPicked(left); setBusy(false);
     setMsg({ kind: ok === targets.length ? "ok" : "bad", text: bump(t("vt.deleted").replace("{ok}", String(ok)), targets.length) });
     void list.mutate(); void batchesRes.mutate();
+  }
+  async function setHandOut(targets: Voucher[], on: boolean) {
+    setBusy(true); setMsg(null);
+    let ok = 0;
+    const next = { ...handed };
+    for (const v of targets) {
+      try { await api.put(`/vouchers/${encodeURIComponent(v.id)}/hand-out`, { handed_out: on }); next[v.id] = on; ok++; }
+      catch (e) { if (isUnauthorized(e)) throw e; }
+    }
+    setHanded(next); setBusy(false);
+    if (ok < targets.length) setMsg({ kind: "bad", text: t("vt.handOutFailed") });
+    void list.mutate();
   }
   async function refreshUsage() {
     const devices = [...new Set(batches.map((b) => b.device_id).filter((d): d is string => !!d))];
@@ -130,7 +157,8 @@ export function Stock() {
     setBusy(true); setMsg(null);
     try {
       const res = await api.get<{ state?: string; vouchers?: PrintVoucher[] }>("/guest-vouchers/batches/" + encodeURIComponent(id));
-      const codes = asArray<PrintVoucher>(res?.vouchers);
+      // A deleted, used or expired code stays in its batch's record but must not be printed.
+      const codes = asArray<Voucher>(res?.vouchers).filter((v) => v.status === undefined || v.status === "unused" || v.status === "active");
       if (res?.state === "ready" && codes.length) printCodes(codes, layout, firstUse); else setMsg({ kind: "warn", text: t("p.notReady") });
     } catch (e) { if (isUnauthorized(e)) throw e; setMsg({ kind: "bad", text: t("c.loadFailed") }); }
     setBusy(false);
@@ -186,8 +214,8 @@ export function Stock() {
                 <b className="num">{bump(t("vt.selected"), selected.length)}</b>
                 {total > selected.length && <button className="dt-btn" type="button" disabled={busy} onClick={() => void selectAll()}>{bump(t("vt.selectAll"), total)}</button>}
                 <button className="dt-btn" type="button" disabled={busy || !slips.length} onClick={() => printCodes(slips, layout, firstUse)}>{bump(t("vt.slips"), slips.length)}</button>
-                <button className="dt-btn warn" type="button" disabled title={t("vt.handOutOff")}>{t("vt.handOut")}</button>
-                <button className="dt-btn danger" type="button" disabled={busy || !deletable.length} title={deletable.length ? undefined : t("vt.deleteOff")} onClick={() => void remove(deletable)}>{bump(t("vt.deleteN"), deletable.length)}</button>
+                <button className="dt-btn warn" type="button" disabled={busy || !toHandOut.length} title={handOutOn ? undefined : t("vt.handOutOff")} onClick={() => void setHandOut(toHandOut, true)}>{bump(t("vt.handOutN"), toHandOut.length)}</button>
+                <button className="dt-btn danger" type="button" disabled={busy || !deletable.length} title={deletable.length || routerDelete ? undefined : t("vt.deleteOff")} onClick={() => void remove(deletable)}>{bump(t("vt.deleteN"), deletable.length)}</button>
                 <button className="dt-btn" type="button" onClick={() => setPicked(new Map())}>{t("vt.clear")}</button>
               </div>
             )}
@@ -221,8 +249,8 @@ export function Stock() {
                           <td data-cell="actions" className="dt-right">
                             <div className="dt-actions">
                               <button className="dt-btn" type="button" disabled={!slip} title={slip ? undefined : t("vt.slipOff")} onClick={() => printCodes([v], layout, firstUse)}>{t("vt.slip")}</button>
-                              <button className="dt-btn warn" type="button" disabled title={t("vt.handOutOff")}>{t("vt.handOut")}</button>
-                              <button className="dt-btn danger" type="button" disabled={!del || busy} title={del ? undefined : t("vt.deleteOff")} onClick={() => void remove([v])}>{t("vt.delete")}</button>
+                              <button className={"dt-btn warn" + (isHanded(v) ? " on" : "")} type="button" aria-pressed={isHanded(v)} disabled={!canHandOut(v) || busy} title={handOutOn ? undefined : t("vt.handOutOff")} onClick={() => void setHandOut([v], !isHanded(v))}>{isHanded(v) ? t("vt.handedOut") : t("vt.handOut")}</button>
+                              <button className="dt-btn danger" type="button" disabled={!del || busy} title={del ? undefined : deleteNote(v)} onClick={() => void remove([v])}>{t("vt.delete")}</button>
                             </div>
                           </td>
                         </tr>
@@ -234,7 +262,7 @@ export function Stock() {
             )}
             <Pager page={Math.min(page, pages)} perPage={PER_PAGE} total={total} shown={rows.length} onPage={setPage} />
           </div>
-          <ul className="dt-foot"><li>{t("vt.handOutOff")}</li><li>{t("vt.deleteOff")}</li><li>{t("v.liveNote")}</li></ul>
+          <ul className="dt-foot">{handOutOn ? null : <li>{t("vt.handOutOff")}</li>}{routerDelete ? null : <li>{t("vt.deleteOff")}</li>}<li>{t("v.liveNote")}</li></ul>
         </>
       )}
     </div>

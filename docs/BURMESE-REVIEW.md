@@ -172,8 +172,6 @@ Keys are in `app/src/i18n/tables.ts`. "စလစ်" (slip), "ပေးအပ်
 | `vt.clear` | Clear | ရှင်းမည် |
 | `vt.slips` | Slips ({n}) | စလစ် ({n}) |
 | `vt.deleteN` | Delete ({n}) | ဖျက်မည် ({n}) |
-| `vt.handOutOff` | Hand out is not available yet: the app keeps no record of one code being handed out. Assign shops per batch. | ပေးအပ်မည် ကို မသုံးနိုင်သေးပါ - ကုဒ်တစ်ခုချင်း ပေးအပ်ထားကြောင်း app တွင် မှတ်တမ်းမရှိပါ။ ဆိုင်ကို အစုအလိုက် သတ်မှတ်ပါ။ |
-| `vt.deleteOff` | Delete is not available for codes on the router: it would leave the login working there. | Router ပေါ်ရှိ ကုဒ်များကို မဖျက်နိုင်သေးပါ - ဖျက်လျှင် Router တွင် login ဆက်သုံးနိုင်နေမည်။ |
 | `vt.slipOff` | Only unused codes verified on the router, in a finished batch, can be printed. | ပြီးဆုံးသော အစုထဲမှ Router တွင် အတည်ပြုပြီး မသုံးရသေးသော ကုဒ်ကိုသာ ပရင့်ထုတ်နိုင်သည်။ |
 | `vt.notInstalled` | Not on router | Router ထဲ မရှိသေး |
 | `vt.hiddenCode` | Hidden until verified on the router | Router တွင် အတည်ပြုသည်အထိ ဖုံးထားသည် |
@@ -211,8 +209,6 @@ Keys are in `app/src/i18n/tables.ts`. "စလစ်" (slip), "ပေးအပ်
 | `lu.kickConfirm` | Disconnect {n} guests? They can reconnect with valid access. | ဧည့်သည် {n} ဦးကို ဖြတ်ချမလား? သက်တမ်းရှိလျှင် ပြန်ချိတ်နိုင်သည်။ |
 | `lu.kicked` | {ok} of {n} disconnected and confirmed by the router. | {n} ဦးအနက် {ok} ဦး ဖြတ်ပြီး Router က အတည်ပြုပြီး။ |
 | `lu.selectAll` | Select all shown | ပြထားသမျှ ရွေးမည် |
-| `lu.kickOff` | Kick is not available yet: disconnecting a guest on the router has not passed acceptance. | ဖြုတ်မည် ကို မသုံးနိုင်သေးပါ - Router တွင် ဧည့်သည်ကို ဖြတ်ချခြင်းကို စမ်းသပ်အတည်ပြုခြင်း မပြီးသေးပါ။ |
-| `lu.off` | Ban MAC, Rate and the Idle, Over quota and Banned MAC counts are not available yet: the app does not read or change these on the router. | MAC ပိတ်ခြင်း၊ နှုန်းသတ်မှတ်ခြင်းနှင့် မလှုပ်ရှား၊ ဒေတာကျော်၊ ပိတ်ထားသော MAC အရေအတွက်များကို မသုံးနိုင်သေးပါ - app က ၎င်းတို့ကို Router တွင် မဖတ်၊ မပြင်သေးပါ။ |
 | `lu.notRead` | Not read from the router yet | Router မှ မဖတ်ရသေးပါ |
 | `pl.title` | Voucher print layouts | ဗောင်ချာ ပရင့်ပုံစံများ |
 | `pl.lead` | Configure the counter receipt only. These settings do not change the guest portal or the RouterOS Hotspot. | ကောင်တာ ပြေစာကိုသာ ပြင်ဆင်သည်။ ဤဆက်တင်များက ဧည့်သည် portal နှင့် RouterOS Hotspot ကို မပြောင်းလဲပါ။ |
@@ -232,6 +228,30 @@ Keys are in `app/src/i18n/tables.ts`. "စလစ်" (slip), "ပေးအပ်
 | `pl.previewLead` | The browser print dialog controls the physical printer. The QR code holds the voucher code. | ပရင်တာကို browser ၏ ပရင့် dialog က ထိန်းချုပ်သည်။ QR ကုဒ်တွင် ဗောင်ချာကုဒ် ပါသည်။ |
 | `pl.demoPlan` | Demo plan | နမူနာ ပလန် |
 | `pl.reload` | Reload | ပြန်ဖတ်မည် |
+
+### Added with the router actions
+
+| Key | English | Burmese (to review) |
+|---|---|---|
+| `vt.handOutOff` | Hand out is not available yet: its records need a database update. | ပေးအပ်မည် ကို မသုံးနိုင်သေးပါ - ၎င်း၏ မှတ်တမ်းအတွက် database အပ်ဒိတ် လိုသည်။ |
+| `vt.deleteOff` | Delete is not available yet for codes on the router: this router action has not passed acceptance. | Router ပေါ်ရှိ ကုဒ်များကို မဖျက်နိုင်သေးပါ - ဤ Router လုပ်ဆောင်ချက်ကို စမ်းသပ်အတည်ပြုခြင်း မပြီးသေးပါ။ |
+| `vt.deleteUnused` | Only an unused code in a finished batch can be deleted. | ပြီးဆုံးသော အစုထဲမှ မသုံးရသေးသော ကုဒ်ကိုသာ ဖျက်နိုင်သည်။ |
+| `vt.deleteRouterConfirm` | Delete {n} code(s)? They stop working on the router and stay on record as Revoked. This cannot be undone. | ကုဒ် {n} ခု ဖျက်မလား? Router တွင် အလုပ်မလုပ်တော့ဘဲ ပယ်ဖျက်ပြီး အဖြစ် မှတ်တမ်းတွင် ကျန်မည်။ ပြန်ယူ၍ မရပါ။ |
+| `vt.handOutN` | Hand out ({n}) | ပေးအပ်မည် ({n}) |
+| `vt.handedOut` | Handed out | ပေးအပ်ပြီး |
+| `vt.handOutFailed` | Some codes could not be marked. Check them and try again. | ကုဒ်အချို့ကို မမှတ်နိုင်ပါ။ စစ်ပြီး ထပ်ကြိုးစားပါ။ |
+| `lu.kickOff` | Kick and Ban MAC are not available yet: these router actions have not passed acceptance. | ဖြုတ်မည် နှင့် MAC ပိတ်မည် ကို မသုံးနိုင်သေးပါ - ဤ Router လုပ်ဆောင်ချက်များကို စမ်းသပ်အတည်ပြုခြင်း မပြီးသေးပါ။ |
+| `lu.off` | Rate is not available: there is no reliable way yet to change the speed of a guest already online. | နှုန်း ကို မသုံးနိုင်ပါ - အွန်လိုင်းရှိပြီးသား ဧည့်သည်၏ အမြန်နှုန်းကို ယုံကြည်စိတ်ချစွာ ပြောင်းရန် နည်းလမ်း မရှိသေးပါ။ |
+| `lu.banConfirm` | Block {mac}? This device loses internet until you remove the block. | {mac} ကို ပိတ်မလား? ပိတ်ခြင်းကို မဖယ်မချင်း ဤစက်တွင် အင်တာနက် မရပါ။ |
+| `lu.unbanConfirm` | Remove the block on {mac}? | {mac} ၏ ပိတ်ထားခြင်းကို ဖယ်မလား? |
+| `lu.bannedDone` | Device blocked and confirmed by the router. | စက်ကို ပိတ်ပြီး Router က အတည်ပြုပြီး။ |
+| `lu.unbanned` | Block removed and confirmed by the router. The device can take about a minute to get back. | ပိတ်ထားခြင်းကို ဖယ်ပြီး Router က အတည်ပြုပြီး။ စက် ပြန်ရောက်ရန် တစ်မိနစ်ခန့် ကြာနိုင်သည်။ |
+| `lu.banFailed` | Could not change the block. | ပိတ်ထားခြင်းကို မပြောင်းနိုင်ပါ။ |
+| `lu.noBans` | No device is blocked. | ပိတ်ထားသော စက် မရှိပါ။ |
+| `lu.banNote` | Note | မှတ်ချက် |
+| `lu.banByApp` | Blocked from this app | ဤ app မှ ပိတ်ထားသည် |
+| `lu.banOther` | Set on the router, not by this app | ဤ app မဟုတ်ဘဲ Router တွင် သတ်မှတ်ထားသည် |
+| `lu.unban` | Remove block | ပိတ်ခြင်း ဖယ်မည် |
 
 Printed on the receipt itself, in `printCodes.ts` (Burmese and English together, because guests read it):
 

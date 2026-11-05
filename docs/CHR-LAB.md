@@ -29,6 +29,10 @@ Results below are from 2026-11-05 on RouterOS 7.24.6.
 | Customer network with Hotspot, voucher login and guard, guest portal deployment | Pass. `api.json` is carried into the deployed folder. |
 | 11 network forms | Pass. |
 | Firmware upgrade | Refuses safely, because a CHR has no board firmware. |
+| Guest actions (`TestCHRLabGuestActions`) | Kick ends the session, Ban stops traffic and login, removing the ban lets the guest back in, an owner's own binding is refused, an unused login is deleted and another owner's is refused. |
+| Session reads | `idle-time` and `session-time-left` read on a live session. `session-time-left` is empty when the user has no time limit. |
+
+Facts these found, on 7.24.6: `get` on a missing id inside `:tostr` gives an empty value with no error, so `on-error` does not fire. A session's id can return on the next login. After a block is removed, the host took about 45 s to be listed again.
 
 ## What it cannot show
 

@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/lib/pq"
 
@@ -167,4 +168,44 @@ func (GuestVoucherRepository) DataLimitsForVouchersTXN(tx *sql.Tx, businessID st
 		out[id] = mb
 	}
 	return out, rows.Err()
+}
+
+// HandoutsReadyTXN reports whether the voucher_handouts migration has been applied.
+func (r *VoucherRepository) HandoutsReadyTXN(tx *sql.Tx) (bool, error) {
+	var ok bool
+	err := tx.QueryRow(`SELECT to_regclass('public.voucher_handouts') IS NOT NULL`).Scan(&ok)
+	return ok, err
+}
+
+// HandoutsForVouchersTXN returns when each of these vouchers was handed out.
+func (r *VoucherRepository) HandoutsForVouchersTXN(tx *sql.Tx, businessID string, ids []string) (map[string]time.Time, error) {
+	out := map[string]time.Time{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	rows, err := tx.Query(`SELECT voucher_id, handed_out_at FROM voucher_handouts WHERE business_id = $1 AND voucher_id = ANY($2)`, businessID, pq.Array(ids))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		var at time.Time
+		if err := rows.Scan(&id, &at); err != nil {
+			return nil, err
+		}
+		out[id] = at
+	}
+	return out, rows.Err()
+}
+
+// SetHandoutTXN records or clears one hand-out. Repeating either is harmless.
+func (r *VoucherRepository) SetHandoutTXN(tx *sql.Tx, businessID, id string, handedOut bool) error {
+	var err error
+	if handedOut {
+		_, err = tx.Exec(`INSERT INTO voucher_handouts (business_id, voucher_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, businessID, id)
+	} else {
+		_, err = tx.Exec(`DELETE FROM voucher_handouts WHERE business_id = $1 AND voucher_id = $2`, businessID, id)
+	}
+	return err
 }

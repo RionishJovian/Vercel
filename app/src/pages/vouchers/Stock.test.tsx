@@ -9,6 +9,7 @@ const BATCH = "11111111-1111-4111-8111-111111111111", OPEN = "22222222-2222-4222
 const row = (i: number, extra: Record<string, unknown> = {}) => ({ id: `v${i}`, code: `CODE${i}`, plan_label: "1 hour", status: "unused", price_mmk: 1500, duration_minutes: 60, issue_batch_id: BATCH, install_state: "verified", ...extra });
 let pages: Record<string, unknown>;
 let calls: Array<{ method: string; url: string }>;
+let retireBody: unknown;
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 beforeEach(() => {
@@ -17,6 +18,7 @@ beforeEach(() => {
   vi.stubGlobal("confirm", () => true);
   calls = [];
   pages = {};
+  retireBody = { verified: true, status: "revoked" };
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
     const method = init?.method ?? "GET", path = String(url).replace("/api/v1", "");
     calls.push({ method, url: path });
@@ -25,6 +27,8 @@ beforeEach(() => {
     if (path.startsWith("/guest-vouchers/batches/" + BATCH)) return json(200, { state: "ready", vouchers: [row(1)] });
     if (path.startsWith("/guest-vouchers/batches/" + OPEN)) return json(200, { state: "unknown", vouchers: [] });
     if (method === "DELETE") return json(200, { status: "deleted" });
+    if (path.endsWith("/retire")) return json(200, retireBody);
+    if (path.endsWith("/hand-out")) return json(200, { handed_out: true });
     if (path.startsWith("/vouchers?")) {
       const page = Number(new URLSearchParams(path.split("?")[1]).get("page"));
       return json(200, pages[page] ?? pages[1] ?? { vouchers: [], total: 0, status_counts: {} });
@@ -96,6 +100,59 @@ describe("Vouchers table", () => {
     vi.stubGlobal("confirm", () => true);
     fireEvent.click(screen.getByRole("button", { name: "Delete (1)" }));
     await waitFor(() => expect(calls.filter((c) => c.method === "DELETE").map((c) => c.url)).toEqual(["/vouchers/v2"]));
+  });
+
+  it("deletes a code on the router only through the retire action, once it is switched on", async () => {
+    pages = { 1: { vouchers: [row(1), row(2, { status: "used" }), row(3, { issue_batch_id: OPEN })], total: 3, status_counts: { unused: 2, used: 1 }, router_delete_enabled: true } };
+    open();
+    await screen.findByText("CODE1");
+    await waitFor(() => expect(btn(rowOf("CODE1"), "Delete").disabled).toBe(false));
+    expect(btn(rowOf("CODE2"), "Delete").disabled).toBe(true); // used
+    expect(btn(rowOf("CODE3"), "Delete").disabled).toBe(true); // unfinished batch
+    fireEvent.click(btn(rowOf("CODE1"), "Delete"));
+    await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.url === "/guest-vouchers/codes/v1/retire")).toBe(true));
+    expect(calls.filter((c) => c.method === "DELETE")).toHaveLength(0);
+    await screen.findByText("1 of 1 deleted.");
+  });
+
+  it("does not count a retire the router did not confirm", async () => {
+    retireBody = { verified: false };
+    pages = { 1: { vouchers: [row(1)], total: 1, status_counts: { unused: 1 }, router_delete_enabled: true } };
+    open();
+    await screen.findByText("CODE1");
+    await waitFor(() => expect(btn(rowOf("CODE1"), "Delete").disabled).toBe(false));
+    fireEvent.click(btn(rowOf("CODE1"), "Delete"));
+    await screen.findByText("0 of 1 deleted.");
+  });
+
+  it("records a hand out, for one row or the selection, and only unused codes", async () => {
+    pages = { 1: { vouchers: [row(1), row(2), row(3, { status: "used" })], total: 3, status_counts: { unused: 2, used: 1 }, hand_out_enabled: true, handed_out: { v2: "2026-11-05T00:00:00Z" } } };
+    open();
+    await screen.findByText("CODE1");
+    expect(btn(rowOf("CODE3"), "Hand out").disabled).toBe(true);
+    expect(btn(rowOf("CODE2"), "Handed out").getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select this page" }));
+    fireEvent.click(screen.getByRole("button", { name: "Hand out (1)" }));
+    await waitFor(() => expect(calls.filter((c) => c.url.endsWith("/hand-out")).map((c) => c.url)).toEqual(["/vouchers/v1/hand-out"]));
+  });
+
+  it("does not print a deleted code from its batch", async () => {
+    const print = vi.spyOn(printing, "printCodes").mockImplementation(() => undefined);
+    pages = { 1: { vouchers: [row(1)], total: 1, status_counts: { unused: 1 } } };
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      const path = String(url).replace("/api/v1", "");
+      if (path === "/guest-vouchers/batches") return json(200, { batches: [], stock_batches: [{ batch_id: BATCH, plan_label: "1 hour", total_count: 2, shop_name: "Main shop" }] });
+      if (path === "/voucher-print-layout") return json(200, { layout: {} });
+      if (path.startsWith("/guest-vouchers/batches/")) return json(200, { state: "ready", vouchers: [row(1), row(2, { status: "revoked" })] });
+      return json(200, pages[1]);
+    }));
+    open();
+    await screen.findByText("CODE1");
+    await screen.findByRole("option", { name: /Main shop/ });
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: BATCH } });
+    fireEvent.click(await screen.findByRole("button", { name: "Print this batch" }));
+    await waitFor(() => expect(print).toHaveBeenCalledTimes(1));
+    expect(print.mock.calls[0][0].map((v) => v.code)).toEqual(["CODE1"]);
   });
 
   it("sends the status filter to the server and returns to the first page", async () => {

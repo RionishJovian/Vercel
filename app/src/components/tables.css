@@ -26,6 +26,7 @@
 .dt-btn { min-height: 26px; padding: 0 9px; border-radius: 999px; border: 1px solid var(--edge); background: transparent; color: var(--ink); font-size: .75rem; font-weight: 600; white-space: nowrap; }
 .dt-btn:hover:not([disabled]) { background: var(--glass-strong); }
 .dt-btn.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 55%, transparent); }
+.dt-btn.warn.on { background: color-mix(in srgb, var(--warn) 18%, transparent); }
 .dt-btn.danger { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 55%, transparent); }
 .dt-btn[disabled] { opacity: .45; cursor: not-allowed; }
 

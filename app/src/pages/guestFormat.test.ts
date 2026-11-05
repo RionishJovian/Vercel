@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { pageWindow } from "../components/DenseTable";
-import { fmtBytes, fmtDuration, fmtUptime } from "./guestFormat";
+import { fmtBytes, fmtDuration, fmtUptime, parseSeconds } from "./guestFormat";
 
 describe("guest formatting", () => {
   it("writes durations the way the router does", () => {
@@ -13,6 +13,15 @@ describe("guest formatting", () => {
     expect(fmtUptime("2d03:04:05")).toBe("2d3h4m5s");
     expect(fmtUptime("1h4m23s")).toBe("1h4m23s");
     expect(fmtUptime(undefined)).toBe("—");
+  });
+  it("reads either duration form, and nothing from an empty one", () => {
+    expect(parseSeconds("00:06:00")).toBe(360);
+    expect(parseSeconds("1h4m23s")).toBe(3863);
+    expect(parseSeconds("1d")).toBe(86400);
+    expect(parseSeconds("2d03:04:05")).toBe(183845);
+    expect(parseSeconds("")).toBeNull();
+    expect(parseSeconds(undefined)).toBeNull();
+    expect(parseSeconds("soon")).toBeNull();
   });
   it("sizes bytes", () => {
     expect(fmtBytes("321000")).toBe("321 KB");
