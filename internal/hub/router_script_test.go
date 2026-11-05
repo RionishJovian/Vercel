@@ -76,6 +76,28 @@ func TestRouterScriptRepeatPasteUsesRouterOSArrayRendering(t *testing.T) {
 	}
 }
 
+// Some connections have no working DNS, so the Hub hands out its IP address.
+func TestQuickConnectUsesAnIPEndpointWithoutDNS(t *testing.T) {
+	privateKey, publicKey, err := GenerateRouterKeypair()
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := scriptFixture()
+	p.RouterPublicKey = publicKey
+	p.Endpoint = "203.0.113.10:51820"
+	script, err := BuildQuickConnectScript("gateway", p, privateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(script, `endpoint-address="203.0.113.10" endpoint-port=51820`) {
+		t.Fatal("script must connect to the IP address")
+	}
+	// A router set up with a name must move to the IP when the script is pasted again.
+	if !strings.Contains(script, `endpoint-address] != "203.0.113.10"`) {
+		t.Fatal("repeat paste must correct an older endpoint")
+	}
+}
+
 func TestQuickConnectKeepsPrivateKeyOnlyInOnePasteScript(t *testing.T) {
 	privateKey, publicKey, err := GenerateRouterKeypair()
 	if err != nil {

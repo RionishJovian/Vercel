@@ -22,7 +22,9 @@ It brings the router to the wanted state from wherever it is:
 Details that came from testing on a real RouterOS (`TestCHRLabOnePaste`):
 
 - `/ip/service` also lists live SSH connections, so the script uses the first match, which is the service itself.
-- Current RouterOS calls the SSH allow-list `available-from`, and reading `address` returns nothing. The script reads both, keeps the existing entries and adds the app's address.
+- Current RouterOS calls the SSH allow-list `available-from`, and `address` is deprecated. The script uses `available-from` and falls back to `address` only on older versions, keeps the existing entries and adds the app's address.
+- Some connections have no working DNS while WireGuard works fine, so the Hub's `MM_HUB_ENDPOINT` is its IP address, not a name. Before the Hub moves to a new IP, every connected router must be updated over its tunnel first.
+- The script waits up to 30 seconds and says `NOT CONNECTED YET` if the router has not reached the Hub. The setup stays in place and connects by itself once it can.
 - A custom SSH port gets a redirect on the tunnel interface, so the app always connects to port 22.
 
 ## Setup that ran out

@@ -315,10 +315,11 @@ func automaticManagementScript(id string, p pendingManagement) string {
 /user/ssh-keys remove [find where user="%[1]s"]
 /user/ssh-keys import public-key-file=$keyfile user="%[1]s"
 /file remove [find where name=$keyfile]
-# RouterOS names this list "address" or "available-from" depending on its version.
-:local mmSetAllowed do={ :do { [[:parse ("/ip/service set " . $1 . " address=" . $2)]] } on-error={ [[:parse ("/ip/service set " . $1 . " available-from=" . $2)]] } }
-:local mmAllowed [/ip/service get $mmSSH address]
-:if ([:len $mmAllowed] = 0) do={ :do { :set mmAllowed [/ip/service get $mmSSH available-from] } on-error={} }
+# RouterOS names this list "available-from" now and "address" on older versions. Each name
+# is parsed only when it runs, so a current router never reads the deprecated one.
+:local mmSetAllowed do={ :do { [[:parse ("/ip/service set " . $1 . " available-from=" . $2)]] } on-error={ [[:parse ("/ip/service set " . $1 . " address=" . $2)]] } }
+:local mmGetAllowed do={ :local mmValue ""; :do { :set mmValue [[:parse (":return [/ip/service get " . $1 . " available-from]")]] } on-error={ :do { :set mmValue [[:parse (":return [/ip/service get " . $1 . " address]")]] } on-error={} }; :return $mmValue }
+:local mmAllowed [$mmGetAllowed $mmSSH]
 :if ([/ip/service get $mmSSH disabled]) do={
   $mmSetAllowed $mmSSH "10.77.0.9/32"
   /ip/service set $mmSSH disabled=no
@@ -342,7 +343,18 @@ func automaticManagementScript(id string, p pendingManagement) string {
   :local mmNat [/ip/firewall/nat find where dynamic=no]
   :if ([:len $mmNat] = 0) do={ /ip/firewall/nat add chain=dstnat action=redirect to-ports=$mmPort in-interface="%[6]s" src-address=10.77.0.9/32 protocol=tcp dst-port=22 comment="%[3]s" } else={ /ip/firewall/nat add chain=dstnat action=redirect to-ports=$mmPort in-interface="%[6]s" src-address=10.77.0.9/32 protocol=tcp dst-port=22 comment="%[3]s" place-before=[:pick $mmNat 0] }
 }
-:put "Setup complete. You can close this window: Mega Magic connects by itself."
+# Say what actually happened: a finished script does not mean the router reached the Hub.
+:put "Checking the connection to Magic Hub (up to 30 seconds)..."
+:local mmReached false
+:foreach mmPeer in=[/interface/wireguard/peers find where interface="%[6]s"] do={
+  :for mmTry from=1 to=30 do={
+    :if (!$mmReached) do={
+      :delay 1s
+      :do { :if ([:tonum [/interface/wireguard/peers get $mmPeer rx]] > 0) do={ :set mmReached true } } on-error={}
+    }
+  }
+}
+:if ($mmReached) do={ :put "Setup complete. You can close this window: Mega Magic connects by itself." } else={ :put "NOT CONNECTED YET: this router has not reached Magic Hub. Check its internet connection. There is nothing more to paste: it connects by itself as soon as it can." }
 }`, p.user, len(marker)+1, marker, p.proof, p.public, iface)
 }
 

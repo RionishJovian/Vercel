@@ -153,7 +153,9 @@ func TestCHRLabOnePaste(t *testing.T) {
 	})
 	mustComplete := func(t *testing.T, out string) {
 		t.Helper()
-		if !strings.Contains(out, "Setup complete") || strings.Contains(out, "STOP") || strings.Contains(out, "rror") {
+		// The lab has no real Hub to reach, so either ending is a finished paste.
+		finished := strings.Contains(out, "Setup complete") || strings.Contains(out, "NOT CONNECTED YET")
+		if !finished || strings.Contains(out, "STOP") || strings.Contains(out, "rror") || strings.Contains(out, "Deprecation") {
 			t.Fatalf("paste did not complete:\n%s", out)
 		}
 	}

@@ -110,6 +110,17 @@ func TestAutomaticManagementScriptAndOutputBounds(t *testing.T) {
 	if !strings.Contains(script, "address=10.77.0.9/32") || !strings.Contains(script, "in-interface=\"mmh-") {
 		t.Fatal("missing private management restrictions")
 	}
+	// RouterOS 7.25 warns about the old name when it is parsed, so the current name goes first
+	// and the old one stays inside a string that runs only if the current one fails.
+	if strings.Index(script, "available-from=") > strings.Index(script, `" address=" . $2`) || strings.Contains(script, "get $mmSSH address") {
+		t.Fatal("the deprecated SSH allow-list name must be the fallback only")
+	}
+	// Finishing the script must not claim the router reached the Hub.
+	checked := strings.Index(script, "get $mmPeer rx")
+	complete := strings.Index(script, `:if ($mmReached) do={ :put "Setup complete.`)
+	if checked < 0 || complete < checked || !strings.Contains(script, "NOT CONNECTED YET") {
+		t.Fatal("setup must check the connection before saying it is complete")
+	}
 	b := &boundedEnrollmentOutput{}
 	if _, err := b.Write(make([]byte, 65536)); err != nil {
 		t.Fatal(err)
