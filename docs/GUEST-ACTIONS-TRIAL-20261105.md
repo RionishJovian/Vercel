@@ -16,7 +16,7 @@ Run on the lab router with one phone, using a voucher made for the test. Do not 
 | Step | Pass when |
 |---|---|
 | Open Live users with a guest online | The session list loads. Idle and Banned MAC show numbers, not a dash. |
-| Leave the phone idle for 6 minutes, then refresh | The row shows Idle. |
+| Leave the phone idle for 16 minutes, then refresh | The row shows Idle. |
 | Check Left against WinBox | It matches `session-time-left`, or the app's voucher expiry if that is sooner. |
 
 ## Kick
