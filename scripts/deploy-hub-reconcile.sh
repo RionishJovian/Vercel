@@ -38,14 +38,18 @@ if ! systemctl is-active --quiet "$unit"; then rollback; exit 1; fi
 if ! node --input-type=module -e '
 import fs from "node:fs"; import { execFileSync } from "node:child_process";
 const { parseLive, parseSaved } = await import(process.argv[1]);
+const { reserveTunnelAddresses } = await import(process.argv[2]);
 const peers = JSON.parse(fs.readFileSync("/var/lib/mikromagic-hub/peers.json", "utf8")).peers;
-const live = parseLive(execFileSync("wg", ["show", "wg0", "allowed-ips"], { encoding: "utf8" }));
+const liveText = execFileSync("wg", ["show", "wg0", "allowed-ips"], { encoding: "utf8" });
+const live = parseLive(liveText);
+// Enrollment reads this same output. If it cannot, no new router can connect.
+reserveTunnelAddresses([], liveText, "10.77.0.0/24");
 const saved = parseSaved(fs.readFileSync("/etc/wireguard/wg0.conf", "utf8"));
 const active = peers.filter((p) => p.state === "active" && p.routerPublicKey);
 const missing = active.filter((p) => !live.has(p.routerPublicKey) || !saved.has(p.routerPublicKey));
 if (missing.length) { console.error(`${missing.length} active peer(s) not live and saved`); process.exit(1); }
 console.log(`${active.length} active peers are live and saved; ${live.size} live in total.`);
-' "$hub/hub-reconcile.mjs"; then rollback; exit 1; fi
+' "$hub/hub-reconcile.mjs" "$hub/hub-enrollment.mjs"; then rollback; exit 1; fi
 
 journalctl -u "$unit" -n 5 --no-pager | grep -E "reconcil" || true
 echo "Hub reconciler installed. Rollback copy: $backup"

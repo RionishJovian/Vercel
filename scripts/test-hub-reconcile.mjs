@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { parseLive, parseSaved, planReconcile, reconcileHub } from "./hub-reconcile.mjs";
+import { reserveTunnelAddresses } from "./hub-enrollment.mjs";
 
 const addressesOf = (p) => [p.tunnelAddress];
 const peer = (key, ip, state = "active", extra = {}) => ({ routerPublicKey: key, tunnelAddress: `10.77.0.${ip}/32`, state, ...extra });
@@ -51,14 +52,14 @@ test("a peer still being enrolled is not touched", () => {
   assert.deepEqual(plan, { add: [], remove: [], unknown: [] });
 });
 
-test("entries sharing a key become one peer holding all their addresses", () => {
+test("a shared key keeps the one address it already holds", () => {
   const plan = planReconcile({ peers: [peer("A", 2), peer("A", 3), peer("A", 4)], live: parseLive("A\t10.77.0.4/32\n"), addressesOf });
-  assert.deepEqual(plan.add, [{ key: "A", addresses: ["10.77.0.2/32", "10.77.0.3/32", "10.77.0.4/32"] }]);
+  assert.deepEqual(plan.add, []);
 });
 
-test("a shared key already holding all its addresses is left alone", () => {
-  const plan = planReconcile({ peers: [peer("A", 2), peer("A", 3)], live: parseLive("A\t10.77.0.3/32 10.77.0.2/32\n"), addressesOf });
-  assert.deepEqual(plan.add, []);
+test("a shared key lost in a crash comes back with one address", () => {
+  const plan = planReconcile({ peers: [peer("A", 2), peer("A", 3)], live: parseLive(""), addressesOf });
+  assert.deepEqual(plan.add, [{ key: "A", addresses: ["10.77.0.3/32"] }]);
 });
 
 test("a shared key is left alone while any of its entries is migrating", () => {
@@ -95,11 +96,19 @@ test("saves a peer that is live but missing from the file", () => {
 });
 
 test("a shared key settles after one pass instead of changing every time", () => {
-  const hub = fakeHub({ peers: [peer("A", 2), peer("A", 3), peer("A", 4), peer("B", 5)], live: [["A", ["10.77.0.4/32"]], ["B", ["10.77.0.5/32"]]], saved: "[Interface]\n[Peer]\nPublicKey = A\nAllowedIPs = 10.77.0.4/32\n\n[Peer]\nPublicKey = B\nAllowedIPs = 10.77.0.5/32\n" });
+  const hub = fakeHub({ peers: [peer("A", 2), peer("A", 3), peer("A", 4), peer("B", 5)], live: [["B", ["10.77.0.5/32"]]], saved: "[Interface]\n[Peer]\nPublicKey = B\nAllowedIPs = 10.77.0.5/32\n" });
   assert.deepEqual(reconcileHub(hub.args), { added: 1, removed: 0, unknown: 0, saved: true });
-  assert.deepEqual(hub.state.live.get("B"), ["10.77.0.5/32"]);
   assert.deepEqual(reconcileHub(hub.args), { added: 0, removed: 0, unknown: 0, saved: false });
   assert.equal(hub.state.saves, 1);
+});
+
+test("new routers can still enroll after a shared key is restored", () => {
+  // `wg show allowed-ips` separates addresses with spaces. The Hub's parser refuses every
+  // enrollment if a key holds more than one, which is how an earlier version broke it.
+  const hub = fakeHub({ peers: [peer("A", 2), peer("A", 3), peer("B", 5)], live: [["A", ["10.77.0.2/32"]], ["B", ["10.77.0.5/32"]]], saved: "[Interface]\n" });
+  reconcileHub(hub.args);
+  const live = [...hub.state.live].map(([k, a]) => `${k}\t${a.join(" ")}`).join("\n");
+  assert.ok(reserveTunnelAddresses([], live, "10.77.0.0/24").length > 0);
 });
 
 test("does nothing when everything already matches", () => {
