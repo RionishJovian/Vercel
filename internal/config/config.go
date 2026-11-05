@@ -327,6 +327,12 @@ func Load(path string) (*Config, error) {
 	v.SetConfigType("yaml")
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
+	// "environment" has no default and is usually supplied only by the process
+	// environment. Newer Viper releases no longer surface env-only keys to
+	// Unmarshal unless they are bound, so bind it explicitly.
+	if err := v.BindEnv("environment"); err != nil {
+		return nil, err
+	}
 	// Accept the conventional provider variable as a compatibility alias. The
 	// nested Viper key normally maps to AI_OPENROUTER_API_KEY, but operators and
 	// hosting panels commonly provide OPENROUTER_API_KEY. Prefer the explicit
