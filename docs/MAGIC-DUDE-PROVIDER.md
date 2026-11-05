@@ -23,7 +23,7 @@ protected provider configuration is retained as `.previous` for recovery.
 Do not paste the key into chat, commit it, or enter it as a command argument.
 
 Settings are `AI_MAGIC_DUDE_PROVIDER=gemini`, `AI_GEMINI_API_KEY` (alias:
-`GEMINI_API_KEY`) and `AI_GEMINI_MODEL`. Default model: `gemini-3.8-flash`.
+`GEMINI_API_KEY`) and `AI_GEMINI_MODEL`. Default model: `gemini-3.5-flash-lite`.
 Google project quota and billing determine availability and charges; selecting
 Gemini does not guarantee free usage. The model endpoint check makes no generation
 request. After activation, sign in and ask Magic Dude a test question; verify the

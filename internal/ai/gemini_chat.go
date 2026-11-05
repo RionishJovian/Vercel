@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-const DefaultGeminiChatModel = "gemini-3.8-flash"
+const DefaultGeminiChatModel = "gemini-3.5-flash-lite"
 
 var geminiModelName = regexp.MustCompile(`^gemini-[a-zA-Z0-9.-]+$`)
 

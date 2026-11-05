@@ -16,8 +16,8 @@ if [[ ! "$magic_dude_key" =~ ^[A-Za-z0-9_.-]{20,256}$ ]]; then
   echo "Key format is invalid; nothing changed." >&2
   exit 2
 fi
-read -r -p "Gemini model ID [gemini-3.8-flash]: " magic_dude_model
-magic_dude_model="${magic_dude_model:-gemini-3.8-flash}"
+read -r -p "Gemini model ID [gemini-3.5-flash-lite]: " magic_dude_model
+magic_dude_model="${magic_dude_model:-gemini-3.5-flash-lite}"
 if [[ ! "$magic_dude_model" =~ ^gemini-[A-Za-z0-9.-]+$ ]]; then
   echo "Model ID is invalid; nothing changed." >&2
   exit 2
