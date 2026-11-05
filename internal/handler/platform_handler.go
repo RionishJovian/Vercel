@@ -171,6 +171,25 @@ func (h *PlatformHandler) CountIncidents(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"counts": counts})
 }
 
+// ListRouterAlerts returns recent router alerts across all accounts.
+func (h *PlatformHandler) ListRouterAlerts(c *gin.Context) {
+	alerts, unread, err := database.NewDeviceRepository(h.db).ListRouterAlerts(100)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list router alerts"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"alerts": alerts, "unread": unread})
+}
+
+// MarkRouterAlertsRead clears the unread count.
+func (h *PlatformHandler) MarkRouterAlertsRead(c *gin.Context) {
+	if err := database.NewDeviceRepository(h.db).MarkRouterAlertsRead(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update router alerts"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "marked read"})
+}
+
 // validTiers is DERIVED from the model's ordered tier list rather than repeated
 // here, so the set a tenant can be created with and the set the pricing page
 // advertises cannot drift apart: adding a tier in one place makes it both

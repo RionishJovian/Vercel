@@ -7,8 +7,9 @@ import { Addons } from "./Addons";
 import { Pricing } from "./Pricing";
 import { Businesses } from "./Businesses";
 import { PlatformIncidents } from "./Incidents";
+import { RouterAlerts } from "./RouterAlerts";
 
-const TABS = ["accounts", "renewals", "addons", "pricing", "businesses", "incidents"] as const;
+const TABS = ["accounts", "renewals", "addons", "pricing", "businesses", "incidents", "alerts"] as const;
 type Tab = (typeof TABS)[number];
 
 export function Platform({ me, sub }: { me: Me; sub: string }) {
@@ -20,7 +21,7 @@ export function Platform({ me, sub }: { me: Me; sub: string }) {
     <>
       {back}<h1>{t("title.platform")}</h1>
       <Pills items={TABS} current={tab} href={(k) => "#/platform/" + k} label={(k) => t("pt." + k)} />
-      {tab === "accounts" ? <Accounts /> : tab === "renewals" ? <Renewals /> : tab === "addons" ? <Addons me={me} /> : tab === "pricing" ? <Pricing /> : tab === "businesses" ? <Businesses me={me} /> : <PlatformIncidents />}
+      {tab === "accounts" ? <Accounts /> : tab === "renewals" ? <Renewals /> : tab === "addons" ? <Addons me={me} /> : tab === "pricing" ? <Pricing /> : tab === "businesses" ? <Businesses me={me} /> : tab === "alerts" ? <RouterAlerts /> : <PlatformIncidents />}
     </>
   );
 }

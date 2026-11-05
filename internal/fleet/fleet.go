@@ -126,6 +126,15 @@ type connectionHistory interface {
 	RecordConnectionChange(businessID, deviceID, action, reason string) error
 }
 
+type routerAlerts interface {
+	DueRouterAlerts(grace time.Duration) ([]*database.RouterAlert, error)
+	CreateRouterAlert(*database.RouterAlert) (bool, error)
+}
+
+// routerAlertGrace is how long a connected router must stay down before the owner
+// hears about it, so a restart or brief drop stays quiet.
+const routerAlertGrace = 15 * time.Minute
+
 type hubInspector interface {
 	InspectRouter(context.Context, hub.Identity) (hub.Peer, error)
 }
@@ -137,11 +146,13 @@ type FleetService struct {
 	monitor stateReader
 	hub     hubInspector
 	history connectionHistory
+	alerts  routerAlerts
+	notify  func(string) error
 	now     func() time.Time
 }
 
 func NewFleetService(devices *database.DeviceRepository, monitor stateReader) *FleetService {
-	return &FleetService{devices: devices, monitor: monitor, history: devices, now: time.Now}
+	return &FleetService{devices: devices, monitor: monitor, history: devices, alerts: devices, now: time.Now}
 }
 
 // ConfigureHub lets gateways use the Hub's live tunnel state. Inspection only.
@@ -317,6 +328,37 @@ func connectionReason(peer PeerSummary) string {
 	return "No Magic Hub connection. Last contact " + peer.LastContactAt.UTC().Format(time.RFC3339) + "."
 }
 
+// ConfigureAlertMessages sends each new router alert to the platform owner as well
+// as showing it in the console. Without this the console is the only place.
+func (s *FleetService) ConfigureAlertMessages(notify func(string) error) { s.notify = notify }
+
+// RaiseRouterAlerts stores every due alert and sends each new one. A failed send
+// doesn't undo the alert: it stays in the console, and it isn't sent twice.
+func (s *FleetService) RaiseRouterAlerts() error {
+	due, err := s.alerts.DueRouterAlerts(routerAlertGrace)
+	if err != nil {
+		return err
+	}
+	var firstErr error
+	for _, alert := range due {
+		created, err := s.alerts.CreateRouterAlert(alert)
+		if err == nil && created && s.notify != nil {
+			err = s.notify(routerAlertMessage(alert))
+		}
+		if err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
+func routerAlertMessage(a *database.RouterAlert) string {
+	if a.Kind == database.RouterAlertRecovered {
+		return "Router back online: " + a.HardwareName + " (" + a.CompanyName + ")."
+	}
+	return "Router offline: " + a.HardwareName + " (" + a.CompanyName + "). " + a.Detail
+}
+
 // StartConnectionHistory runs RecordConnectionChanges until the process exits.
 func (s *FleetService) StartConnectionHistory(interval time.Duration, logf func(string, ...interface{})) {
 	if interval <= 0 {
@@ -326,6 +368,9 @@ func (s *FleetService) StartConnectionHistory(interval time.Duration, logf func(
 		for {
 			if err := s.RecordConnectionChanges(context.Background()); err != nil {
 				logf("connection history: %v", err)
+			}
+			if err := s.RaiseRouterAlerts(); err != nil {
+				logf("router alerts: %v", err)
 			}
 			time.Sleep(interval)
 		}
