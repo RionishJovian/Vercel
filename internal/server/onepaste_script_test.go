@@ -42,7 +42,8 @@ func checkRouterOSBlock(t *testing.T, name, script string) {
 
 func checkRouterOSBlockWith(t reporter, name, script string) {
 	fail := func(format string, args ...any) { t.Errorf(name+": "+format, args...) }
-	if !strings.HasPrefix(script, "{\n") || !strings.HasSuffix(script, "\n}") {
+	// One final line break is allowed: it is what makes a paste run by itself.
+	if body := strings.TrimSuffix(script, "\n"); !strings.HasPrefix(body, "{\n") || !strings.HasSuffix(body, "\n}") {
 		fail("not a single braced block")
 	}
 	for _, bad := range []string{"%!", "%d", "%s", "<nil>", "(MISSING)", "(EXTRA", "\t", "\r"} {
