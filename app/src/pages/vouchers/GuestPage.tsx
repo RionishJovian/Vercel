@@ -130,6 +130,7 @@ export function GuestPage() {
           <iframe className="gp-frame" ref={hosted} hidden={dest !== "hosted"} src="/portal.html?preview=1" title={t("g.previewHosted")} />
         </div>
         <p className="soft small" role="status">{note}</p>
+        {draft.payment && !draft.plans.some((p) => !blankPlan(p)) && <Note kind="warn">{t("g.noPlansWarn")}</Note>}
       </section>
 
       <div className="stack gp-form">
