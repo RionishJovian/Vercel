@@ -38,19 +38,21 @@ export function planReconcile({ peers, live, addressesOf }) {
   const active = peers.filter((p) => p.state === "active" && p.routerPublicKey);
   const activeKeys = new Set(active.map((p) => p.routerPublicKey));
   const known = new Set(peers.map((p) => p.routerPublicKey));
-  // WireGuard holds one address list per key, so entries sharing a key are one peer.
-  // Handling them one at a time would overwrite each other on every pass.
+  // Entries can share a key, but a peer must keep one address: the Hub's enrollment code
+  // refuses every new router if it reads several addresses on one key. A shared key that
+  // already holds one of its addresses is left alone, or passes would overwrite each other.
   const wanted = new Map();
   const migrating = new Set();
   for (const peer of active) {
     if (inMigration(peer)) { migrating.add(peer.routerPublicKey); continue; }
-    const addresses = wanted.get(peer.routerPublicKey) ?? [];
-    wanted.set(peer.routerPublicKey, [...new Set([...addresses, ...addressesOf(peer)])]);
+    const addresses = addressesOf(peer);
+    if (addresses.length) wanted.set(peer.routerPublicKey, [...(wanted.get(peer.routerPublicKey) ?? []), addresses]);
   }
   const add = [];
-  for (const [key, addresses] of wanted) {
-    if (migrating.has(key) || !addresses.length) continue;
-    if (!live.has(key) || !sameAddresses(live.get(key), addresses)) add.push({ key, addresses });
+  for (const [key, options] of wanted) {
+    if (migrating.has(key)) continue;
+    if (live.has(key) && options.some((addresses) => sameAddresses(live.get(key), addresses))) continue;
+    add.push({ key, addresses: options.at(-1) });
   }
   const remove = peers
     .filter((p) => ["removed", "disabled"].includes(p.state) && p.routerPublicKey && live.has(p.routerPublicKey) && !activeKeys.has(p.routerPublicKey))
