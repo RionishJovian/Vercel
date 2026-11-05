@@ -22,7 +22,7 @@ Connection: `MM_DB_URL=postgres://user:pass@host/db`, or `MM_PSQL_BASE="docker e
 - No `BEGIN`/`COMMIT`: the runner wraps the file and its bookkeeping row in one transaction, so a failure leaves nothing half applied.
 - Statements that cannot run in a transaction (`CREATE INDEX CONCURRENTLY`) put `-- mm:no-transaction` in the first lines.
 - Never edit an applied file. Its checksum is stored; `status` reports `CHANGED` and `up` refuses. Fix forward with a new file.
-- New tables need row security and policies like the existing ones, and the runtime role needs grants. `up` re-runs `runtime-db-role.sql` afterwards, so grants follow automatically.
+- New tables need row security, policies like the existing ones, and explicit `GRANT`s to `authenticated`, because `baseline.sql` carries no grants and only migrations give a new database access. The runtime role needs grants too. `up` re-runs `runtime-db-role.sql` afterwards, so grants follow automatically.
 
 ## One-time steps
 
@@ -31,7 +31,7 @@ Connection: `MM_DB_URL=postgres://user:pass@host/db`, or `MM_PSQL_BASE="docker e
 
 ## Tests
 
-`bash deploy/server/test-mm-migrate.sh` with `MM_TEST_DB_URL` pointing at any disposable Postgres 17 (CI provides one). 57 checks cover ordering, rollback, tamper detection and the baseline logic.
+`bash deploy/server/test-mm-migrate.sh` with `MM_TEST_DB_URL` pointing at any disposable Postgres 17 (CI provides one). 63 checks cover ordering, rollback, tamper detection and the baseline logic.
 
 ## Deploys
 
