@@ -142,5 +142,13 @@ check "the database ends up at the latest version" "$(real status >/dev/null; ec
 check "grants runs the real runtime-role setup" "$(real grants >/dev/null; echo $?)" "0"
 check "the runtime-role policies exist afterwards" "$(q "$r" "select count(*) > 0 from pg_policies where policyname='mm_runtime_service'")" "t"
 
+# A fresh database must let a signed-in tenant work, and keep private tables closed.
+check "the tenant role can read the tables sign-in needs" "$(q "$r" "select has_table_privilege('authenticated','users','SELECT') and has_table_privilege('authenticated','businesses','SELECT') and has_table_privilege('authenticated','devices','SELECT')")" "t"
+check "the tenant role can use the tables most of the app needs" "$(q "$r" "select count(distinct table_name) >= 77 from information_schema.role_table_grants where grantee='authenticated'")" "t"
+check "the tenant role cannot read login sessions" "$(q "$r" "select has_table_privilege('authenticated','auth_sessions','SELECT')")" "f"
+check "the tenant role cannot read pending Hub setups" "$(q "$r" "select has_table_privilege('authenticated','hub_pending_enrollments','SELECT')")" "f"
+check "trigger functions are not open to everyone" "$(q "$r" "select has_function_privilege('public','revoke_changed_user_sessions()','EXECUTE')")" "f"
+check "a signed-in tenant sees only its own users" "$(psql "$base_url/$r" -X -q -At -c "begin; insert into businesses(company_name,owner_email,access_tier) values('Grant A','grant-a@example.test','SMALL_WISP'),('Grant B','grant-b@example.test','SMALL_WISP'); insert into users(business_id,email,full_name,password_hash,user_role) select business_id,owner_email,'P','x','OWNER' from businesses where company_name like 'Grant %'; select set_config('app.current_business_id',(select business_id::text from businesses where company_name='Grant A'),true); set local role authenticated; select count(*) from users; rollback;" 2>/dev/null | tail -1)" "1"
+
 echo "$pass passed, $failn failed"
 [ "$failn" = 0 ]
