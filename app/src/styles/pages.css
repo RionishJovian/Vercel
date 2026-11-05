@@ -227,6 +227,13 @@ label.pill input[type="file"] { display: none; }
 
 /* Site map */
 .site-map { height: 320px; border-radius: var(--r-panel); overflow: hidden; border: 1px solid var(--edge); }
+.site-map-frame { position: relative; display: flex; flex-direction: column; gap: 10px; }
+.starlink-toggle { position: absolute; top: 10px; left: 10px; z-index: 2; gap: 8px; background: var(--glass-solid); box-shadow: 0 2px 8px rgba(0,0,0,.2); }
+.starlink-toggle[aria-pressed="true"] { background: var(--jade); color: var(--on-jade); border-color: var(--jade); }
+.starlink-mark { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.starlink-panel { display: flex; flex-direction: column; gap: 4px; }
+.starlink-panel p:empty { display: none; }
+.starlink-panel a { color: inherit; text-decoration: underline; }
 .site-pin { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; padding: 0; border: 0; background: transparent; color: #04231a; font: 700 12px var(--font-body); cursor: pointer; }
 .site-pin strong { padding: 2px 8px; border-radius: 999px; background: #f2fffa; border: 1px solid #146b52; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .site-pin span { width: 16px; height: 16px; border-radius: 50%; border: 2px solid #fff; background: #8aa89c; box-shadow: 0 2px 6px rgba(0,0,0,.4); }

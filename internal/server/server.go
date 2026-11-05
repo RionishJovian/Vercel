@@ -749,6 +749,12 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 			// Read-only per-tenant fleet aggregate (peer-health overview).
 			protected.GET("/fleet/health", fleetHandler.FleetHealth)
 			protected.GET("/fleet/health/offline", fleetHandler.OfflineHealth)
+			// Public orbit data for the site map's optional Starlink layer. No tenant data.
+			var orbitStore handler.StarlinkOrbitStore
+			if cache != nil {
+				orbitStore = cache
+			}
+			protected.GET("/map/starlink", handler.NewStarlinkOrbits(orbitStore).Serve)
 			protected.POST("/devices/:id/security/verify", securityHandler.VerifyDevice)
 			protected.POST("/devices/:id/security/harden", auth.RequireMinRole(model.RoleAdmin), securityHandler.HardenManagement)
 
