@@ -7,7 +7,8 @@ const when = (value?: string) => { const d = value ? new Date(value) : null; ret
 export function statusFacts(t: (key: string) => string, peer?: FleetPeer): Array<[string, string]> {
   if (!peer) return [];
   const facts: Array<[string, string]> = [[t("fl.source"), t("fl.source." + (["hub_tunnel", "router_check", "router_read"].includes(peer.source ?? "") ? peer.source : "none"))]];
-  const contact = when(peer.last_contact_at), checked = when(peer.checked_at);
+  const since = when(peer.state_since), contact = when(peer.last_contact_at), checked = when(peer.checked_at);
+  if (since) facts.push([t("fl.since"), since]);
   if (contact) facts.push([t("fl.lastContact"), contact]);
   if (checked) facts.push([t("fl.checked"), checked]);
   return facts;

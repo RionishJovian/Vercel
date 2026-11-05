@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"mega-magic/internal/database"
 	"mega-magic/internal/hub"
 	"mega-magic/internal/model"
 )
@@ -98,5 +99,105 @@ func TestStatusNamesTheAccountAndRequester(t *testing.T) {
 	oneSummary(t, s, "MAIN_GATEWAY")
 	if seen != (hub.Identity{TenantID: "biz", RouterID: "d1", RequestedBy: "user"}) {
 		t.Fatalf("identity %+v", seen)
+	}
+}
+
+type fakeHistory struct {
+	gateways []*model.Device
+	latest   map[string]database.ConnectionChange
+	recorded []string
+	err      error
+}
+
+func (f *fakeHistory) ListGatewaysAcrossTenants() ([]*model.Device, error) { return f.gateways, nil }
+func (f *fakeHistory) LatestConnectionChanges(string) (map[string]database.ConnectionChange, error) {
+	return f.latest, f.err
+}
+func (f *fakeHistory) RecordConnectionChange(business, device, action, reason string) error {
+	f.recorded = append(f.recorded, business+"/"+device+"/"+action+"/"+reason)
+	f.latest[device] = database.ConnectionChange{Action: action}
+	return nil
+}
+
+func TestConnectionHistoryRecordsOnlyChanges(t *testing.T) {
+	now := time.Date(2026, 11, 6, 10, 0, 0, 0, time.UTC)
+	handshake := now.Add(-time.Minute)
+	var peerErr error
+	inspect := fakeHub(func(id hub.Identity) (hub.Peer, error) {
+		if id.RequestedBy != connectionHistoryRequester {
+			t.Errorf("requester %q", id.RequestedBy)
+		}
+		return hub.Peer{TenantID: id.TenantID, RouterID: id.RouterID, State: "active", LastHandshakeAt: &handshake}, peerErr
+	})
+	history := &fakeHistory{gateways: []*model.Device{{BusinessID: "biz", DeviceID: "d1", DeploymentLayer: "MAIN_GATEWAY"}}, latest: map[string]database.ConnectionChange{}}
+	s := &FleetService{monitor: fakeMonitor{}, hub: inspect, history: history, now: func() time.Time { return now }}
+	pass := func() {
+		t.Helper()
+		if err := s.RecordConnectionChanges(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	pass()
+	pass()
+	if len(history.recorded) != 1 || history.recorded[0] != "biz/d1/router.connection.up/Connected to Magic Hub." {
+		t.Fatalf("first passes recorded %v", history.recorded)
+	}
+
+	now = now.Add(time.Hour)
+	pass()
+	pass()
+	want := "biz/d1/router.connection.offline/No Magic Hub connection. Last contact " + handshake.Format(time.RFC3339) + "."
+	if len(history.recorded) != 2 || history.recorded[1] != want {
+		t.Fatalf("drop recorded %v", history.recorded)
+	}
+
+	// A lookup failure says nothing about the router.
+	handshake = now
+	peerErr = errors.New("hub down")
+	pass()
+	if len(history.recorded) != 2 {
+		t.Fatalf("a failed lookup recorded %v", history.recorded)
+	}
+	peerErr = nil
+	pass()
+	if len(history.recorded) != 3 {
+		t.Fatalf("reconnect recorded %v", history.recorded)
+	}
+}
+
+func TestConnectionHistoryOffWithoutHub(t *testing.T) {
+	history := &fakeHistory{gateways: []*model.Device{{BusinessID: "biz", DeviceID: "d1"}}, latest: map[string]database.ConnectionChange{}}
+	s := &FleetService{monitor: fakeMonitor{}, history: history, now: time.Now}
+	if err := s.RecordConnectionChanges(context.Background()); err != nil || len(history.recorded) != 0 {
+		t.Fatalf("err %v, recorded %v", err, history.recorded)
+	}
+}
+
+func TestStateSince(t *testing.T) {
+	at := time.Date(2026, 11, 6, 9, 0, 0, 0, time.UTC)
+	history := &fakeHistory{latest: map[string]database.ConnectionChange{
+		"same":  {Action: database.ActionConnectionUp, At: at},
+		"stale": {Action: database.ActionConnectionOffline, At: at},
+		"local": {Action: database.ActionConnectionUp, At: at},
+	}}
+	s := &FleetService{history: history}
+	peers := s.withStateSince("biz", []PeerSummary{
+		{DeviceID: "same", State: StateUp, Source: SourceHubTunnel},
+		{DeviceID: "stale", State: StateUp, Source: SourceHubTunnel},
+		{DeviceID: "local", State: StateUp, Source: SourceRouterRead},
+		{DeviceID: "none", State: StateUp, Source: SourceHubTunnel},
+	})
+	if peers[0].StateSince == nil || !peers[0].StateSince.Equal(at) {
+		t.Fatalf("matching state: %v", peers[0].StateSince)
+	}
+	for _, p := range peers[1:] {
+		if p.StateSince != nil {
+			t.Fatalf("%s should have no start time: %v", p.DeviceID, p.StateSince)
+		}
+	}
+	history.err = errors.New("db down")
+	if got := s.withStateSince("biz", []PeerSummary{{DeviceID: "same", State: StateUp, Source: SourceHubTunnel}}); len(got) != 1 || got[0].StateSince != nil {
+		t.Fatalf("history failure: %+v", got)
 	}
 }

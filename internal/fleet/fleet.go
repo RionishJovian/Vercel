@@ -57,6 +57,8 @@ type PeerSummary struct {
 	LastContactAt *time.Time `json:"last_contact_at,omitempty"`
 	// CheckedAt is when this state was read live. Absent for a cached router check.
 	CheckedAt *time.Time `json:"checked_at,omitempty"`
+	// StateSince is when the recorded connection history says this state began.
+	StateSince *time.Time `json:"state_since,omitempty"`
 }
 
 // AggregateHealth is a pure function: it folds a slice of peer states into a
@@ -118,6 +120,12 @@ type stateReader interface {
 	LastRouterRead(ctx context.Context, businessID, peerID string) (time.Time, bool)
 }
 
+type connectionHistory interface {
+	ListGatewaysAcrossTenants() ([]*model.Device, error)
+	LatestConnectionChanges(businessID string) (map[string]database.ConnectionChange, error)
+	RecordConnectionChange(businessID, deviceID, action, reason string) error
+}
+
 type hubInspector interface {
 	InspectRouter(context.Context, hub.Identity) (hub.Peer, error)
 }
@@ -128,11 +136,12 @@ type FleetService struct {
 	devices *database.DeviceRepository
 	monitor stateReader
 	hub     hubInspector
+	history connectionHistory
 	now     func() time.Time
 }
 
 func NewFleetService(devices *database.DeviceRepository, monitor stateReader) *FleetService {
-	return &FleetService{devices: devices, monitor: monitor, now: time.Now}
+	return &FleetService{devices: devices, monitor: monitor, history: devices, now: time.Now}
 }
 
 // ConfigureHub lets gateways use the Hub's live tunnel state. Inspection only.
@@ -145,7 +154,7 @@ func (s *FleetService) Health(ctx context.Context, businessID, requestedBy strin
 	if err != nil {
 		return nil, fmt.Errorf("fleet: list devices: %w", err)
 	}
-	summary := AggregateHealth(businessID, s.summaries(ctx, businessID, requestedBy, devices))
+	summary := AggregateHealth(businessID, s.withStateSince(businessID, s.summaries(ctx, businessID, requestedBy, devices)))
 	return &summary, nil
 }
 
@@ -229,4 +238,96 @@ func (s *FleetService) localSummary(ctx context.Context, businessID, id string) 
 	}
 	summary.Source = SourceNone
 	return summary
+}
+
+// connectionAction is the change-log action for a Hub-reported state.
+func connectionAction(state string) string {
+	if state == StateUp {
+		return database.ActionConnectionUp
+	}
+	return database.ActionConnectionOffline
+}
+
+// withStateSince adds when the current Hub state began, where history records it.
+// History is extra detail, so failing to read it never fails the report.
+func (s *FleetService) withStateSince(businessID string, peers []PeerSummary) []PeerSummary {
+	changes, err := s.history.LatestConnectionChanges(businessID)
+	if err != nil {
+		return peers
+	}
+	for i := range peers {
+		change, ok := changes[peers[i].DeviceID]
+		if ok && peers[i].Source == SourceHubTunnel && change.Action == connectionAction(peers[i].State) {
+			at := change.At
+			peers[i].StateSince = &at
+		}
+	}
+	return peers
+}
+
+// RecordConnectionChanges logs each gateway whose Hub state differs from its last
+// recorded one. Only the Hub's own answers count: when the Hub cannot answer, nothing
+// is known and nothing is written, so an outage of the lookup is not a router drop.
+func (s *FleetService) RecordConnectionChanges(ctx context.Context) error {
+	if s.hub == nil {
+		return nil
+	}
+	gateways, err := s.history.ListGatewaysAcrossTenants()
+	if err != nil {
+		return err
+	}
+	byBusiness := map[string][]*model.Device{}
+	for _, d := range gateways {
+		byBusiness[d.BusinessID] = append(byBusiness[d.BusinessID], d)
+	}
+	var firstErr error
+	note := func(err error) {
+		if firstErr == nil {
+			firstErr = err
+		}
+	}
+	for businessID, devices := range byBusiness {
+		changes, err := s.history.LatestConnectionChanges(businessID)
+		if err != nil {
+			note(err)
+			continue
+		}
+		for id, peer := range s.hubSummaries(ctx, businessID, connectionHistoryRequester, devices) {
+			action := connectionAction(peer.State)
+			if changes[id].Action == action {
+				continue
+			}
+			if err := s.history.RecordConnectionChange(businessID, id, action, connectionReason(peer)); err != nil {
+				note(err)
+			}
+		}
+	}
+	return firstErr
+}
+
+const connectionHistoryRequester = "connection-history"
+
+func connectionReason(peer PeerSummary) string {
+	if peer.State == StateUp {
+		return "Connected to Magic Hub."
+	}
+	if peer.LastContactAt == nil {
+		return "No Magic Hub connection. No contact on record."
+	}
+	return "No Magic Hub connection. Last contact " + peer.LastContactAt.UTC().Format(time.RFC3339) + "."
+}
+
+// StartConnectionHistory runs RecordConnectionChanges until the process exits.
+func (s *FleetService) StartConnectionHistory(interval time.Duration, logf func(string, ...interface{})) {
+	if interval <= 0 {
+		interval = time.Minute
+	}
+	go func() {
+		for {
+			if err := s.RecordConnectionChanges(context.Background()); err != nil {
+				logf("connection history: %v", err)
+			}
+			time.Sleep(interval)
+		}
+	}()
 }

@@ -466,6 +466,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	// independently of any request, feeding stale/offline states to the evaluator.
 	sweepWorker := monitoring.NewSweep(database.NewDeviceRepository(db), monitoringService, sugar, cfg.Monitoring.StateSweepInterval)
 	sweepWorker.Start()
+	fleetService.StartConnectionHistory(cfg.Monitoring.StateSweepInterval, sugar.Warnf)
 	sugar.Infow("State sweep started", "interval", cfg.Monitoring.StateSweepInterval)
 
 	// Quota-ENFORCEMENT sweep: detects lapsed Sovereign passes and emits

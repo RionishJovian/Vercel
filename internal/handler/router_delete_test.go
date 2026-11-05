@@ -314,3 +314,46 @@ func TestInventoryAnswered(t *testing.T) {
 		}
 	}
 }
+
+func TestDBConnectionHistoryStore(t *testing.T) {
+	db := harness_testdb(t)
+	repo := database.NewDeviceRepository(db)
+	business, other := insertBusiness(db), insertBusiness(db)
+	device, foreign := insertGatewayNoSite(db, business), insertGatewayNoSite(db, other)
+
+	gateways, err := repo.ListGatewaysAcrossTenants()
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]string{}
+	for _, g := range gateways {
+		seen[g.DeviceID] = g.BusinessID
+	}
+	if seen[device] != business || seen[foreign] != other {
+		t.Fatalf("gateways %v", seen)
+	}
+
+	for _, action := range []string{database.ActionConnectionUp, database.ActionConnectionOffline} {
+		if err := repo.RecordConnectionChange(business, device, action, "test"); err != nil {
+			t.Fatal(err)
+		}
+		// created_at is the transaction time, so space the rows apart.
+		if _, err := db.Exec(`UPDATE device_change_events SET created_at = created_at - interval '1 minute' WHERE device_id=$1`, device); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := repo.RecordConnectionChange(other, foreign, database.ActionConnectionUp, "test"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO device_change_events(business_id,device_id,user_role,action,reason) VALUES($1,$2,'OWNER','router.reboot.requested','unrelated')`, business, device); err != nil {
+		t.Fatal(err)
+	}
+	latest, err := repo.LatestConnectionChanges(business)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(latest) != 1 || latest[device].Action != database.ActionConnectionOffline {
+		t.Fatalf("latest %+v", latest)
+	}
+}
+
