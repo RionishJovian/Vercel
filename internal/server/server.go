@@ -554,7 +554,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	if err := wireRouterObservations(cfg, db, routerHandler); err != nil {
 		return nil, err
 	}
-	if err := startLiveApplier(cfg, messagingClient, sugar, monitoringService, db, backupHandler, securityHandler, incidentActionHandler, guestWifiHandler); err != nil {
+	if err := startLiveApplier(cfg, messagingClient, sugar, monitoringService, db, backupHandler, securityHandler, incidentActionHandler, topologyHandler, guestWifiHandler); err != nil {
 		return nil, err
 	}
 

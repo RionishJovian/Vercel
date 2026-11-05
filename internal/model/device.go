@@ -1,6 +1,7 @@
 package model
 
 import (
+	"encoding/json"
 	"net"
 	"time"
 )
@@ -24,6 +25,21 @@ type Device struct {
 	LastSeenAt          *time.Time `json:"last_seen_at,omitempty"`
 	CreatedAt           time.Time  `json:"created_at"`
 	UpdatedAt           time.Time  `json:"updated_at"`
+}
+
+// MarshalJSON writes the MAC as text. net.HardwareAddr is a byte slice, so it would
+// otherwise reach the console as base64.
+func (d Device) MarshalJSON() ([]byte, error) {
+	type plain Device
+	out := struct {
+		plain
+		MACAddress *string `json:"mac_address,omitempty"`
+	}{plain: plain(d)}
+	if d.MACAddress != nil {
+		text := d.MACAddress.String()
+		out.MACAddress = &text
+	}
+	return json.Marshal(out)
 }
 
 // PeerKey identifies one managed peer/router for a tenant — the unit the

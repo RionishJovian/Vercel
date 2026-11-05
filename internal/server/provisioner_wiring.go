@@ -34,7 +34,7 @@ func shouldEnableLiveApplier(flagEnabled bool, applier provisioner.Applier, prob
 // Enabled: builds a tenant-scoped per-device applier/prober from encrypted
 // device credentials and starts the consumer. Any error fails server startup
 // loudly — a mis-config must never silently look "enabled".
-func startLiveApplier(cfg *config.Config, client *messaging.Client, sugar *zap.SugaredLogger, monitor *monitoring.MonitoringService, db *database.DB, backup *handler.BackupHandler, securityHandler *handler.SecurityHandler, incidentAction *handler.IncidentActionHandler, guestHandlers ...*handler.GuestWifiHandler) error {
+func startLiveApplier(cfg *config.Config, client *messaging.Client, sugar *zap.SugaredLogger, monitor *monitoring.MonitoringService, db *database.DB, backup *handler.BackupHandler, securityHandler *handler.SecurityHandler, incidentAction *handler.IncidentActionHandler, topology *handler.TopologyHandler, guestHandlers ...*handler.GuestWifiHandler) error {
 	// Security-posture capture is wired FIRST, on its OWN flag. It never writes to
 	// a router, so it must not sit behind applier.enabled — that flag turns on
 	// live router WRITES and the single-host live applier they require (which
@@ -126,8 +126,29 @@ func startLiveApplier(cfg *config.Config, client *messaging.Client, sugar *zap.S
 	// fire-and-validate, no config rollback. Same flag — live router writes for
 	// owner-initiated commands are only ever wired when the applier is enabled.
 	topoConsumer := recovery.NewTopologyActionConsumer(svc, prober, approver, otp, client, sugar)
+	topoConsumer.WithRecorder(func(businessID, deviceID, action, reason string) {
+		devices := database.NewDeviceRepository(db)
+		tx, err := db.Begin()
+		if err != nil {
+			sugar.Warnw("topology action outcome not recorded", "device", deviceID)
+			return
+		}
+		defer tx.Rollback()
+		err = database.WithTenant(tx, businessID, func() error {
+			return devices.RecordChangeTXN(tx, businessID, deviceID, "SYSTEM", action, reason)
+		})
+		if err == nil {
+			err = tx.Commit()
+		}
+		if err != nil {
+			sugar.Warnw("topology action outcome not recorded", "device", deviceID)
+		}
+	})
 	if err := topoConsumer.Start(client); err != nil {
 		return fmt.Errorf("topology action consumer start: %w", err)
+	}
+	if topology != nil {
+		topology.EnableActions()
 	}
 
 	sugar.Infow("Live per-device apply consumer started (flag-gated)",

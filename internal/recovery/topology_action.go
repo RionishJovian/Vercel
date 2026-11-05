@@ -33,6 +33,14 @@ type TopologyActionConsumer struct {
 	otp      provisioner.OtpVerifier
 	events   provisioner.Publisher
 	logger   *zap.SugaredLogger
+	record   func(businessID, deviceID, action, reason string)
+}
+
+// WithRecorder saves each action's outcome in the device's change history, which is
+// how the owner learns what happened to a request that was only queued.
+func (c *TopologyActionConsumer) WithRecorder(record func(businessID, deviceID, action, reason string)) *TopologyActionConsumer {
+	c.record = record
+	return c
 }
 
 // NewTopologyActionConsumer builds the consumer. approver/otp/events may be nil
@@ -87,6 +95,10 @@ func (c *TopologyActionConsumer) handle(m *nats.Msg) {
 	defer cancel()
 
 	out, err := c.OnAction(ctx, intent)
+	if c.record != nil {
+		action, reason := actionOutcome(intent.Action, out, err)
+		c.record(intent.BusinessID, intent.DeviceID, action, reason)
+	}
 	if err != nil {
 		c.logger.Warnf("provisioner: topology action %s for device %s failed: %v",
 			intent.Action, intent.DeviceID, err)
@@ -98,13 +110,29 @@ func (c *TopologyActionConsumer) handle(m *nats.Msg) {
 
 // ActionOutcome is the result of one topology action through the gate.
 type ActionOutcome struct {
-	DeviceID string
-	Action   string
-	Changes  []provisioner.Change
+	DeviceID  string
+	Action    string
+	Changes   []provisioner.Change
 	Requested bool
 	Approval  provisioner.ApprovalOutcome
 	Applied   bool
 	Result    *provisioner.ApplyResult
+}
+
+// actionOutcome turns one result into fixed history text: no error detail, which can
+// contain connection facts, reaches the owner's screen.
+func actionOutcome(action string, out *ActionOutcome, err error) (string, string) {
+	prefix := "router." + action
+	switch {
+	case err != nil:
+		return prefix + ".failed", "Not completed: no approval arrived in time, or the router could not be reached"
+	case out == nil || !out.Approval.Allowed:
+		return prefix + ".denied", "Approval was refused; the router was not changed"
+	case out.Result != nil && out.Result.Verified:
+		return prefix + ".applied", "Done, and the router came back"
+	default:
+		return prefix + ".unverified", "The command was sent, but the router's return could not be confirmed"
+	}
 }
 
 // parseActionIntent decodes the payload; the tenant falls back to the subject

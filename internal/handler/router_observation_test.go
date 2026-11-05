@@ -181,6 +181,7 @@ func TestRouterObservationAuthenticatedContract(t *testing.T) {
 		}
 	})
 }
+
 func runInTenantForTest(db *database.DB, biz string, fn func(*sql.Tx) error) error {
 	tx, e := db.Begin()
 	if e != nil {

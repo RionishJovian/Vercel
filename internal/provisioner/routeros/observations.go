@@ -3,6 +3,7 @@ package routeros
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -15,7 +16,11 @@ func (a *DeviceApplier) ReadObservations(ctx context.Context, businessID, device
 	}
 	ctx, cancel := context.WithTimeout(ctx, a.timeout)
 	defer cancel()
-	return readObservations(ctx, r)
+	inventory, err := readObservations(ctx, r)
+	if err == nil {
+		inventory.PendingConfirm = networkPendingFor(businessID, deviceID)
+	}
+	return inventory, err
 }
 
 var observationMenus = map[string]networkMenu{
@@ -30,9 +35,14 @@ var observationMenus = map[string]networkMenu{
 	"wifi_clients":          {"/interface wifi registration-table", []string{"mac-address", "interface", "signal"}},
 	"wifi_interfaces":       {"/interface wifi", []string{"name", "configuration.mode", "configuration.ssid", "disabled", "running"}},
 	"interfaces":            {"/interface", []string{"name", "type", "mac-address", "running", "disabled"}},
+	// Separate from interfaces, so a label that cannot be read never loses the port list.
+	"interface_labels": {"/interface", []string{"name", "comment"}},
+	// Filtered to the app's own block rules below, so no other firewall rule is exposed.
+	"device_blocks": {"/ip firewall filter", []string{"src-mac-address", "comment", "disabled"}},
+	"poe_ports":     {"/interface ethernet poe", []string{"name", "poe-out"}},
 }
 
-var observationOrder = []string{"hotspot_sessions", "hotspot_session_times", "hotspot_bindings", "discovery_leases", "arp", "neighbors", "bridge_hosts", "wifi_clients", "wifi_interfaces", "interfaces"}
+var observationOrder = []string{"hotspot_sessions", "hotspot_session_times", "hotspot_bindings", "discovery_leases", "arp", "neighbors", "bridge_hosts", "wifi_clients", "wifi_interfaces", "interfaces", "interface_labels", "device_blocks", "poe_ports"}
 
 func readObservations(ctx context.Context, r CommandRunner) (NetworkInventory, error) {
 	result := NetworkInventory{ObservedAt: time.Now().UTC().Format(time.RFC3339), Objects: map[string][]NetworkObject{}, Available: map[string]bool{}}
@@ -54,6 +64,9 @@ func readObservations(ctx context.Context, r CommandRunner) (NetworkInventory, e
 		objects, err := parseNetworkObjects(menu, out, key)
 		result.Available[key] = err == nil
 		if err == nil {
+			if key == "device_blocks" {
+				objects = ownDeviceBlocks(objects)
+			}
 			result.Objects[key] = objects
 		}
 	}
@@ -61,4 +74,14 @@ func readObservations(ctx context.Context, r CommandRunner) (NetworkInventory, e
 		return NetworkInventory{}, fmt.Errorf("incomplete observation inventory")
 	}
 	return result, nil
+}
+
+func ownDeviceBlocks(objects []NetworkObject) []NetworkObject {
+	own := []NetworkObject{}
+	for _, object := range objects {
+		if strings.HasPrefix(object.Values["comment"], deviceBlockPrefix) {
+			own = append(own, object)
+		}
+	}
+	return own
 }
