@@ -113,6 +113,27 @@ describe("Live users", () => {
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("ABCDEFGH\t10.5.50.20\tAA:BB:CC:DD:EE:01"));
   });
 
+  // What the server sends today: /observations forces write_enabled=false and disconnect answers 503.
+  it("disables Kick and says why when the server holds router writes", async () => {
+    observations = { inventory: { available: { hotspot_sessions: true }, objects: { hotspot_sessions: [SESSION] }, write_enabled: false } };
+    open("OWNER");
+    await screen.findByText("ABCDEFGH");
+    expect(button("Kick").disabled).toBe(true);
+    expect(screen.getByText(/Kick is not available yet/)).toBeTruthy();
+    fireEvent.click(button("Kick"));
+    expect(disconnectCalls()).toHaveLength(0);
+  });
+
+  it("reports a failure, not success, when the server refuses the disconnect", async () => {
+    const real = globalThis.fetch;
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => (String(url).endsWith("/guests/disconnect") ? json(503, { error: "Guest disconnection is unavailable", code: "guest_disconnect_unavailable", verified: false }) : real(url, init))));
+    open("OWNER");
+    await screen.findByText("ABCDEFGH");
+    fireEvent.click(button("Kick"));
+    await waitFor(() => expect(screen.getByRole("status").textContent).toContain("Could not disconnect."));
+    expect(screen.getByRole("status").textContent).not.toContain("confirmed by the router");
+  });
+
   it("disables Kick for a viewer and when writes are held", async () => {
     open("VIEWER");
     await screen.findByText("ABCDEFGH");

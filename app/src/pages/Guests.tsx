@@ -92,6 +92,9 @@ export function Guests({ me }: { me: Me }) {
   const selected = shown.filter((r) => picked.has(r.key));
   const kickable = (r: Row) => canEdit && r.s.writable;
   const kicks = selected.filter(kickable);
+  // The server reports write_enabled=false until the router action passes acceptance, so this is the normal state today.
+  const kickHeld = all.some(({ s }) => !s.writable);
+  const kickNote = kickHeld ? t("lu.kickOff") : t("gu.held");
   const count = (n: number) => (available.length ? n : "—");
   const siteLabel = site ? (siteNames.get(site) ?? (site === "unassigned" ? t("gu.unassigned") : site)) : siteIds.length === 1 ? (siteNames.get(siteIds[0]) ?? gateways[0]?.hardware_name ?? "") : t("gu.allSites");
 
@@ -161,7 +164,7 @@ export function Guests({ me }: { me: Me }) {
           {selected.length > 0 && (
             <div className="dt-bulk" role="group" aria-label={t("vt.selected").replace("{n}", String(selected.length))}>
               <b className="num">{t("vt.selected").replace("{n}", String(selected.length))}</b>
-              <button className="dt-btn" type="button" disabled={busy || reading || !kicks.length} onClick={() => void kickMany(kicks)}>{t("lu.kickN").replace("{n}", String(kicks.length))}</button>
+              <button className="dt-btn" type="button" disabled={busy || reading || !kicks.length} title={kicks.length ? undefined : kickNote} onClick={() => void kickMany(kicks)}>{t("lu.kickN").replace("{n}", String(kicks.length))}</button>
               <button className="dt-btn" type="button" onClick={() => void copy(selected)}>{t("lu.copyN").replace("{n}", String(selected.length))}</button>
               <button className="dt-btn" type="button" onClick={() => setPicked(new Set())}>{t("vt.clear")}</button>
             </div>
@@ -190,7 +193,7 @@ export function Guests({ me }: { me: Me }) {
                       <td data-cell="line" data-label={t("lu.downUp")} className="num">{fmtBytes(v["bytes-out"])} ↓ / {fmtBytes(v["bytes-in"])} ↑</td>
                       <td data-cell="actions" className="dt-right">
                         <div className="dt-actions">
-                          <button className="dt-btn" type="button" disabled={!kickable(r) || busy || reading} title={kickable(r) ? undefined : t("gu.held")} onClick={() => void kickOne(r)}>{t("lu.kick")}</button>
+                          <button className="dt-btn" type="button" disabled={!kickable(r) || busy || reading} title={kickable(r) ? undefined : kickNote} onClick={() => void kickOne(r)}>{t("lu.kick")}</button>
                           <button className="dt-btn danger" type="button" disabled title={t("lu.off")}>{t("lu.ban")}</button>
                           <button className="dt-btn" type="button" disabled title={t("lu.off")}>{t("lu.rate")}</button>
                           <button className="dt-btn" type="button" onClick={() => void copy([r])}>{t("lu.copy")}</button>
@@ -207,7 +210,7 @@ export function Guests({ me }: { me: Me }) {
       {scoped.some((s) => !s.ok) && <Note kind="warn">{t("gu.unavailable")}</Note>}
       <ul className="dt-foot">
         <li>{t("lu.off")}</li>
-        {!canEdit || all.some(({ s }) => !s.writable) ? <li>{t("gu.held")}</li> : null}
+        {kickHeld || !canEdit ? <li>{kickNote}</li> : null}
       </ul>
     </>
   );

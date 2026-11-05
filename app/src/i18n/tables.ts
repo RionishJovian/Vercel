@@ -64,6 +64,7 @@ const tables = {
   "lu.kickConfirm":"Disconnect {n} guests? They can reconnect with valid access.",
   "lu.kicked":"{ok} of {n} disconnected and confirmed by the router.",
   "lu.selectAll":"Select all shown",
+  "lu.kickOff":"Kick is not available yet: disconnecting a guest on the router has not passed acceptance.",
   "lu.off":"Ban MAC, Rate and the Idle, Over quota and Banned MAC counts are not available yet: the app does not read or change these on the router.",
   "lu.notRead":"Not read from the router yet",
 
@@ -150,6 +151,7 @@ const tables = {
   "lu.kickConfirm":"ဧည့်သည် {n} ဦးကို ဖြတ်ချမလား? သက်တမ်းရှိလျှင် ပြန်ချိတ်နိုင်သည်။",
   "lu.kicked":"{n} ဦးအနက် {ok} ဦး ဖြတ်ပြီး Router က အတည်ပြုပြီး။",
   "lu.selectAll":"ပြထားသမျှ ရွေးမည်",
+  "lu.kickOff":"ဖြုတ်မည် ကို မသုံးနိုင်သေးပါ - Router တွင် ဧည့်သည်ကို ဖြတ်ချခြင်းကို စမ်းသပ်အတည်ပြုခြင်း မပြီးသေးပါ။",
   "lu.off":"MAC ပိတ်ခြင်း၊ နှုန်းသတ်မှတ်ခြင်းနှင့် မလှုပ်ရှား၊ ဒေတာကျော်၊ ပိတ်ထားသော MAC အရေအတွက်များကို မသုံးနိုင်သေးပါ - app က ၎င်းတို့ကို Router တွင် မဖတ်၊ မပြင်သေးပါ။",
   "lu.notRead":"Router မှ မဖတ်ရသေးပါ",
 
