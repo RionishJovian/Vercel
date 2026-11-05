@@ -154,8 +154,12 @@ func TestAutomaticEnrollmentRunsAsOneBlock(t *testing.T) {
 		}
 		// There must be no second top-level block that a terminal can execute
 		// after the first block reports a tunnel error.
-		if strings.Contains(combined, "\n}\n{") || !strings.HasPrefix(combined, "{\n") || !strings.HasSuffix(combined, "\n}") {
+		if strings.Contains(combined, "\n}\n{") || !strings.HasPrefix(combined, "{\n") {
 			t.Fatal("management can execute independently of tunnel setup")
+		}
+		// Ending on a line break is what makes one paste run without another Enter.
+		if !strings.HasSuffix(combined, "\n}\n") {
+			t.Fatal("the script must run on paste")
 		}
 		// A user with our name that is not ours stops the script before any account change.
 		owner := strings.Index(combined, `"STOP: a user named`)

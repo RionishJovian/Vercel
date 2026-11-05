@@ -277,7 +277,9 @@ func automaticEnrollmentScript(id string, p pendingManagement) (string, error) {
 	// paste does, so say what it really changes before the operator runs it.
 	tunnel = strings.Replace(tunnel, "# Scoped tunnel only. Does not enable SSH/REST or change WAN/LAN/firewall/users.",
 		"# Creates the Magic Hub tunnel, then a dedicated management user, its group and SSH key,\n# lets SSH in from the Hub address only, and adds one input firewall rule for it.\n# WAN, LAN and your other users are not changed.", 1)
-	return strings.TrimSuffix(tunnel, "\n}") + "\n" + strings.TrimPrefix(management, "{\n"), nil
+	// The final line break makes the terminal run the block on paste. Without it,
+	// a real WinBox terminal waited for one more Enter and looked finished.
+	return strings.TrimSuffix(tunnel, "\n}") + "\n" + strings.TrimPrefix(management, "{\n") + "\n", nil
 }
 
 func automaticManagementScript(id string, p pendingManagement) string {
