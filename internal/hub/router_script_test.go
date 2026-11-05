@@ -90,8 +90,15 @@ func TestQuickConnectKeepsPrivateKeyOnlyInOnePasteScript(t *testing.T) {
 	if !strings.Contains(script, `private-key="`+privateKey+`"`) {
 		t.Fatal("one-paste script does not install the router key")
 	}
-	if !strings.Contains(script, "router key differs") || !strings.Contains(script, "persistent-keepalive=25s") {
+	if !strings.Contains(script, "belongs to another setup") || !strings.Contains(script, "persistent-keepalive=25s") {
 		t.Fatal("one-paste script lost setup guards")
+	}
+	// Anything belonging to someone else must stop the script before the first change.
+	firstWrite := strings.Index(script, "Remove what an older Mega Magic setup left")
+	for _, guard := range []string{"belongs to another setup", "unexpected peer", "tunnel address already used", "a route to the Hub already exists"} {
+		if at := strings.Index(script, guard); at < 0 || at > firstWrite {
+			t.Fatalf("guard %q is missing or comes after the first change", guard)
+		}
 	}
 	if _, err := BuildQuickConnectScript("gateway", p, "not-a-key"); err == nil {
 		t.Fatal("invalid private key accepted")

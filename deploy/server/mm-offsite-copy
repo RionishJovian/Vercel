@@ -28,6 +28,26 @@ export RCLONE_CONFIG_R2_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID" RCLONE_CONFIG_R2_SECRE
 export RCLONE_CONFIG_R2_ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
 remote="R2:${R2_BUCKET}/db"
 
+# The Hub's key and peer list live outside the database. Without them every router would need a new paste
+# after losing the server. Copied first, so an already-uploaded dump cannot skip them.
+hub_remote="R2:${R2_BUCKET}/hub"
+hub_paths=${HUB_STATE_PATHS:-/etc/wireguard/wg0.conf /var/lib/mikromagic-hub/peers.json /etc/mikromagic-hub/env}
+hub_files=""
+for f in $hub_paths; do if [ -f "$f" ]; then hub_files="$hub_files ${f#/}"; else fail "Hub file missing: $f"; fi; done
+hub_tmp=$(mktemp "${TMPDIR:-/tmp}/mm-offsite-hub.XXXXXX")
+hub_plain=$(mktemp "${TMPDIR:-/tmp}/mm-offsite-hub.XXXXXX")
+trap 'cleanup; rm -f "$hub_tmp" "$hub_plain"' EXIT
+# shellcheck disable=SC2086 # the list holds separate file names
+tar -czf "$hub_plain" -C / $hub_files || fail "could not read the Hub files"
+age -r "$AGE_RECIPIENT" -o "$hub_tmp" "$hub_plain" || fail "encrypting the Hub files failed"
+: >"$hub_plain"
+hub_name="hub-state-$(date -u +%Y%m%d).tar.gz.age"
+hub_size=$(wc -c <"$hub_tmp" | tr -d ' ')
+rclone copyto "$hub_tmp" "$hub_remote/$hub_name" --s3-no-check-bucket || fail "uploading the Hub files failed"
+hub_got=$(rclone lsf --files-only --format s --include "$hub_name" "$hub_remote" 2>/dev/null | head -1 || true)
+[ "$hub_got" = "$hub_size" ] || fail "uploaded Hub file size ($hub_got) does not match the encrypted file ($hub_size)"
+rclone delete "$hub_remote" --min-age "${KEEP_REMOTE_DAYS}d" --s3-no-check-bucket >/dev/null 2>&1 || logger -t mm-offsite-copy "warning: pruning old Hub copies failed"
+
 dump=$(ls -1t "$OUT"/mega_magic-*.dump 2>/dev/null | head -1 || true)
 [ -n "$dump" ] || fail "no dump found in $OUT"
 mtime=$(stat -c %Y "$dump" 2>/dev/null || stat -f %m "$dump")

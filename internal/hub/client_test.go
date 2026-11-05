@@ -186,3 +186,38 @@ func TestInvalidIdentityNeverSent(t *testing.T) {
 		t.Fatal("zero public key accepted")
 	}
 }
+
+func TestRemovePeerSignsTheRemoveScope(t *testing.T) {
+	var got *http.Request
+	client, err := New(opts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	client.http = &http.Client{Transport: roundTrip(func(r *http.Request) (*http.Response, error) {
+		got = r
+		return response(200, `{"ok":true}`), nil
+	})}
+	if err := client.RemovePeer(context.Background(), identity, "peer-a"); err != nil {
+		t.Fatal(err)
+	}
+	if got.Method != http.MethodDelete || !strings.HasSuffix(got.URL.Path, "/v1/peers/peer-a") || got.Header.Get("x-mm-scope") != "peers:remove" {
+		t.Fatalf("%s %s scope %s", got.Method, got.URL.Path, got.Header.Get("x-mm-scope"))
+	}
+}
+
+func TestRemovePeerOutcomes(t *testing.T) {
+	for status, wantErr := range map[int]bool{200: false, 404: false, 409: true, 500: true} {
+		client, err := New(opts())
+		if err != nil {
+			t.Fatal(err)
+		}
+		client.http = &http.Client{Transport: roundTrip(func(*http.Request) (*http.Response, error) { return response(status, `{}`), nil })}
+		if err := client.RemovePeer(context.Background(), identity, "peer-a"); (err != nil) != wantErr {
+			t.Errorf("status %d: err = %v", status, err)
+		}
+	}
+	client, _ := New(opts())
+	if err := client.RemovePeer(context.Background(), identity, "bad id!"); err == nil {
+		t.Error("accepted an invalid peer identifier")
+	}
+}

@@ -12,6 +12,10 @@ import (
 // PendingEnrollmentStore preserves a bounded installation attempt across API
 // restarts. Its encrypted envelope binds the secret to tenant, device, purpose
 // and expiry, so moving ciphertext between rows does not grant access.
+// PendingEnrollmentLifetime is how long a generated script stays usable. A script
+// pasted late must still connect, so this is long; the material is encrypted.
+const PendingEnrollmentLifetime = 30 * 24 * time.Hour
+
 type PendingEnrollmentStore struct {
 	DB  *DB
 	Box *secretbox.Box
@@ -104,7 +108,7 @@ func (s PendingEnrollmentStore) GetOrCreate(ctx context.Context, biz, device, pu
 	if generate == nil {
 		return "", tx.Commit()
 	}
-	if lifetime <= 0 || lifetime > 24*time.Hour {
+	if lifetime <= 0 || lifetime > PendingEnrollmentLifetime {
 		return "", errors.New("invalid pending enrollment lifetime")
 	}
 	value, e := generate()
@@ -126,6 +130,35 @@ func (s PendingEnrollmentStore) GetOrCreate(ctx context.Context, biz, device, pu
 	}
 	return value, tx.Commit()
 }
+
+// PendingEnrollmentRef names a router whose script may have been pasted already.
+type PendingEnrollmentRef struct{ BusinessID, DeviceID string }
+
+// Waiting lists routers with unexpired setup material, across all businesses, for the
+// system task that completes a connection once the router reaches the Hub. It reads no secret.
+func (s PendingEnrollmentStore) Waiting(ctx context.Context) ([]PendingEnrollmentRef, error) {
+	rows, e := s.DB.QueryContext(ctx, `SELECT business_id::text, device_id::text FROM hub_pending_enrollments WHERE purpose='management' AND expires_at > now() ORDER BY expires_at`)
+	if e != nil {
+		return nil, e
+	}
+	defer rows.Close()
+	var out []PendingEnrollmentRef
+	for rows.Next() {
+		var r PendingEnrollmentRef
+		if e = rows.Scan(&r.BusinessID, &r.DeviceID); e != nil {
+			return nil, e
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// DeletePurpose removes one kind of setup material for a router.
+func (s PendingEnrollmentStore) DeletePurpose(ctx context.Context, biz, device, purpose string) error {
+	_, e := s.DB.ExecContext(ctx, `DELETE FROM hub_pending_enrollments WHERE business_id=$1 AND device_id=$2 AND purpose=$3`, biz, device, purpose)
+	return e
+}
+
 func (s PendingEnrollmentStore) Delete(ctx context.Context, biz, device string) error {
 	_, e := s.DB.ExecContext(ctx, `DELETE FROM hub_pending_enrollments WHERE business_id=$1 AND device_id=$2`, biz, device)
 	return e

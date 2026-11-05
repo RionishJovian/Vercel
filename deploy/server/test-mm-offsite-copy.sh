@@ -32,6 +32,8 @@ chmod +x "$work/bin/"*
 export PATH="$work/bin:$PATH" STUB_DIR="$work" BACKUP_DIR="$work/out" TMPDIR="$work/tmp"
 export R2_ACCOUNT_ID=acct123 R2_ACCESS_KEY_ID=keyid123 R2_SECRET_ACCESS_KEY=SECRETVALUE R2_BUCKET=bucket1
 export AGE_RECIPIENT=age1publickeyexample HEALTHCHECK_OFFSITE_URL=https://ping.example/off KEEP_REMOTE_DAYS=30
+mkdir -p "$work/hub"; printf 'HUB-SECRET-KEY' >"$work/hub/wg0.conf"; printf '{"peers":[]}' >"$work/hub/peers.json"
+export HUB_STATE_PATHS="$work/hub/wg0.conf $work/hub/peers.json"
 pass=0; failn=0
 check() { if [ "$2" = "$3" ]; then pass=$((pass + 1)); else failn=$((failn + 1)); echo "FAIL: $1 (got '$2', want '$3')"; fi; }
 reset() { rm -rf "$work"/out/* "$work"/remote/* "$work"/tmp/* "$work"/pings "$work"/log "$work"/rclone.args "$work"/rclone.env "$work"/prune.args "$work"/age_fails "$work"/upload_fails "$work"/truncate "$work"/prune_fails; echo "PLAINTEXT-DUMP-CONTENT" >"$work/out/mega_magic-20261102T031000Z.dump"; }
@@ -40,18 +42,28 @@ remote_files() { ls "$work/remote" | tr '\n' ' '; }
 
 reset
 check "good run exits 0" "$(run)" "0"
-check "the encrypted file is uploaded under the dump's name plus .age" "$(remote_files)" "mega_magic-20261102T031000Z.dump.age "
+hub_copy="hub-state-$(date -u +%Y%m%d).tar.gz.age"
+check "the dump and the Hub files are uploaded" "$(remote_files)" "$hub_copy mega_magic-20261102T031000Z.dump.age "
+check "the Hub files are encrypted" "$(head -c 14 "$work/remote/$hub_copy")" "AGE-ENCRYPTED:"
+check "the Hub's key is not readable in the upload" "$(grep -c HUB-SECRET-KEY "$work/remote/$hub_copy")" "0"
 check "what is uploaded is the encrypted data, not the plaintext" "$(head -c 14 "$work/remote/mega_magic-20261102T031000Z.dump.age")" "AGE-ENCRYPTED:"
 check "success pings the check" "$(tail -1 "$work/pings" | grep -c 'off$')" "1"
 check "no temporary file is left behind" "$(ls "$work/tmp" | wc -l | tr -d ' ')" "0"
-check "old remote copies are pruned with the retention" "$(grep -c -- '--min-age 30d' "$work/prune.args")" "1"
+check "old remote copies are pruned with the retention, dumps and Hub files alike" "$(grep -c -- '--min-age 30d' "$work/prune.args")" "2"
 check "the secret is never on a command line" "$(grep -c SECRETVALUE "$work/rclone.args")" "0"
 calls=$(wc -l <"$work/rclone.args" | tr -d ' ')
 check "every rclone call gets the secret through its environment" "$(grep -c 'SECRET_ACCESS_KEY=SECRETVALUE' "$work/rclone.env")" "$calls"
 check "every rclone call targets the account's R2 address" "$(grep -c 'ENDPOINT=https://acct123.r2.cloudflarestorage.com' "$work/rclone.env")" "$calls"
 
 reset; check "second run skips an already uploaded dump" "$(run)$(run)" "00"
-check "…and does not upload twice" "$(grep -c '^copyto' "$work/rclone.args")" "1"
+check "…and does not upload the dump twice" "$(grep -c '^copyto.*mega_magic' "$work/rclone.args")" "1"
+reset; run >/dev/null; rm -f "$work/remote/$hub_copy"
+check "a run with the dump already uploaded still copies the Hub files" "$(run)$(remote_files)" "0$hub_copy mega_magic-20261102T031000Z.dump.age "
+
+reset; export HUB_STATE_PATHS="$work/hub/wg0.conf $work/hub/missing.json"
+check "a missing Hub file fails" "$(run)" "1"
+check "a missing Hub file pings failure" "$(tail -1 "$work/pings" | grep -c '/fail')" "1"
+export HUB_STATE_PATHS="$work/hub/wg0.conf $work/hub/peers.json"
 
 for v in R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_BUCKET AGE_RECIPIENT; do
   reset; old="${!v}"; export "$v="
@@ -70,7 +82,7 @@ check "no dump pings failure" "$(tail -1 "$work/pings" | grep -c '/fail')" "1"
 
 reset; touch -t 202601010000 "$work/out/mega_magic-20261102T031000Z.dump"
 check "a stale dump fails (the nightly backup did not run)" "$(run)" "1"
-check "a stale dump uploads nothing" "$(remote_files)" ""
+check "a stale dump is not uploaded, but the Hub files still are" "$(remote_files)" "$hub_copy "
 
 reset; touch "$work/age_fails"
 check "encryption failure fails" "$(run)" "1"
@@ -86,7 +98,7 @@ check "a size mismatch after upload fails" "$(run)" "1"
 
 reset; touch "$work/prune_fails"
 check "a failing prune does not fail the copy" "$(run)" "0"
-check "a failing prune is logged" "$(grep -c 'pruning' "$work/log")" "1"
+check "a failing prune is logged, for dumps and for Hub files" "$(grep -c 'pruning' "$work/log")" "2"
 
 reset; HEALTHCHECK_OFFSITE_URL="" bash "$here/mm-offsite-copy" >/dev/null 2>&1
 check "no ping URL means no ping" "$(ls "$work/pings" 2>/dev/null | wc -l | tr -d ' ')" "0"

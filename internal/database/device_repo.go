@@ -312,7 +312,8 @@ func (r *DeviceRepository) ListDevicesByBusinessTXN(tx *sql.Tx, businessID strin
 	query := `
 		SELECT device_id, business_id, parent_gateway_id, hardware_name, device_model,
 		       deployment_layer, vendor, category, transport, mac_address,
-		       management_ip, is_online, last_seen_at, created_at, updated_at, site_id
+		       management_ip, is_online, last_seen_at, created_at, updated_at, site_id,
+		       (management_ip IS NOT NULL AND ssh_secret_ciphertext IS NOT NULL)
 		FROM devices
 		WHERE business_id = $1
 		ORDER BY created_at DESC`
@@ -331,7 +332,7 @@ func (r *DeviceRepository) ListDevicesByBusinessTXN(tx *sql.Tx, businessID strin
 		if err := rows.Scan(
 			&d.DeviceID, &d.BusinessID, &parentGatewayID, &d.HardwareName, &deviceModel,
 			&d.DeploymentLayer, &d.Vendor, &d.Category, &d.Transport, &macAddr,
-			&mgmtIP, &d.IsOnline, &lastSeen, &d.CreatedAt, &d.UpdatedAt, &siteID,
+			&mgmtIP, &d.IsOnline, &lastSeen, &d.CreatedAt, &d.UpdatedAt, &siteID, &d.ManagementConnected,
 		); err != nil {
 			return nil, fmt.Errorf("scan device row: %w", err)
 		}

@@ -18,10 +18,12 @@ type Device struct {
 	Transport       string            `json:"transport"`
 	MACAddress      *net.HardwareAddr `json:"mac_address,omitempty"`
 	ManagementIP    *net.IP           `json:"management_ip,omitempty"`
-	IsOnline        bool              `json:"is_online"`
-	LastSeenAt      *time.Time        `json:"last_seen_at,omitempty"`
-	CreatedAt       time.Time         `json:"created_at"`
-	UpdatedAt       time.Time         `json:"updated_at"`
+	// ManagementConnected: the app holds a verified login for this router. Never the login itself.
+	ManagementConnected bool       `json:"management_connected,omitempty"`
+	IsOnline            bool       `json:"is_online"`
+	LastSeenAt          *time.Time `json:"last_seen_at,omitempty"`
+	CreatedAt           time.Time  `json:"created_at"`
+	UpdatedAt           time.Time  `json:"updated_at"`
 }
 
 // PeerKey identifies one managed peer/router for a tenant — the unit the

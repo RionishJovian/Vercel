@@ -1,64 +1,44 @@
 # Automatic Magic Hub management
 
-The console workflow is **Create → Paste → Check**. Authorize and generate one
-complete script, paste it into WinBox New Terminal within 30 minutes, then select
-**Check connection**. The wizard never calls the separate router-key bootstrap
-endpoint: mixing that endpoint with quick enrollment creates incompatible keys.
-The generated account accepts traffic from the configured app-side private /32
-and uses a dedicated RSA SSH key. The user-facing setup has no manual SSH
-credential form.
+**Owner rule:** one script pasted in a WinBox session connects a router for good. It needs connecting again only after the user deletes its record.
 
-**Check existing connection** is available immediately, without generating or
-pasting another script. A saved-management conflict also opens verification
-directly. Opening the check step does not mark the script steps complete.
-Only a `management_authenticated` server response confirms connection success.
+## How it works
 
-**Check Magic Hub** also shows separate app-side management and setup labels.
-These are read from tenant/router-scoped saved-record and expiry metadata without
-decrypting credentials or connecting to the router. An expired original setup
-and an unexpired repair awaiting verification are distinguished. Saved credentials
-are labelled saved, never proof of current authentication. Failed or unavailable
-diagnostics remain unknown; they do not change independent handshake evidence.
-The status read never generates installation material, renews its lifetime or
-requests peer/key changes.
+1. The user authorizes the connection and gets one script. It stays valid for 30 days, encrypted in the database.
+2. The user pastes it in WinBox New Terminal. It installs the tunnel, a dedicated management user with an SSH key, and one firewall rule.
+3. Every 15 seconds the server checks routers with a script waiting. Once the Hub reports a recent handshake, the server logs in over the tunnel, checks the router's proof and key, pins its SSH host key and saves the login, encrypted. The page can be closed; nothing more is needed.
 
-The backend requires tenant administrator permissions and a recent authenticated
-Hub handshake. It derives the destination from the signed Hub allocation, checks
-the outbound CIDR policy, authenticates using the generated SSH key, and requires
-the per-enrollment 256-bit proof and matching WireGuard public key from the router.
-Only then does it pin the SSH host fingerprint and encrypt the SSH private key in
-the existing device credential store. Future connections enforce that fingerprint.
-This replaces manual LAN fingerprint entry with trust through the authenticated
-WireGuard peer plus the locally pasted enrollment proof; it is not independent
-verification over the LAN.
+The page only watches for that result. Only a saved, verified login counts as connected.
 
-Management setup material has a 30-minute lifetime. In the configured production
-path, the pending router installation key is retained for 24 hours; the legacy
-in-memory fallback retains it for 30 minutes. Encrypted pending records preserve
-an unexpired attempt across backend restarts. Regeneration reuses the pending identity; it
-does not rotate an established peer. Expired installation material requires the
-explicit existing-tunnel repair workflow, which only works when the router still
-has the original allocated key. Verified management credentials survive application
-restarts through encrypted database storage.
+## The script can be pasted again at any time
 
-An interface left by the former separate preparation script can have a different
-key from the Hub allocation. Removing that step fixes new installations but does
-not repair such a partial router automatically. Preserve the key-mismatch guard:
-inspect the actual interface/public key and allocation before choosing recovery.
-Do not delete the interface, reset the router or silently replace a key. A STOP
-message means setup is incomplete; earlier statements in the script may already
-have applied, so it is not proof that the router was unchanged.
+It brings the router to the wanted state from wherever it is:
 
-The script creates a dedicated account/group, imports only the public SSH key,
-and places a tunnel-interface/input rule for TCP 22 from the configured app /32 ahead of input
-drop rules. It enables a disabled SSH service with its service address restricted
-to that /32. For an already enabled SSH service, it preserves existing service
-addresses and adds the app address when the list is restricted. A custom SSH port
-requires operator-assisted configuration. User ownership and existing managed firewall rules are
-checked before replacing managed resources. WAN/LAN interfaces are not reset.
+- Anything carrying this enrollment's marker is corrected.
+- Anything an older Mega Magic setup left, for example after a record was deleted, is replaced. Ownership is judged only by Mega Magic's own `mega-magic:` markers.
+- Anything belonging to someone else stops it with `STOP:` before the first change. The management user check runs just after the tunnel is installed.
+- WAN, LAN, the owner's users and other firewall rules are not touched.
 
-Software checks cover authorization, stale handshakes, destination restrictions,
-existing tunnel preservation, SSH proof rejection, fingerprint capture and bounded
-output. Physical RouterOS script execution, actual firewall ordering, Hub-to-router
-SSH forwarding and subsequent voucher/portal management still require a MikroTik
-network test.
+Details that came from testing on a real RouterOS (`TestCHRLabOnePaste`):
+
+- `/ip/service` also lists live SSH connections, so the script uses the first match, which is the service itself.
+- Current RouterOS calls the SSH allow-list `available-from`, and reading `address` returns nothing. The script reads both, keeps the existing entries and adds the app's address.
+- A custom SSH port gets a redirect on the tunnel interface, so the app always connects to port 22.
+
+## Setup that ran out
+
+If a script's key has ended and the router never connected, a new script gets a fresh Hub allocation and key. The new script corrects whatever an earlier paste left. This never happens to a router with a saved login: new scripts are refused for those.
+
+## Delete
+
+Delete removes the record and ends the Hub connection in one step. If the Hub cannot end it, the record stays. The user then gets a script that removes the setup from the router, and can skip it if the same router will connect again.
+
+A record with voucher or PPPoE history cannot be deleted yet, and its Hub connection stays. What should happen then is an open owner decision.
+
+## The Hub
+
+The Hub's peer list is the source of truth. At startup and every 30 seconds it restores WireGuard to match and saves the WireGuard file, so a crash cannot cut routers off. It never removes a live peer it does not know. The Hub's key and peer list are in the encrypted off-server backup (`docs/BACKUPS.md`). Install with `scripts/deploy-hub-reconcile.sh`.
+
+## Not proven yet
+
+Tested on a RouterOS 7.24.6 CHR without a real tunnel, because that would add a peer to the production Hub. A real router must still prove the handshake, the login over the tunnel, older RouterOS versions, and a paste through WinBox itself.

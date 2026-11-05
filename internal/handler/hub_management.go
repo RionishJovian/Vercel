@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/netip"
 	"strings"
@@ -54,23 +55,50 @@ func (h *VPSHandler) FinishGatewayConnection(c *gin.Context) {
 		c.JSON(404, gin.H{"error": "gateway not found"})
 		return
 	}
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 25*time.Second)
-	defer cancel()
-	p, err := h.liveHub.InspectRouter(ctx, hub.Identity{TenantID: biz, RouterID: id, RequestedBy: user})
-	if err != nil || p.TenantID != biz || p.RouterID != id || p.State != "active" || p.LastHandshakeAt == nil || time.Since(*p.LastHandshakeAt) < 0 || time.Since(*p.LastHandshakeAt) > 5*time.Minute {
+	switch err := h.completeConnection(c.Request.Context(), biz, user, id); {
+	case errors.Is(err, errHubNoRecentHandshake):
 		c.JSON(409, gin.H{"code": "hub_handshake_unverified", "error": "No recent Magic Hub handshake is verified. The router may be offline or its tunnel may be unreachable."})
-		return
+	case errors.Is(err, errHubInvalidAddress):
+		c.JSON(502, gin.H{"error": "invalid Hub address"})
+	case err != nil:
+		c.JSON(409, gin.H{"code": "hub_management_unverified", "error": "Management not verified yet. Paste the complete setup script on the router; pasting it again is safe."})
+	default:
+		c.JSON(200, gin.H{"state": "management_authenticated", "device_id": id, "lan_reachability_verified": false})
+	}
+}
+
+var (
+	errHubNoRecentHandshake = errors.New("no recent Magic Hub handshake")
+	errHubInvalidAddress    = errors.New("invalid Hub address")
+)
+
+// completeConnection verifies the router over its tunnel and saves the connection.
+// The Hub supplies both the tunnel address and the expected router key.
+func (h *VPSHandler) completeConnection(parent context.Context, biz, requester, id string) error {
+	ctx, cancel := context.WithTimeout(parent, 25*time.Second)
+	defer cancel()
+	p, err := h.liveHub.InspectRouter(ctx, hub.Identity{TenantID: biz, RouterID: id, RequestedBy: requester})
+	if err != nil || p.TenantID != biz || p.RouterID != id || p.State != "active" || p.LastHandshakeAt == nil || time.Since(*p.LastHandshakeAt) < 0 || time.Since(*p.LastHandshakeAt) > 5*time.Minute {
+		return errHubNoRecentHandshake
 	}
 	addr, err := netip.ParsePrefix(p.TunnelAddress)
 	if err != nil || !addr.Addr().Is4() || !addr.Addr().IsPrivate() || addr.Bits() != 32 {
-		c.JSON(502, gin.H{"error": "invalid Hub address"})
-		return
+		return errHubInvalidAddress
 	}
-	if err := h.automaticVerify(ctx, biz, id, addr.Addr().String(), p.RouterPublicKey); err != nil {
-		c.JSON(409, gin.H{"code": "hub_management_unverified", "error": "Management not verified. Run the complete setup script, then retry. If the app restarted or setup expired, generate a new script."})
-		return
+	return h.automaticVerify(ctx, biz, id, addr.Addr().String(), p.RouterPublicKey)
+}
+
+// CompletePendingConnection is the system task's way in: a pasted script connects
+// the router with nobody watching. It reports whether the router has connected.
+func (h *VPSHandler) CompletePendingConnection(ctx context.Context, biz, id string) (bool, error) {
+	if h.automaticVerify == nil || h.liveHub == nil || h.livePlan == nil || !h.livePlan(biz) {
+		return false, nil
 	}
-	c.JSON(200, gin.H{"state": "management_authenticated", "device_id": id, "lan_reachability_verified": false})
+	err := h.completeConnection(ctx, biz, "hub-auto-connect", id)
+	if errors.Is(err, errHubNoRecentHandshake) {
+		return false, nil // The script may not have been pasted yet.
+	}
+	return err == nil, err
 }
 
 func (h *VPSHandler) AuthenticateGateway(c *gin.Context) {

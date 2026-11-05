@@ -119,3 +119,22 @@ The other `fw.*` keys (preview-only note, checking, applying, failure texts) fol
 ## Network form labels (2026-11-04)
 
 All Burmese text for the Internet Setup forms is in `app/src/i18n/networkLabels.ts`, next to its English wording. Please review that file as a whole.
+
+## Magic Hub one paste (2026-11-05)
+
+| Key | English | Burmese (to review) |
+|---|---|---|
+| `hub.w.scriptBody` | Copy the whole block into the WinBox terminal and press Enter. Mega Magic then connects by itself, so you can close this page. | Block တစ်ခုလုံးကို WinBox terminal ထဲ ကူးထည့်ပြီး Enter နှိပ်ပါ။ ပြီးလျှင် Mega Magic က အလိုအလျောက် ချိတ်ဆက်ပေးမည်ဖြစ်၍ ဤစာမျက်နှာကို ပိတ်နိုင်သည်။ |
+| `hub.w.once` | If the router prints STOP:, fix what it names and paste the same script again. Pasting it again is always safe. | Router က STOP: ဟု ပြပါက ဖော်ပြထားသည့်အရာကို ပြင်ပြီး ဤ script ကိုပင် ထပ် paste လုပ်ပါ။ ထပ် paste လုပ်ခြင်းက အမြဲ ဘေးကင်းပါသည်။ |
+| `hub.keepPrivate` | Keep this script private: it holds this router's tunnel key. | ဤ script ကို လျှို့ဝှက်ထားပါ။ ၎င်းတွင် ဤ Router ၏ tunnel key ပါဝင်သည်။ |
+| `hub.delNoReset` | This ends its Magic Hub connection. The router's other settings stay as they are. | ၎င်းသည် Magic Hub ချိတ်ဆက်မှုကို ဖြတ်ပါမည်။ Router ၏ အခြားဆက်တင်များ မပြောင်းပါ။ |
+| `hub.w.t3` | 3. Connected | ၃။ ချိတ်ဆက်ပြီးပါပြီ |
+| `hub.w.s3` | Connected | ချိတ်ပြီး |
+| `hub.w.waiting` | Waiting for your router… | သင့် Router ကို စောင့်နေသည်… |
+| `hub.w.reached` | Your router reached Magic Hub. Finishing the connection… | သင့် Router သည် Magic Hub သို့ ရောက်ပါပြီ။ ချိတ်ဆက်မှုကို အပြီးသတ်နေသည်… |
+| `hub.connected` | Connected to Magic Hub | Magic Hub နှင့် ချိတ်ဆက်ပြီး |
+| `hub.delDoneTitle` | Record deleted | မှတ်တမ်းကို ဖျက်ပြီးပါပြီ |
+| `hub.delDoneBody` | Paste this in WinBox to remove the Magic Hub setup from the router. Skip it if you will connect this router again. | Router မှ Magic Hub setup ကို ဖယ်ရှားရန် ဤ script ကို WinBox တွင် paste လုပ်ပါ။ ဤ Router ကို ပြန်ချိတ်မည်ဆိုပါက ကျော်နိုင်သည်။ |
+| `hub.delDone` | Done | ပြီးပါပြီ |
+| `hub.progress.expired` | Setup expired. Open Connect Magic Hub for a new script. | Setup သက်တမ်းကုန်သွားပါပြီ။ Script အသစ်အတွက် Magic Hub ချိတ်မည် ကို ဖွင့်ပါ။ |
+| `hub.progress.pending` | Setup is waiting for the router to connect. | Setup သည် Router ချိတ်ဆက်လာရန် စောင့်နေသည်။ |

@@ -2,14 +2,16 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { api, ApiError, isUnauthorized } from "../../lib/api";
 import { useI18n } from "../../i18n";
 import { Note } from "../../components/ui";
-import { enrollError, finishError } from "./messages";
+import { enrollError } from "./messages";
 
-interface Enrolled { state?: string; router_configuration_required?: boolean; one_paste?: boolean; automatic_management?: boolean; existing_tunnel_required?: boolean; router_script?: string; tunnel_address?: string; hub_public_key?: string; endpoint?: string; allowed_ips?: string[] }
+interface Enrolled { state?: string; router_configuration_required?: boolean; one_paste?: boolean; automatic_management?: boolean; router_script?: string; tunnel_address?: string; hub_public_key?: string; endpoint?: string; allowed_ips?: string[] }
+interface Live { handshake_status?: string; connection?: { management?: string } }
 const okScript = (s: unknown): s is string => typeof s === "string" && s.trim() !== "" && s.length <= 32768;
 type StepNo = 1 | 2 | 3;
 const STEPS: StepNo[] = [1, 2, 3];
+const POLL_MS = 5000, SLOW_MS = 120000;
 
-function Script({ title, text }: { title: string; text: string }) {
+export function Script({ title, text }: { title: string; text: string }) {
   const { t } = useI18n();
   const area = useRef<HTMLTextAreaElement>(null);
   const [label, setLabel] = useState<"copy" | "copied" | "manual">("copy");
@@ -25,20 +27,18 @@ function Script({ title, text }: { title: string; text: string }) {
   );
 }
 
-/** Script steps reflect completed actions; existing setups can be checked directly. */
-function Rail({ step, completed, hasScript, busy, onGo }: { step: StepNo; completed: boolean[]; hasScript: boolean; busy: boolean; onGo: (s: StepNo) => void }) {
+function Rail({ step }: { step: StepNo }) {
   const { t } = useI18n();
   return (
     <ol className="wiz-rail" aria-label={t("hub.w.progress")}>
       {STEPS.map((n) => {
-        const state = n === step ? "current" : completed[n - 1] ? "done" : "todo";
-        const label = t("hub.w.s" + n);
+        const state = n === step ? "current" : n < step ? "done" : "todo";
         return (
           <li key={n} data-state={state}>
-            <button type="button" className="wiz-dot" aria-current={n === step ? "step" : undefined} disabled={busy || n === step || n === 2 && !hasScript} onClick={() => onGo(n)}>
+            <span className="wiz-dot" aria-current={n === step ? "step" : undefined}>
               <span className="wiz-num" aria-hidden="true">{state === "done" ? "✓" : n}</span>
-              <span className="wiz-name">{label}</span>
-            </button>
+              <span className="wiz-name">{t("hub.w.s" + n)}</span>
+            </span>
           </li>
         );
       })}
@@ -51,117 +51,90 @@ function Where() {
   return <details className="wiz-where"><summary>{t("hub.w.where")}</summary><p className="soft small">{t("hub.w.whereBody")}</p></details>;
 }
 
-/** Step-by-step connection for a gateway. The router keeps its own private key; nothing here asks for router credentials. */
+/** One paste connects the router: the app finishes by itself, even if this page is closed. Nothing here asks for router credentials. */
 export function Enrollment({ id, onVerified }: { id: string; onVerified: () => void }) {
   const { t } = useI18n();
-  const [step, setStep] = useState<StepNo>(1);
-  const [pasted, setPasted] = useState(false);
-  const [recovery, setRecovery] = useState(false), [showRecovery, setShowRecovery] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<{ ok: true; data: Enrolled; repair: boolean } | { ok: false; key: string } | null>(null);
-  const [fin, setFin] = useState<{ busy: boolean; key?: string; ok?: boolean }>({ busy: false });
+  const [result, setResult] = useState<{ ok: true; data: Enrolled } | { ok: false; key: string } | null>(null);
+  const [connected, setConnected] = useState(false), [reached, setReached] = useState(false), [slow, setSlow] = useState(false);
   const head = useRef<HTMLHeadingElement>(null);
   const first = useRef(true);
   const pending = useRef(false);
+  const verified = useRef(onVerified);
+  useEffect(() => { verified.current = onVerified; }, [onVerified]);
   const eid = encodeURIComponent(id);
+  const waiting = result?.ok === true && !connected;
+  const step: StepNo = connected ? 3 : result?.ok ? 2 : 1;
 
   // Move focus to the new step's heading so keyboard and screen-reader users land on it.
   useEffect(() => { if (first.current) { first.current = false; return; } head.current?.focus(); }, [step]);
-  const go = (s: StepNo) => setStep(s);
-  const working = busy || fin.busy;
+
+  // The server connects the router as soon as it reaches the Hub. This only watches for that.
+  useEffect(() => {
+    if (!waiting) return;
+    let live = true, timer: ReturnType<typeof setTimeout>;
+    const started = Date.now();
+    const poll = async () => {
+      try {
+        const r = await api.get<Live>(`/vps/peers/${eid}/live`);
+        if (!live) return;
+        if (r.connection?.management === "saved") { setConnected(true); verified.current(); return; }
+        setReached(r.handshake_status === "recent_handshake");
+      } catch (err) {
+        if (isUnauthorized(err)) { location.reload(); return; }
+      }
+      if (!live) return;
+      setSlow(Date.now() - started >= SLOW_MS);
+      timer = setTimeout(() => void poll(), POLL_MS);
+    };
+    timer = setTimeout(() => void poll(), POLL_MS);
+    return () => { live = false; clearTimeout(timer); };
+  }, [waiting, eid]);
+
   async function enroll(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (pending.current || fin.ok) return;
-    const f = new FormData(e.currentTarget);
-    if (f.get("confirm") !== "on") { setResult({ ok: false, key: "hub.confirmNeeded" }); return; }
-    const resume = f.get("resume") === "on";
-    pending.current = true; setBusy(true); setResult(null); setPasted(false); setFin({ busy: false });
+    if (pending.current) return;
+    if (new FormData(e.currentTarget).get("confirm") !== "on") { setResult({ ok: false, key: "hub.confirmNeeded" }); return; }
+    pending.current = true; setBusy(true); setResult(null);
     try {
-      const r = await api.post<Enrolled>(`/vps/peers/${eid}/quick-enroll`, { management_rest_port: Number(f.get("port")), confirm_enrollment: true, ...(resume ? { resume_existing: true } : {}) });
-      const repair = r.existing_tunnel_required === true && r.one_paste === false && resume;
-      if (r.state !== "hub_peer_enrolled" || r.router_configuration_required !== true || (!repair && r.one_paste !== true) || r.automatic_management !== true || !okScript(r.router_script)) throw new Error("unverified");
-      setResult({ ok: true, data: r, repair });
-      go(2);
+      const r = await api.post<Enrolled>(`/vps/peers/${eid}/quick-enroll`, { management_rest_port: 443, confirm_enrollment: true });
+      if (r.state !== "hub_peer_enrolled" || r.router_configuration_required !== true || r.one_paste !== true || r.automatic_management !== true || !okScript(r.router_script)) throw new Error("unverified");
+      setResult({ ok: true, data: r });
     } catch (err) {
       if (isUnauthorized(err)) throw err;
-      const code = err instanceof ApiError ? (err.data as { code?: string } | null)?.code : undefined;
-      if (code === "hub_router_key_unavailable") setShowRecovery(true);
-      const key = enrollError(err instanceof ApiError ? err.status : undefined, code);
-      setResult({ ok: false, key });
-      if (code === "hub_management_already_configured") go(3);
+      setResult({ ok: false, key: enrollError(err instanceof ApiError ? err.status : undefined, err instanceof ApiError ? (err.data as { code?: string } | null)?.code : undefined) });
     }
     finally { pending.current = false; setBusy(false); }
-  }
-  async function finish() {
-    if (pending.current || fin.ok) return;
-    pending.current = true; setFin({ busy: true });
-    try {
-      const r = await api.post<{ state?: string }>(`/vps/peers/${eid}/finish`, {});
-      if (r.state !== "management_authenticated") throw new Error("unverified");
-      setFin({ busy: false, ok: true, key: "hub.fin.ok" });
-      onVerified();
-    } catch (err) {
-      if (isUnauthorized(err)) throw err;
-      setFin({ busy: false, key: finishError(err instanceof ApiError ? err.status : undefined, err instanceof ApiError ? (err.data as { code?: string } | null)?.code : undefined) });
-    }
-    finally { pending.current = false; }
   }
 
   return (
     <div className="stack enroll wiz">
-      <Rail step={step} completed={[result?.ok === true, pasted, fin.ok === true]} hasScript={result?.ok === true} busy={working} onGo={setStep} />
+      <Rail step={step} />
 
       {step === 1 && (
         <section className="stack" aria-labelledby={"wiz-h-" + id}>
           <h3 id={"wiz-h-" + id} ref={head} tabIndex={-1}>{t("hub.w.t1")}</h3>
           <p className="soft small">{t("hub.w.b1")}</p>
           <form className="stack" onSubmit={enroll}>
-            <fieldset className="nolock stack" disabled={working || fin.ok}>
-              <label className="field"><span>{t("hub.port")}</span><input className="input" name="port" type="number" min={1} max={65535} defaultValue={443} required /></label>
+            <fieldset className="nolock stack" disabled={busy}>
               <label className="check"><span>{t("hub.authorize")}</span><input type="checkbox" name="confirm" required /></label>
-              {showRecovery && <label className="check"><span>{t("hub.repair")}</span><input type="checkbox" name="resume" checked={recovery} onChange={(e) => setRecovery(e.target.checked)} /></label>}
               <button className="btn" type="submit">{busy ? t("hub.creating") : t("hub.generate")}</button>
             </fieldset>
           </form>
           {result && !result.ok && <Note kind="warn">{t(result.key)}</Note>}
-          <button className="pill" type="button" disabled={working} onClick={() => go(3)}>{t("hub.w.existing")}</button>
         </section>
       )}
 
       {step === 2 && result?.ok && (
         <section className="stack" aria-labelledby={"wiz-h-" + id}>
           <h3 id={"wiz-h-" + id} ref={head} tabIndex={-1}>{t("hub.w.t2")}</h3>
-          <p className="soft small">{t("hub.w.b2")}</p>
-          {result?.ok && (
-            <div className="stack" role="status" aria-live="polite">
-              <Note kind="ok">{result.repair ? t("hub.repairReady") : t("hub.scriptReady")}</Note>
-              <Where />
-              <p className="soft small">{result.repair ? t("hub.repairBody") : t("hub.w.scriptBody")}</p>
-              <Script title={t("hub.setupTitle")} text={result.data.router_script ?? ""} />
-              <Note kind="warn">{t("hub.w.once")}</Note>
-              <details className="wiz-where"><summary>{t("hub.w.details")}</summary>
-                <dl className="facts">
-                  <dt>{t("hub.addr")}</dt><dd><code>{result.data.tunnel_address}</code></dd>
-                  <dt>{t("hub.pubkey")}</dt><dd><code>{result.data.hub_public_key || t("hub.notReported")}</code></dd>
-                  <dt>{t("hub.endpoint")}</dt><dd><code>{result.data.endpoint || t("hub.notReported")}</code></dd>
-                  <dt>{t("hub.allowed")}</dt><dd><code>{Array.isArray(result.data.allowed_ips) ? result.data.allowed_ips.join(", ") : t("hub.notReported")}</code></dd>
-                </dl>
-              </details>
-              <p className="soft small">{t("hub.keepPrivate")}</p>
-              <button className="btn" type="button" disabled={working} onClick={() => { setPasted(true); go(3); }}>{t("hub.w.pasted")}</button>
-            </div>
-          )}
-        </section>
-      )}
-
-      {step === 3 && (
-        <section className="stack" aria-labelledby={"wiz-h-" + id}>
-          <h3 id={"wiz-h-" + id} ref={head} tabIndex={-1}>{t("hub.w.t3")}</h3>
-          <p className="soft small">{t("hub.w.b3")}</p>
-          {result && !result.ok && result.key === "hub.err.already" && !fin.key && <Note>{t(result.key)}</Note>}
-          <button className="btn" type="button" disabled={working || fin.ok} onClick={() => void finish()}>{fin.busy ? t("hub.checking") : fin.key && !fin.ok ? t("hub.w.checkAgain") : t("hub.w.check")}</button>
-          {fin.key && <Note kind={fin.ok ? "ok" : "warn"}>{t(fin.key)}</Note>}
-          {fin.key && !fin.ok && (
+          <Where />
+          <p className="soft small">{t("hub.w.scriptBody")}</p>
+          <Script title={t("hub.setupTitle")} text={result.data.router_script ?? ""} />
+          <Note kind="warn">{t("hub.w.once")}</Note>
+          <p className="soft small">{t("hub.keepPrivate")}</p>
+          <div role="status" aria-live="polite"><Note kind={reached ? "ok" : ""}>{t(reached ? "hub.w.reached" : "hub.w.waiting")}</Note></div>
+          {slow && (
             <div className="stack" role="group" aria-label={t("hub.w.help")}>
               <b>{t("hub.w.help")}</b>
               <ul className="wiz-list">
@@ -169,10 +142,21 @@ export function Enrollment({ id, onVerified }: { id: string; onVerified: () => v
               </ul>
             </div>
           )}
-          <div className="row" style={{ justifyContent: "flex-start", flexWrap: "wrap" }}>
-            {result?.ok && <button className="pill" type="button" disabled={working} onClick={() => go(2)}>{t("hub.w.back2")}</button>}
-            <button className="pill" type="button" disabled={working} onClick={() => go(1)}>{t("hub.w.setup")}</button>
-          </div>
+          <details className="wiz-where"><summary>{t("hub.w.details")}</summary>
+            <dl className="facts">
+              <dt>{t("hub.addr")}</dt><dd><code>{result.data.tunnel_address}</code></dd>
+              <dt>{t("hub.pubkey")}</dt><dd><code>{result.data.hub_public_key || t("hub.notReported")}</code></dd>
+              <dt>{t("hub.endpoint")}</dt><dd><code>{result.data.endpoint || t("hub.notReported")}</code></dd>
+              <dt>{t("hub.allowed")}</dt><dd><code>{Array.isArray(result.data.allowed_ips) ? result.data.allowed_ips.join(", ") : t("hub.notReported")}</code></dd>
+            </dl>
+          </details>
+        </section>
+      )}
+
+      {step === 3 && (
+        <section className="stack" aria-labelledby={"wiz-h-" + id}>
+          <h3 id={"wiz-h-" + id} ref={head} tabIndex={-1}>{t("hub.w.t3")}</h3>
+          <Note kind="ok">{t("hub.fin.ok")}</Note>
         </section>
       )}
     </div>
