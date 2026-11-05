@@ -11,6 +11,8 @@ MM_GUEST_ACTIONS_ENABLED=true
 
 Run on the lab router with one phone, using a voucher made for the test. Do not use a customer's router.
 
+These already pass on a CHR (RouterOS 7.24.6), so on hardware they mainly confirm the same behaviour on 7.25: ending a session, blocking and unblocking, refusing an owner's binding, and deleting an unused, online or used voucher login. Only hardware can show the rest: what a real phone's browser does after Kick and after a ban, and a phone changing its private Wi-Fi address.
+
 ## Reads
 
 | Step | Pass when |
