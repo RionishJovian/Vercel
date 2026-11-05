@@ -27,6 +27,10 @@ Details that came from testing on a real RouterOS (`TestCHRLabOnePaste`):
 - The script waits up to 30 seconds and says `NOT CONNECTED YET` if the router has not reached the Hub. The setup stays in place and connects by itself once it can.
 - A custom SSH port gets a redirect on the tunnel interface, so the app always connects to port 22.
 
+## Deleting a router with sales history
+
+A router with voucher or PPPoE history can't lose that history, so Delete keeps its record and history, clears its saved login and ends its Hub connection. If the Hub can't end the connection, nothing changes. The same router or a replacement can then connect again on that record with a new script. A router with no history is deleted fully.
+
 ## Setup that ran out
 
 If a script's key has ended and the router never connected, a new script gets a fresh Hub allocation and key. The new script corrects whatever an earlier paste left. This never happens to a router with a saved login: new scripts are refused for those.

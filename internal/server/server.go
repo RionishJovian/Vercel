@@ -366,6 +366,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 				return nil, errors.New("management credential encryption unavailable")
 			}
 			go newHubAutoConnect(database.PendingEnrollmentStore{DB: db, Box: box}, vpsHandler).run(context.Background())
+			routerHandler.ConfigureHubForget(database.PendingEnrollmentStore{DB: db, Box: box}.Delete)
 			routerHandler.ConfigureHubRemoval(func(ctx context.Context, biz, requester, id string) (string, error) {
 				identity := hub.Identity{TenantID: biz, RouterID: id, RequestedBy: requester}
 				peer, err := client.InspectRouter(ctx, identity)

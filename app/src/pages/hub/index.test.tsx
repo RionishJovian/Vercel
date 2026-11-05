@@ -58,6 +58,34 @@ describe("Magic Hub card", () => {
     await waitFor(() => expect(deleted).toHaveLength(1));
     expect(screen.queryByRole("button", { name: "Done" })).toBeNull();
   });
+  it("names the router in the delete question", async () => {
+    open();
+    await screen.findByText("Shop router");
+    fireEvent.click(screen.getByRole("button", { name: "Delete record" }));
+    const dialog = await screen.findByRole("alertdialog");
+    expect(dialog.textContent).toContain("Shop router");
+  });
+  it("explains a kept record, then offers to connect again", async () => {
+    deleteAnswer = { status: 200, body: { message: "kept", record_kept: true, router_cleanup_script: "# remove the setup" } };
+    open();
+    await startDelete();
+    await screen.findByText("Connection ended. History kept.");
+    await screen.findByDisplayValue("# remove the setup");
+    routers = [{ ...CONNECTED, management_connected: false, management_ip: undefined }];
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    await screen.findByRole("button", { name: "Connect Magic Hub" });
+    screen.getByText(/stay on its record/);
+    expect(screen.queryByText("Connected to Magic Hub")).toBeNull();
+    expect(screen.getByText("Shop router")).toBeTruthy();
+  });
+  it("explains a kept record when there is nothing to clean up", async () => {
+    deleteAnswer = { status: 200, body: { message: "kept", record_kept: true } };
+    routers = [{ ...CONNECTED, management_connected: false }];
+    open();
+    await startDelete();
+    await screen.findByText(/stay on its record/);
+    expect(screen.queryByRole("button", { name: "Done" })).toBeNull();
+  });
   it("shows why a delete was refused and keeps the card", async () => {
     deleteAnswer = { status: 503, body: { error: "Magic Hub could not end this router's connection, so nothing was deleted. Try again." } };
     open();

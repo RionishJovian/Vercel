@@ -405,6 +405,22 @@ func (r *DeviceRepository) DeleteDeviceTXN(tx *sql.Tx, deviceID string) error {
 	return nil
 }
 
+// ClearManagementTXN removes a router's saved login and tunnel address, keeping the
+// record and its history, so the same router or a replacement can connect again.
+func (r *DeviceRepository) ClearManagementTXN(tx *sql.Tx, businessID, deviceID string) error {
+	result, err := tx.Exec(`UPDATE devices
+		   SET management_ip = NULL, ssh_port = 22, ssh_username = NULL, ssh_secret_ciphertext = NULL,
+		       ssh_secret_kind = NULL, ssh_host_key_fingerprint = NULL, is_online = false, updated_at = now()
+		 WHERE device_id = $1 AND business_id = $2`, deviceID, businessID)
+	if err != nil {
+		return fmt.Errorf("clear device management: %w", err)
+	}
+	if rows, _ := result.RowsAffected(); rows == 0 {
+		return fmt.Errorf("device not found")
+	}
+	return nil
+}
+
 // DiscoveryLabel represents a saved friendly name and type for a discovered device.
 type DiscoveryLabel struct {
 	MACAddress string    `json:"mac"`
