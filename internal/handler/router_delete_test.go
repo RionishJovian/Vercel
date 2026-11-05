@@ -145,22 +145,79 @@ func TestDBRouterDeletionEndsHubConnection(t *testing.T) {
 			t.Fatalf("removed the wrong peer: %s", called)
 		}
 	})
-	t.Run("a record with history keeps its Hub connection", func(t *testing.T) {
+	// A router with sales history: the record and history stay, the login and connection go.
+	withHistory := func(t *testing.T) string {
+		t.Helper()
 		device := insertGatewayNoSite(db, business)
-		if _, err := db.Exec(`INSERT INTO vouchers(business_id,device_id,plan_key,plan_label,code,price_mmk) VALUES($1,$2,'guest-internet','Daily',$3,500)`, business, device, "HUBDEL-"+randHex(6)); err != nil {
+		var voucher string
+		if err := db.QueryRow(`INSERT INTO vouchers(business_id,device_id,plan_key,plan_label,code,price_mmk) VALUES($1,$2,'guest-internet','Daily',$3,500) RETURNING id`, business, device, "HUBDEL-"+randHex(6)).Scan(&voucher); err != nil {
 			t.Fatal(err)
 		}
-		var grantVoucher string
-		if err := db.QueryRow(`SELECT id FROM vouchers WHERE device_id=$1`, device).Scan(&grantVoucher); err != nil {
+		if _, err := db.Exec(`INSERT INTO guest_voucher_grants(voucher_id,business_id,device_id,minutes,data_mb) VALUES($1,$2,$3,60,1024)`, voucher, business, device); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := db.Exec(`INSERT INTO guest_voucher_grants(voucher_id,business_id,device_id,minutes,data_mb) VALUES($1,$2,$3,60,1024)`, grantVoucher, business, device); err != nil {
+		if _, err := db.Exec(`UPDATE devices SET management_ip='10.77.0.50', ssh_port=2222, ssh_username='mm-test', ssh_secret_ciphertext='sealed', ssh_secret_kind='key', ssh_host_key_fingerprint='SHA256:'||repeat('A',43), is_online=true WHERE device_id=$1`, device); err != nil {
 			t.Fatal(err)
 		}
-		called := false
-		h.ConfigureHubRemoval(func(context.Context, string, string, string) (string, error) { called = true; return "", nil })
-		if w := remove(h, device); w.Code != http.StatusConflict || called || !exists(device) {
-			t.Fatalf("status %d, Hub called %v", w.Code, called)
+		return device
+	}
+	login := func(t *testing.T, device string) (saved bool, port int, online bool) {
+		t.Helper()
+		if err := db.QueryRow(`SELECT management_ip IS NOT NULL OR ssh_username IS NOT NULL OR ssh_secret_ciphertext IS NOT NULL OR ssh_secret_kind IS NOT NULL OR ssh_host_key_fingerprint IS NOT NULL, ssh_port, is_online FROM devices WHERE device_id=$1`, device).Scan(&saved, &port, &online); err != nil {
+			t.Fatal(err)
+		}
+		return saved, port, online
+	}
+	history := func(t *testing.T, device string) int {
+		t.Helper()
+		var rows int
+		if err := db.QueryRow(`SELECT count(*) FROM vouchers v JOIN guest_voucher_grants g ON g.voucher_id=v.id WHERE v.device_id=$1 AND g.device_id=$1 AND g.minutes=60`, device).Scan(&rows); err != nil {
+			t.Fatal(err)
+		}
+		return rows
+	}
+	t.Run("a record with history ends the connection and keeps the record", func(t *testing.T) {
+		device := withHistory(t)
+		var ended, forgotten string
+		h.ConfigureHubRemoval(func(_ context.Context, _, _, id string) (string, error) { ended = id; return "cleanup-script", nil })
+		h.ConfigureHubForget(func(_ context.Context, _, id string) error { forgotten = id; return nil })
+		defer h.ConfigureHubForget(nil)
+		w := remove(h, device)
+		if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"record_kept":true`) || !strings.Contains(w.Body.String(), `"router_cleanup_script":"cleanup-script"`) {
+			t.Fatalf("status %d body %s", w.Code, w.Body.String())
+		}
+		if ended != device || forgotten != device {
+			t.Fatalf("ended %q, forgotten %q, want %q", ended, forgotten, device)
+		}
+		if !exists(device) || history(t, device) != 1 {
+			t.Fatal("the record and its history must stay")
+		}
+		if saved, port, online := login(t, device); saved || port != 22 || online {
+			t.Fatalf("login still saved: %v, port %d, online %v", saved, port, online)
+		}
+		// Deleting again finds nothing left to end and changes nothing else.
+		h.ConfigureHubRemoval(func(context.Context, string, string, string) (string, error) { return "", nil })
+		if w := remove(h, device); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"record_kept":true`) || strings.Contains(w.Body.String(), "router_cleanup_script") || !exists(device) || history(t, device) != 1 {
+			t.Fatalf("second delete: status %d body %s", w.Code, w.Body.String())
+		}
+	})
+	t.Run("Hub unavailable changes nothing on a record with history", func(t *testing.T) {
+		device := withHistory(t)
+		h.ConfigureHubRemoval(func(context.Context, string, string, string) (string, error) { return "", errors.New("hub down") })
+		if w := remove(h, device); w.Code != http.StatusServiceUnavailable {
+			t.Fatalf("status %d", w.Code)
+		}
+		if saved, port, online := login(t, device); !saved || port != 2222 || !online || history(t, device) != 1 {
+			t.Fatalf("a failed delete changed the login: %v, port %d, online %v", saved, port, online)
+		}
+	})
+	t.Run("a failed setup clear does not undo the result", func(t *testing.T) {
+		device := withHistory(t)
+		h.ConfigureHubRemoval(func(context.Context, string, string, string) (string, error) { return "", nil })
+		h.ConfigureHubForget(func(context.Context, string, string) error { return errors.New("store down") })
+		defer h.ConfigureHubForget(nil)
+		if w := remove(h, device); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"record_kept":true`) {
+			t.Fatalf("status %d body %s", w.Code, w.Body.String())
 		}
 	})
 }
