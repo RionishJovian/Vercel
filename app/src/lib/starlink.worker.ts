@@ -2,11 +2,11 @@
 // Downloads and calculates off the main thread so the map stays smooth on phones. Only runs while the page is showing.
 import { assess, inAreaNow, nearby, SCAN_EVERY_MS, toSatellites, type OrbitFrame, type OrbitPayload, type Satellite } from "./starlink";
 
-const CHECK_READY_MS = 3_600_000, CHECK_FAILED_MS = 300_000;
+const CHECK_READY_MS = 3_600_000, CHECK_FAILED_MS = 300_000, CHECK_DOWNLOADING_MS = 15_000;
 const URL_ORBITS = "/api/v1/map/starlink", URL_REFRESH = "/api/v1/auth/refresh";
 
 let satellites: Satellite[] = [], candidates: Satellite[] = [], fetchedAt = "", etag = "";
-let lastScan = 0, lastLoad = 0, loading = false, timer: ReturnType<typeof setInterval> | undefined;
+let lastScan = 0, lastLoad = 0, loading = false, serverDownloading = false, timer: ReturnType<typeof setInterval> | undefined;
 
 const post = (frame: OrbitFrame) => self.postMessage(frame, frame.coords ? [frame.coords.buffer as ArrayBuffer] : []);
 const orbits = () => fetch(URL_ORBITS, { headers: { Accept: "application/json", "X-MM-CSRF": "1" } });
@@ -23,21 +23,24 @@ async function load() {
   loading = true; lastLoad = Date.now();
   try {
     const res = await fetchOrbits();
+    // The server is still fetching the data from its source (HTTP 202 has no orbit data).
+    serverDownloading = res.status === 202;
+    if (serverDownloading) return;
     if (!res.ok) throw new Error("http-" + res.status);
     const tag = res.headers.get("etag") ?? "";
     if (tag && tag === etag) return;
     const data = await res.json() as OrbitPayload;
     if (!Array.isArray(data.elements)) throw new Error("bad-payload");
     satellites = toSatellites(data.elements); fetchedAt = data.fetched_at; etag = tag; lastScan = 0;
-  } catch { /* Whatever was loaded stays until it goes out of date; tick() reports the rest. */ }
+  } catch { serverDownloading = false; /* Whatever was loaded stays until it goes out of date; tick() reports the rest. */ }
   finally { loading = false; }
 }
 
 function tick() {
   const now = Date.now();
   const verdict = assess(fetchedAt, satellites, now);
-  if (!loading && now - lastLoad > (verdict.fresh ? CHECK_READY_MS : CHECK_FAILED_MS)) { void load().then(tick); }
-  if (!satellites.length) { post({ state: loading ? "loading" : "unavailable" }); return; }
+  if (!loading && now - lastLoad > (serverDownloading ? CHECK_DOWNLOADING_MS : verdict.fresh ? CHECK_READY_MS : CHECK_FAILED_MS)) { void load().then(tick); }
+  if (!satellites.length) { post({ state: loading || serverDownloading ? "loading" : "unavailable" }); return; }
   if (!verdict.fresh) { post({ state: "stale" }); return; }
   const date = new Date(now);
   if (now - lastScan >= SCAN_EVERY_MS) { candidates = nearby(satellites, date); lastScan = now; }
