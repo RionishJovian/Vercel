@@ -57,16 +57,22 @@ export function GuestPage() {
   const [note, setNote] = useState("");
   const [html, setHtml] = useState<string | null>(null);
   const hosted = useRef<HTMLIFrameElement>(null);
+  const router = useRef<HTMLIFrameElement>(null);
   const initial = useRef(false);
 
   useEffect(() => { if (!initial.current && (data || (error && (error as { status?: number }).status === 404))) { initial.current = true; setDraft(fromConfig(cfg)); } }, [data, error, cfg]);
 
   const pushHosted = useCallback(() => {
     if (!draft || !hosted.current?.contentWindow) return;
-    hosted.current.contentWindow.postMessage({ type: "mm-portal-preview", config: { ...previewConfig(draft, cfg), payment_instructions: draft.instructions.trim() }, lang }, location.origin);
+    hosted.current.contentWindow.postMessage({ type: "mm-portal-preview", start: "pay", config: { ...previewConfig(draft, cfg), payment_instructions: draft.instructions.trim() }, lang }, location.origin);
   }, [draft, cfg, lang]);
   useEffect(() => {
-    const onReady = (ev: MessageEvent) => { if (ev.origin === location.origin && (ev.data as { type?: string } | null)?.type === "mm-portal-preview-ready") pushHosted(); };
+    const onReady = (ev: MessageEvent) => {
+      const type = (ev.data as { type?: string } | null)?.type;
+      if (ev.origin === location.origin && type === "mm-portal-preview-ready") pushHosted();
+      // The router page preview is a sandboxed srcdoc frame (origin "null"); only its own window may ask to switch tabs.
+      if (type === "mm-portal-preview-pay" && ev.source === router.current?.contentWindow) setDest("hosted");
+    };
     window.addEventListener("message", onReady);
     return () => window.removeEventListener("message", onReady);
   }, [pushHosted]);
@@ -120,7 +126,7 @@ export function GuestPage() {
           </div>
         </div>
         <div className="phone">
-          <iframe className="gp-frame" hidden={dest !== "router"} sandbox="allow-scripts" title={t("g.preview")} srcDoc={html ?? undefined} />
+          <iframe className="gp-frame" ref={router} hidden={dest !== "router"} sandbox="allow-scripts" title={t("g.preview")} srcDoc={html ?? undefined} />
           <iframe className="gp-frame" ref={hosted} hidden={dest !== "hosted"} src="/portal.html?preview=1" title={t("g.previewHosted")} />
         </div>
         <p className="soft small" role="status">{note}</p>

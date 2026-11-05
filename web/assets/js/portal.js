@@ -482,7 +482,8 @@ function wirePreview() {
     var d = ev.data;
     if (!d || d.type !== "mm-portal-preview" || !d.config) return;
     if (d.lang === "my" || d.lang === "en") { LANG = d.lang; applyLang(); }
-    renderPortalHome(d.config);
+    // The console's "Bank transfer page" tab asks for the plan picker, as the router's pay link does.
+    if (d.start === "pay" && accessMethodEnabled(d.config, "mobile_payment_enabled")) renderPlans(d.config); else renderPortalHome(d.config);
   });
   if (window.parent && window.parent !== window) {
     window.parent.postMessage({ type: "mm-portal-preview-ready" }, location.origin);

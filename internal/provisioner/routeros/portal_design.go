@@ -112,6 +112,11 @@ func RenderPortalLogin(design *PortalLoginDesign, preview bool) (string, error) 
 		page = strings.ReplaceAll(page, `$(if chap-id)<script src="md5.js"></script>$(endif)`, "")
 		page = strings.ReplaceAll(page, `$(if error)<p class="err">$(error)</p>$(endif)`, "")
 		page = strings.NewReplacer("$(link-login-only)", "#", "$(link-orig)", "#", "$(chap-id)", "", "$(chap-challenge)", "").Replace(page)
+		if d.BankTransfer {
+			// A "#" link inside the console's srcdoc preview frame would load the console itself in the phone.
+			// Keep it inert and tell the console, which switches its preview to the bank transfer page.
+			page = strings.Replace(page, "</body>", `<script>(function(){var a=document.getElementById("bank-transfer");if(a){a.addEventListener("click",function(e){e.preventDefault();parent.postMessage({type:"mm-portal-preview-pay"},"*");});}})();</script></body>`, 1)
+		}
 	}
 	if len(page) > 24000 {
 		return "", fmt.Errorf("portal login page exceeds router size limit")

@@ -36,3 +36,18 @@ func TestBankTransferLinkRejectsUnsafeGatewayIDAndStaysInertInPreview(t *testing
 		t.Fatalf("preview link must be inert and not need a gateway id: %v", err)
 	}
 }
+
+func TestBankTransferPreviewTellsTheConsoleInsteadOfNavigating(t *testing.T) {
+	on, err := RenderPortalLogin(&PortalLoginDesign{BankTransfer: true}, true)
+	if err != nil || !strings.Contains(on, `mm-portal-preview-pay`) || !strings.Contains(on, `preventDefault`) {
+		t.Fatalf("preview must hand the pay click to the console: %v", err)
+	}
+	off, err := RenderPortalLogin(&PortalLoginDesign{}, true)
+	if err != nil || strings.Contains(off, `mm-portal-preview-pay`) {
+		t.Fatalf("no pay hand-off without a pay link: %v", err)
+	}
+	deployed, err := RenderPortalLogin(&PortalLoginDesign{BankTransfer: true, DeviceID: testGatewayID}, false)
+	if err != nil || strings.Contains(deployed, `mm-portal-preview-pay`) {
+		t.Fatalf("the deployed router page must never carry preview code: %v", err)
+	}
+}
