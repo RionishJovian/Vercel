@@ -302,3 +302,9 @@ Printed on the receipt itself, in `printCodes.ts` (Burmese and English together,
 | No signal yet | အချက်ပြမှု မရသေးပါ |
 | Connection ended. Record not updated. | ချိတ်ဆက်မှု ရပ်ပြီးပါပြီ။ မှတ်တမ်းကို မပြင်ရသေးပါ။ |
 | Paste this in the router's WinBox Terminal to remove the old setup. Then press Delete record again to finish. | setup ဟောင်းကို ဖယ်ဖို့ ဒါကို Router ရဲ့ WinBox Terminal မှာ paste လုပ်ပါ။ ပြီးရင် Delete record ကို ထပ်နှိပ်ပြီး အပြီးသတ်ပါ။ |
+
+## Connection history (2026-11-06)
+
+| English | Burmese |
+|---|---|
+| This state since | ဒီအခြေအနေ စတင်ချိန် |

@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"fmt"
 	"time"
+
+	"mega-magic/internal/model"
 )
 
 // DeviceConfigBackup is one tenant-scoped config snapshot for a device. content
@@ -137,4 +139,72 @@ func (r *DeviceRepository) RecordChangeTXN(tx *sql.Tx, businessID, deviceID, use
 		return fmt.Errorf("record change: %w", err)
 	}
 	return nil
+}
+
+// Connection changes use these actions in device_change_events.
+const (
+	ActionConnectionUp      = "router.connection.up"
+	ActionConnectionOffline = "router.connection.offline"
+)
+
+// ConnectionChange is the latest recorded change of one router's Hub connection.
+type ConnectionChange struct {
+	Action string
+	At     time.Time
+}
+
+// ListGatewaysAcrossTenants returns every gateway for the system's connection
+// history pass. Like ListAllPeerKeys it is never reachable from a tenant request.
+func (r *DeviceRepository) ListGatewaysAcrossTenants() ([]*model.Device, error) {
+	rows, err := r.db.Query(`SELECT business_id, device_id, hardware_name FROM devices WHERE deployment_layer = 'MAIN_GATEWAY'`)
+	if err != nil {
+		return nil, fmt.Errorf("list gateways: %w", err)
+	}
+	defer rows.Close()
+	var out []*model.Device
+	for rows.Next() {
+		d := &model.Device{DeploymentLayer: "MAIN_GATEWAY"}
+		if err := rows.Scan(&d.BusinessID, &d.DeviceID, &d.HardwareName); err != nil {
+			return nil, fmt.Errorf("scan gateway: %w", err)
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
+// LatestConnectionChanges returns each router's most recent connection change.
+func (r *DeviceRepository) LatestConnectionChanges(businessID string) (map[string]ConnectionChange, error) {
+	rows, err := r.db.Query(`SELECT DISTINCT ON (device_id) device_id, action, created_at
+		   FROM device_change_events
+		  WHERE business_id = $1 AND action IN ($2, $3)
+		  ORDER BY device_id, created_at DESC`, businessID, ActionConnectionUp, ActionConnectionOffline)
+	if err != nil {
+		return nil, fmt.Errorf("latest connection changes: %w", err)
+	}
+	defer rows.Close()
+	out := map[string]ConnectionChange{}
+	for rows.Next() {
+		var id string
+		var change ConnectionChange
+		if err := rows.Scan(&id, &change.Action, &change.At); err != nil {
+			return nil, fmt.Errorf("scan connection change: %w", err)
+		}
+		out[id] = change
+	}
+	return out, rows.Err()
+}
+
+// RecordConnectionChange adds one connection change to the router's change log.
+func (r *DeviceRepository) RecordConnectionChange(businessID, deviceID, action, reason string) error {
+	tx, err := r.db.Begin()
+	if err != nil {
+		return fmt.Errorf("record connection change: %w", err)
+	}
+	defer tx.Rollback()
+	if err := WithTenant(tx, businessID, func() error {
+		return r.RecordChangeTXN(tx, businessID, deviceID, "SYSTEM", action, reason)
+	}); err != nil {
+		return err
+	}
+	return tx.Commit()
 }

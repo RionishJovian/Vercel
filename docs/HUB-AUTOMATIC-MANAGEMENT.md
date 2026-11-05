@@ -39,6 +39,12 @@ If a script's key has ended and the router never connected, a new script gets a 
 
 `/fleet/health` is the one source of a router's connection state, and every console page reads it. For a gateway it uses the Hub's live handshake, where contact in the last 5 minutes is Online. If the Hub has no peer or cannot answer, it uses the router check, then a successful router read in the last 5 minutes. Each row names its source and, where known, its last contact and check times. A successful read is a separate fact from the tunnel: when the Hub answers, its state wins.
 
+## Connection history
+
+Each monitoring sweep asks the Hub about every gateway and adds a `router.connection.up` or `router.connection.offline` row to `device_change_events` when the state differs from the last row. A row is written only when the Hub answers, so a failed lookup is not a router drop. `/fleet/health` returns `state_since` from these rows. The offline row's reason holds the last contact time, because the row itself is written up to 5 minutes after the drop.
+
+These rows raise no incidents or alerts. Writing `peer_heartbeats` instead would feed `ClassifyPeerState` and start critical incidents for every offline router, so that stays a separate decision.
+
 ## Delete
 
 Delete removes the record and ends the Hub connection in one step. If the Hub cannot end it, the record stays. The user then gets a script that removes the setup from the router, and can skip it if the same router will connect again.
