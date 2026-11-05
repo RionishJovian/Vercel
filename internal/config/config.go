@@ -509,7 +509,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("ai.openrouter_model", "nvidia/nemotron-3-super-120b-a12b:free")
 	v.SetDefault("ai.magic_dude_provider", "openrouter")
 	v.SetDefault("ai.gemini_api_key", "")
-	v.SetDefault("ai.gemini_model", "gemini-3.8-flash")
+	v.SetDefault("ai.gemini_model", "gemini-3.5-flash-lite")
 	v.SetDefault("ai.notify_telegram_enabled", false)
 	// Production database: the merged data. `mega_magic_dev` is the pristine
 	// baseline and `mega_merge` the ETL working copy — neither should be the
