@@ -31,6 +31,7 @@ type VPSHandler struct {
 	endpointHost       string
 	liveHub            hubInspector
 	enrollmentHub      hubEnroller
+	enrollmentRemover  hubPeerRemover
 	liveDevice         func(*gin.Context, string, string) (*model.Device, error)
 	livePlan           func(string) bool
 	managementAuth     func(context.Context, string, string, string, string, string, int, string) error

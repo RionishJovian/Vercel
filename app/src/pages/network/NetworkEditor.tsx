@@ -13,7 +13,7 @@ interface Review { steps: string[]; warnings: string[]; confirmation: string }
  * timer puts it back unless the owner presses Keep. The countdown is a display only;
  * the server and the router decide what happens at the deadline.
  */
-function PendingPanel({ routerId, revertAt, onDone }: { routerId: string; revertAt: string; onDone: (message: string) => void }) {
+export function PendingPanel({ routerId, revertAt, onDone }: { routerId: string; revertAt: string; onDone: (message: string) => void }) {
   const { t } = useI18n();
   const deadline = useMemo(() => new Date(revertAt).getTime(), [revertAt]);
   const [now, setNow] = useState(() => Date.now()), [busy, setBusy] = useState(false), [error, setError] = useState("");
@@ -68,12 +68,14 @@ function CurrentSettings({ inv, kind }: { inv: Inventory; kind: string }) {
   );
 }
 
-function TaskForm({ kind, inv, defaults, routerId, routerName, locked, setLocked, onPending }: { kind: string; inv: Inventory; defaults: Record<string, string>; routerId: string; routerName: string; locked: boolean; setLocked: (b: boolean) => void; onPending: (revertAt: string) => void }) {
+function TaskForm({ kind, inv, defaults, routerId, routerName, locked, setLocked, onPending, prefill }: { kind: string; inv: Inventory; defaults: Record<string, string>; routerId: string; routerName: string; locked: boolean; setLocked: (b: boolean) => void; onPending: (revertAt: string) => void; prefill?: URLSearchParams }) {
   const { t, tn } = useI18n();
   const s = schema[kind], list = useMemo(() => listFor(inv, kind), [inv, kind]);
   const [recordId, setRecordId] = useState("");
   const selected = list.find((o) => o.id === recordId);
-  const start = (record: typeof selected) => (kind === "edit_network" && record ? { ...initialValues(kind, record, defaults), ...editNetworkValues(inv, record) } : kind === "move_network" && record ? { ...initialValues(kind, record, defaults), ...moveNetworkValues(inv, record) } : initialValues(kind, record, defaults));
+  // A link from a selected device fills a new record's form. Only this task's own fields are read, and the owner still reviews it.
+  const linked = prefill?.get("task") === kind ? Object.fromEntries(s.fields.map((f) => [f[0], prefill.get(f[0]) ?? ""]).filter(([, v]) => v)) : {};
+  const start = (record: typeof selected) => (!record ? { ...initialValues(kind, record, defaults), ...linked } : kind === "edit_network" && record ? { ...initialValues(kind, record, defaults), ...editNetworkValues(inv, record) } : kind === "move_network" && record ? { ...initialValues(kind, record, defaults), ...moveNetworkValues(inv, record) } : initialValues(kind, record, defaults));
   const [values, setValues] = useState<Record<string, string>>(() => start(undefined));
   const [review, setReview] = useState<Review | null>(null);
   const [consent, setConsent] = useState(false), [status, setStatus] = useState("");
@@ -193,16 +195,17 @@ const EMPTY_INVENTORY: Inventory = { interfaces: [], available: {}, objects: {},
  * are shown locked under a clear banner, so nothing is hidden and nothing can be
  * applied. `reason` overrides the banner when the caller already knows why.
  */
-export function NetworkEditor({ workspace, router, canEdit, reason }: { workspace: Workspace; router?: RouterRow; canEdit: boolean; reason?: string }) {
+export function NetworkEditor({ workspace, router, canEdit, reason, prefill }: { workspace: Workspace; router?: RouterRow; canEdit: boolean; reason?: string; prefill?: URLSearchParams }) {
   const { t, tn } = useI18n();
   const kinds = choices[workspace];
   const [load, setLoad] = useState<{ kind: "loading" } | { kind: "error"; err: unknown } | { kind: "ready"; inv: Inventory; defaults: Record<string, string> }>(router ? { kind: "loading" } : { kind: "error", err: null });
-  const [task, setTask] = useState(kinds[0]);
+  const linkedTask = (w: Workspace) => { const k = prefill?.get("task"); return k && choices[w].includes(k) ? k : choices[w][0]; };
+  const [task, setTask] = useState(linkedTask(workspace));
   const [locked, setLocked] = useState(false);
   const [pendingAt, setPendingAt] = useState(""), [pendingNote, setPendingNote] = useState("");
   const rev = useRef(0);
   const readController = useRef<AbortController | null>(null);
-  useEffect(() => { setTask(choices[workspace][0]); }, [workspace]);
+  useEffect(() => { setTask(linkedTask(workspace)); }, [workspace, prefill?.get("task")]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const routerId = router?.device_id ?? "";
   const reload = useCallback(async () => {
@@ -272,7 +275,7 @@ export function NetworkEditor({ workspace, router, canEdit, reason }: { workspac
             {writeHold && <Note kind="warn">{writeHold}</Note>}
             {!writeHold && (task === "ip_address" || task === "vlan" || task === "remove_network" || task === "edit_network" || task === "move_network") && inv.address_preview_only === true && <Note kind="warn">{t("net.addressPreview")}</Note>}
             <fieldset className="nolock" disabled={offline || !!writeHold || waiting}>
-              <TaskForm key={task + (offline ? "-unavailable" : "-ready")} kind={task} inv={inv} defaults={defaults} routerId={routerId} routerName={router?.hardware_name ?? ""} locked={locked || offline || !!writeHold || waiting} setLocked={setLocked} onPending={(at) => { setPendingNote(""); setPendingAt(at); }} />
+              <TaskForm key={task + (offline ? "-unavailable" : "-ready")} kind={task} inv={inv} defaults={defaults} routerId={routerId} routerName={router?.hardware_name ?? ""} locked={locked || offline || !!writeHold || waiting} setLocked={setLocked} onPending={(at) => { setPendingNote(""); setPendingAt(at); }} prefill={prefill} />
             </fieldset>
           </>
         )}

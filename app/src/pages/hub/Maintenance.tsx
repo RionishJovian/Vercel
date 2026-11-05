@@ -1,18 +1,28 @@
 import { useState } from "react";
-import { api, isUnauthorized } from "../../lib/api";
+import useSWR from "swr";
+import { api, fetcher, isUnauthorized } from "../../lib/api";
 import { useI18n } from "../../i18n";
 import { Note } from "../../components/ui";
 import { Migration } from "./Migration";
 import { errorText } from "../../lib/errors";
 
+const outcomeAfter = (changes: Change[] | undefined, since: number) => (changes ?? []).find((c) => /^router\.reboot\.(applied|denied|failed|unverified)$/.test(c.action ?? "") && new Date(c.timestamp ?? 0).getTime() >= since);
+
+interface Change { action?: string; reason?: string; timestamp?: string }
+// A result, once one exists, comes from the router's change history. Stop asking after the approval window has long passed.
+const WAIT_MS = 7 * 60 * 1000;
 
 /** Recovery and maintenance for one gateway. Reboot is queued for approval; restore lives in Backups. */
 export function Maintenance({ id, name, canEdit }: { id: string; name: string; canEdit: boolean }) {
   const { t } = useI18n();
   const [confirm, setConfirm] = useState(false), [busy, setBusy] = useState(false), [msg, setMsg] = useState<{ bad: boolean; text: string } | null>(null);
+  const [askedAt, setAskedAt] = useState(0);
+  const changes = useSWR<{ changes?: Change[] }>(`/devices/${encodeURIComponent(id)}/changes`, fetcher, { refreshInterval: (data) => (askedAt && Date.now() - askedAt < WAIT_MS && !outcomeAfter(data?.changes, askedAt) ? 5000 : 0), shouldRetryOnError: false });
+  const last = outcomeAfter(changes.data?.changes, askedAt);
+  const waiting = !!askedAt && !last;
   async function reboot() {
     setBusy(true); setMsg(null);
-    try { const r = await api.post<{ status?: string }>(`/topology/${encodeURIComponent(id)}/reboot`, {}); setMsg({ bad: false, text: r?.status || t("mt.queued") }); setConfirm(false); }
+    try { await api.post(`/topology/${encodeURIComponent(id)}/reboot`, {}); setMsg({ bad: false, text: t("mt.queued") }); setConfirm(false); setAskedAt(Date.now() - 2000); void changes.mutate(); }
     catch (e) { if (isUnauthorized(e)) throw e; setMsg({ bad: true, text: errorText(e, t("mt.failed")) }); }
     setBusy(false);
   }
@@ -24,6 +34,8 @@ export function Maintenance({ id, name, canEdit }: { id: string; name: string; c
         <div className="note warn stack"><p className="small">{t("mt.rebootConfirm")}</p><div className="row" style={{ justifyContent: "flex-start" }}><button className="pill" type="button" onClick={() => setConfirm(false)}>{t("c.cancel")}</button><button className="pill danger" type="button" disabled={busy} onClick={() => void reboot()}>{t("mt.reboot")}</button></div></div>
       ) : <button className="pill danger" type="button" onClick={() => setConfirm(true)}>{t("mt.reboot")}</button>)}
       {msg && <Note kind={msg.bad ? "bad" : "ok"}>{msg.text}</Note>}
+      {waiting && <p className="soft small" role="status">{t("mt.waiting")}</p>}
+      {last && <Note kind={last.action === "router.reboot.applied" ? "ok" : last.action === "router.reboot.unverified" ? "warn" : "bad"}>{t("mt.outcome." + String(last.action).split(".").pop())}{last.timestamp ? ` · ${new Date(last.timestamp).toLocaleString()}` : ""}</Note>}
       <Migration id={id} name={name} canEdit={canEdit} />
     </div>
   );

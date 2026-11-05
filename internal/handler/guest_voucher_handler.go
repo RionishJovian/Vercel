@@ -78,6 +78,12 @@ type GuestVoucherHandler struct {
 	// locally and the app synchronizes its accounting back through the hub.
 	Provisioner VoucherLoginProvisioner
 	Syncer      VoucherLoginSyncer
+	Retirer     VoucherLoginRetirer
+}
+
+// VoucherLoginRetirer removes an unused voucher's login from the router.
+type VoucherLoginRetirer interface {
+	RemoveVoucherLogin(ctx context.Context, businessID, deviceID string, login VoucherLoginSpec) error
 }
 
 type guestVoucherBatch struct {

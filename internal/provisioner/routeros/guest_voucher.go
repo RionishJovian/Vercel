@@ -145,6 +145,7 @@ func configureGuestVoucher(ctx context.Context, r CommandRunner, g GuestVoucherA
 		containGuestVoucher(r, g)
 		return fmt.Errorf("guest voucher activation did not verify")
 	}
+	retryMACLogin(ctx, r, g.ClientMAC)
 	return nil
 }
 

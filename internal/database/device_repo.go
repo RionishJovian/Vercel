@@ -312,7 +312,8 @@ func (r *DeviceRepository) ListDevicesByBusinessTXN(tx *sql.Tx, businessID strin
 	query := `
 		SELECT device_id, business_id, parent_gateway_id, hardware_name, device_model,
 		       deployment_layer, vendor, category, transport, mac_address,
-		       management_ip, is_online, last_seen_at, created_at, updated_at, site_id
+		       management_ip, is_online, last_seen_at, created_at, updated_at, site_id,
+		       (management_ip IS NOT NULL AND ssh_secret_ciphertext IS NOT NULL)
 		FROM devices
 		WHERE business_id = $1
 		ORDER BY created_at DESC`
@@ -331,7 +332,7 @@ func (r *DeviceRepository) ListDevicesByBusinessTXN(tx *sql.Tx, businessID strin
 		if err := rows.Scan(
 			&d.DeviceID, &d.BusinessID, &parentGatewayID, &d.HardwareName, &deviceModel,
 			&d.DeploymentLayer, &d.Vendor, &d.Category, &d.Transport, &macAddr,
-			&mgmtIP, &d.IsOnline, &lastSeen, &d.CreatedAt, &d.UpdatedAt, &siteID,
+			&mgmtIP, &d.IsOnline, &lastSeen, &d.CreatedAt, &d.UpdatedAt, &siteID, &d.ManagementConnected,
 		); err != nil {
 			return nil, fmt.Errorf("scan device row: %w", err)
 		}
@@ -399,6 +400,22 @@ func (r *DeviceRepository) DeleteDeviceTXN(tx *sql.Tx, deviceID string) error {
 	}
 	rows, _ := result.RowsAffected()
 	if rows == 0 {
+		return fmt.Errorf("device not found")
+	}
+	return nil
+}
+
+// ClearManagementTXN removes a router's saved login and tunnel address, keeping the
+// record and its history, so the same router or a replacement can connect again.
+func (r *DeviceRepository) ClearManagementTXN(tx *sql.Tx, businessID, deviceID string) error {
+	result, err := tx.Exec(`UPDATE devices
+		   SET management_ip = NULL, ssh_port = 22, ssh_username = NULL, ssh_secret_ciphertext = NULL,
+		       ssh_secret_kind = NULL, ssh_host_key_fingerprint = NULL, is_online = false, updated_at = now()
+		 WHERE device_id = $1 AND business_id = $2`, deviceID, businessID)
+	if err != nil {
+		return fmt.Errorf("clear device management: %w", err)
+	}
+	if rows, _ := result.RowsAffected(); rows == 0 {
 		return fmt.Errorf("device not found")
 	}
 	return nil

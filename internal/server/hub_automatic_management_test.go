@@ -110,6 +110,17 @@ func TestAutomaticManagementScriptAndOutputBounds(t *testing.T) {
 	if !strings.Contains(script, "address=10.77.0.9/32") || !strings.Contains(script, "in-interface=\"mmh-") {
 		t.Fatal("missing private management restrictions")
 	}
+	// RouterOS 7.25 warns about the old name when it is parsed, so the current name goes first
+	// and the old one stays inside a string that runs only if the current one fails.
+	if strings.Index(script, "available-from=") > strings.Index(script, `" address=" . $2`) || strings.Contains(script, "get $mmSSH address") {
+		t.Fatal("the deprecated SSH allow-list name must be the fallback only")
+	}
+	// Finishing the script must not claim the router reached the Hub.
+	checked := strings.Index(script, "get $mmPeer rx")
+	complete := strings.Index(script, `:if ($mmReached) do={ :put "Setup complete.`)
+	if checked < 0 || complete < checked || !strings.Contains(script, "NOT CONNECTED YET") {
+		t.Fatal("setup must check the connection before saying it is complete")
+	}
 	b := &boundedEnrollmentOutput{}
 	if _, err := b.Write(make([]byte, 65536)); err != nil {
 		t.Fatal(err)
@@ -143,13 +154,18 @@ func TestAutomaticEnrollmentRunsAsOneBlock(t *testing.T) {
 		}
 		// There must be no second top-level block that a terminal can execute
 		// after the first block reports a tunnel error.
-		if strings.Contains(combined, "\n}\n{") || !strings.HasPrefix(combined, "{\n") || !strings.HasSuffix(combined, "\n}") {
+		if strings.Contains(combined, "\n}\n{") || !strings.HasPrefix(combined, "{\n") {
 			t.Fatal("management can execute independently of tunnel setup")
 		}
-		guard := strings.Index(combined, "Magic Hub tunnel missing or ambiguous")
-		write := strings.Index(combined, "/user/group add")
-		if guard < 0 || write < 0 || guard > write || !strings.Contains(combined, `comment] != "mega-magic:mmh-`) || !strings.Contains(combined, `public-key] != "`+key+`"`) {
-			t.Fatal("management writes precede tunnel identity checks")
+		// Ending on a line break is what makes one paste run without another Enter.
+		if !strings.HasSuffix(combined, "\n}\n") {
+			t.Fatal("the script must run on paste")
+		}
+		// A user with our name that is not ours stops the script before any account change.
+		owner := strings.Index(combined, `"STOP: a user named`)
+		account := strings.Index(combined, "/user/group add")
+		if owner < 0 || account < 0 || owner > account {
+			t.Fatal("account writes precede the ownership check")
 		}
 	}
 	if _, err := automaticEnrollmentScript("router", pendingManagement{tunnelScript: ":error \"failed\""}); err == nil {

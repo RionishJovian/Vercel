@@ -34,6 +34,8 @@ type NetworkInventory struct {
 	Objects            map[string][]NetworkObject `json:"objects"`
 	Available          map[string]bool            `json:"available"`
 	PendingConfirm     *NetworkPending            `json:"pending_confirm,omitempty"`
+	// DeviceControlsEnabled gates changes for devices behind the router.
+	DeviceControlsEnabled bool `json:"device_controls_enabled"`
 }
 type NetworkRequest struct {
 	Kind         string            `json:"kind"`
@@ -92,7 +94,13 @@ var networkMenus = map[string]networkMenu{
 	"nat":               {"/ip firewall nat", []string{"chain", "action", "src-address", "out-interface", "comment", "disabled"}},
 	"ssh_sessions":      {"/user active", []string{"address", "via"}},
 	"wg_peers":          {"/interface wireguard peers", []string{"current-endpoint-address"}},
+	"iface_ports":       {"/interface", []string{"comment", "disabled", "type"}},
+	"poe_ports":         {"/interface ethernet poe", []string{"poe-out"}},
+	"hotspot_active":    {"/ip hotspot active", []string{"user", "address", "mac-address"}},
 }
+
+// networkPlanOnlyMenus are written or checked by plans but are not part of the network inventory.
+var networkPlanOnlyMenus = map[string]bool{"ssh_sessions": true, "wg_peers": true, "iface_ports": true, "poe_ports": true, "hotspot_active": true}
 var networkIDPattern = regexp.MustCompile(`^\*[0-9A-Fa-f]+$`)
 
 func networkSecret(field string) bool {
@@ -132,7 +140,11 @@ func parseNetworkObjects(menu networkMenu, out, key string) ([]NetworkObject, er
 		}
 		field, value, ok := strings.Cut(line, ": ")
 		if !ok {
-			return nil, fmt.Errorf("unrecognized %s inventory", key)
+			// An empty last value loses its trailing space when the output is trimmed.
+			if field, ok = strings.CutSuffix(line, ":"); !ok {
+				return nil, fmt.Errorf("unrecognized %s inventory", key)
+			}
+			value = ""
 		}
 		if field == "id" {
 			if !networkIDPattern.MatchString(value) {
@@ -278,16 +290,10 @@ func (a *DeviceApplier) ReadNetwork(ctx context.Context, businessID, deviceID st
 		return NetworkInventory{}, err
 	}
 	result := NetworkInventory{Health: readHubHealth(ctx, r), Interfaces: interfaces, Objects: map[string][]NetworkObject{}, Available: map[string]bool{}}
-	if v, ok := networkPending.Load(businessID + ":" + deviceID); ok {
-		if entry := v.(networkPendingEntry); time.Now().Before(entry.until) {
-			result.PendingConfirm = &NetworkPending{RevertAt: entry.until.UTC().Format(time.RFC3339)}
-		} else {
-			networkPending.Delete(businessID + ":" + deviceID)
-		}
-	}
+	result.PendingConfirm = networkPendingFor(businessID, deviceID)
 	keys := []string{}
 	for key := range networkMenus {
-		if key != "ssh_sessions" && key != "wg_peers" {
+		if !networkPlanOnlyMenus[key] {
 			keys = append(keys, key)
 		}
 	}
@@ -335,6 +341,19 @@ func (a *DeviceApplier) ReadNetwork(ctx context.Context, businessID, deviceID st
 	return result, nil
 }
 
+func networkPendingFor(businessID, deviceID string) *NetworkPending {
+	v, ok := networkPending.Load(businessID + ":" + deviceID)
+	if !ok {
+		return nil
+	}
+	entry := v.(networkPendingEntry)
+	if !time.Now().Before(entry.until) {
+		networkPending.Delete(businessID + ":" + deviceID)
+		return nil
+	}
+	return &NetworkPending{RevertAt: entry.until.UTC().Format(time.RFC3339)}
+}
+
 // networkReadWorkers bounds the simultaneous router sessions of one inventory read.
 const networkReadWorkers = 4
 
@@ -349,6 +368,9 @@ type networkStep struct {
 	// Remove deletes the record ID. Before holds everything needed to put an
 	// identical record back, which is how the guard and rollback undo it.
 	Remove bool
+	// Action names a one-shot command with no saved setting behind it, run by
+	// runDeviceAction instead of the backup and restore path.
+	Action string
 }
 type networkApproval struct {
 	Business, Device, RequestHash, StateHash string
@@ -484,7 +506,9 @@ func networkWriteCommand(s networkStep, restore bool) string {
 		cmd += " " + field + "=" + routerOSQuoted(values[field])
 	}
 	if s.First && !s.EmptyTable && s.ID == "" && !restore {
-		cmd += " place-before=0"
+		// Rule number 0 can be a dynamic rule, which RouterOS refuses as a position ("item referred by
+		// 'place-before' does not exist"): Hotspot adds such rules first. Use the first static rule's ID.
+		return ":local mmStatic [" + menu + " find where dynamic=no]; :if ([:len $mmStatic] > 0) do={ " + cmd + " place-before=[:pick $mmStatic 0] } else={ " + cmd + " }"
 	}
 	return cmd
 }
@@ -551,7 +575,7 @@ func networkVerify(ctx context.Context, r CommandRunner, s networkStep, restore 
 		}
 	}
 	if s.First && !restore {
-		first, e := r.Run(ctx, `:put [:pick [`+networkMenus[s.Key].path+` find] 0]`)
+		first, e := r.Run(ctx, `:put [:pick [`+networkMenus[s.Key].path+` find where dynamic=no] 0]`)
 		if e != nil || strings.TrimSpace(first) != id {
 			return fmt.Errorf("protection rule order not verified")
 		}
@@ -588,6 +612,9 @@ func (a *DeviceApplier) ApplyNetwork(ctx context.Context, businessID, deviceID s
 	}
 	if networkHash(steps) != approved.StateHash {
 		return result, fmt.Errorf("router settings changed since preview; reload and review again")
+	}
+	if len(steps) == 1 && steps[0].Action != "" {
+		return runDeviceAction(ctx, r, steps[0])
 	}
 	jobs, e := networkCount(ctx, r, "/system script job print count-only")
 	// RouterOS includes the current SSH script itself in this count.
@@ -684,6 +711,9 @@ func (a *DeviceApplier) ApplyNetwork(ctx context.Context, businessID, deviceID s
 	}
 	if natTouched(steps) {
 		clearNATTracking(ctx, r)
+	}
+	if request.Kind == "device_block" {
+		clearDeviceConnections(ctx, r, request.Values["mac"])
 	}
 	if request.Kind == "wan" {
 		for _, probe := range []string{"1.1.1.1", "8.8.8.8"} {

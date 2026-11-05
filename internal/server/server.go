@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -360,6 +361,27 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 			if err := configureHubManagement(vpsHandler, db, cfg); err != nil {
 				return nil, err
 			}
+			box, err := secretbox.New(cfg.Provisioner.Applier.CredentialKey)
+			if err != nil {
+				return nil, errors.New("management credential encryption unavailable")
+			}
+			go newHubAutoConnect(database.PendingEnrollmentStore{DB: db, Box: box}, vpsHandler).run(context.Background())
+			routerHandler.ConfigureHubForget(database.PendingEnrollmentStore{DB: db, Box: box}.Delete)
+			routerHandler.ConfigureHubRemoval(func(ctx context.Context, biz, requester, id string) (string, error) {
+				identity := hub.Identity{TenantID: biz, RouterID: id, RequestedBy: requester}
+				peer, err := client.InspectRouter(ctx, identity)
+				if errors.Is(err, hub.ErrPeerNotFound) {
+					return "", nil
+				}
+				if err != nil {
+					return "", err
+				}
+				script, scriptErr := hub.BuildDisconnectScript(id, peer, hub.ManagementUserName(biz, id))
+				if scriptErr != nil {
+					script = ""
+				}
+				return script, client.RemovePeer(ctx, identity, peer.PeerID)
+			})
 		}
 	}
 	r := gin.New()
@@ -532,7 +554,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	if err := wireRouterObservations(cfg, db, routerHandler); err != nil {
 		return nil, err
 	}
-	if err := startLiveApplier(cfg, messagingClient, sugar, monitoringService, db, backupHandler, securityHandler, incidentActionHandler, guestWifiHandler); err != nil {
+	if err := startLiveApplier(cfg, messagingClient, sugar, monitoringService, db, backupHandler, securityHandler, incidentActionHandler, topologyHandler, guestWifiHandler); err != nil {
 		return nil, err
 	}
 
@@ -746,6 +768,7 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 				vouchers.GET("/:code", voucherHandler.GetVoucherByCode)
 				vouchers.PUT("/:id", auth.RequireMinRole(model.RoleAdmin), voucherHandler.UpdateVoucherStatus)
 				vouchers.DELETE("/:id", auth.RequireMinRole(model.RoleAdmin), voucherHandler.DeleteVoucher)
+				vouchers.PUT("/:id/hand-out", auth.RequireMinRole(model.RoleAdmin), voucherHandler.SetVoucherHandout)
 				vouchers.POST("/:code/redeem", voucherHandler.RedeemVoucher) // For voucher redemption
 			}
 

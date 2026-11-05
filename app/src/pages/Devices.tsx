@@ -11,7 +11,8 @@ import { errorText } from "../lib/errors";
 interface Inv { available?: Record<string, boolean>; objects?: Record<string, Array<{ values?: Record<string, string> }>> }
 interface Label { mac: string; name: string; kind: string }
 export interface Row { mac: string; ip: string; name: string; type: string; sources: string[]; state: string }
-const SOURCE_NAME: Record<string, string> = { discovery_leases: "DHCP lease", arp: "ARP table", neighbors: "Router neighbor" };
+const SOURCE_NAME: Record<string, string> = { discovery_leases: "DHCP lease", arp: "ARP table", neighbors: "Router neighbor", bridge_hosts: "Bridge port", wifi_clients: "Wi-Fi client" };
+const SOURCES = Object.keys(SOURCE_NAME);
 const KINDS = ["other", "switch", "ap", "computer", "printer", "controller"];
 const EDITORS = ["OWNER", "ADMIN", "DEVELOPER"];
 const MAC = /^([0-9A-F]{2}:){5}[0-9A-F]{2}$/;
@@ -19,11 +20,14 @@ const MAC = /^([0-9A-F]{2}:){5}[0-9A-F]{2}$/;
 /** What the router reported in its discovery tables. Online status is never inferred from a table entry. */
 export function discoveryRows(inv: Inv): Row[] {
   const rows = new Map<string, Row>();
-  for (const source of ["discovery_leases", "arp", "neighbors"]) {
+  const own = new Set(inv.available?.interfaces === true ? asArray<{ values?: Record<string, string> }>(inv.objects?.interfaces).map((o) => String(o.values?.["mac-address"] ?? "").toUpperCase()) : []);
+  for (const source of SOURCES) {
     if (inv.available?.[source] !== true) continue;
     for (const o of asArray<{ values?: Record<string, string> }>(inv.objects?.[source])) {
       const v = o.values ?? {}, mac = String(v["mac-address"] ?? "").toUpperCase(), ip = v.address ?? "", key = mac || ip;
       if (!key) continue;
+      // The bridge also lists the router's own ports and multicast addresses, which are not devices.
+      if (source === "bridge_hosts" && (v.local === "true" || v.local === "yes" || !mac || own.has(mac) || parseInt(mac.slice(0, 2), 16) & 1)) continue;
       const row = rows.get(key) ?? { mac, ip, name: "", type: "", sources: [], state: "unverified" };
       row.ip = ip || row.ip; row.name = v["host-name"] || v.identity || row.name; row.type = v.platform || v.board || row.type; row.sources.push(SOURCE_NAME[source]);
       if (source === "discovery_leases") row.state = v.status === "bound" ? "bound" : "dhcp:" + (v.status || "");
@@ -74,7 +78,7 @@ export function Devices({ me }: { me: Me }) {
     setState({ kind: "loading" });
     try {
       const { inventory } = await api.get<{ inventory: Inv }>(`/routers/${encodeURIComponent(rid)}/observations`);
-      const sources = ["discovery_leases", "arp", "neighbors"];
+      const sources = SOURCES;
       if (!sources.some((k) => inventory.available?.[k] === true)) throw new Error(t("dv.noTables"));
       let labels: Label[] = [], labelsFailed = false;
       try { labels = asArray<Label>((await api.get<{ labels?: Label[] }>(`/routers/${encodeURIComponent(rid)}/discovery-labels`)).labels); } catch { labelsFailed = true; }

@@ -68,13 +68,10 @@ func quickRetryHandler(s *retryEnrollmentHub) *VPSHandler {
 	}
 }
 
-func requestQuickEnrollment(h *VPSHandler, biz string, resume ...bool) *httptest.ResponseRecorder {
+func requestQuickEnrollment(h *VPSHandler, biz string) *httptest.ResponseRecorder {
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest("POST", "/", strings.NewReader(`{"management_rest_port":443,"confirm_enrollment":true}`))
-	if len(resume) > 0 && resume[0] {
-		c.Request = httptest.NewRequest("POST", "/", strings.NewReader(`{"management_rest_port":443,"confirm_enrollment":true,"resume_existing":true}`))
-	}
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Params = gin.Params{{Key: "deviceId", Value: "gateway"}}
 	c.Set(auth.ContextKeyBusinessID, biz)
@@ -187,45 +184,85 @@ func TestQuickEnrollmentConcurrentRetriesKeepOneKey(t *testing.T) {
 	}
 }
 
-func TestQuickEnrollmentKeyExpiryPreservesExistingTunnel(t *testing.T) {
-	s := &retryEnrollmentHub{peers: map[string]hub.Peer{}}
-	h := quickRetryHandler(s)
-	if w := requestQuickEnrollment(h, "tenant"); w.Code != 200 {
-		t.Fatalf("initial enrollment status = %d", w.Code)
-	}
-	reserved := s.peers["tenant/gateway"].RouterPublicKey
+// removingHub is a Hub that can end an allocation.
+type removingHub struct {
+	*retryEnrollmentHub
+	removed []string
+}
+
+func (s *removingHub) RemovePeer(_ context.Context, id hub.Identity, peerID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.removed = append(s.removed, peerID)
+	delete(s.peers, id.TenantID+"/"+id.RouterID)
+	return nil
+}
+
+func expireQuickKey(h *VPSHandler) {
 	h.quickKeysMu.Lock()
+	defer h.quickKeysMu.Unlock()
 	key := h.quickKeys["tenant/gateway"]
 	key.expires = time.Now().Add(-time.Second)
 	h.quickKeys["tenant/gateway"] = key
-	h.quickKeysMu.Unlock()
+}
+
+// A script not pasted before its setup key ended must not be a dead end: the router
+// never connected, so it gets a fresh allocation and one script that works.
+func TestQuickEnrollmentKeyExpiryStartsAgain(t *testing.T) {
+	s := &removingHub{retryEnrollmentHub: &retryEnrollmentHub{peers: map[string]hub.Peer{}}}
+	h := quickRetryHandler(s.retryEnrollmentHub)
+	h.ConfigureHubEnrollment(s)
+	h.automaticPreflight = func(context.Context, string, string) error { return nil }
+	if w := requestQuickEnrollment(h, "tenant"); w.Code != 200 {
+		t.Fatal(w.Code)
+	}
+	first := s.peers["tenant/gateway"]
+	expireQuickKey(h)
 	w := requestQuickEnrollment(h, "tenant")
-	if w.Code != 409 || !strings.Contains(w.Body.String(), "hub_router_key_unavailable") {
-		t.Fatalf("expired artifact status = %d, want explicit recovery hold", w.Code)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"one_paste":true`) {
+		t.Fatalf("expired setup is a dead end: %d %s", w.Code, w.Body.String())
 	}
-	if len(s.keys) != 1 || s.peers["tenant/gateway"].RouterPublicKey != reserved {
-		t.Fatal("expired setup rotated or re-enrolled the existing tunnel")
+	if len(s.removed) != 1 || s.removed[0] != first.PeerID {
+		t.Fatalf("old allocation not replaced: %v", s.removed)
 	}
-	w = requestQuickEnrollment(h, "tenant", true)
-	if w.Code != 200 || !strings.Contains(w.Body.String(), `"existing_tunnel_required":true`) || !strings.Contains(w.Body.String(), `"one_paste":false`) {
-		t.Fatalf("explicit installed-tunnel repair unavailable: %d %s", w.Code, w.Body.String())
+	second := s.peers["tenant/gateway"]
+	if second.RouterPublicKey == first.RouterPublicKey {
+		t.Fatal("the new allocation reused the lost key")
 	}
-	var result struct {
-		Script string `json:"router_script"`
+	assertReservedRouterKey(t, w, second)
+}
+
+// A saved connection is never replaced this way: the preflight refuses first.
+func TestQuickEnrollmentKeyExpiryNeverTouchesASavedConnection(t *testing.T) {
+	s := &removingHub{retryEnrollmentHub: &retryEnrollmentHub{peers: map[string]hub.Peer{}}}
+	h := quickRetryHandler(s.retryEnrollmentHub)
+	h.ConfigureHubEnrollment(s)
+	if w := requestQuickEnrollment(h, "tenant"); w.Code != 200 {
+		t.Fatal(w.Code)
 	}
-	if json.Unmarshal(w.Body.Bytes(), &result) != nil || strings.Contains(result.Script, "private-key=") || !strings.Contains(result.Script, "router key differs") || !strings.Contains(result.Script, "interface ownership mismatch") {
-		t.Fatal("repair installs a replacement identity or lacks existing-interface guards")
-	}
-	if len(s.keys) != 1 || s.peers["tenant/gateway"].RouterPublicKey != reserved {
-		t.Fatal("explicit repair changed the reserved tunnel")
+	expireQuickKey(h)
+	h.automaticPreflight = func(context.Context, string, string) error { return ErrHubManagementConfigured }
+	w := requestQuickEnrollment(h, "tenant")
+	if w.Code != 409 || !strings.Contains(w.Body.String(), "hub_management_already_configured") || len(s.removed) != 0 {
+		t.Fatalf("saved connection was touched: %d %v", w.Code, s.removed)
 	}
 }
 
-func TestQuickRecoveryCannotCreateNewEnrollment(t *testing.T) {
+// Without a way to remove the old allocation, nothing is changed.
+func TestQuickEnrollmentKeyExpiryHoldsWithoutRemoval(t *testing.T) {
 	s := &retryEnrollmentHub{peers: map[string]hub.Peer{}}
-	w := requestQuickEnrollment(quickRetryHandler(s), "tenant", true)
-	if w.Code != 409 || len(s.keys) != 0 || len(s.peers) != 0 {
-		t.Fatal("repair created a new enrollment", w.Code)
+	h := quickRetryHandler(s)
+	if w := requestQuickEnrollment(h, "tenant"); w.Code != 200 {
+		t.Fatal(w.Code)
+	}
+	reserved := s.peers["tenant/gateway"].RouterPublicKey
+	expireQuickKey(h)
+	w := requestQuickEnrollment(h, "tenant")
+	if w.Code != 409 || !strings.Contains(w.Body.String(), "hub_router_key_unavailable") {
+		t.Fatalf("status = %d", w.Code)
+	}
+	if len(s.keys) != 1 || s.peers["tenant/gateway"].RouterPublicKey != reserved {
+		t.Fatal("the existing allocation changed")
 	}
 }
 

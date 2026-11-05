@@ -47,7 +47,7 @@ func configureHubManagement(h *handler.VPSHandler, db *database.DB, cfg *config.
 				return string(b), e
 			}
 		}
-		raw, e := pending.GetOrCreate(ctx, biz, id, "router_key", generate, 24*time.Hour)
+		raw, e := pending.GetOrCreate(ctx, biz, id, "router_key", generate, database.PendingEnrollmentLifetime)
 		if e != nil || raw == "" {
 			return "", "", e
 		}

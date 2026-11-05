@@ -54,6 +54,7 @@ func registerGuestVoucherRoutes(r *gin.Engine, cfg *config.Config, db *database.
 		// synchronizes their live accounting back through the hub.
 		Provisioner: voucherLoginTransport{applier: applier},
 		Syncer:      voucherLoginTransport{applier: applier},
+		Retirer:     voucherLoginTransport{applier: applier},
 	}
 	registerGuestVoucherEndpoints(r, service, db, h, handler.SubscriptionAccess(db, cfg.Billing.SubscriptionOnly, cfg.Billing.ExistingAccountPolicy), handler.IndividualPassAccess(db, cfg.Billing.IndividualPassesEnabled))
 	return nil
@@ -71,6 +72,10 @@ func (t voucherLoginTransport) ProvisionVoucherLogins(ctx context.Context, busin
 		out = append(out, routeros.VoucherLogin{VoucherID: l.VoucherID, Code: l.Code, Minutes: l.Minutes, DataMB: l.DataMB})
 	}
 	return t.applier.ProvisionVoucherLogins(ctx, businessID, deviceID, out)
+}
+
+func (t voucherLoginTransport) RemoveVoucherLogin(ctx context.Context, businessID, deviceID string, login handler.VoucherLoginSpec) error {
+	return t.applier.RemoveVoucherLogin(ctx, businessID, deviceID, routeros.VoucherLogin{VoucherID: login.VoucherID, Code: login.Code})
 }
 
 func (t voucherLoginTransport) ReadVoucherLogins(ctx context.Context, businessID, deviceID string, refs []handler.VoucherLoginSpec) ([]handler.VoucherLoginState, error) {
@@ -102,6 +107,7 @@ func registerGuestVoucherEndpoints(r *gin.Engine, service *auth.Service, db *dat
 	// Router -> hub -> app accounting synchronization for locally validated
 	// voucher codes (ground-operation design).
 	owner.POST("/sync", h.SyncVoucherLogins)
+	owner.POST("/codes/:voucherId/retire", h.RetireVoucherLogin)
 	owner.GET("/config", func(c *gin.Context) {
 		c.Header("Cache-Control", "no-store")
 		c.JSON(200, gin.H{"enabled": true, "validity_starts": "first_use", "batch_recovery_enabled": true, "batch_id_required": true, "reseller_assignment_enabled": true, "max_batch_size": handler.GuestVoucherIssueBatchLimit})

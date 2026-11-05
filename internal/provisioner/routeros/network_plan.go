@@ -96,6 +96,9 @@ func networkDNS(v string) error {
 	return nil
 }
 func buildNetworkPlan(ctx context.Context, r CommandRunner, request NetworkRequest) ([]networkStep, []string, error) {
+	if IsDeviceControlKind(request.Kind) {
+		return finishNetworkPlan(buildDeviceControlPlan(ctx, r, request))
+	}
 	if request.Kind == "remove_ip_address" || request.Kind == "remove_vlan" {
 		return finishNetworkPlan(buildRemovePlan(ctx, r, request))
 	}
@@ -649,7 +652,16 @@ func buildNetworkPlan(ctx context.Context, r CommandRunner, request NetworkReque
 				values["name"] = "mm-" + name
 				err = add(key, "name", values["name"], "Create customer bandwidth limit", values)
 			} else if request.Kind == "lease" {
-				err = add(key, "mac-address", values["mac-address"], "Create static customer DHCP reservation", values)
+				// A device's own dynamic lease is the usual case when reserving its address, so
+				// only another reservation is a conflict.
+				n, e := networkCount(ctx, r, networkMenus[key].path+" print count-only where dynamic=no mac-address="+routerOSQuoted(values["mac-address"]))
+				if e != nil {
+					return nil, nil, e
+				}
+				if n != 0 {
+					return nil, nil, fmt.Errorf("%s already exists; select its record to edit instead", values["mac-address"])
+				}
+				steps = append(steps, networkStep{Key: key, SelectorField: "mac-address", SelectorValue: values["mac-address"], Label: "Create static customer DHCP reservation", Values: values})
 			} else {
 				return nil, nil, fmt.Errorf("select an existing record to edit")
 			}

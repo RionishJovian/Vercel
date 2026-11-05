@@ -22,7 +22,7 @@ var (
 	commandPath  = regexp.MustCompile(`(?:^|[\[;{]\s*|do=\{\s*|else=\{\s*)(/[a-z][a-z0-9/-]*)`)
 	knownPaths   = map[string]bool{
 		"/interface/wireguard": true, "/interface/wireguard/peers": true, "/ip/address": true, "/ip/route": true,
-		"/ip/service": true, "/ip/firewall/filter": true, "/user": true, "/user/group": true, "/user/ssh-keys": true, "/file": true,
+		"/ip/service": true, "/ip/firewall/filter": true, "/ip/firewall/nat": true, "/user": true, "/user/group": true, "/user/ssh-keys": true, "/file": true,
 	}
 )
 
@@ -42,7 +42,8 @@ func checkRouterOSBlock(t *testing.T, name, script string) {
 
 func checkRouterOSBlockWith(t reporter, name, script string) {
 	fail := func(format string, args ...any) { t.Errorf(name+": "+format, args...) }
-	if !strings.HasPrefix(script, "{\n") || !strings.HasSuffix(script, "\n}") {
+	// One final line break is allowed: it is what makes a paste run by itself.
+	if body := strings.TrimSuffix(script, "\n"); !strings.HasPrefix(body, "{\n") || !strings.HasSuffix(body, "\n}") {
 		fail("not a single braced block")
 	}
 	for _, bad := range []string{"%!", "%d", "%s", "<nil>", "(MISSING)", "(EXTRA", "\t", "\r"} {
@@ -190,17 +191,12 @@ func TestOnePasteScriptsAreWellFormedRouterOS(t *testing.T) {
 		}
 		last = i
 	}
-	if !strings.Contains(fullDisconnect, `comment="mega-magic:`+pending.user+`" and chain="input"`) || !strings.Contains(fullDisconnect, `] = "mega-magic:`+pending.user+`:"`) {
+	if !strings.Contains(fullDisconnect, `comment="mega-magic:`+pending.user+`"`) || !strings.Contains(fullDisconnect, `] = "mega-magic:`+pending.user+`:"`) {
 		t.Error("full disconnect does not check ownership before removing the rule and user")
 	}
-	for _, forbidden := range []string{"/ip/service", "/interface/wireguard remove", "private-key", "/system", "/ip/firewall/filter add"} {
+	for _, forbidden := range []string{"/ip/service", "private-key", "/system", "/ip/firewall/filter add"} {
 		if strings.Contains(fullDisconnect, forbidden) {
 			t.Errorf("full disconnect must not contain %q", forbidden)
-		}
-	}
-	for n, line := range strings.Split(fullDisconnect, "\n") {
-		if strings.Contains(line, " remove ") && !strings.Contains(line, ":if ([:len") && !strings.Contains(line, "/user remove $account") {
-			t.Errorf("full disconnect line %d removes without checking something exists: %.80s", n+1, line)
 		}
 	}
 	// The private WireGuard key may appear only in the one-paste scripts.

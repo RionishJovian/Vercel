@@ -137,3 +137,144 @@ All Burmese text for the Internet Setup forms is in `app/src/i18n/networkLabels.
 | `j.ws.guest` | Media guest page | မီဒီယာ ဧည့်သည် စာမျက်နှာ |
 | `dev.tm.title` | Team | အဖွဲ့ |
 | `net.records` | records | မှတ်တမ်း |
+## Magic Hub one paste (2026-11-05)
+
+| Key | English | Burmese (to review) |
+|---|---|---|
+| `hub.w.scriptBody` | Copy the whole block into the WinBox terminal and press Enter. Mega Magic then connects by itself, so you can close this page. | Block တစ်ခုလုံးကို WinBox terminal ထဲ ကူးထည့်ပြီး Enter နှိပ်ပါ။ ပြီးလျှင် Mega Magic က အလိုအလျောက် ချိတ်ဆက်ပေးမည်ဖြစ်၍ ဤစာမျက်နှာကို ပိတ်နိုင်သည်။ |
+| `hub.w.once` | If the router prints STOP:, fix what it names and paste the same script again. Pasting it again is always safe. | Router က STOP: ဟု ပြပါက ဖော်ပြထားသည့်အရာကို ပြင်ပြီး ဤ script ကိုပင် ထပ် paste လုပ်ပါ။ ထပ် paste လုပ်ခြင်းက အမြဲ ဘေးကင်းပါသည်။ |
+| `hub.keepPrivate` | Keep this script private: it holds this router's tunnel key. | ဤ script ကို လျှို့ဝှက်ထားပါ။ ၎င်းတွင် ဤ Router ၏ tunnel key ပါဝင်သည်။ |
+| `hub.delNoReset` | This ends its Magic Hub connection. The router's other settings stay as they are. | ၎င်းသည် Magic Hub ချိတ်ဆက်မှုကို ဖြတ်ပါမည်။ Router ၏ အခြားဆက်တင်များ မပြောင်းပါ။ |
+| `hub.w.t3` | 3. Connected | ၃။ ချိတ်ဆက်ပြီးပါပြီ |
+| `hub.w.s3` | Connected | ချိတ်ပြီး |
+| `hub.w.waiting` | Waiting for your router… | သင့် Router ကို စောင့်နေသည်… |
+| `hub.w.reached` | Your router reached Magic Hub. Finishing the connection… | သင့် Router သည် Magic Hub သို့ ရောက်ပါပြီ။ ချိတ်ဆက်မှုကို အပြီးသတ်နေသည်… |
+| `hub.connected` | Connected to Magic Hub | Magic Hub နှင့် ချိတ်ဆက်ပြီး |
+| `hub.delDoneTitle` | Record deleted | မှတ်တမ်းကို ဖျက်ပြီးပါပြီ |
+| `hub.delDoneBody` | Paste this in WinBox to remove the Magic Hub setup from the router. Skip it if you will connect this router again. | Router မှ Magic Hub setup ကို ဖယ်ရှားရန် ဤ script ကို WinBox တွင် paste လုပ်ပါ။ ဤ Router ကို ပြန်ချိတ်မည်ဆိုပါက ကျော်နိုင်သည်။ |
+| `hub.delDone` | Done | ပြီးပါပြီ |
+| `hub.progress.expired` | Setup expired. Open Connect Magic Hub for a new script. | Setup သက်တမ်းကုန်သွားပါပြီ။ Script အသစ်အတွက် Magic Hub ချိတ်မည် ကို ဖွင့်ပါ။ |
+| `hub.progress.pending` | Setup is waiting for the router to connect. | Setup သည် Router ချိတ်ဆက်လာရန် စောင့်နေသည်။ |
+| `hub.delBody` | Telemetry, backups and change history may be deleted with it. If it has voucher or PPPoE history, the record and that history stay, and only its connection ends. | တယ်လီမီထရီ၊ ဘက်ခ်အပ်နှင့် ပြောင်းလဲမှုမှတ်တမ်းများလည်း အတူ ပျက်နိုင်သည်။ ဗောင်ချာ သို့မဟုတ် PPPoE မှတ်တမ်းရှိပါက မှတ်တမ်းနှင့် ထိုမှတ်တမ်းများ ဆက်ရှိပြီး ချိတ်ဆက်မှုသာ ဖြတ်ပါမည်။ |
+| `hub.keptTitle` | Connection ended. History kept. | ချိတ်ဆက်မှု ဖြတ်ပြီးပါပြီ။ မှတ်တမ်းများ ဆက်ရှိပါသည်။ |
+| `hub.keptBody` | This router's voucher, PPPoE and sales history stay on its record. To connect this router or a replacement, press Connect Magic Hub and paste the new script. If you are retiring it, paste this cleanup script in WinBox. | ဤ Router ၏ ဗောင်ချာ၊ PPPoE နှင့် အရောင်းမှတ်တမ်းများ ၎င်း၏မှတ်တမ်းတွင် ဆက်ရှိပါသည်။ ဤ Router သို့မဟုတ် အစားထိုး Router ကို ချိတ်ရန် Magic Hub ချိတ်မည် ကိုနှိပ်ပြီး script အသစ်ကို paste လုပ်ပါ။ အသုံးမပြုတော့ပါက ဤ cleanup script ကို WinBox တွင် paste လုပ်ပါ။ |
+| `hub.keptNote` | Connection ended. This router's voucher, PPPoE and sales history stay on its record. To connect this router or a replacement, press Connect Magic Hub and paste the new script. | ချိတ်ဆက်မှု ဖြတ်ပြီးပါပြီ။ ဤ Router ၏ ဗောင်ချာ၊ PPPoE နှင့် အရောင်းမှတ်တမ်းများ ၎င်း၏မှတ်တမ်းတွင် ဆက်ရှိပါသည်။ ဤ Router သို့မဟုတ် အစားထိုး Router ကို ချိတ်ရန် Magic Hub ချိတ်မည် ကိုနှိပ်ပြီး script အသစ်ကို paste လုပ်ပါ။ |
+
+## Vouchers table, Live users and Print layouts (2026-11-05)
+
+Keys are in `app/src/i18n/tables.ts`. "စလစ်" (slip), "ပေးအပ်မည်" (hand out), "ဖြုတ်မည်" (kick) and "မလှုပ်ရှား" (idle) are the wordings I am least sure of.
+
+| Key | English | Burmese (to review) |
+|---|---|---|
+| `vt.search` | Search code or plan | ကုဒ် သို့မဟုတ် ပလန် ရှာရန် |
+| `vt.allBatches` | All batches | အစုအားလုံး |
+| `vt.all` | All | အားလုံး |
+| `vt.status.unused` | Unused | မသုံးရသေး |
+| `vt.status.active` | Active | သုံးနေသည် |
+| `vt.status.used` | Used | သုံးပြီး |
+| `vt.status.expired` | Expired | သက်တမ်းကုန် |
+| `vt.status.revoked` | Revoked | ပယ်ဖျက်ပြီး |
+| `vt.status.banned` | Banned | ပိတ်ပင်ထား |
+| `vt.code` | Code | ကုဒ် |
+| `vt.plan` | Plan / batch | ပလန် / အစု |
+| `vt.statusCol` | Status | အခြေအနေ |
+| `vt.actions` | Actions | လုပ်ဆောင်ချက် |
+| `vt.slip` | Slip | စလစ် |
+| `vt.handOut` | Hand out | ပေးအပ်မည် |
+| `vt.delete` | Delete | ဖျက်မည် |
+| `vt.selectPage` | Select this page | ဤစာမျက်နှာကို ရွေးမည် |
+| `vt.selectRow` | Select | ရွေးမည် |
+| `vt.selected` | {n} selected | {n} ခု ရွေးထား |
+| `vt.selectAll` | Select all {n} | {n} ခုလုံး ရွေးမည် |
+| `vt.clear` | Clear | ရှင်းမည် |
+| `vt.slips` | Slips ({n}) | စလစ် ({n}) |
+| `vt.deleteN` | Delete ({n}) | ဖျက်မည် ({n}) |
+| `vt.slipOff` | Only unused codes verified on the router, in a finished batch, can be printed. | ပြီးဆုံးသော အစုထဲမှ Router တွင် အတည်ပြုပြီး မသုံးရသေးသော ကုဒ်ကိုသာ ပရင့်ထုတ်နိုင်သည်။ |
+| `vt.notInstalled` | Not on router | Router ထဲ မရှိသေး |
+| `vt.hiddenCode` | Hidden until verified on the router | Router တွင် အတည်ပြုသည်အထိ ဖုံးထားသည် |
+| `vt.deleteConfirm` | Delete {n} voucher(s)? This cannot be undone. | ဗောင်ချာ {n} ခု ဖျက်မလား? ပြန်ယူ၍ မရပါ။ |
+| `vt.deleted` | {ok} of {n} deleted. | {n} ခုအနက် {ok} ခု ဖျက်ပြီး။ |
+| `vt.noMatch` | No voucher matches. | ကိုက်ညီသော ဗောင်ချာ မရှိပါ။ |
+| `vt.pageOf` | Page {p} · {a}–{b} of {n} | စာမျက်နှာ {p} · {n} ခုအနက် {a}–{b} |
+| `vt.page` | Page | စာမျက်နှာ |
+| `vt.prev` | Previous | ရှေ့သို့ |
+| `vt.next` | Next | နောက်သို့ |
+| `vt.printBatch` | Print this batch | ဤအစုကို ပရင့်ထုတ်မည် |
+| `vt.refreshed` | Usage read from the router. | Router မှ အသုံးပြုမှု ဖတ်ပြီး။ |
+| `lu.all` | All | အားလုံး |
+| `lu.active` | Active | သုံးနေသည် |
+| `lu.idle` | Idle | မလှုပ်ရှား |
+| `lu.near` | Near expiry | သက်တမ်းကုန်ခါနီး |
+| `lu.over` | Over quota | ဒေတာကျော် |
+| `lu.banned` | Banned MAC | ပိတ်ထားသော MAC |
+| `lu.updated` | Updated | ဖတ်ချိန် |
+| `lu.status` | Status | အခြေအနေ |
+| `lu.voucher` | Voucher | ဗောင်ချာ |
+| `lu.ip` | IP | IP |
+| `lu.mac` | MAC | MAC |
+| `lu.uptime` | Uptime | သုံးချိန် |
+| `lu.left` | Left | ကျန်ချိန် |
+| `lu.downUp` | Down / Up | ဒေါင်း / အပ် |
+| `lu.kick` | Kick | ဖြုတ်မည် |
+| `lu.ban` | Ban MAC | MAC ပိတ်မည် |
+| `lu.rate` | Rate | နှုန်း |
+| `lu.copy` | Copy | ကူးမည် |
+| `lu.copied` | Copied. | ကူးပြီး။ |
+| `lu.copyFailed` | Could not copy. | မကူးနိုင်ပါ။ |
+| `lu.kickN` | Kick ({n}) | ဖြုတ်မည် ({n}) |
+| `lu.copyN` | Copy ({n}) | ကူးမည် ({n}) |
+| `lu.kickConfirm` | Disconnect {n} guests? They can reconnect with valid access. | ဧည့်သည် {n} ဦးကို ဖြတ်ချမလား? သက်တမ်းရှိလျှင် ပြန်ချိတ်နိုင်သည်။ |
+| `lu.kicked` | {ok} of {n} disconnected and confirmed by the router. | {n} ဦးအနက် {ok} ဦး ဖြတ်ပြီး Router က အတည်ပြုပြီး။ |
+| `lu.selectAll` | Select all shown | ပြထားသမျှ ရွေးမည် |
+| `lu.notRead` | Not read from the router yet | Router မှ မဖတ်ရသေးပါ |
+| `pl.title` | Voucher print layouts | ဗောင်ချာ ပရင့်ပုံစံများ |
+| `pl.lead` | Configure the counter receipt only. These settings do not change the guest portal or the RouterOS Hotspot. | ကောင်တာ ပြေစာကိုသာ ပြင်ဆင်သည်။ ဤဆက်တင်များက ဧည့်သည် portal နှင့် RouterOS Hotspot ကို မပြောင်းလဲပါ။ |
+| `pl.back` | Back to vouchers | ဗောင်ချာများသို့ ပြန်မည် |
+| `pl.card` | Default counter receipt | ပုံသေ ကောင်တာ ပြေစာ |
+| `pl.cardLead` | Applied to every voucher slip and batch print. | ဗောင်ချာ စလစ်တိုင်းနှင့် အစုလိုက် ပရင့်တိုင်းတွင် သုံးသည်။ |
+| `pl.paper` | Thermal paper width | Thermal စက္ကူ အကျယ် |
+| `pl.p58` | 58 mm (small printer) | ၅၈ မီလီမီတာ (ပရင်တာ အသေး) |
+| `pl.p80` | 80 mm (standard counter printer) | ၈၀ မီလီမီတာ (ကောင်တာ ပရင်တာ ပုံမှန်) |
+| `pl.a4` | A4 sheet | A4 စာရွက် |
+| `pl.other` | {n} mm | {n} မီလီမီတာ |
+| `pl.terms` | Voucher use terms | ဗောင်ချာ အသုံးပြုမှု စည်းကမ်း |
+| `pl.qr` | Include QR code | QR ကုဒ် ထည့်မည် |
+| `pl.showExpiry` | Show expiry / use terms | သက်တမ်း / စည်းကမ်း ပြမည် |
+| `pl.test` | Print test receipt | စမ်းသပ် ပြေစာ ပရင့်ထုတ်မည် |
+| `pl.preview` | Live preview | တိုက်ရိုက် နမူနာ |
+| `pl.previewLead` | The browser print dialog controls the physical printer. The QR code holds the voucher code. | ပရင်တာကို browser ၏ ပရင့် dialog က ထိန်းချုပ်သည်။ QR ကုဒ်တွင် ဗောင်ချာကုဒ် ပါသည်။ |
+| `pl.demoPlan` | Demo plan | နမူနာ ပလန် |
+| `pl.reload` | Reload | ပြန်ဖတ်မည် |
+
+### Added with the router actions
+
+| Key | English | Burmese (to review) |
+|---|---|---|
+| `vt.handOutOff` | Hand out is not available yet: its records need a database update. | ပေးအပ်မည် ကို မသုံးနိုင်သေးပါ - ၎င်း၏ မှတ်တမ်းအတွက် database အပ်ဒိတ် လိုသည်။ |
+| `vt.deleteOff` | Delete is not available yet for codes on the router: this router action has not passed acceptance. | Router ပေါ်ရှိ ကုဒ်များကို မဖျက်နိုင်သေးပါ - ဤ Router လုပ်ဆောင်ချက်ကို စမ်းသပ်အတည်ပြုခြင်း မပြီးသေးပါ။ |
+| `vt.deleteUnused` | Only an unused code in a finished batch can be deleted. | ပြီးဆုံးသော အစုထဲမှ မသုံးရသေးသော ကုဒ်ကိုသာ ဖျက်နိုင်သည်။ |
+| `vt.deleteRouterConfirm` | Delete {n} code(s)? They stop working on the router and stay on record as Revoked. This cannot be undone. | ကုဒ် {n} ခု ဖျက်မလား? Router တွင် အလုပ်မလုပ်တော့ဘဲ ပယ်ဖျက်ပြီး အဖြစ် မှတ်တမ်းတွင် ကျန်မည်။ ပြန်ယူ၍ မရပါ။ |
+| `vt.handOutN` | Hand out ({n}) | ပေးအပ်မည် ({n}) |
+| `vt.handedOut` | Handed out | ပေးအပ်ပြီး |
+| `vt.handOutFailed` | Some codes could not be marked. Check them and try again. | ကုဒ်အချို့ကို မမှတ်နိုင်ပါ။ စစ်ပြီး ထပ်ကြိုးစားပါ။ |
+| `lu.kickOff` | Kick and Ban MAC are not available yet: these router actions have not passed acceptance. | ဖြုတ်မည် နှင့် MAC ပိတ်မည် ကို မသုံးနိုင်သေးပါ - ဤ Router လုပ်ဆောင်ချက်များကို စမ်းသပ်အတည်ပြုခြင်း မပြီးသေးပါ။ |
+| `lu.off` | Rate is not available: there is no reliable way yet to change the speed of a guest already online. | နှုန်း ကို မသုံးနိုင်ပါ - အွန်လိုင်းရှိပြီးသား ဧည့်သည်၏ အမြန်နှုန်းကို ယုံကြည်စိတ်ချစွာ ပြောင်းရန် နည်းလမ်း မရှိသေးပါ။ |
+| `lu.banConfirm` | Block {mac}? This device loses internet until you remove the block. | {mac} ကို ပိတ်မလား? ပိတ်ခြင်းကို မဖယ်မချင်း ဤစက်တွင် အင်တာနက် မရပါ။ |
+| `lu.unbanConfirm` | Remove the block on {mac}? | {mac} ၏ ပိတ်ထားခြင်းကို ဖယ်မလား? |
+| `lu.bannedDone` | Device blocked and confirmed by the router. | စက်ကို ပိတ်ပြီး Router က အတည်ပြုပြီး။ |
+| `lu.unbanned` | Block removed and confirmed by the router. The device can take about a minute to get back. | ပိတ်ထားခြင်းကို ဖယ်ပြီး Router က အတည်ပြုပြီး။ စက် ပြန်ရောက်ရန် တစ်မိနစ်ခန့် ကြာနိုင်သည်။ |
+| `lu.banFailed` | Could not change the block. | ပိတ်ထားခြင်းကို မပြောင်းနိုင်ပါ။ |
+| `lu.noBans` | No device is blocked. | ပိတ်ထားသော စက် မရှိပါ။ |
+| `lu.banNote` | Note | မှတ်ချက် |
+| `lu.banByApp` | Blocked from this app | ဤ app မှ ပိတ်ထားသည် |
+| `lu.banOther` | Set on the router, not by this app | ဤ app မဟုတ်ဘဲ Router တွင် သတ်မှတ်ထားသည် |
+| `lu.unban` | Remove block | ပိတ်ခြင်း ဖယ်မည် |
+
+Printed on the receipt itself, in `printCodes.ts` (Burmese and English together, because guests read it):
+
+| English | Burmese (to review) |
+|---|---|
+| Plan | ပလန် |
+| Price | စျေးနှုန်း |
+| Valid | သက်တမ်း |
+| Support | ဆက်သွယ်ရန် |

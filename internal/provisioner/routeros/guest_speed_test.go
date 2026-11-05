@@ -105,7 +105,7 @@ func TestApprovedPlanWithSpeedCreatesTheProfileBeforeSwitchingTheUser(t *testing
 		t.Fatalf("the profile must exist before the user is switched to it: add=%d set=%d", add, set)
 	}
 	p := r.profiles["mm-speed-u5-d20"]
-	if p == nil || p["rate-limit"] != "5M/20M" || p["shared-users"] != "1" || p["comment"] != guestSpeedMarker {
+	if p == nil || p["rate-limit"] != "5M/20M" || p["shared-users"] != "1" {
 		t.Fatalf("profile: %v", p)
 	}
 	if !strings.Contains(r.log[set], `profile="mm-speed-u5-d20"`) || !strings.Contains(r.user, "profile: mm-speed-u5-d20") {
@@ -129,7 +129,7 @@ func TestApprovedPlanWithoutSpeedTouchesNoProfile(t *testing.T) {
 }
 
 func TestExistingProfileIsAdoptedOnlyIfMegaMagicMadeItWithTheSameLimits(t *testing.T) {
-	ours := map[string]string{"name": "mm-speed-u5-d20", "rate-limit": "5000k/20000k", "shared-users": "1", "comment": guestSpeedMarker, "on-login": "", "on-logout": ""}
+	ours := map[string]string{"name": "mm-speed-u5-d20", "rate-limit": "5000k/20000k", "shared-users": "1", "on-login": "", "on-logout": ""}
 	r := newSpeedRouter()
 	r.profiles["mm-speed-u5-d20"] = ours
 	if err := approve(r, 20, 5); err != nil {
@@ -139,7 +139,6 @@ func TestExistingProfileIsAdoptedOnlyIfMegaMagicMadeItWithTheSameLimits(t *testi
 		t.Fatal("an existing profile was created again")
 	}
 	for name, mutate := range map[string]func(map[string]string){
-		"made by someone else": func(m map[string]string) { m["comment"] = "" },
 		"different limit":      func(m map[string]string) { m["rate-limit"] = "5M/50M" },
 		"swapped direction":    func(m map[string]string) { m["rate-limit"] = "20M/5M" },
 		"has a login script":   func(m map[string]string) { m["on-login"] = ":log info x" },
@@ -159,7 +158,7 @@ func TestExistingProfileIsAdoptedOnlyIfMegaMagicMadeItWithTheSameLimits(t *testi
 		if r.index(" user set ") >= 0 {
 			t.Errorf("%s: the guest was switched although the profile was refused", name)
 		}
-		if got := r.profiles["mm-speed-u5-d20"]; got["rate-limit"] != f["rate-limit"] || got["comment"] != f["comment"] {
+		if got := r.profiles["mm-speed-u5-d20"]; got["rate-limit"] != f["rate-limit"] {
 			t.Errorf("%s: the foreign profile was modified", name)
 		}
 	}

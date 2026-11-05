@@ -32,9 +32,10 @@ type pendingManagement struct {
 	expires                                 time.Time
 }
 
-// Pending keys live for 30 minutes in memory, never in plaintext database rows.
-// A restart requires another setup script. Verified keys use the existing
-// encrypted credential store and pinned transport, including after restarts.
+// Setup material stays until the router connects or the lifetime ends, so a script
+// pasted late still connects without a second paste. It is encrypted in the database,
+// never plaintext. Verified keys use the existing encrypted credential store and
+// pinned transport, including after restarts.
 type automaticManagementOptions struct {
 	sourceCIDR string
 	store      *database.PendingEnrollmentStore
@@ -114,18 +115,19 @@ func configureAutomaticHubManagement(h *handler.VPSHandler, source *database.Dev
 		if p, ok := pending[key]; ok && p.routerKey == routerKey && p.sourceCIDR == sourceCIDR {
 			return automaticEnrollmentScript(id, p)
 		}
-		if len(pending) >= 256 {
+		if option.store == nil && len(pending) >= 256 {
 			return "", errors.New("too many pending enrollments")
 		}
 		var p pendingManagement
 		if option.store != nil {
-			raw, e := option.store.GetOrCreate(ctx, biz, id, "management", func() (string, error) {
+			generate := func() (string, error) {
 				v, e := newPendingManagement(biz, id, routerKey, tunnelScript, sourceCIDR)
 				if e != nil {
 					return "", e
 				}
 				return encodePendingManagement(v)
-			}, 30*time.Minute)
+			}
+			raw, e := option.store.GetOrCreate(ctx, biz, id, "management", generate, database.PendingEnrollmentLifetime)
 			if e != nil {
 				return "", e
 			}
@@ -133,8 +135,17 @@ func configureAutomaticHubManagement(h *handler.VPSHandler, source *database.Dev
 			if e != nil {
 				return "", e
 			}
+			// The router was given a new key, so older setup material no longer fits it.
 			if p.routerKey != routerKey || p.sourceCIDR != sourceCIDR {
-				return "", errors.New("pending management identity changed")
+				if e = option.store.DeletePurpose(ctx, biz, id, "management"); e != nil {
+					return "", e
+				}
+				if raw, e = option.store.GetOrCreate(ctx, biz, id, "management", generate, database.PendingEnrollmentLifetime); e != nil {
+					return "", e
+				}
+				if p, e = decodePendingManagement(raw); e != nil {
+					return "", e
+				}
 			}
 		} else {
 			var e error
@@ -261,11 +272,14 @@ func automaticEnrollmentScript(id string, p pendingManagement) (string, error) {
 		return "", errors.New("invalid tunnel execution block")
 	}
 	management = strings.ReplaceAll(management, "10.77.0.9/32", p.sourceCIDR)
+	management = strings.ReplaceAll(management, "10.77.0.9", ip.String())
 	// The tunnel block's header says it never touches SSH or users; this combined
 	// paste does, so say what it really changes before the operator runs it.
 	tunnel = strings.Replace(tunnel, "# Scoped tunnel only. Does not enable SSH/REST or change WAN/LAN/firewall/users.",
 		"# Creates the Magic Hub tunnel, then a dedicated management user, its group and SSH key,\n# lets SSH in from the Hub address only, and adds one input firewall rule for it.\n# WAN, LAN and your other users are not changed.", 1)
-	return strings.TrimSuffix(tunnel, "\n}") + "\n" + strings.TrimPrefix(management, "{\n"), nil
+	// The final line break makes the terminal run the block on paste. Without it,
+	// a real WinBox terminal waited for one more Enter and looked finished.
+	return strings.TrimSuffix(tunnel, "\n}") + "\n" + strings.TrimPrefix(management, "{\n") + "\n", nil
 }
 
 func automaticManagementScript(id string, p pendingManagement) string {
@@ -274,51 +288,76 @@ func automaticManagementScript(id string, p pendingManagement) string {
 	marker := "mega-magic:" + p.user
 	// All interpolated values are generated locally as hex, fixed labels or RSA
 	// authorized-key data. No operator text reaches the RouterOS commands.
+	// /ip/service also lists live SSH connections, so the service is the first match.
 	return fmt.Sprintf(`{
-# Dedicated Magic Hub management. Run within 30 minutes of generation.
-:local managementIface [/interface/wireguard find where name="%s"]
-:if ([:len $managementIface] != 1) do={ :error "STOP: Magic Hub tunnel missing or ambiguous; management unchanged" }
-:if ([/interface/wireguard get $managementIface comment] != "mega-magic:%s") do={ :error "STOP: Magic Hub tunnel ownership mismatch; management unchanged" }
-:if ([/interface/wireguard get $managementIface public-key] != "%s" || [/interface/wireguard get $managementIface disabled]) do={ :error "STOP: Magic Hub tunnel key mismatch or disabled; management unchanged" }
-:if ([/ip/service get [find where name="ssh"] port] != 22) do={ :error "STOP: custom SSH port; use advanced management setup" }
-:local account [/user find where name="%s"]
-:if ([:len $account] > 1) do={ :error "STOP: ambiguous management account" }
+# Dedicated Magic Hub management.
+:local mmSSH [:pick [/ip/service find where name="ssh"] 0]
+:local mmPort [/ip/service get $mmSSH port]
+:local account [/user find where name="%[1]s"]
 :if ([:len $account] = 1) do={
-  :if ([:pick [/user get $account comment] 0 %d] != "%s:") do={ :error "STOP: existing account is not owned by Magic Hub" }
+  :if ([:pick [/user get $account comment] 0 %[2]d] != "%[3]s:") do={ :error "STOP: a user named %[1]s exists and is not from Magic Hub; management unchanged" }
 }
-:local grp [/user/group find where name="%s"]
-:if ([:len $grp] = 0) do={ /user/group add name="%s" policy=ssh,read,write,policy,test,sensitive,reboot,ftp }
-:if ([:len $grp] = 1) do={
-  :foreach privilege in=[/user/group get $grp policy] do={
-    :if ([:find ",ssh,read,write,policy,test,sensitive,reboot,ftp," ("," . $privilege . ",")] = nil) do={ :error "STOP: dedicated management group has unexpected permissions" }
+:foreach mmOldUser in=[/user find where name~"^mm-" and name!="%[1]s"] do={
+  :local mmOldName [/user get $mmOldUser name]
+  :if ([:pick [/user get $mmOldUser comment] 0 14] = "mega-magic:mm-") do={
+    /user/ssh-keys remove [find where user=$mmOldName]
+    /ip/firewall/filter remove [find where comment=("mega-magic:" . $mmOldName)]
+    /ip/firewall/nat remove [find where comment=("mega-magic:" . $mmOldName)]
+    /user remove $mmOldUser
+    :do { /user/group remove [find where name=$mmOldName] } on-error={}
   }
 }
-:if ([:len $account] = 0) do={ /user add name="%s" group="%s" address=10.77.0.9/32 password="%s" comment="%s:%s" }
-:if ([:len $account] = 1) do={ /user set $account group="%s" address=10.77.0.9/32 password="%s" comment="%s:%s" disabled=no }
-:local keyfile "%s.pub.txt"
-:if ([:len [/file find where name=$keyfile]] = 0) do={ /file print file="%s.pub"; :delay 1s }
-/file set [find where name=$keyfile] contents="%s"
-/user/ssh-keys remove [find where user="%s"]
-/user/ssh-keys import public-key-file=$keyfile user="%s"
+:local grp [/user/group find where name="%[1]s"]
+:if ([:len $grp] = 0) do={ /user/group add name="%[1]s" policy=ssh,read,write,policy,test,sensitive,reboot,ftp } else={ /user/group set $grp policy=ssh,read,write,policy,test,sensitive,reboot,ftp }
+:if ([:len $account] = 0) do={ /user add name="%[1]s" group="%[1]s" address=10.77.0.9/32 password="%[4]s" comment="%[3]s:%[4]s" }
+:if ([:len $account] = 1) do={ /user set $account group="%[1]s" address=10.77.0.9/32 password="%[4]s" comment="%[3]s:%[4]s" disabled=no }
+:local keyfile "%[1]s.pub.txt"
+:if ([:len [/file find where name=$keyfile]] = 0) do={ /file print file="%[1]s.pub"; :delay 1s }
+/file set [find where name=$keyfile] contents="%[5]s"
+/user/ssh-keys remove [find where user="%[1]s"]
+/user/ssh-keys import public-key-file=$keyfile user="%[1]s"
 /file remove [find where name=$keyfile]
-:local sshservice [/ip/service find where name="ssh"]
-:if ([/ip/service get $sshservice disabled]) do={
-  /ip/service set $sshservice address=10.77.0.9/32 disabled=no
+# RouterOS names this list "available-from" now and "address" on older versions. Each name
+# is parsed only when it runs, so a current router never reads the deprecated one.
+:local mmSetAllowed do={ :do { [[:parse ("/ip/service set " . $1 . " available-from=" . $2)]] } on-error={ [[:parse ("/ip/service set " . $1 . " address=" . $2)]] } }
+:local mmGetAllowed do={ :local mmValue ""; :do { :set mmValue [[:parse (":return [/ip/service get " . $1 . " available-from]")]] } on-error={ :do { :set mmValue [[:parse (":return [/ip/service get " . $1 . " address]")]] } on-error={} }; :return $mmValue }
+:local mmAllowed [$mmGetAllowed $mmSSH]
+:if ([/ip/service get $mmSSH disabled]) do={
+  $mmSetAllowed $mmSSH "10.77.0.9/32"
+  /ip/service set $mmSSH disabled=no
 } else={
-  :local allowed [:tostr [/ip/service get $sshservice address]]
-  :if ([:len $allowed] > 0 && [:find $allowed "10.77.0.9/32"] = nil) do={ /ip/service set $sshservice address=($allowed . ",10.77.0.9/32") }
+  :if ([:len $mmAllowed] > 0) do={
+    :local mmHas false
+    :local mmList "10.77.0.9/32"
+    :foreach mmEntry in=$mmAllowed do={
+      :if ([:tostr $mmEntry] = "10.77.0.9/32" || [:tostr $mmEntry] = "10.77.0.9") do={ :set mmHas true }
+      :set mmList ($mmList . "," . [:tostr $mmEntry])
+    }
+    :if (!$mmHas) do={ $mmSetAllowed $mmSSH $mmList }
+  }
 }
-:local rule [/ip/firewall/filter find where comment="%s"]
-:if ([:len $rule] > 1) do={ :error "STOP: ambiguous management rule" }
-:if ([:len $rule] = 1) do={
-  :if ([/ip/firewall/filter get $rule chain] != "input" || [/ip/firewall/filter get $rule action] != "accept" || [/ip/firewall/filter get $rule in-interface] != "%s" || [:tostr [/ip/firewall/filter get $rule src-address]] != "10.77.0.9/32" || [:tostr [/ip/firewall/filter get $rule dst-port]] != "22" || [/ip/firewall/filter get $rule protocol] != "tcp") do={ :error "STOP: management firewall rule changed" }
-  /ip/firewall/filter enable $rule
-  /ip/firewall/filter move $rule destination=0
-} else={
-  :if ([:len [/ip/firewall/filter find]] = 0) do={ /ip/firewall/filter add chain=input action=accept in-interface="%s" src-address=10.77.0.9/32 protocol=tcp dst-port=22 comment="%s" } else={ /ip/firewall/filter add chain=input action=accept in-interface="%s" src-address=10.77.0.9/32 protocol=tcp dst-port=22 comment="%s" place-before=0 }
+/ip/firewall/filter remove [find where comment="%[3]s"]
+:local mmFirst [/ip/firewall/filter find where dynamic=no]
+:if ([:len $mmFirst] = 0) do={ /ip/firewall/filter add chain=input action=accept in-interface="%[6]s" src-address=10.77.0.9/32 protocol=tcp dst-port=$mmPort comment="%[3]s" } else={ /ip/firewall/filter add chain=input action=accept in-interface="%[6]s" src-address=10.77.0.9/32 protocol=tcp dst-port=$mmPort comment="%[3]s" place-before=[:pick $mmFirst 0] }
+# The app always reaches this router on port 22 through the tunnel; a custom SSH port is mapped here.
+/ip/firewall/nat remove [find where comment="%[3]s"]
+:if ($mmPort != 22) do={
+  :local mmNat [/ip/firewall/nat find where dynamic=no]
+  :if ([:len $mmNat] = 0) do={ /ip/firewall/nat add chain=dstnat action=redirect to-ports=$mmPort in-interface="%[6]s" src-address=10.77.0.9/32 protocol=tcp dst-port=22 comment="%[3]s" } else={ /ip/firewall/nat add chain=dstnat action=redirect to-ports=$mmPort in-interface="%[6]s" src-address=10.77.0.9/32 protocol=tcp dst-port=22 comment="%[3]s" place-before=[:pick $mmNat 0] }
 }
-:put "Setup complete. Return to Mega Magic and select Finish connection."
-}`, iface, iface, p.routerKey, p.user, len(marker)+1, marker, p.user, p.user, p.user, p.user, p.proof, marker, p.proof, p.user, p.proof, marker, p.proof, p.user, p.user, p.public, p.user, p.user, marker, iface, iface, marker, iface, marker)
+# Say what actually happened: a finished script does not mean the router reached the Hub.
+:put "Checking the connection to Magic Hub (up to 30 seconds)..."
+:local mmReached false
+:foreach mmPeer in=[/interface/wireguard/peers find where interface="%[6]s"] do={
+  :for mmTry from=1 to=30 do={
+    :if (!$mmReached) do={
+      :delay 1s
+      :do { :if ([:tonum [/interface/wireguard/peers get $mmPeer rx]] > 0) do={ :set mmReached true } } on-error={}
+    }
+  }
+}
+:if ($mmReached) do={ :put "Setup complete. You can close this window: Mega Magic connects by itself." } else={ :put "NOT CONNECTED YET: this router has not reached Magic Hub. Check its internet connection. There is nothing more to paste: it connects by itself as soon as it can." }
+}`, p.user, len(marker)+1, marker, p.proof, p.public, iface)
 }
 
 // Bootstrap trust is scoped to the cryptographically authenticated WireGuard
@@ -401,7 +440,7 @@ func newPendingManagement(biz, id, routerKey, tunnelScript, sourceCIDR string) (
 	if _, err := rand.Read(proof); err != nil {
 		return pendingManagement{}, err
 	}
-	p := pendingManagement{private: string(pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(private)})), public: strings.TrimSpace(string(ssh.MarshalAuthorizedKey(pub))), proof: hex.EncodeToString(proof), user: hub.ManagementUserName(biz, id), routerKey: routerKey, expires: time.Now().Add(30 * time.Minute)}
+	p := pendingManagement{private: string(pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(private)})), public: strings.TrimSpace(string(ssh.MarshalAuthorizedKey(pub))), proof: hex.EncodeToString(proof), user: hub.ManagementUserName(biz, id), routerKey: routerKey, expires: time.Now().Add(database.PendingEnrollmentLifetime)}
 	p.tunnelScript = tunnelScript
 	p.sourceCIDR = sourceCIDR
 	return p, nil

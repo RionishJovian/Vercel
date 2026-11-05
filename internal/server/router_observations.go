@@ -25,6 +25,8 @@ func wireRouterObservations(cfg *config.Config, db *database.DB, h *handler.Rout
 	if err != nil {
 		return err
 	}
-	h.EnableObservations(routeros.NewDeviceApplier(source, a.Timeout, nil, a.Interface, a.ListenPortRotateTo, a.ResetHold))
+	applier := routeros.NewDeviceApplier(source, a.Timeout, nil, a.Interface, a.ListenPortRotateTo, a.ResetHold)
+	h.EnableObservations(applier)
+	h.EnableGuestActions(applier) // Stays refused until MM_GUEST_ACTIONS_ENABLED is set.
 	return nil
 }

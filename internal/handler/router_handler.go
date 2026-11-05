@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"log"
 	"net"
 	"net/http"
 	"strings"
@@ -19,6 +20,8 @@ import (
 )
 
 type RouterHandler struct {
+	hubRemoval       func(ctx context.Context, businessID, requester, deviceID string) (string, error)
+	hubForget        func(ctx context.Context, businessID, deviceID string) error
 	SubscriptionOnly bool
 	db               *database.DB
 	deviceRepo       *database.DeviceRepository
@@ -27,6 +30,7 @@ type RouterHandler struct {
 	observations     interface {
 		ReadObservations(context.Context, string, string) (routeros.NetworkInventory, error)
 	}
+	guestActions GuestRouterActions
 }
 
 type MessagingClient interface {
@@ -35,6 +39,17 @@ type MessagingClient interface {
 
 func NewRouterHandler(db *database.DB, deviceRepo *database.DeviceRepository, allowRepo *database.DeviceAllowanceRepository, msg MessagingClient) *RouterHandler {
 	return &RouterHandler{db: db, deviceRepo: deviceRepo, allowRepo: allowRepo, messaging: msg}
+}
+
+// ConfigureHubForget clears a kept router's old setup material after its connection ends.
+func (h *RouterHandler) ConfigureHubForget(forget func(ctx context.Context, businessID, deviceID string) error) {
+	h.hubForget = forget
+}
+
+// ConfigureHubRemoval makes Delete end a router's Magic Hub connection. The function
+// returns a script that removes the setup from the router, or "" when there is none.
+func (h *RouterHandler) ConfigureHubRemoval(remove func(ctx context.Context, businessID, requester, deviceID string) (string, error)) {
+	h.hubRemoval = remove
 }
 
 // withTenantTx runs fn in an RLS-bound tenant transaction (pinned conn when
@@ -336,6 +351,7 @@ func (h *RouterHandler) DeleteRouter(c *gin.Context) {
 	deviceID := c.Param("id")
 	businessID := auth.GetBusinessID(c)
 
+	cleanup, kept := "", false
 	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
 		existing, err := h.deviceRepo.GetDeviceByIDTXN(tx, deviceID)
 		if err != nil {
@@ -348,18 +364,42 @@ func (h *RouterHandler) DeleteRouter(c *gin.Context) {
 			return &httpError{status: http.StatusForbidden, msg: "access denied"}
 		}
 
+		// A blocked delete aborts the transaction, so a savepoint lets the same one go on.
+		if _, err := tx.Exec("SAVEPOINT router_delete"); err != nil {
+			return &httpError{status: http.StatusInternalServerError, msg: "failed to delete router"}
+		}
 		if err := h.deviceRepo.DeleteDeviceTXN(tx, deviceID); err != nil {
 			var pending *pq.Error
 			if errors.As(err, &pending) && pending.Code == "55000" && pending.Message == "management_migration_pending" {
 				return &httpError{status: http.StatusConflict, msg: "Recover or cancel this router's management migration before deleting its record"}
 			}
-			if errors.As(err, &pending) && pending.Code == "23503" && strings.HasPrefix(pending.Constraint, "broadband_") {
+			hasHistory := errors.As(err, &pending) && pending.Code == "23503"
+			switch {
+			case hasHistory && h.hubRemoval != nil && existing.DeploymentLayer == "MAIN_GATEWAY":
+				// Sales history must stay, but the owner still has to be able to reconnect
+				// this router or a replacement: end the connection and keep the record.
+				if _, err := tx.Exec("ROLLBACK TO SAVEPOINT router_delete"); err != nil {
+					return &httpError{status: http.StatusInternalServerError, msg: "failed to delete router"}
+				}
+				if err := h.deviceRepo.ClearManagementTXN(tx, businessID, deviceID); err != nil {
+					return &httpError{status: http.StatusInternalServerError, msg: "failed to delete router"}
+				}
+				kept = true
+			case hasHistory && strings.HasPrefix(pending.Constraint, "broadband_"):
 				return &httpError{status: http.StatusConflict, msg: "This device record has paid PPPoE accounts and payment history, so it cannot be deleted."}
-			}
-			if errors.As(err, &pending) && pending.Code == "23503" {
+			case hasHistory:
 				return &httpError{status: http.StatusConflict, msg: "This device record is linked to vouchers, issuance batches or guest recovery history and cannot be deleted. Keep the device record to preserve that history. No records were deleted."}
+			default:
+				return &httpError{status: http.StatusInternalServerError, msg: "failed to delete router"}
 			}
-			return &httpError{status: http.StatusInternalServerError, msg: "failed to delete router"}
+		}
+		// Inside the transaction: if the Hub cannot end the connection, nothing changes.
+		if h.hubRemoval != nil && existing.DeploymentLayer == "MAIN_GATEWAY" {
+			script, err := h.hubRemoval(c.Request.Context(), businessID, auth.GetUserID(c), deviceID)
+			if err != nil {
+				return &httpError{status: http.StatusServiceUnavailable, msg: "Magic Hub could not end this router's connection, so nothing was deleted. Try again."}
+			}
+			cleanup = script
 		}
 		return nil
 	})
@@ -368,7 +408,22 @@ func (h *RouterHandler) DeleteRouter(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "router deleted"})
+	response := gin.H{"message": "router deleted"}
+	if kept {
+		response = gin.H{"message": "connection ended; record and history kept", "record_kept": true}
+		// Old setup material would only mislead the next connection. The tenant role cannot
+		// touch this table, and a leftover is harmless, so a failure here is not fatal.
+		if h.hubForget != nil {
+			if err := h.hubForget(c.Request.Context(), businessID, deviceID); err != nil {
+				log.Printf("router delete: could not clear old setup for %s", deviceID)
+			}
+		}
+	}
+	if cleanup != "" {
+		c.Header("Cache-Control", "no-store")
+		response["router_cleanup_script"] = cleanup
+	}
+	c.JSON(http.StatusOK, response)
 }
 
 // GetRouterObservations returns the latest observed inventory for a router.
@@ -407,11 +462,12 @@ func (h *RouterHandler) GetRouterObservations(c *gin.Context) {
 		c.JSON(502, gin.H{"error": "Router observations could not be read", "code": "observations_unavailable"})
 		return
 	}
+	inventory.DeviceControlsEnabled = deviceControlsEnabled()
 	inventory.WriteEnabled = false
 	inventory.WiFiWriteEnabled = false
 	inventory.AddressWriteEnabled = false
 	inventory.AddressPreviewOnly = false
-	c.JSON(200, gin.H{"inventory": inventory})
+	c.JSON(200, gin.H{"inventory": inventory, "guest_actions_enabled": h.guestActionsReady()})
 }
 
 // GetDiscoveryLabels returns saved friendly names and types for discovered devices.
@@ -488,42 +544,32 @@ type DisconnectGuestRequest struct {
 	Confirm bool   `json:"confirm" binding:"required"`
 }
 
-// DisconnectGuest refuses unverified actions until a router write connector is accepted.
+// DisconnectGuest ends one session, and only reports success once the router confirms it.
 func (h *RouterHandler) DisconnectGuest(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
 	deviceID := c.Param("id")
 	businessID := auth.GetBusinessID(c)
-
-	var device *model.Device
-	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
-		d, err := h.deviceRepo.GetDeviceByIDTXN(tx, deviceID)
-		if err != nil {
-			return &httpError{status: http.StatusInternalServerError, msg: "database error"}
-		}
-		device = d
-		return nil
-	})
-	if err != nil {
-		respondErr(c, err)
+	if !h.guestGateway(c, businessID, deviceID) {
 		return
 	}
-	if device == nil || device.BusinessID != businessID {
-		c.JSON(http.StatusNotFound, gin.H{"error": "router not found"})
-		return
-	}
-
 	var req DisconnectGuestRequest
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 4096)
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-
 	if !req.Confirm {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "confirmation required"})
 		return
 	}
-
-	// Report unavailability as an error, never as successful disconnection.
-	c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Guest disconnection is unavailable until the router action has passed acceptance", "code": "guest_disconnect_unavailable", "verified": false})
+	if !h.guestActionsReady() {
+		guestActionsOff(c)
+		return
+	}
+	ctx, cancel := context.WithTimeout(c.Request.Context(), guestActionTimeout)
+	defer cancel()
+	err := h.guestActions.DisconnectGuest(ctx, businessID, deviceID, routeros.GuestSession{ID: req.ID, MAC: strings.ToUpper(req.MAC), Address: req.Address, User: req.User})
+	h.finishGuestAction(c, businessID, deviceID, "router.guest.disconnected", "Owner disconnected guest MAC "+strings.ToUpper(req.MAC), err)
 }
 
 // EnableObservations supplies a read-only interface, separately from router writes.

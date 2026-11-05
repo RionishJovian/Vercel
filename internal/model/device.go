@@ -1,6 +1,7 @@
 package model
 
 import (
+	"encoding/json"
 	"net"
 	"time"
 )
@@ -18,10 +19,27 @@ type Device struct {
 	Transport       string            `json:"transport"`
 	MACAddress      *net.HardwareAddr `json:"mac_address,omitempty"`
 	ManagementIP    *net.IP           `json:"management_ip,omitempty"`
-	IsOnline        bool              `json:"is_online"`
-	LastSeenAt      *time.Time        `json:"last_seen_at,omitempty"`
-	CreatedAt       time.Time         `json:"created_at"`
-	UpdatedAt       time.Time         `json:"updated_at"`
+	// ManagementConnected: the app holds a verified login for this router. Never the login itself.
+	ManagementConnected bool       `json:"management_connected,omitempty"`
+	IsOnline            bool       `json:"is_online"`
+	LastSeenAt          *time.Time `json:"last_seen_at,omitempty"`
+	CreatedAt           time.Time  `json:"created_at"`
+	UpdatedAt           time.Time  `json:"updated_at"`
+}
+
+// MarshalJSON writes the MAC as text. net.HardwareAddr is a byte slice, so it would
+// otherwise reach the console as base64.
+func (d Device) MarshalJSON() ([]byte, error) {
+	type plain Device
+	out := struct {
+		plain
+		MACAddress *string `json:"mac_address,omitempty"`
+	}{plain: plain(d)}
+	if d.MACAddress != nil {
+		text := d.MACAddress.String()
+		out.MACAddress = &text
+	}
+	return json.Marshal(out)
 }
 
 // PeerKey identifies one managed peer/router for a tenant — the unit the

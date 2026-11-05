@@ -12,7 +12,7 @@
     "test:api": "python3 -m unittest discover -s tests -p 'test_*.py' -v",
     "build:sites": "vite build && node scripts/prepare-sites-build.mjs",
     "test:vercel": "node --test deploy/vercel/proxy.test.js",
-    "test:deployment": "node --test scripts/test-deployment-config.mjs"
+    "test:deployment": "node --test scripts/test-deployment-config.mjs scripts/test-hub-reconcile.mjs"
   },
   "dependencies": {
     "@phosphor-icons/react": "^2.1.10",

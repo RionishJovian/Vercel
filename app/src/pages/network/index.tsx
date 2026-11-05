@@ -16,7 +16,7 @@ const KEY = "mm_selected_router";
 const read = () => { try { return sessionStorage.getItem(KEY) ?? ""; } catch { return ""; } };
 
 /** Internet setup: one router is chosen once (or auto-picked when there is one) and remembered across these pages. */
-export function Network({ me, sub }: { me: Me; sub: string }) {
+export function Network({ me, sub, params }: { me: Me; sub: string; params?: URLSearchParams }) {
   const { t, tn } = useI18n();
   const canEdit = EDITORS.includes(me.user?.user_role ?? "");
   const { data, error, isLoading } = useSWR<{ routers?: RouterRow[] }>("/routers", fetcher);
@@ -45,7 +45,7 @@ export function Network({ me, sub }: { me: Me; sub: string }) {
         <div className="stack">{reason && <Note kind="bad">{reason}</Note>}<a className="rowitem menu-link" href="#/network/new"><b>{t("nw.title")}</b><span aria-hidden="true" className="soft">›</span></a>{workspaces.map((k) => <a key={k} className="rowitem menu-link" href={"#/network/" + k}><b>{tn(workspaceInfo[k][0])}</b><span aria-hidden="true" className="soft">›</span></a>)}</div>
       ) : (
         <>
-          <NetworkEditor key={(router?.device_id ?? "none") + ws} workspace={ws} router={router} canEdit={canEdit} reason={reason} />
+          <NetworkEditor key={(router?.device_id ?? "none") + ws} workspace={ws} router={router} canEdit={canEdit} reason={reason} prefill={params} />
           {ws === "pppoe" && router && <Broadband key={router.device_id} routerId={router.device_id} routerName={router.hardware_name ?? router.device_id} canEdit={canEdit} onBusyChange={setBroadbandBusy} />}
         </>
       )}

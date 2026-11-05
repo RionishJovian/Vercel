@@ -210,6 +210,10 @@ func (h *VoucherHandler) ListVouchers(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
+	if c.Query("page") != "" {
+		h.listVouchersPage(c, businessID)
+		return
+	}
 
 	var vouchers []*model.Voucher
 	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
