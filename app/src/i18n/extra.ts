@@ -1,6 +1,7 @@
 // Strings added by the React app. Burmese is a first draft for native-speaker review.
 const extra = {
   en: {
+    "starlink.toggle": "Starlink", "starlink.loading": "Loading orbit data…", "starlink.count": "{n} Starlink satellites calculated over the Myanmar area.", "starlink.age": "Orbit data about {h} hours old.", "starlink.ageFresh": "Orbit data under an hour old.", "starlink.note": "Positions are calculated from public orbit data, not live signals from SpaceX. They don't show Starlink coverage or which satellite a site's internet uses.", "starlink.stale": "Orbit data is out of date, so no satellites are shown.", "starlink.unavailable": "Orbit data isn't available right now, so no satellites are shown.", "starlink.credit": "Orbit data: CelesTrak",
     "net.readTimeout": "The router did not respond in time. Check Magic Hub and try again.",
     "c.help": "Help",
     "more.g.business": "Business", "more.g.operations": "Operations", "more.g.tools": "Tools", "more.g.account": "Account",
@@ -131,6 +132,7 @@ const extra = {
     "md.sub": "Advice only. It never changes your network.", "md.hello": "Ask about your devices, Jellyfin, or where things are in the app.", "md.p1": "How are my devices doing?", "md.p2": "Where do I add the Jellyfin library?", "md.p3": "Where do I connect the gateway?", "md.you": "You", "md.thinking": "Thinking…", "md.ask": "What can I help with?", "md.note": "Advice only. Nothing is changed.", "md.send": "Send", "md.close": "Close Magic Dude", "md.empty": "No answer yet. Please ask again.", "md.locked": "Magic Dude needs an unlock key. Ask your owner or admin.", "md.limit": "The AI usage limit is full. Try again later.", "md.fail": "No answer right now. Please try again. Nothing was changed.", "md.failNote": "The question could not be sent.",
   },
   my: {
+    "starlink.toggle": "Starlink", "starlink.loading": "ပတ်လမ်းဒေတာ ဖွင့်နေပါတယ်…", "starlink.count": "မြန်မာဧရိယာအပေါ်မှာ Starlink ဂြိုဟ်တု {n} လုံးကို တွက်ချက်ပြထားပါတယ်။", "starlink.age": "ပတ်လမ်းဒေတာ {h} နာရီခန့် ကြာပါပြီ။", "starlink.ageFresh": "ပတ်လမ်းဒေတာ တစ်နာရီ မပြည့်သေးပါ။", "starlink.note": "ဒီတည်နေရာတွေကို အများသုံး ပတ်လမ်းဒေတာကနေ တွက်ချက်ထားတာပါ။ SpaceX ဆီက တိုက်ရိုက်အချက်ပြမှု မဟုတ်ပါ။ Starlink လိုင်းမိတဲ့ နေရာကို မပြသလို site ရဲ့ အင်တာနက်က ဘယ်ဂြိုဟ်တုကို သုံးနေလဲဆိုတာလည်း မပြပါ။", "starlink.stale": "ပတ်လမ်းဒေတာ ဟောင်းနေလို့ ဂြိုဟ်တုတွေကို မပြပါ။", "starlink.unavailable": "ပတ်လမ်းဒေတာ အခု မရနိုင်လို့ ဂြိုဟ်တုတွေကို မပြပါ။", "starlink.credit": "ပတ်လမ်းဒေတာ: CelesTrak",
     "net.readTimeout": "Router မှ အချိန်မီ တုံ့ပြန်မှု မရပါ။ Magic Hub ကို စစ်ပြီး ထပ်ကြိုးစားပါ။",
     "c.help": "အကူအညီ",
     "more.g.business": "လုပ်ငန်း", "more.g.operations": "လုပ်ငန်းစဉ်", "more.g.tools": "ကိရိယာများ", "more.g.account": "အကောင့်",

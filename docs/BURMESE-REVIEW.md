@@ -315,3 +315,16 @@ Printed on the receipt itself, in `printCodes.ts` (Burmese and English together,
 | English | Burmese |
 |---|---|
 | This state since | ဒီအခြေအနေ စတင်ချိန် |
+
+## Starlink map layer (2026-11-06)
+
+| English | Burmese |
+|---|---|
+| Loading orbit data… | ပတ်လမ်းဒေတာ ဖွင့်နေပါတယ်… |
+| {n} Starlink satellites calculated over the Myanmar area. | မြန်မာဧရိယာအပေါ်မှာ Starlink ဂြိုဟ်တု {n} လုံးကို တွက်ချက်ပြထားပါတယ်။ |
+| Orbit data about {h} hours old. | ပတ်လမ်းဒေတာ {h} နာရီခန့် ကြာပါပြီ။ |
+| Orbit data under an hour old. | ပတ်လမ်းဒေတာ တစ်နာရီ မပြည့်သေးပါ။ |
+| Positions are calculated from public orbit data, not live signals from SpaceX. They don't show Starlink coverage or which satellite a site's internet uses. | ဒီတည်နေရာတွေကို အများသုံး ပတ်လမ်းဒေတာကနေ တွက်ချက်ထားတာပါ။ SpaceX ဆီက တိုက်ရိုက်အချက်ပြမှု မဟုတ်ပါ။ Starlink လိုင်းမိတဲ့ နေရာကို မပြသလို site ရဲ့ အင်တာနက်က ဘယ်ဂြိုဟ်တုကို သုံးနေလဲဆိုတာလည်း မပြပါ။ |
+| Orbit data is out of date, so no satellites are shown. | ပတ်လမ်းဒေတာ ဟောင်းနေလို့ ဂြိုဟ်တုတွေကို မပြပါ။ |
+| Orbit data isn't available right now, so no satellites are shown. | ပတ်လမ်းဒေတာ အခု မရနိုင်လို့ ဂြိုဟ်တုတွေကို မပြပါ။ |
+| Orbit data: CelesTrak | ပတ်လမ်းဒေတာ: CelesTrak |
