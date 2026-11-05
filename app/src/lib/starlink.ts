@@ -11,6 +11,8 @@ export const AREA = { west: 89.5, east: 103.5, south: 7, north: 31 };
 export const SCAN_EVERY_MS = 60_000;
 /** Ground speed peaks near 0.072 degrees of latitude a second, so 60 s is about 4.3 degrees. Longitude stretches with latitude, up to about 1.35x at this area's edge. */
 export const SCAN_MARGIN_DEG = 6;
+/** How far back each trail reaches. Long enough to show direction, short enough not to crowd a phone screen. */
+export const TRAIL_MS = 30_000;
 /** Orbit data older than this is reported as out of date and nothing is drawn. */
 export const STALE_AFTER_HOURS = 72;
 /** A single object not updated for this long has probably decayed or stopped being tracked. */
@@ -73,15 +75,24 @@ export function nearby(satellites: Satellite[], date: Date): Satellite[] {
   });
 }
 
-/** The quick step: positions now, as lng,lat pairs, for those actually in the area. */
+/** The quick step: for those actually in the area, four numbers each: lng, lat now, then lng, lat a little earlier (TRAIL_MS). */
 export function inAreaNow(candidates: Satellite[], date: Date): Float32Array {
-  const gmst = gstime(date), coords = new Float32Array(candidates.length * 2);
+  const gmst = gstime(date), earlier = new Date(date.getTime() - TRAIL_MS), gmstEarlier = gstime(earlier);
+  const out = new Float32Array(candidates.length * 4);
   let n = 0;
   for (const s of candidates) {
     const p = position(s.satrec, date, gmst);
-    if (p && inArea(p[0], p[1], 0)) { coords[n++] = p[0]; coords[n++] = p[1]; }
+    if (!p || !inArea(p[0], p[1], 0)) continue;
+    const before = position(s.satrec, earlier, gmstEarlier) ?? p;
+    out[n++] = p[0]; out[n++] = p[1]; out[n++] = before[0]; out[n++] = before[1];
   }
-  return coords.slice(0, n);
+  return out.slice(0, n);
+}
+
+/** Degrees clockwise from north on the Mercator map, so the icon lines up with its trail as drawn. */
+export function heading(fromLng: number, fromLat: number, toLng: number, toLat: number): number {
+  const y = (lat: number) => Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360)) * (180 / Math.PI);
+  return (Math.atan2(toLng - fromLng, y(toLat) - y(fromLat)) * 180) / Math.PI;
 }
 
 export type OrbitState = "loading" | "ready" | "stale" | "unavailable";
