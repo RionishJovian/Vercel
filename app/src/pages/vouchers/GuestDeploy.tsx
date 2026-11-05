@@ -6,6 +6,7 @@ import { useI18n } from "../../i18n";
 import { Note, SectionHead } from "../../components/ui";
 import { errorText } from "../../lib/errors";
 
+interface SavedPortal { mobile_payment_enabled?: boolean; guest_plans?: unknown[] }
 interface Plan { profile: string; steps: string[]; file?: string; version: string; confirmation: string; preview_html?: string; media_host?: string; media_port?: string }
 
 /** Installs the saved guest login page on a gateway: review first, then a backed-up, read-back-verified apply. */
@@ -17,6 +18,11 @@ export function GuestDeploy() {
   const [profiles, setProfiles] = useState<string[] | null>(null), [profile, setProfile] = useState("");
   const [plan, setPlan] = useState<Plan | null>(null), [status, setStatus] = useState(""), [busy, setBusy] = useState(false);
   const rev = useRef(0);
+  // The install uses the saved page, so this reads what is saved, not the unsaved form.
+  const saved = useSWR<{ config?: SavedPortal } & SavedPortal>("/portal/config", fetcher, { shouldRetryOnError: false });
+  const portal: SavedPortal | undefined = saved.data?.config ?? saved.data;
+  // A config saved before these flags existed has bank transfer on.
+  const noPlans = !!portal && portal.mobile_payment_enabled !== false && !asArray(portal.guest_plans).length;
   const gw = gateways.find((g) => g.device_id === id) ?? (gateways.length === 1 ? gateways[0] : undefined);
 
   useEffect(() => {
@@ -61,6 +67,7 @@ export function GuestDeploy() {
         <>
           {gateways.length > 1 && <label className="field"><span>{t("v.f.gateway")}</span><select className="input" value={gw?.device_id ?? ""} disabled={busy} onChange={(e) => { setId(e.target.value); try { sessionStorage.setItem("mm_selected_router", e.target.value); } catch { /* ignore */ } }}><option value="">{t("net.chooseRouter")}</option>{gateways.map((g) => <option key={g.device_id} value={g.device_id}>{g.hardware_name || g.device_id}</option>)}</select></label>}
           <label className="field"><span>{t("gd2.profile")}</span><select className="input" value={profile} disabled={busy || !profiles?.length} onChange={(e) => { setProfile(e.target.value); setPlan(null); setStatus(""); }}><option value="">{profiles === null ? t("gd2.selectGateway") : t("gd2.selectProfile")}</option>{(profiles ?? []).map((p) => <option key={p} value={p}>{p}</option>)}</select></label>
+          {noPlans && <Note kind="warn">{t("gd2.noPlansWarn")}</Note>}
           <button className="btn quiet" type="button" disabled={busy || !profile} onClick={() => void review()}>{t("gd2.review")}</button>
           {plan && (
             <div className="stack" role="region" aria-label={t("gd2.reviewTitle")}>

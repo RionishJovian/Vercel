@@ -302,3 +302,10 @@ Printed on the receipt itself, in `printCodes.ts` (Burmese and English together,
 | No signal yet | အချက်ပြမှု မရသေးပါ |
 | Connection ended. Record not updated. | ချိတ်ဆက်မှု ရပ်ပြီးပါပြီ။ မှတ်တမ်းကို မပြင်ရသေးပါ။ |
 | Paste this in the router's WinBox Terminal to remove the old setup. Then press Delete record again to finish. | setup ဟောင်းကို ဖယ်ဖို့ ဒါကို Router ရဲ့ WinBox Terminal မှာ paste လုပ်ပါ။ ပြီးရင် Delete record ကို ထပ်နှိပ်ပြီး အပြီးသတ်ပါ။ |
+
+## Bank transfer with no plans (2026-11-06)
+
+| English | Burmese |
+|---|---|
+| Guests can't pay by bank transfer yet because no plan is added. This preview uses sample plans, so the real page won't show the pay button until you add and save a plan. | Plan မထည့်ရသေးတဲ့အတွက် ဧည့်သည်တွေ bank transfer နဲ့ ငွေမချေနိုင်သေးပါ။ ဒီ preview က နမူနာ plan တွေကို ပြထားတာပါ။ Plan ထည့်ပြီး သိမ်းမှ တကယ့်စာမျက်နှာမှာ ငွေချေခလုတ် ပေါ်ပါမယ်။ |
+| Bank transfer is on, but no plan is saved. This install won't show the pay button. To include it, add a plan, save, then review again. | Bank transfer ဖွင့်ထားပေမဲ့ သိမ်းထားတဲ့ plan မရှိပါ။ ဒီတိုင်း install လုပ်ရင် ငွေချေခလုတ် မပေါ်ပါ။ ခလုတ်ပါစေချင်ရင် plan ထည့်၊ သိမ်းပြီး ပြန် review လုပ်ပါ။ |
