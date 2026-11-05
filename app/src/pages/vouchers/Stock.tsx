@@ -1,89 +1,146 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import { api, fetcher, isUnauthorized } from "../../lib/api";
 import { asArray, num } from "../../lib/types";
 import { useI18n } from "../../i18n";
 import { Note } from "../../components/ui";
 import { Skeleton } from "../../components/Skeleton";
+import { HeadCheck, Pager } from "../../components/DenseTable";
+import { DEFAULT_LAYOUT, printCodes, type Layout, type PrintVoucher } from "./printCodes";
+
+const DESKTOP_PAGE = 100, PHONE_PAGE = 25;
+const STATUSES = ["unused", "active", "used", "expired", "revoked", "banned"] as const;
+const TONE: Record<string, string> = { active: "ok", used: "", expired: "warn", revoked: "bad", banned: "bad" };
 
 interface Pending { batch_id: string; verified_count: number; total_count: number }
 interface StockBatch { batch_id: string; device_id?: string; plan_label?: string; total_count?: number; activated_count?: number; installed_count?: number; shop_name?: string; created_at?: string }
 interface Batches { batches?: Pending[]; stock_batches?: StockBatch[] }
-interface BatchVoucher { id: string; code: string; status?: string; duration_minutes?: number }
-interface SavedUsage { bytes_used?: number; uptime_seconds?: number; observed_at?: string }
-interface BatchDetail { data_mb?: number; vouchers?: BatchVoucher[]; usage?: Record<string, SavedUsage> }
-interface Usage { voucher_id: string; exists?: boolean; uptime_seconds?: number; bytes_used?: number }
+export interface Voucher extends PrintVoucher { id: string; status?: string; issue_batch_id?: string; install_state?: string; reseller_shop?: string }
+interface Usage { voucher_id?: string; bytes_used?: number; uptime_seconds?: number; observed_at?: string }
+interface PageRes { vouchers?: Voucher[]; total?: number; status_counts?: Record<string, number>; usage?: Record<string, Usage>; data_limits_mb?: Record<string, number> }
 
 const fmtMB = (bytes: number) => (bytes / 1_000_000).toLocaleString(undefined, { maximumFractionDigits: bytes < 10_000_000 ? 1 : 0 });
+const bump = (s: string, n: number | string) => s.replace("{n}", String(n));
 
-/** Codes of one batch. Refresh reads usage live from the router; otherwise the last reading the app saved is shown. */
-function Codes({ batch }: { batch: StockBatch }) {
-  const { t } = useI18n();
-  const { data, error } = useSWR<BatchDetail>(`/guest-vouchers/batches/${encodeURIComponent(batch.batch_id)}`, fetcher);
-  const [usage, setUsage] = useState<Record<string, Usage> | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [failed, setFailed] = useState(false);
-  async function refresh() {
-    if (!batch.device_id) return;
-    setBusy(true); setFailed(false);
-    try {
-      const r = await api.post<{ synced?: Usage[] }>("/guest-vouchers/sync", { device_id: batch.device_id });
-      setUsage(Object.fromEntries(asArray<Usage>(r.synced).map((u) => [u.voucher_id, u])));
-    } catch (e) { if (isUnauthorized(e)) throw e; setFailed(true); }
-    setBusy(false);
-  }
-  const vouchers = asArray<BatchVoucher>(data?.vouchers);
-  const limitBytes = (num(data?.data_mb) ?? 0) * 1_000_000;
-  return (
-    <details className="codes">
-      <summary>{t("v.codes")}</summary>
-      {error ? <Note kind="bad">{t("c.loadFailed")}</Note> : !data ? <Skeleton h={60} /> : (
-        <div className="stack">
-          <div className="row">
-            <button className="pill" type="button" disabled={busy || !batch.device_id} onClick={() => void refresh()}>{busy ? t("v.refreshing") : t("v.refresh")}</button>
-            <span className="soft small">{t("v.liveNote")}</span>
-          </div>
-          {failed ? <Note kind="bad">{t("v.refreshFailed")}</Note> : null}
-          {vouchers.map((v) => {
-            const saved = data?.usage?.[v.id];
-            const u = usage?.[v.id] ?? saved;
-            const asOf = !usage?.[v.id] && saved?.observed_at ? new Date(saved.observed_at).toLocaleString() : null;
-            const limitSec = (num(v.duration_minutes) ?? 0) * 60;
-            const bytes = num(u?.bytes_used) ?? 0, sec = num(u?.uptime_seconds) ?? 0;
-            return (
-              <div className="rowitem stack" key={v.id}>
-                <div className="row split"><b className="num">{v.code}</b><span className="chip">{v.status || "—"}</span></div>
-                {u ? (
-                  <div className="row small">
-                    <span className="soft">{t("v.dataUsed")} <b className="num">{fmtMB(bytes)}{limitBytes ? ` / ${fmtMB(limitBytes)}` : ""} MB</b></span>
-                    <span className="soft">{t("v.timeUsed")} <b className="num">{Math.floor(sec / 60)}{limitSec ? ` / ${Math.round(limitSec / 60)}` : ""} {t("v.min")}</b></span>
-                  </div>
-                ) : null}
-                {asOf ? <span className="soft small">{t("v.asOf")} {asOf}</span> : null}
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </details>
-  );
+function listKey(page: number, perPage: number, f: { status: string; q: string; batch: string }) {
+  const p = new URLSearchParams({ page: String(page), per_page: String(perPage) });
+  if (f.status) p.set("status", f.status);
+  if (f.q) p.set("q", f.q);
+  if (f.batch) p.set("batch", f.batch);
+  return "/vouchers?" + p.toString();
 }
 
 export function Stock() {
   const { t } = useI18n();
-  const { data, error, isLoading, mutate } = useSWR<Batches>("/guest-vouchers/batches", fetcher);
-  const [retrying, setRetrying] = useState<string | null>(null);
-  if (isLoading) return <Skeleton h={220} />;
-  if (error) return <Note kind="bad">{t("c.loadFailed")}</Note>;
-  const incomplete = asArray<Pending>(data?.batches);
-  const batches = asArray<StockBatch>(data?.stock_batches).slice().sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
-  if (!batches.length && !incomplete.length) return <Note>{t("v.empty")}</Note>;
+  const batchesRes = useSWR<Batches>("/guest-vouchers/batches", fetcher);
+  const layoutRes = useSWR<{ layout?: Partial<Layout> }>("/voucher-print-layout", fetcher, { revalidateOnFocus: false });
+  // A phone shows fewer rows a page: the pager sits under them, and they stack taller.
+  const [PER_PAGE] = useState(() => (window.matchMedia?.("(max-width: 760px)").matches ? PHONE_PAGE : DESKTOP_PAGE));
+  const [page, setPage] = useState(1), [status, setStatus] = useState(""), [batch, setBatch] = useState("");
+  const [search, setSearch] = useState(""), [q, setQ] = useState("");
+  const filters = useMemo(() => ({ status, q, batch }), [status, q, batch]);
+  const list = useSWR<PageRes>(listKey(page, PER_PAGE, filters), fetcher, { keepPreviousData: true });
+  const [picked, setPicked] = useState<Map<string, Voucher>>(new Map());
+  const [live, setLive] = useState<Record<string, Usage>>({});
+  const [busy, setBusy] = useState(false), [retrying, setRetrying] = useState<string | null>(null);
+  const [msg, setMsg] = useState<{ kind: "" | "ok" | "warn" | "bad"; text: string } | null>(null);
 
+  useEffect(() => {
+    const id = setTimeout(() => { setQ(search.trim().slice(0, 64)); setPage(1); }, 300);
+    return () => clearTimeout(id);
+  }, [search]);
+
+  const incomplete = asArray<Pending>(batchesRes.data?.batches);
+  const batches = useMemo(() => asArray<StockBatch>(batchesRes.data?.stock_batches).slice().sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))), [batchesRes.data]);
+  const unfinished = useMemo(() => new Set(incomplete.map((b) => b.batch_id)), [incomplete]);
+  const planByBatch = useMemo(() => new Map(batches.map((b) => [b.batch_id, b])), [batches]);
+  const rows = asArray<Voucher>(list.data?.vouchers);
+  const total = num(list.data?.total) ?? 0;
+  const counts = list.data?.status_counts ?? {};
+  const all = Object.values(counts).reduce((a, b) => a + b, 0);
+  const pages = Math.max(1, Math.ceil(total / PER_PAGE));
+  // Deleting the last rows of the last page must not strand the screen past the end.
+  if (list.data && !list.isValidating && page > pages) setPage(pages);
+
+  const layout: Layout = { ...DEFAULT_LAYOUT, ...(layoutRes.data?.layout ?? {}) };
+  const firstUse = t("v.validFirstUse");
+  /** Same guard as batch printing: never print a code the router has not verified, or one from an unfinished batch. */
+  const canSlip = (v: Voucher) => !!batchesRes.data && !!layoutRes.data && !!v.issue_batch_id && v.install_state === "verified" && !unfinished.has(v.issue_batch_id) && (v.status === "unused" || v.status === "active");
+  /** A batch code cannot be deleted: its issue record protects batch recovery, and the login would stay live on the router. */
+  const canDelete = (v: Voucher) => !v.issue_batch_id && v.status !== "used";
+  const hidden = (v: Voucher) => !!v.install_state && v.install_state !== "verified";
+
+  const pageIds = rows.map((v) => v.id);
+  const pagePicked = pageIds.filter((id) => picked.has(id)).length;
+  const selected = [...picked.values()];
+  const slips = selected.filter(canSlip), deletable = selected.filter(canDelete);
+
+  function toggle(v: Voucher, on: boolean) { setPicked((m) => { const n = new Map(m); if (on) n.set(v.id, v); else n.delete(v.id); return n; }); }
+  function togglePage(on: boolean) { setPicked((m) => { const n = new Map(m); for (const v of rows) { if (on) n.set(v.id, v); else n.delete(v.id); } return n; }); }
+  function changeFilter(fn: () => void) { fn(); setPage(1); }
+
+  async function selectAll() {
+    setBusy(true); setMsg(null);
+    try {
+      const next = new Map(picked);
+      for (let p = 1; ; p++) {
+        const res = await api.get<PageRes>(listKey(p, 200, filters));
+        const got = asArray<Voucher>(res.vouchers);
+        for (const v of got) next.set(v.id, v);
+        if (got.length < 200 || p * 200 >= (num(res.total) ?? 0)) break;
+      }
+      setPicked(next);
+    } catch (e) { if (isUnauthorized(e)) throw e; setMsg({ kind: "bad", text: t("c.loadFailed") }); }
+    setBusy(false);
+  }
+  async function remove(targets: Voucher[]) {
+    if (!targets.length || !window.confirm(bump(t("vt.deleteConfirm"), targets.length))) return;
+    setBusy(true); setMsg(null);
+    let ok = 0;
+    const left = new Map(picked);
+    for (const v of targets) {
+      try { await api.del(`/vouchers/${encodeURIComponent(v.id)}`); ok++; left.delete(v.id); }
+      catch (e) { if (isUnauthorized(e)) throw e; }
+    }
+    setPicked(left); setBusy(false);
+    setMsg({ kind: ok === targets.length ? "ok" : "bad", text: bump(t("vt.deleted").replace("{ok}", String(ok)), targets.length) });
+    void list.mutate(); void batchesRes.mutate();
+  }
+  async function refreshUsage() {
+    const devices = [...new Set(batches.map((b) => b.device_id).filter((d): d is string => !!d))];
+    setBusy(true); setMsg(null);
+    let failed = false;
+    const next = { ...live };
+    for (const device_id of devices) {
+      try {
+        const r = await api.post<{ synced?: Usage[] }>("/guest-vouchers/sync", { device_id });
+        for (const u of asArray<Usage>(r.synced)) if (u.voucher_id) next[u.voucher_id] = u;
+      } catch (e) { if (isUnauthorized(e)) throw e; failed = true; }
+    }
+    setLive(next); setBusy(false);
+    setMsg(failed ? { kind: "bad", text: t("v.refreshFailed") } : { kind: "ok", text: t("vt.refreshed") });
+    void list.mutate(); void batchesRes.mutate();
+  }
   async function retry(id: string) {
     setRetrying(id);
     try { await api.post(`/guest-vouchers/batches/${encodeURIComponent(id)}/retry`, {}); } catch (e) { if (isUnauthorized(e)) throw e; }
-    setRetrying(null); void mutate();
+    setRetrying(null); void batchesRes.mutate(); void list.mutate();
   }
+  async function printBatch(id: string) {
+    setBusy(true); setMsg(null);
+    try {
+      const res = await api.get<{ state?: string; vouchers?: PrintVoucher[] }>("/guest-vouchers/batches/" + encodeURIComponent(id));
+      const codes = asArray<PrintVoucher>(res?.vouchers);
+      if (res?.state === "ready" && codes.length) printCodes(codes, layout, firstUse); else setMsg({ kind: "warn", text: t("p.notReady") });
+    } catch (e) { if (isUnauthorized(e)) throw e; setMsg({ kind: "bad", text: t("c.loadFailed") }); }
+    setBusy(false);
+  }
+
+  if (list.isLoading && !list.data) return <Skeleton h={320} />;
+  if (list.error && !list.data) return <div className="stack"><Note kind="bad">{t("c.loadFailed")}</Note><button className="pill" type="button" onClick={() => void list.mutate()}>{t("pl.reload")}</button></div>;
+  const filtered = !!(status || q || batch);
+  const current = batch ? planByBatch.get(batch) : undefined;
+
   return (
     <div className="stack">
       {incomplete.length > 0 && (
@@ -97,26 +154,89 @@ export function Stock() {
           ))}
         </section>
       )}
-      <div className="tickets">
-        {batches.map((b) => {
-          const total = num(b.total_count) ?? 0, used = num(b.activated_count) ?? 0, installed = num(b.installed_count) ?? 0;
-          const pct = total ? Math.round((used / total) * 100) : 0;
-          return (
-            <article className="ticket" key={b.batch_id}>
-              <div className="ticket-main">
-                <div className="row tk-head"><h2>{b.plan_label || "—"}</h2><b className="num tk-pct">{pct}%</b></div>
-                <span className="chip ok">{t("v.onRouter")} <b className="num">{installed}/{total}</b></span>
+      {!filtered && all === 0 ? <Note>{t("v.empty")}</Note> : (
+        <>
+          <div className="glass pad stack">
+            <div className="dt-tools three">
+              <input className="input" type="search" placeholder={t("vt.search")} aria-label={t("vt.search")} value={search} onChange={(e) => setSearch(e.target.value)} />
+              <select className="input" aria-label={t("p.pick")} value={batch} onChange={(e) => { const v = e.target.value; changeFilter(() => setBatch(v)); }}>
+                <option value="">{t("vt.allBatches")}</option>
+                {batches.map((b) => <option key={b.batch_id} value={b.batch_id}>{`${b.plan_label || "—"} · ${b.total_count ?? 0}${b.shop_name ? " · " + b.shop_name : ""}`}</option>)}
+              </select>
+              <button className="dt-filter" type="button" disabled={busy || !batches.length} onClick={() => void refreshUsage()}>{busy ? t("v.refreshing") : t("v.refresh")}</button>
+            </div>
+            <div className="dt-filters" role="group" aria-label={t("vt.statusCol")}>
+              <button className="dt-filter" type="button" aria-pressed={!status} onClick={() => changeFilter(() => setStatus(""))}>{t("vt.all")} · <span className="num">{all}</span></button>
+              {STATUSES.map((s) => <button className="dt-filter" type="button" key={s} data-tone={TONE[s] || "soft"} aria-pressed={status === s} onClick={() => changeFilter(() => setStatus(s))}>{t("vt.status." + s)} · <span className="num">{counts[s] ?? 0}</span></button>)}
+            </div>
+            {current ? (
+              <div className="dt-summary">
+                <span><span className="soft">{t("v.onRouter")}</span> <b className="num">{current.installed_count ?? 0}/{current.total_count ?? 0}</b></span>
+                <span><span className="soft">{t("v.used")}</span> <b className="num">{current.activated_count ?? 0}/{current.total_count ?? 0}</b></span>
+                <span><span className="soft">{t("v.shop")}</span> <b>{current.shop_name || t("v.noShop")}</b></span>
+                <button className="dt-btn" type="button" disabled={busy || !layoutRes.data} onClick={() => void printBatch(current.batch_id)}>{t("vt.printBatch")}</button>
               </div>
-              <div className="ticket-stub">
-                <div className="row small"><span className="soft">{t("v.used")}</span><b className="num">{used} / {total}</b></div>
-                <div className="bar" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}><i style={{ width: pct + "%" }} /></div>
-                <div className="row small"><span className="soft">{t("v.shop")}</span><b>{b.shop_name || t("v.noShop")}</b></div>
-                <Codes batch={b} />
+            ) : null}
+            {msg && <Note kind={msg.kind}>{msg.text}</Note>}
+          </div>
+
+          <div className="dt-wrap">
+            {selected.length > 0 && (
+              <div className="dt-bulk" role="group" aria-label={bump(t("vt.selected"), selected.length)}>
+                <b className="num">{bump(t("vt.selected"), selected.length)}</b>
+                {total > selected.length && <button className="dt-btn" type="button" disabled={busy} onClick={() => void selectAll()}>{bump(t("vt.selectAll"), total)}</button>}
+                <button className="dt-btn" type="button" disabled={busy || !slips.length} onClick={() => printCodes(slips, layout, firstUse)}>{bump(t("vt.slips"), slips.length)}</button>
+                <button className="dt-btn warn" type="button" disabled title={t("vt.handOutOff")}>{t("vt.handOut")}</button>
+                <button className="dt-btn danger" type="button" disabled={busy || !deletable.length} title={deletable.length ? undefined : t("vt.deleteOff")} onClick={() => void remove(deletable)}>{bump(t("vt.deleteN"), deletable.length)}</button>
+                <button className="dt-btn" type="button" onClick={() => setPicked(new Map())}>{t("vt.clear")}</button>
               </div>
-            </article>
-          );
-        })}
-      </div>
+            )}
+            {rows.length === 0 ? <div className="pad"><Note>{t("vt.noMatch")}</Note></div> : (
+              <div className="dt-scroll">
+                <table className="dt">
+                  <thead>
+                    <tr>
+                      <th scope="col" className="dt-check"><HeadCheck label={t("vt.selectPage")} all={pagePicked === rows.length} some={pagePicked > 0} onChange={togglePage} /></th>
+                      <th scope="col">{t("vt.code")}</th><th scope="col">{t("vt.plan")}</th><th scope="col">{t("vt.statusCol")}</th>
+                      <th scope="col">{t("v.dataUsed")}</th><th scope="col">{t("v.timeUsed")}</th><th scope="col" className="dt-right">{t("vt.actions")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((v) => {
+                      const saved = list.data?.usage?.[v.id], u = live[v.id] ?? saved;
+                      const limitMB = num(list.data?.data_limits_mb?.[v.id]) ?? 0, limitMin = num(v.duration_minutes) ?? 0;
+                      const asOf = saved?.observed_at && !live[v.id] ? `${t("v.asOf")} ${new Date(saved.observed_at).toLocaleString()}` : undefined;
+                      const secret = hidden(v), slip = canSlip(v), del = canDelete(v);
+                      const shop = v.reseller_shop || (v.issue_batch_id ? planByBatch.get(v.issue_batch_id)?.shop_name : "");
+                      const data = u ? `${fmtMB(num(u.bytes_used) ?? 0)}${limitMB ? ` / ${fmtMB(limitMB * 1_000_000)}` : ""} MB` : "—";
+                      const time = u ? `${Math.floor((num(u.uptime_seconds) ?? 0) / 60)}${limitMin ? ` / ${limitMin}` : ""} ${t("v.min")}` : "—";
+                      return (
+                        <tr key={v.id} data-on={picked.has(v.id) ? "" : undefined}>
+                          <td className="dt-check"><input type="checkbox" aria-label={`${t("vt.selectRow")} ${secret ? "" : v.code}`} checked={picked.has(v.id)} onChange={(e) => toggle(v, e.target.checked)} /></td>
+                          <td data-cell="primary"><span className="dt-code" title={secret ? t("vt.hiddenCode") : undefined}>{secret ? "••••••••" : v.code}</span></td>
+                          <td data-cell="line"><div className="dt-plan" title={shop ? `${v.plan_label} · ${shop}` : v.plan_label}>{v.plan_label || "—"}{shop ? <span className="soft"> · {shop}</span> : null}</div></td>
+                          <td data-cell="status">{secret ? <span className="dt-status" data-tone="warn">{t("vt.notInstalled")}</span> : <span className="dt-status" data-tone={TONE[v.status ?? ""] || undefined}>{STATUSES.includes(v.status as (typeof STATUSES)[number]) ? t("vt.status." + v.status) : v.status || "—"}</span>}</td>
+                          <td data-cell="half-a" data-label={t("v.dataUsed")} className="num" title={asOf}>{data}</td>
+                          <td data-cell="half-b" data-label={t("v.timeUsed")} className="num" title={asOf}>{time}</td>
+                          <td data-cell="actions" className="dt-right">
+                            <div className="dt-actions">
+                              <button className="dt-btn" type="button" disabled={!slip} title={slip ? undefined : t("vt.slipOff")} onClick={() => printCodes([v], layout, firstUse)}>{t("vt.slip")}</button>
+                              <button className="dt-btn warn" type="button" disabled title={t("vt.handOutOff")}>{t("vt.handOut")}</button>
+                              <button className="dt-btn danger" type="button" disabled={!del || busy} title={del ? undefined : t("vt.deleteOff")} onClick={() => void remove([v])}>{t("vt.delete")}</button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <Pager page={Math.min(page, pages)} perPage={PER_PAGE} total={total} shown={rows.length} onPage={setPage} />
+          </div>
+          <ul className="dt-foot"><li>{t("vt.handOutOff")}</li><li>{t("vt.deleteOff")}</li><li>{t("v.liveNote")}</li></ul>
+        </>
+      )}
     </div>
   );
 }

@@ -142,3 +142,101 @@ All Burmese text for the Internet Setup forms is in `app/src/i18n/networkLabels.
 | `hub.keptTitle` | Connection ended. History kept. | ချိတ်ဆက်မှု ဖြတ်ပြီးပါပြီ။ မှတ်တမ်းများ ဆက်ရှိပါသည်။ |
 | `hub.keptBody` | This router's voucher, PPPoE and sales history stay on its record. To connect this router or a replacement, press Connect Magic Hub and paste the new script. If you are retiring it, paste this cleanup script in WinBox. | ဤ Router ၏ ဗောင်ချာ၊ PPPoE နှင့် အရောင်းမှတ်တမ်းများ ၎င်း၏မှတ်တမ်းတွင် ဆက်ရှိပါသည်။ ဤ Router သို့မဟုတ် အစားထိုး Router ကို ချိတ်ရန် Magic Hub ချိတ်မည် ကိုနှိပ်ပြီး script အသစ်ကို paste လုပ်ပါ။ အသုံးမပြုတော့ပါက ဤ cleanup script ကို WinBox တွင် paste လုပ်ပါ။ |
 | `hub.keptNote` | Connection ended. This router's voucher, PPPoE and sales history stay on its record. To connect this router or a replacement, press Connect Magic Hub and paste the new script. | ချိတ်ဆက်မှု ဖြတ်ပြီးပါပြီ။ ဤ Router ၏ ဗောင်ချာ၊ PPPoE နှင့် အရောင်းမှတ်တမ်းများ ၎င်း၏မှတ်တမ်းတွင် ဆက်ရှိပါသည်။ ဤ Router သို့မဟုတ် အစားထိုး Router ကို ချိတ်ရန် Magic Hub ချိတ်မည် ကိုနှိပ်ပြီး script အသစ်ကို paste လုပ်ပါ။ |
+
+## Vouchers table, Live users and Print layouts (2026-11-05)
+
+Keys are in `app/src/i18n/tables.ts`. "စလစ်" (slip), "ပေးအပ်မည်" (hand out), "ဖြုတ်မည်" (kick) and "မလှုပ်ရှား" (idle) are the wordings I am least sure of.
+
+| Key | English | Burmese (to review) |
+|---|---|---|
+| `vt.search` | Search code or plan | ကုဒ် သို့မဟုတ် ပလန် ရှာရန် |
+| `vt.allBatches` | All batches | အစုအားလုံး |
+| `vt.all` | All | အားလုံး |
+| `vt.status.unused` | Unused | မသုံးရသေး |
+| `vt.status.active` | Active | သုံးနေသည် |
+| `vt.status.used` | Used | သုံးပြီး |
+| `vt.status.expired` | Expired | သက်တမ်းကုန် |
+| `vt.status.revoked` | Revoked | ပယ်ဖျက်ပြီး |
+| `vt.status.banned` | Banned | ပိတ်ပင်ထား |
+| `vt.code` | Code | ကုဒ် |
+| `vt.plan` | Plan / batch | ပလန် / အစု |
+| `vt.statusCol` | Status | အခြေအနေ |
+| `vt.actions` | Actions | လုပ်ဆောင်ချက် |
+| `vt.slip` | Slip | စလစ် |
+| `vt.handOut` | Hand out | ပေးအပ်မည် |
+| `vt.delete` | Delete | ဖျက်မည် |
+| `vt.selectPage` | Select this page | ဤစာမျက်နှာကို ရွေးမည် |
+| `vt.selectRow` | Select | ရွေးမည် |
+| `vt.selected` | {n} selected | {n} ခု ရွေးထား |
+| `vt.selectAll` | Select all {n} | {n} ခုလုံး ရွေးမည် |
+| `vt.clear` | Clear | ရှင်းမည် |
+| `vt.slips` | Slips ({n}) | စလစ် ({n}) |
+| `vt.deleteN` | Delete ({n}) | ဖျက်မည် ({n}) |
+| `vt.handOutOff` | Hand out is not available yet: the app keeps no record of one code being handed out. Assign shops per batch. | ပေးအပ်မည် ကို မသုံးနိုင်သေးပါ - ကုဒ်တစ်ခုချင်း ပေးအပ်ထားကြောင်း app တွင် မှတ်တမ်းမရှိပါ။ ဆိုင်ကို အစုအလိုက် သတ်မှတ်ပါ။ |
+| `vt.deleteOff` | Delete is not available for codes on the router: it would leave the login working there. | Router ပေါ်ရှိ ကုဒ်များကို မဖျက်နိုင်သေးပါ - ဖျက်လျှင် Router တွင် login ဆက်သုံးနိုင်နေမည်။ |
+| `vt.slipOff` | Only unused codes verified on the router, in a finished batch, can be printed. | ပြီးဆုံးသော အစုထဲမှ Router တွင် အတည်ပြုပြီး မသုံးရသေးသော ကုဒ်ကိုသာ ပရင့်ထုတ်နိုင်သည်။ |
+| `vt.notInstalled` | Not on router | Router ထဲ မရှိသေး |
+| `vt.hiddenCode` | Hidden until verified on the router | Router တွင် အတည်ပြုသည်အထိ ဖုံးထားသည် |
+| `vt.deleteConfirm` | Delete {n} voucher(s)? This cannot be undone. | ဗောင်ချာ {n} ခု ဖျက်မလား? ပြန်ယူ၍ မရပါ။ |
+| `vt.deleted` | {ok} of {n} deleted. | {n} ခုအနက် {ok} ခု ဖျက်ပြီး။ |
+| `vt.noMatch` | No voucher matches. | ကိုက်ညီသော ဗောင်ချာ မရှိပါ။ |
+| `vt.pageOf` | Page {p} · {a}–{b} of {n} | စာမျက်နှာ {p} · {n} ခုအနက် {a}–{b} |
+| `vt.page` | Page | စာမျက်နှာ |
+| `vt.prev` | Previous | ရှေ့သို့ |
+| `vt.next` | Next | နောက်သို့ |
+| `vt.printBatch` | Print this batch | ဤအစုကို ပရင့်ထုတ်မည် |
+| `vt.refreshed` | Usage read from the router. | Router မှ အသုံးပြုမှု ဖတ်ပြီး။ |
+| `lu.all` | All | အားလုံး |
+| `lu.active` | Active | သုံးနေသည် |
+| `lu.idle` | Idle | မလှုပ်ရှား |
+| `lu.near` | Near expiry | သက်တမ်းကုန်ခါနီး |
+| `lu.over` | Over quota | ဒေတာကျော် |
+| `lu.banned` | Banned MAC | ပိတ်ထားသော MAC |
+| `lu.updated` | Updated | ဖတ်ချိန် |
+| `lu.status` | Status | အခြေအနေ |
+| `lu.voucher` | Voucher | ဗောင်ချာ |
+| `lu.ip` | IP | IP |
+| `lu.mac` | MAC | MAC |
+| `lu.uptime` | Uptime | သုံးချိန် |
+| `lu.left` | Left | ကျန်ချိန် |
+| `lu.downUp` | Down / Up | ဒေါင်း / အပ် |
+| `lu.kick` | Kick | ဖြုတ်မည် |
+| `lu.ban` | Ban MAC | MAC ပိတ်မည် |
+| `lu.rate` | Rate | နှုန်း |
+| `lu.copy` | Copy | ကူးမည် |
+| `lu.copied` | Copied. | ကူးပြီး။ |
+| `lu.copyFailed` | Could not copy. | မကူးနိုင်ပါ။ |
+| `lu.kickN` | Kick ({n}) | ဖြုတ်မည် ({n}) |
+| `lu.copyN` | Copy ({n}) | ကူးမည် ({n}) |
+| `lu.kickConfirm` | Disconnect {n} guests? They can reconnect with valid access. | ဧည့်သည် {n} ဦးကို ဖြတ်ချမလား? သက်တမ်းရှိလျှင် ပြန်ချိတ်နိုင်သည်။ |
+| `lu.kicked` | {ok} of {n} disconnected and confirmed by the router. | {n} ဦးအနက် {ok} ဦး ဖြတ်ပြီး Router က အတည်ပြုပြီး။ |
+| `lu.selectAll` | Select all shown | ပြထားသမျှ ရွေးမည် |
+| `lu.off` | Ban MAC, Rate and the Idle, Over quota and Banned MAC counts are not available yet: the app does not read or change these on the router. | MAC ပိတ်ခြင်း၊ နှုန်းသတ်မှတ်ခြင်းနှင့် မလှုပ်ရှား၊ ဒေတာကျော်၊ ပိတ်ထားသော MAC အရေအတွက်များကို မသုံးနိုင်သေးပါ - app က ၎င်းတို့ကို Router တွင် မဖတ်၊ မပြင်သေးပါ။ |
+| `lu.notRead` | Not read from the router yet | Router မှ မဖတ်ရသေးပါ |
+| `pl.title` | Voucher print layouts | ဗောင်ချာ ပရင့်ပုံစံများ |
+| `pl.lead` | Configure the counter receipt only. These settings do not change the guest portal or the RouterOS Hotspot. | ကောင်တာ ပြေစာကိုသာ ပြင်ဆင်သည်။ ဤဆက်တင်များက ဧည့်သည် portal နှင့် RouterOS Hotspot ကို မပြောင်းလဲပါ။ |
+| `pl.back` | Back to vouchers | ဗောင်ချာများသို့ ပြန်မည် |
+| `pl.card` | Default counter receipt | ပုံသေ ကောင်တာ ပြေစာ |
+| `pl.cardLead` | Applied to every voucher slip and batch print. | ဗောင်ချာ စလစ်တိုင်းနှင့် အစုလိုက် ပရင့်တိုင်းတွင် သုံးသည်။ |
+| `pl.paper` | Thermal paper width | Thermal စက္ကူ အကျယ် |
+| `pl.p58` | 58 mm (small printer) | ၅၈ မီလီမီတာ (ပရင်တာ အသေး) |
+| `pl.p80` | 80 mm (standard counter printer) | ၈၀ မီလီမီတာ (ကောင်တာ ပရင်တာ ပုံမှန်) |
+| `pl.a4` | A4 sheet | A4 စာရွက် |
+| `pl.other` | {n} mm | {n} မီလီမီတာ |
+| `pl.terms` | Voucher use terms | ဗောင်ချာ အသုံးပြုမှု စည်းကမ်း |
+| `pl.qr` | Include QR code | QR ကုဒ် ထည့်မည် |
+| `pl.showExpiry` | Show expiry / use terms | သက်တမ်း / စည်းကမ်း ပြမည် |
+| `pl.test` | Print test receipt | စမ်းသပ် ပြေစာ ပရင့်ထုတ်မည် |
+| `pl.preview` | Live preview | တိုက်ရိုက် နမူနာ |
+| `pl.previewLead` | The browser print dialog controls the physical printer. The QR code holds the voucher code. | ပရင်တာကို browser ၏ ပရင့် dialog က ထိန်းချုပ်သည်။ QR ကုဒ်တွင် ဗောင်ချာကုဒ် ပါသည်။ |
+| `pl.demoPlan` | Demo plan | နမူနာ ပလန် |
+| `pl.reload` | Reload | ပြန်ဖတ်မည် |
+
+Printed on the receipt itself, in `printCodes.ts` (Burmese and English together, because guests read it):
+
+| English | Burmese (to review) |
+|---|---|
+| Plan | ပလန် |
+| Price | စျေးနှုန်း |
+| Valid | သက်တမ်း |
+| Support | ဆက်သွယ်ရန် |

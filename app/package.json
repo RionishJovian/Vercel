@@ -15,6 +15,7 @@
     "@fontsource-variable/instrument-sans": "^5.2.0",
     "@fontsource/noto-sans-myanmar": "^5.2.0",
     "maplibre-gl": "^6.16.0",
+    "qrcode-generator": "2.0.4",
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "swr": "^2.3.0"
