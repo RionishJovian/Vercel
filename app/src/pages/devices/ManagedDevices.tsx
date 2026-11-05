@@ -7,6 +7,7 @@ import { BackLink, Note, PageHead } from "../../components/ui";
 import { Skeleton } from "../../components/Skeleton";
 import { DeviceForm, LAYERS, type DeviceRec } from "./DeviceForm";
 import { errorText } from "../../lib/errors";
+import { useFleet } from "../../lib/useFleet";
 
 interface Allowance { routers: number | null; controllers: number | null; sites: number | null; used_routers: number; used_controllers: number; used_sites: number; used_access_points: number; included_router_name?: string }
 interface Request { id: string; kind: string; quantity?: number; user_email?: string; reason?: string; status: string; decided_at?: string }
@@ -25,6 +26,8 @@ export function ManagedDevices({ me }: { me: Me }) {
   const sub = useSWR<{ mode?: string }>("/subscription", fetcher, { shouldRetryOnError: false });
   const capacity = sub.data?.mode !== "subscription_only";
   const routers = useSWR<{ routers?: DeviceRec[] }>("/routers", fetcher);
+  const fleet = useFleet({ shouldRetryOnError: false });
+  const online = new Set(asArray<{ device_id?: string; state?: string }>(fleet.data?.peers).filter((p) => p.state === "up").map((p) => p.device_id));
   const al = useSWR<{ allowance?: Allowance | null; kinds?: string[] }>(capacity ? "/device-allowances" : null, fetcher, { shouldRetryOnError: false });
   const rq = useSWR<{ requests?: Request[] }>(capacity ? "/device-requests" : null, fetcher, { shouldRetryOnError: false });
   const [form, setForm] = useState<{ rec?: DeviceRec } | null>(null), [confirmId, setConfirmId] = useState(""), [err, setErr] = useState(""), [reqOpen, setReqOpen] = useState(false), [reqMsg, setReqMsg] = useState("");
@@ -59,7 +62,7 @@ export function ManagedDevices({ me }: { me: Me }) {
       {!list.length ? <Note>{t("dm.none")}</Note> : (
         <div className="stack">{list.map((r) => (
           <article className="glass pad stack" key={r.device_id}>
-            <div className="row"><b>{r.hardware_name || t("hub.unnamed")}</b><span className={"chip " + (r.is_online ? "ok" : "")}>{r.is_online ? t("c.online") : t("dm.unverified")}</span></div>
+            <div className="row"><b>{r.hardware_name || t("hub.unnamed")}</b><span className={"chip " + (online.has(r.device_id) ? "ok" : "")}>{online.has(r.device_id) ? t("c.online") : t("dm.unverified")}</span></div>
             <p className="soft small">{t("dm.l." + (r.deployment_layer ?? "DOWNSTREAM_SWITCH"))} · {[r.vendor, r.device_model].filter(Boolean).join(" ")} · {r.transport || "direct"}</p>
             <p className="small num">{r.management_ip || t("hub.notRegistered")}</p>
             {canEdit && (confirmId === r.device_id ? (

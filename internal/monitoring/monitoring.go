@@ -157,6 +157,23 @@ func (s *MonitoringService) StateForPeer(ctx context.Context, businessID, peerID
 	return s.EvaluatePeer(ctx, businessID, peerID)
 }
 
+// routerReadKeep outlasts the window in which a read counts as recent contact.
+const routerReadKeep = 24 * time.Hour
+
+// RecordRouterRead notes that the router answered a management read just now.
+func (s *MonitoringService) RecordRouterRead(ctx context.Context, businessID, peerID string, at time.Time) error {
+	return s.cache.SetJSON(ctx, s.cache.Key(businessID, "monitor:router-read:"+peerID), at.UTC(), routerReadKeep)
+}
+
+// LastRouterRead returns when the router last answered a management read.
+func (s *MonitoringService) LastRouterRead(ctx context.Context, businessID, peerID string) (time.Time, bool) {
+	var at time.Time
+	if err := s.cache.GetJSON(ctx, s.cache.Key(businessID, "monitor:router-read:"+peerID), &at); err != nil || at.IsZero() {
+		return time.Time{}, false
+	}
+	return at, true
+}
+
 func (s *MonitoringService) ListPeerStates(ctx context.Context, businessID string) (map[string]string, error) {
 	return map[string]string{}, nil
 }

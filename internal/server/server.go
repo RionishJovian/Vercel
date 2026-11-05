@@ -323,10 +323,9 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	monitorHandler := handler.NewMonitorHandler(db, database.NewDeviceRepository(db), monitoringService)
 
 	// Fleet aggregate: read-only per-tenant peer-health overview.
-	fleetHandler := handler.NewFleetHandler(fleet.NewFleetService(
-		database.NewDeviceRepository(db),
-		monitoringService,
-	))
+	fleetService := fleet.NewFleetService(database.NewDeviceRepository(db), monitoringService)
+	fleetHandler := handler.NewFleetHandler(fleetService)
+	routerHandler.ConfigureRouterReadRecorder(monitoringService.RecordRouterRead)
 
 	// Topology: read-only per-tenant network map + explicit device actions
 	// (reboot). Plan-gated; the reboot endpoint only queues an intent.
@@ -360,6 +359,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		managementHubClient = client
 		vpsHandler.ConfigureHubLookup(client)
 		magicDudeHandler.ConfigureHubSignal(client)
+		fleetService.ConfigureHub(client)
 		if cfg.VPS.HubEnrollmentEnabled {
 			vpsHandler.ConfigureHubEnrollment(client)
 			if err := configureHubManagement(vpsHandler, db, cfg); err != nil {

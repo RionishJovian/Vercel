@@ -1,6 +1,6 @@
 import useSWR from "swr";
 import { fetcher } from "../lib/api";
-import { useFleet } from "../lib/useFleet";
+import { useFleet, type FleetPeer } from "../lib/useFleet";
 import { asArray, num, type Router } from "../lib/types";
 import { useI18n } from "../i18n";
 import { BackLink, Note } from "../components/ui";
@@ -8,8 +8,9 @@ import { Skeleton } from "../components/Skeleton";
 import { Ring } from "../components/Ring";
 import { deviceImage } from "../lib/deviceImage";
 import { useCountUp } from "../lib/useCountUp";
+import { StatusDetail } from "../components/StatusDetail";
 
-interface Peer { device_id?: string; hardware_name?: string; state?: string }
+type Peer = FleetPeer;
 const LEVEL: Record<string, number> = { up: 10, stale: 5, offline: 1, unknown: 0 };
 const TONE: Record<string, string> = { up: "ok", stale: "warn", offline: "bad", unknown: "" };
 
@@ -52,7 +53,7 @@ export function Fleet() {
           return (
             <div className="rowitem fleet-row" key={p.device_id ?? i}>
               <span className={"rc-pic sm" + (state === "up" ? " on" : "")}><img src={deviceImage({ hardware_name: p.hardware_name, deployment_layer: r?.deployment_layer })} alt="" width={36} height={36} loading="lazy" /><i className="rc-led" aria-hidden="true" /></span>
-              <div className="stack" style={{ gap: 2, flex: 1, minWidth: 0 }}><b>{p.hardware_name || t("fl.unnamed")}</b><span className="soft small">{r?.deployment_layer === "MAIN_GATEWAY" ? t("fl.gateway") : t("fl.peer")}</span></div>
+              <div className="stack" style={{ gap: 2, flex: 1, minWidth: 0 }}><b>{p.hardware_name || t("fl.unnamed")}</b><span className="soft small">{r?.deployment_layer === "MAIN_GATEWAY" ? t("fl.gateway") : t("fl.peer")}</span><StatusDetail peer={p} /></div>
               <span className="signal" role="img" aria-label={`${level} / 10`}>{Array.from({ length: 10 }, (_, k) => <i key={k} className={k < level ? "on " + state : ""} />)}</span>
               <span className={"chip " + TONE[state]}>{t("fl.state." + (state in LEVEL ? state : "unknown"))}</span>
             </div>

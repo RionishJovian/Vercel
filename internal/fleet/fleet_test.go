@@ -26,11 +26,11 @@ func TestAggregateHealth_overall_is_worst_state(t *testing.T) {
 		want  string
 	}{
 		{"empty fleet is unknown", nil, StateUnknown},
-		{"all up", []PeerSummary{{"a", "", StateUp}}, StateUp},
-		{"offline dominates", []PeerSummary{{"a", "", StateUp}, {"b", "", StateOffline}}, StateOffline},
-		{"stale dominates up", []PeerSummary{{"a", "", StateUp}, {"b", "", StateStale}}, StateStale},
-		{"unknown does not mask up", []PeerSummary{{"a", "", StateUp}, {"b", "", StateUnknown}}, StateUp},
-		{"offline over stale over up", []PeerSummary{{"a", "", StateUp}, {"b", "", StateStale}, {"c", "", StateOffline}}, StateOffline},
+		{"all up", []PeerSummary{{DeviceID: "a", State: StateUp}}, StateUp},
+		{"offline dominates", []PeerSummary{{DeviceID: "a", State: StateUp}, {DeviceID: "b", State: StateOffline}}, StateOffline},
+		{"stale dominates up", []PeerSummary{{DeviceID: "a", State: StateUp}, {DeviceID: "b", State: StateStale}}, StateStale},
+		{"unknown does not mask up", []PeerSummary{{DeviceID: "a", State: StateUp}, {DeviceID: "b", State: StateUnknown}}, StateUp},
+		{"offline over stale over up", []PeerSummary{{DeviceID: "a", State: StateUp}, {DeviceID: "b", State: StateStale}, {DeviceID: "c", State: StateOffline}}, StateOffline},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

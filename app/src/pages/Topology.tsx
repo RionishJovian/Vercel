@@ -9,6 +9,8 @@ import { project, type DeviceRecord, type GatewayRef, type Graph, type Label, ty
 import { DeviceControls, RouterPorts } from "./topology/Controls";
 import { PendingPanel } from "./network/NetworkEditor";
 import { errorText } from "../lib/errors";
+import { useFleet, type FleetPeer } from "../lib/useFleet";
+import { statusFacts } from "../components/StatusDetail";
 
 const EDITORS = ["OWNER", "ADMIN", "DEVELOPER"];
 interface Dev extends GatewayRef, DeviceRecord { site_id?: string | null; deployment_layer?: string; category?: string }
@@ -17,8 +19,8 @@ interface Topo { roots?: TreeNode[]; orphans?: Dev[] }
 const asset = (name: string) => `${import.meta.env.BASE_URL}${name.startsWith("models/") ? "" : "topology/"}${name}`;
 const MAX = 120;
 
-function Card({ n, root, selected, onPick }: { n: TNode; root?: boolean; selected: boolean; onPick: () => void }) {
-  const active = /associated|session|reachable/.test(n.state);
+function Card({ n, root, on, selected, onPick }: { n: TNode; root?: boolean; on?: boolean; selected: boolean; onPick: () => void }) {
+  const active = on ?? /associated|session/.test(n.state);
   return (
     <button type="button" className={"nt-device" + (root ? " nt-router" : "") + (selected ? " is-selected" : "")} aria-pressed={selected} onClick={onPick}>
       <span className="nt-image"><img src={asset(n.image || n.kind + ".svg")} alt="" width={96} height={96} /></span>
@@ -33,6 +35,7 @@ export function Topology({ me }: { me: Me }) {
   const { t } = useI18n();
   const canEdit = EDITORS.includes(me.user?.user_role ?? "");
   const topo = useSWR<Topo>("/topology/map", fetcher);
+  const fleet = useFleet({ shouldRetryOnError: false });
   const sitesRes = useSWR<{ sites?: Array<{ site_id: string; name: string }> }>("/sites", fetcher, { shouldRetryOnError: false });
   const [site, setSite] = useState(() => { try { return sessionStorage.getItem("mm_selected_site") ?? ""; } catch { return ""; } });
   const [routerId, setRouterId] = useState(() => { try { return sessionStorage.getItem("mm_selected_router") ?? ""; } catch { return ""; } });
@@ -84,7 +87,12 @@ export function Topology({ me }: { me: Me }) {
   const branch = (n: TNode) => (
     <div className={"nt-branch" + (n.direct ? "" : " nt-unplaced")} key={n.id}><span className="nt-link-label">{n.ports.join(" / ") || n.connection}</span><Card n={n} selected={selected === n.id} onPick={() => setSelected(n.id)} /></div>
   );
-  const facts: Array<[string, string | undefined]> = sel ? [[t("tp.model"), sel.model], [t("dv.reports"), sel.platform], ["IP", sel.ip], ["MAC", sel.mac], [t("tp.connection"), sel.connection], [t("tp.iface"), sel.ports.join(", ")], [t("tp.signal"), sel.signal], [t("tp.reading2"), graph?.observedAt ? new Date(graph.observedAt).toLocaleString() : t("tp.unavailable")], [t("tp.sources"), sel.sources.map((s) => s.replaceAll("_", " ")).join(", ")]] : [];
+  // The router's connection state is the shared one. Reading its details is a separate fact, shown below.
+  const rootPeer = asArray<FleetPeer>(fleet.data?.peers).find((p) => p.device_id === device?.device_id);
+  const rootState = String(rootPeer?.state ?? "unknown").toLowerCase();
+  const rootLabel = t("fl.state." + (["up", "stale", "offline"].includes(rootState) ? rootState : "unknown"));
+  const rootFacts = sel && graph && sel.id === graph.root.id ? statusFacts(t, rootPeer) : [];
+  const facts: Array<[string, string | undefined]> = sel ? [...rootFacts, [t("tp.model"), sel.model], [t("dv.reports"), sel.platform], ["IP", sel.ip], ["MAC", sel.mac], [t("tp.connection"), sel.connection], [t("tp.iface"), sel.ports.join(", ")], [t("tp.signal"), sel.signal], [t("tp.reading2"), graph?.observedAt ? new Date(graph.observedAt).toLocaleString() : t("tp.unavailable")], [t("tp.sources"), sel.sources.map((s) => s.replaceAll("_", " ")).join(", ")]] : [];
 
   const reload = () => { if (device) void read(device); };
   const ctx = device && graph ? { routerId: device.device_id, routerName: device.hardware_name ?? device.device_id, locked: !graph.controlsEnabled || !!pendingAt, guestLocked: !guestActions, onChanged: reload, onPending: (at: string) => { setPendingNote(""); setPendingAt(at); } } : null;
@@ -105,13 +113,13 @@ export function Topology({ me }: { me: Me }) {
         <div className="nt-layout">
           <section className="glass nt-stage" aria-label={t("tp.title")} aria-busy={reading}>
             {up.length > 0 && <div className="nt-upstream">{up.map(branch)}</div>}
-            <div className="nt-root"><Card n={graph.root} root selected={selected === graph.root.id} onPick={() => setSelected(graph.root.id)} /></div>
+            <div className="nt-root"><Card n={{ ...graph.root, state: rootLabel }} root on={rootState === "up"} selected={selected === graph.root.id} onPick={() => setSelected(graph.root.id)} /></div>
             <div className="nt-children">{down.map(branch)}</div>
             {!down.length && <p className="nt-none soft small">{t("tp.noDownstream")}</p>}
             {filtered.length > MAX && <p className="soft small">{t("tp.truncated")}</p>}
           </section>
           <aside className="glass pad stack nt-inspector" aria-live="polite">
-            {sel ? (<><h2>{sel.name}</h2><p className="soft small">{sel.state}</p><dl className="facts">{facts.filter(([, v]) => v).map(([k, v]) => <div key={k} style={{ display: "contents" }}><dt>{k}</dt><dd>{v}</dd></div>)}</dl>
+            {sel ? (<><h2>{sel.name}</h2><p className="soft small">{sel.id === graph.root.id ? rootLabel : sel.state}</p><dl className="facts">{facts.filter(([, v]) => v).map(([k, v]) => <div key={k} style={{ display: "contents" }}><dt>{k}</dt><dd>{v}</dd></div>)}</dl>
               {sel.record && <p className="small">{t("dc.record")}: <a className="link" href="#/managed-devices">{sel.record.hardware_name || t("hub.unnamed")}</a></p>}
               {sel.id === graph.root.id && <a className="btn quiet" href="#/hub">{t("tp.routerSettings")}</a>}
               {canEdit && ctx && (sel.id === graph.root.id ? <RouterPorts ports={graph.ports} ctx={ctx} /> : <DeviceControls key={sel.id} node={sel} ports={graph.ports} ctx={ctx} />)}</>) : <p className="soft small">{t("tp.select")}</p>}

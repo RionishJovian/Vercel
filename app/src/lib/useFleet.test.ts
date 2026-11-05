@@ -1,31 +1,19 @@
-import { describe, expect, it } from "vitest";
-import { mergeFleet, type FleetData } from "./useFleet";
-import type { HubStatus } from "./hubStatus";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { createElement, type ReactNode } from "react";
+import { cleanup, renderHook, waitFor } from "@testing-library/react";
+import { SWRConfig } from "swr";
+import { useFleet } from "./useFleet";
 
-const recorded = (state: string): FleetData => ({ total_peers: 1, up: 0, stale: 0, offline: 0, unknown: 1, overall_state: state, peers: [{ device_id: "d1", hardware_name: "hAP ax3", state }] });
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
-describe("fleet health follows the live Magic Hub handshake", () => {
-  it("a connected router with no recorded heartbeat is up, so Home and the Router tab agree", () => {
-    const m = mergeFleet(recorded("unknown"), { d1: { state: "up" } })!;
-    expect(m.peers?.[0].state).toBe("up");
-    expect([m.up, m.total_peers, m.overall_state, m.unknown]).toEqual([1, 1, "up", 0]);
+describe("useFleet", () => {
+  it("shows the server's status and asks nothing else", async () => {
+    const asked: string[] = [];
+    const peers = [{ device_id: "d1", state: "up", source: "hub_tunnel" }];
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => { asked.push(String(url).replace("/api/v1", "")); return new Response(JSON.stringify({ total_peers: 1, up: 1, overall_state: "up", peers }), { status: 200, headers: { "content-type": "application/json" } }); }));
+    const wrapper = ({ children }: { children: ReactNode }) => createElement(SWRConfig, { value: { provider: () => new Map() } }, children);
+    const { result } = renderHook(() => useFleet(), { wrapper });
+    await waitFor(() => expect(result.current.data?.peers).toEqual(peers));
+    expect(asked).toEqual(["/fleet/health"]);
   });
-  it("a tunnel with no recent handshake is offline", () => {
-    const m = mergeFleet(recorded("unknown"), { d1: { state: "down" } })!;
-    expect([m.peers?.[0].state, m.offline, m.overall_state]).toEqual(["offline", 1, "offline"]);
-  });
-  it("when the lookup cannot answer, the recorded state stands unchanged", () => {
-    for (const hub of [{} as Record<string, HubStatus>, { d1: { state: "unknown" } } as Record<string, HubStatus>]) {
-      const m = mergeFleet(recorded("stale"), hub)!;
-      expect(m.peers?.[0].state).toBe("stale");
-      expect(m.overall_state).toBe("stale");
-    }
-    expect(mergeFleet(recorded("unknown"), {})!.overall_state).toBe("unknown");
-  });
-  it("counts several routers, and the worst state is the overall one", () => {
-    const fleet: FleetData = { total_peers: 3, peers: [{ device_id: "a", state: "unknown" }, { device_id: "b", state: "up" }, { device_id: "c", state: "unknown" }] };
-    const m = mergeFleet(fleet, { a: { state: "up" }, c: { state: "down" } })!;
-    expect([m.up, m.offline, m.unknown, m.overall_state]).toEqual([2, 1, 0, "offline"]);
-  });
-  it("passes an absent fleet through", () => { expect(mergeFleet(undefined, {})).toBeUndefined(); });
 });
