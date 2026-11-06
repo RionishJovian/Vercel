@@ -65,13 +65,9 @@ func router(f *fakeDiscovery) *gin.Engine {
 	r.POST("/s", owner, h.CreateSession)
 	r.GET("/s/:id", owner, h.GetSession)
 	r.DELETE("/s/:id", owner, h.CancelSession)
-<<<<<<< HEAD
 	r.POST("/s/:id/select", owner, h.SelectCandidate)
 	r.POST("/s/:id/link", owner, h.LinkRouter)
-	r.POST("/s/:id/pair", h.Pair)
-=======
 	r.POST("/pair", h.Pair)
->>>>>>> feat/discovery-backend
 	r.POST("/s/:id/observations", h.Observations)
 	return r
 }
