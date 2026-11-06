@@ -2,13 +2,14 @@ import { useState } from "react";
 import { useI18n } from "../../i18n";
 import { Note } from "../../components/ui";
 import { DEFAULT_ROUTER_IP, candidateSource, parsePrivateIPv4 } from "./discovery";
+import { DiscoverHelper, type DiscoveryPrefill } from "./DiscoverHelper";
 
 /**
  * Guided, browser-only help to find a router that has never connected to Magic Hub.
  * It makes no network request and changes nothing: it cannot detect routers, so every address it shows is
  * "not verified". Verification only happens through the existing one-paste connection.
  */
-export function DiscoverRouter({ onContinue }: { onContinue?: () => void }) {
+export function DiscoverRouter({ onContinue, sites = [], onSelected }: { onContinue?: () => void; sites?: Array<{ site_id: string; name: string }>; onSelected?: (p: DiscoveryPrefill) => void }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false), [onLan, setOnLan] = useState(false), [ip, setIp] = useState(DEFAULT_ROUTER_IP);
   const address = parsePrivateIPv4(ip);
@@ -22,6 +23,8 @@ export function DiscoverRouter({ onContinue }: { onContinue?: () => void }) {
       {open && (
         <div className="stack">
           <p className="soft small">{t("dn.lead")}</p>
+          {onSelected && <DiscoverHelper sites={sites} onSelected={onSelected} />}
+          <h4>{t("dn.manualTitle")}</h4>
           <label className="check"><span>{t("dn.onLan")}</span><input type="checkbox" checked={onLan} onChange={(e) => setOnLan(e.target.checked)} /></label>
           {onLan && (
             <div className="stack">

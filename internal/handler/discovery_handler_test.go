@@ -254,3 +254,12 @@ func TestServerAcceptsWhatTheHelperActuallySends(t *testing.T) {
 		t.Fatalf("a device without a software id must be keyed by MAC: %+v", f.gotObs[1])
 	}
 }
+
+func TestCapabilityReportsEnabled(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.GET("/c", NewDiscoveryHandler(&fakeDiscovery{}).Capability)
+	if w := do(r, "GET", "/c", ""); w.Code != 200 || !strings.Contains(w.Body.String(), `"enabled":true`) {
+		t.Fatalf("capability: %d %s", w.Code, w.Body)
+	}
+}

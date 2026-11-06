@@ -44,6 +44,7 @@ func registerDiscoveryRoutes(r *gin.Engine, service *auth.Service, db *database.
 	}
 
 	const base = "/api/v1/discovery/sessions"
+	r.GET("/api/v1/discovery/capability", with(owner, h.Capability)...)
 	r.POST(base, with(owner, h.CreateSession)...)
 	r.GET(base+"/:id", with(owner, h.GetSession)...)
 	r.DELETE(base+"/:id", with(owner, h.CancelSession)...)
