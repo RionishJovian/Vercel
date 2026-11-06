@@ -8,9 +8,11 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"mega-magic/internal/auth"
+	"mega-magic/internal/discovery"
 	"mega-magic/internal/discoverystore"
 )
 
@@ -228,5 +230,27 @@ func TestSelectAndLink(t *testing.T) {
 	}
 	if w := do(router(&fakeDiscovery{linkErr: discoverystore.ErrUnavailable}), "POST", "/s/"+sid+"/link", `{"device_key":"`+key+`","router_id":"`+sid+`"}`); w.Code != 404 {
 		t.Errorf("unselected or foreign: %d", w.Code)
+	}
+}
+
+// The helper and the server are built from the same repository; this keeps their contract from drifting apart.
+func TestServerAcceptsWhatTheHelperActuallySends(t *testing.T) {
+	now := time.Now()
+	helperObs := []discovery.Observation{
+		{Brand: "MikroTik", Method: "MNDP", Status: discovery.StatusNearbyUnverified, MAC: "48:A9:8A:00:00:06", MACs: []string{"48:A9:8A:00:00:06"}, DeviceKey: "sw:0123456789abcdef",
+			Identity: "hAP", Board: "C52iG-5HaxD2HaxD", Platform: "MikroTik", Version: "7.25 2026-10-22 14:12:00", Interface: "bridge/wifi2", ClaimedIP: "192.168.88.1", SourceIP: "192.168.88.1", Count: 3, FirstSeen: now, LastSeen: now},
+		{Brand: "MikroTik", Method: "MNDP", Status: discovery.StatusNearbyUnverified, MAC: "48:A9:8A:00:00:07", ClaimedIP: "192.168.88.1", SourceIP: "192.168.88.1", Count: 1, FirstSeen: now, LastSeen: now},
+	}
+	payload, err := discovery.Payload(helperObs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := &fakeDiscovery{}
+	w := do(router(f), "POST", "/s/"+sid+"/observations", string(payload), "Authorization", "Bearer "+strings.Repeat("a", 64))
+	if w.Code != 200 || len(f.gotObs) != 2 {
+		t.Fatalf("the server must accept the helper's own payload: %d %s", w.Code, w.Body)
+	}
+	if f.gotObs[1].DeviceKey != "mac:48:A9:8A:00:00:07" {
+		t.Fatalf("a device without a software id must be keyed by MAC: %+v", f.gotObs[1])
 	}
 }
