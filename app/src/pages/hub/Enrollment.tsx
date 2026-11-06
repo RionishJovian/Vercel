@@ -3,6 +3,7 @@ import { api, ApiError, isUnauthorized } from "../../lib/api";
 import { useI18n } from "../../i18n";
 import { Note } from "../../components/ui";
 import { enrollError } from "./messages";
+import { validWifi, withNewRouterNetwork, type Uplink } from "./newRouterNetwork";
 
 interface Enrolled { state?: string; router_configuration_required?: boolean; one_paste?: boolean; automatic_management?: boolean; router_script?: string; tunnel_address?: string; hub_public_key?: string; endpoint?: string; allowed_ips?: string[] }
 interface Live { handshake_status?: string; connection?: { management?: string } }
@@ -15,13 +16,16 @@ export function Script({ title, text }: { title: string; text: string }) {
   const { t } = useI18n();
   const area = useRef<HTMLTextAreaElement>(null);
   const [label, setLabel] = useState<"copy" | "copied" | "manual">("copy");
+  // Some WebFig paste shortcuts send a stray character before the clipboard text.
+  // Keep that character on its own line so the script still starts with its opening brace.
+  const pasteText = text.startsWith("\n") ? text : "\n" + text;
   async function copy() {
-    try { await navigator.clipboard.writeText(text); setLabel("copied"); } catch { area.current?.focus(); area.current?.select(); setLabel("manual"); }
+    try { await navigator.clipboard.writeText(pasteText); setLabel("copied"); } catch { area.current?.focus(); area.current?.select(); setLabel("manual"); }
   }
   return (
     <div className="stack">
       <h4>{title}</h4>
-      <textarea ref={area} className="input script" rows={9} readOnly spellCheck={false} aria-label={title} value={text} />
+      <textarea ref={area} className="input script" rows={9} readOnly spellCheck={false} aria-label={title} value={pasteText} />
       <button className="pill" type="button" onClick={() => void copy()}>{t(label === "copy" ? "hub.copy" : label === "copied" ? "hub.copied" : "hub.copyManual")}</button>
     </div>
   );
@@ -51,11 +55,41 @@ function Where() {
   return <details className="wiz-where"><summary>{t("hub.w.where")}</summary><p className="soft small">{t("hub.w.whereBody")}</p></details>;
 }
 
+function NetworkSetup() {
+  const { t } = useI18n();
+  const [uplink, setUplink] = useState<"existing" | Uplink>("existing");
+  const wifi = uplink === "wifi1" || uplink === "wifi2";
+  return (
+    <div className="stack">
+      <label className="stack">
+        <span>{t("hub.net.setup")}</span>
+        <select className="input" name="uplink" value={uplink} onChange={e => setUplink(e.target.value as typeof uplink)}>
+          <option value="existing">{t("hub.net.existing")}</option>
+          <option value="ethernet">{t("hub.net.ethernet")}</option>
+          <option value="wifi1">{t("hub.net.wifi5")}</option>
+          <option value="wifi2">{t("hub.net.wifi24")}</option>
+        </select>
+      </label>
+      {uplink !== "existing" && <>
+        <p className="soft small">{t("hub.net.preview")}</p>
+        <p className="soft small">{t(wifi ? "hub.net.wifiPreview" : "hub.net.ethernetPreview")}</p>
+        <Note kind="warn">{t("hub.net.safe")}</Note>
+      </>}
+      {wifi && <>
+        <label className="stack"><span>{t("hub.net.ssid")}</span><input className="input" name="ssid" maxLength={32} autoComplete="off" required /></label>
+        <label className="stack"><span>{t("hub.net.password")}</span><input className="input" name="wifiPassphrase" type="password" minLength={8} maxLength={63} autoComplete="new-password" required /></label>
+        <p className="soft small">{t("hub.net.private")}</p>
+      </>}
+    </div>
+  );
+}
+
 /** One paste connects the router: the app finishes by itself, even if this page is closed. Nothing here asks for router credentials. */
 export function Enrollment({ id, onVerified }: { id: string; onVerified: () => void }) {
   const { t } = useI18n();
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ ok: true; data: Enrolled } | { ok: false; key: string } | null>(null);
+  const [networkSetup, setNetworkSetup] = useState(false);
   const [connected, setConnected] = useState(false), [reached, setReached] = useState(false), [slow, setSlow] = useState(false);
   const head = useRef<HTMLHeadingElement>(null);
   const first = useRef(true);
@@ -94,12 +128,22 @@ export function Enrollment({ id, onVerified }: { id: string; onVerified: () => v
   async function enroll(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (pending.current) return;
-    if (new FormData(e.currentTarget).get("confirm") !== "on") { setResult({ ok: false, key: "hub.confirmNeeded" }); return; }
+    const form = new FormData(e.currentTarget);
+    if (form.get("confirm") !== "on") { setResult({ ok: false, key: "hub.confirmNeeded" }); return; }
+    const choice = form.get("uplink");
+    const uplink = choice === "ethernet" || choice === "wifi1" || choice === "wifi2" ? choice : null;
+    const ssid = String(form.get("ssid") ?? ""), passphrase = String(form.get("wifiPassphrase") ?? "");
+    if ((uplink === "wifi1" || uplink === "wifi2") && !validWifi(ssid, passphrase)) {
+      setResult({ ok: false, key: "hub.net.invalidWifi" });
+      return;
+    }
     pending.current = true; setBusy(true); setResult(null);
     try {
       const r = await api.post<Enrolled>(`/vps/peers/${eid}/quick-enroll`, { management_rest_port: 443, confirm_enrollment: true });
       if (r.state !== "hub_peer_enrolled" || r.router_configuration_required !== true || r.one_paste !== true || r.automatic_management !== true || !okScript(r.router_script)) throw new Error("unverified");
-      setResult({ ok: true, data: r });
+      const router_script = uplink ? withNewRouterNetwork(r.router_script, uplink, ssid, passphrase) : r.router_script;
+      setNetworkSetup(uplink !== null);
+      setResult({ ok: true, data: { ...r, router_script } });
     } catch (err) {
       if (isUnauthorized(err)) throw err;
       setResult({ ok: false, key: enrollError(err instanceof ApiError ? err.status : undefined, err instanceof ApiError ? (err.data as { code?: string } | null)?.code : undefined) });
@@ -117,6 +161,7 @@ export function Enrollment({ id, onVerified }: { id: string; onVerified: () => v
           <p className="soft small">{t("hub.w.b1")}</p>
           <form className="stack" onSubmit={enroll}>
             <fieldset className="nolock stack" disabled={busy}>
+              <NetworkSetup />
               <label className="check"><span>{t("hub.authorize")}</span><input type="checkbox" name="confirm" required /></label>
               <button className="btn" type="submit">{busy ? t("hub.creating") : t("hub.generate")}</button>
             </fieldset>
@@ -131,7 +176,7 @@ export function Enrollment({ id, onVerified }: { id: string; onVerified: () => v
           <Where />
           <p className="soft small">{t("hub.w.scriptBody")}</p>
           <Script title={t("hub.setupTitle")} text={result.data.router_script ?? ""} />
-          <Note kind="warn">{t("hub.w.once")}</Note>
+          <Note kind="warn">{t(networkSetup ? "hub.net.safe" : "hub.w.once")}</Note>
           <p className="soft small">{t("hub.keepPrivate")}</p>
           <div role="status" aria-live="polite"><Note kind={reached ? "ok" : ""}>{t(reached ? "hub.w.reached" : "hub.w.waiting")}</Note></div>
           {slow && (
