@@ -8,6 +8,8 @@ import { BackLink, Note, PageHead } from "../../components/ui";
 import { Skeleton } from "../../components/Skeleton";
 import { AddGateway } from "../hub";
 import { Wizard } from "../network/Wizard";
+import { GuestPage } from "../vouchers/GuestPage";
+import { GuestDeploy } from "../vouchers/GuestDeploy";
 import { Enrollment } from "../hub/Enrollment";
 import { enrollmentUnavailableKey } from "../hub/messages";
 import { setupStatus, type GatewayLike } from "./status";
@@ -35,13 +37,17 @@ export function QuickSetup({ me }: { me: Me }) {
   const connectedRouter = connectedStatus.router as GW | undefined;
   // Read what the router itself has. Only after management access is verified, and only for people who can act on it.
   const profiles = useSWR<{ profiles?: string[] }>(canEdit && connectedRouter?.management_connected ? `/routers/${encodeURIComponent(connectedRouter.device_id)}/portal/profiles` : null, fetcher, { shouldRetryOnError: false });
+  const portal = useSWR<{ config?: { updated_at?: string }; updated_at?: string }>(connectedRouter ? "/portal/config" : null, fetcher, { shouldRetryOnError: false });
+  const changes = useSWR<{ changes?: Array<{ action?: string; timestamp?: string }> }>(connectedRouter?.management_connected ? `/devices/${encodeURIComponent(connectedRouter.device_id)}/changes` : null, fetcher, { shouldRetryOnError: false });
   if (routers.isLoading || sitesRes.isLoading) return <>{back}<Skeleton h={300} /></>;
   if (routers.error || sitesRes.error) return <>{back}<Note kind="bad">{t("c.loadFailed")}</Note></>;
 
-  const status = setupStatus({ sites: sites.length, gateways, selected: picked, states, hotspotProfiles: profiles.data ? asArray<string>(profiles.data.profiles).length : undefined });
+  const status = setupStatus({ sites: sites.length, gateways, selected: picked, states, hotspotProfiles: profiles.data ? asArray<string>(profiles.data.profiles).length : undefined,
+    portalSavedAt: portal.data?.config?.updated_at ?? portal.data?.updated_at,
+    portalInstalledAt: asArray<{ action?: string; timestamp?: string }>(changes.data?.changes).find((c) => c.action === "router.portal.deployed")?.timestamp });
   const router = status.router as GW | undefined;
   const current = status.steps.find((s) => s.state === "current")?.key;
-  const refresh = () => { void routers.mutate(); void fleet.mutate(); void profiles.mutate(); };
+  const refresh = () => { void routers.mutate(); void fleet.mutate(); void profiles.mutate(); void portal.mutate(); void changes.mutate(); };
   const pick = (id: string) => { setPicked(id); try { if (id) sessionStorage.setItem(KEY, id); } catch { /* ignore */ } };
   const capability = cap.data ?? { available: false, code: "capability_unavailable" };
 
@@ -87,10 +93,20 @@ export function QuickSetup({ me }: { me: Me }) {
         </>
       )}
 
+      {current === "guest" && router && (
+        <>
+          <Note kind="ok">{t("qs.hotspotDone")}</Note>
+          <GuestPage hideDeploy />
+          <p className="soft small">{t("qs.afterSave")}</p>
+        </>
+      )}
+
+      {current === "install" && router && <GuestDeploy key={router.device_id + (status.steps[4].state)} onInstalled={refresh} />}
+
       {!current && router && (
         <section className="glass pad stack" aria-live="polite">
-          <Note kind="ok">{t("qs.hotspotDone")}</Note>
-          <a className="btn" href="#/vouchers/guest">{t("qs.nextGuest")}</a>
+          <Note kind="ok">{t("qs.installed")}</Note>
+          <p className="soft small">{t("qs.testGuest")}</p>
         </section>
       )}
     </>

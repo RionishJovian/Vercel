@@ -46,7 +46,7 @@ function previewConfig(d: Draft, c: Config) {
   };
 }
 
-export function GuestPage() {
+export function GuestPage({ hideDeploy }: { hideDeploy?: boolean } = {}) {
   const { t, lang } = useI18n();
   const { data, error, isLoading, mutate } = useSWR<{ config?: Config } & Config>("/portal/config", fetcher, { shouldRetryOnError: false });
   const cfg: Config = useMemo(() => data?.config ?? data ?? EMPTY, [data]);
@@ -150,7 +150,7 @@ export function GuestPage() {
         {msg}
         <button className="btn" type="submit" disabled={busy}>{t("g.save")}</button>
       </form>
-      <GuestDeploy />
+      {!hideDeploy && <GuestDeploy />}
       </div>
     </div>
   );
