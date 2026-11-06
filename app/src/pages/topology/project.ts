@@ -25,9 +25,10 @@ export function project(device: GatewayRef, inv: ObsInventory = {}, labels: Labe
   const interfaces = rows(inv, "interfaces");
   const own = new Set(interfaces.map((v) => macOf(v["mac-address"])).filter(Boolean));
   const types = new Map(interfaces.map((v) => [v.name, v.type]));
-  // The router can report a port together with its bridge ("ether2,bridge"). The port is the useful part.
+  // The router can report a port together with its bridge ("ether2,bridge", or
+  // "ether2;bridge" on RouterOS 7.25). The port is the useful part.
   const portsOf = (raw?: string) => {
-    const names = String(raw ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+    const names = String(raw ?? "").split(/[,;]/).map((s) => s.trim()).filter(Boolean);
     const specific = names.filter((n) => types.get(n) !== "bridge");
     return specific.length ? specific : names;
   };

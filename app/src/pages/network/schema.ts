@@ -103,7 +103,7 @@ export function listFor(inv: Inventory, kind: string): NetObject[] {
 /** Starting values for the form: the chosen record, or sensible suggestions that are never applied without review. */
 export function initialValues(kind: string, selected: NetObject | undefined, defaults: Record<string, string>): Record<string, string> {
   const v: Record<string, string> = { ...(selected?.values ?? {}) };
-  if (!selected) Object.assign(v, { name: kind === "pppoe_server" ? "subscribers" : "customer", distance: "2", disabled: "no", dns: "1.1.1.1,8.8.8.8", rate_limit: "10M/20M", mode: "failover", gateway_cidr: defaults.gateway_cidr || "", pool_start: defaults.pool_start || "", pool_end: defaults.pool_end || "" });
+  if (!selected) Object.assign(v, { name: kind === "pppoe_server" ? "subscribers" : kind === "subscriber" ? "" : "customer", distance: "2", disabled: "no", dns: "1.1.1.1,8.8.8.8", rate_limit: "10M/20M", mode: "failover", gateway_cidr: defaults.gateway_cidr || "", pool_start: defaults.pool_start || "", pool_end: defaults.pool_end || "" });
   if (kind === "firewall") v.interface = v["in-interface"] || "";
   if (kind === "shield") v.disabled = "yes";
   if ((kind === "ip_address" || kind === "vlan") && !selected) Object.assign(v, { name: "", address: "", interface: "", "vlan-id": "", disabled: "no" });
