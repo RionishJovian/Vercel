@@ -69,7 +69,7 @@ export function Home({ me, routerId }: { me: Me; routerId?: string | null }) {
               </select>
             </label>}
             {selected ? <HomePorts key={selected.device_id} router={selected} /> :
-              list?.length === 0 && <p className="note warn">{t("home.noRouters")} <a className="link" href="#/router">{t("home.addRouter")}</a></p>}
+              list?.length === 0 && <p className="note warn">{t("home.noRouters")} <a className="link" href="#/setup">{t("qs.title")}</a></p>}
           </>
         )}
       </section>

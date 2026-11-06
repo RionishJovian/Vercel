@@ -74,10 +74,11 @@ describe("Home", () => {
     expect(document.querySelector(".leds")).toBeNull();
   });
 
-  it("offers to add a router when none are registered", async () => {
+  it("points to Quick setup when no router is registered", async () => {
     routers = { routers: [] };
     fleet = { isLoading: false, data: { total_peers: 0, up: 0 } };
     open();
-    expect(await screen.findByRole("link", { name: /add/i })).toBeTruthy();
+    const link = await screen.findByRole("link", { name: "Quick setup" });
+    expect(link.getAttribute("href")).toBe("#/setup");
   });
 });

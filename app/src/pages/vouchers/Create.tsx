@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import useSWR from "swr";
 import { api, ApiError, fetcher, isUnauthorized } from "../../lib/api";
 import { asArray, type Router } from "../../lib/types";
@@ -28,6 +28,9 @@ export function Create() {
   const [failure, setFailure] = useState("");
   const gateways = asArray<Router>(routers.data?.routers).filter(d => d.deployment_layer === "MAIN_GATEWAY");
   const gateway = gateways.find(g => g.device_id === selected) ?? gateways[0];
+  // A saved batch for a router this account no longer has can never finish here, and it would lock the form.
+  const staleSaved = !!routers.data && !!saved?.device_id && !gateways.some(g => g.device_id === saved.device_id);
+  useEffect(() => { if (staleSaved) { writePending(null); setSaved(null); setSelected(""); } }, [staleSaved]);
   const profiles = useSWR<{ profiles?: string[] }>(gateway ? `/routers/${encodeURIComponent(gateway.device_id)}/portal/profiles` : null, fetcher, { shouldRetryOnError: false });
   const ready = profiles.data?.profiles?.length === 1;
   function accept(res: Created) {

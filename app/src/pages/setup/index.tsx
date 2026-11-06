@@ -107,6 +107,7 @@ export function QuickSetup({ me }: { me: Me }) {
         <section className="glass pad stack" aria-live="polite">
           <Note kind="ok">{t("qs.installed")}</Note>
           <p className="soft small">{t("qs.testGuest")}</p>
+          <a className="btn quiet" href="#/vouchers/create">{t("qs.firstVouchers")}</a>
         </section>
       )}
     </>

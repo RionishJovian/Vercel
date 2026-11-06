@@ -63,6 +63,7 @@ describe("Quick setup", () => {
     open();
     await screen.findByText(/verified install of the guest page is recorded/);
     screen.getByText(/Not tested with a guest yet/);
+    expect(screen.getByRole("link", { name: "Create the first vouchers" }).getAttribute("href")).toBe("#/vouchers/create");
   });
   it("asks to install again when the page was saved after the last install", async () => {
     data = { sites: [SITE], routers: [CONNECTED], profiles: ["hsprof1"], savedAt: "2026-11-06T03:00:00Z", changes: [{ action: "router.portal.deployed", timestamp: "2026-11-06T02:00:00Z" }] };

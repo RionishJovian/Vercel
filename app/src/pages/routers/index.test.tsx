@@ -34,4 +34,9 @@ describe("Router page navigation", () => {
     expect(document.querySelectorAll('a[href="#/managed-devices"]')).toHaveLength(1);
     expect(document.querySelectorAll('a[href="#/topology"]')).toHaveLength(1);
   });
+  it("has one Quick setup entry, in Router tools", async () => {
+    open();
+    await screen.findByText("Shop gateway");
+    expect(screen.getAllByRole("link", { name: "Quick setup" })).toHaveLength(1);
+  });
 });
