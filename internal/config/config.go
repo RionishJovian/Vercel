@@ -14,6 +14,7 @@ import (
 
 type Config struct {
 	Media       MediaConfig       `mapstructure:"media"`
+	Discovery   DiscoveryConfig   `mapstructure:"discovery"`
 	Environment string            `mapstructure:"environment"`
 	Server      ServerConfig      `mapstructure:"server"`
 	Database    DatabaseConfig    `mapstructure:"database"`
@@ -39,6 +40,11 @@ type MediaConfig struct {
 	PublishingEnabled bool `mapstructure:"publishing_enabled"`
 	ConnectorEnabled  bool `mapstructure:"connector_enabled"`
 	PaidAccessEnabled bool `mapstructure:"paid_access_enabled"`
+}
+
+// DiscoveryConfig gates the nearby-router discovery sessions. Off by default; it changes no router configuration either way.
+type DiscoveryConfig struct {
+	Enabled bool `mapstructure:"enabled"`
 }
 
 // AIConfig configures the AI/scanning service. Disabled by default.
@@ -485,6 +491,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("vps.hub_url", "")
 	v.SetDefault("vps.hub_key_id", "")
 	v.SetDefault("vps.hub_signing_key", "")
+	v.SetDefault("discovery.enabled", false)
 	v.SetDefault("media.connector_enabled", false)
 	v.SetDefault("media.paid_access_enabled", false)
 	v.SetDefault("server.host", "0.0.0.0")

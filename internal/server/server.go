@@ -19,6 +19,7 @@ import (
 	"mega-magic/internal/cache"
 	"mega-magic/internal/config"
 	"mega-magic/internal/database"
+	"mega-magic/internal/discoverystore"
 	"mega-magic/internal/evaluator"
 	"mega-magic/internal/fleet"
 	"mega-magic/internal/handler"
@@ -56,6 +57,7 @@ type Server struct {
 	quotaSweep        *quota.Sweep
 	recovery          *recovery.RecoveryService
 	restricted        *database.DB
+	discoveryStore    *discoverystore.Store
 	guestRepairMu     sync.Mutex
 	guestRepairCancel context.CancelFunc
 	guestRepairDone   chan struct{}
@@ -450,6 +452,15 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		}
 	}
 
+	var discoveryStore *discoverystore.Store
+	if cfg.Discovery.Enabled {
+		ds, err := registerDiscoveryRoutes(r, authService, db, handler.SubscriptionAccess(db, cfg.Billing.SubscriptionOnly, cfg.Billing.ExistingAccountPolicy), handler.IndividualPassAccess(db, cfg.Billing.IndividualPassesEnabled))
+		if err != nil {
+			return nil, fmt.Errorf("discovery routes: %w", err)
+		}
+		discoveryStore = ds
+	}
+
 	evaluator := evaluator.New(
 		messagingClient,
 		database.NewAlertPolicyRepository(db),
@@ -588,6 +599,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		quotaSweep:     quotaSweep,
 		recovery:       recoveryService,
 		restricted:     restrictedPool,
+		discoveryStore: discoveryStore,
 	}, nil
 }
 
@@ -1080,6 +1092,11 @@ func (s *Server) Start() error {
 		return fmt.Errorf("voucher login synchronization worker: %w", err)
 	}
 	defer s.stopGuestVoucherSyncWorker()
+	if s.discoveryStore != nil {
+		dsCtx, dsCancel := context.WithCancel(context.Background())
+		defer dsCancel()
+		go runDiscoverySweep(dsCtx, s.discoveryStore, s.sugar.Warnw)
+	}
 	bbCtx, bbCancel := context.WithCancel(context.Background())
 	defer bbCancel()
 	go s.runBroadbandSync(bbCtx)
