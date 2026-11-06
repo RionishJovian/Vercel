@@ -58,7 +58,7 @@ func router(f *fakeDiscovery) *gin.Engine {
 	r.POST("/s", owner, h.CreateSession)
 	r.GET("/s/:id", owner, h.GetSession)
 	r.DELETE("/s/:id", owner, h.CancelSession)
-	r.POST("/s/:id/pair", h.Pair)
+	r.POST("/pair", h.Pair)
 	r.POST("/s/:id/observations", h.Observations)
 	return r
 }
@@ -128,16 +128,13 @@ func TestOwnerReadsAndCancelsHideForeignSessions(t *testing.T) {
 
 func TestPair(t *testing.T) {
 	ok := &fakeDiscovery{paired: discoverystore.Paired{SessionID: sid, Token: strings.Repeat("a", 64)}}
-	if w := do(router(ok), "POST", "/s/"+sid+"/pair", `{"pairing_code":"ABCDEF-GHJKMNPQ"}`); w.Code != 201 || w.Header().Get("Cache-Control") != "no-store" {
-		t.Fatalf("pair: %d", w.Code)
+	if w := do(router(ok), "POST", "/pair", `{"pairing_code":"ABCDEF-GHJKMNPQ"}`); w.Code != 201 || w.Header().Get("Cache-Control") != "no-store" || !strings.Contains(w.Body.String(), sid) {
+		t.Fatalf("pair: %d %s", w.Code, w.Body)
 	}
-	if w := do(router(ok), "POST", "/s/0a1b2c3d-0000-4000-8000-0000000000ff/pair", `{"pairing_code":"ABCDEF-GHJKMNPQ"}`); w.Code != 401 {
-		t.Fatalf("a code for another session id must fail: %d", w.Code)
-	}
-	if w := do(router(&fakeDiscovery{pairErr: discoverystore.ErrUnavailable}), "POST", "/s/"+sid+"/pair", `{"pairing_code":"x"}`); w.Code != 401 || strings.Contains(w.Body.String(), "expired") {
+	if w := do(router(&fakeDiscovery{pairErr: discoverystore.ErrUnavailable}), "POST", "/pair", `{"pairing_code":"x"}`); w.Code != 401 || strings.Contains(w.Body.String(), "expired") {
 		t.Fatalf("every pairing failure must look the same: %d %s", w.Code, w.Body)
 	}
-	if w := do(router(ok), "POST", "/s/"+sid+"/pair", `{"pairing_code":"A","business_id":"x"}`); w.Code != 400 {
+	if w := do(router(ok), "POST", "/pair", `{"pairing_code":"A","business_id":"x"}`); w.Code != 400 {
 		t.Fatalf("a supplied business id must be refused, not ignored: %d", w.Code)
 	}
 }
