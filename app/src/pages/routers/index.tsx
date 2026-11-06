@@ -5,8 +5,6 @@ import { useI18n } from "../../i18n";
 import { Note, SectionHead, WorkspaceTabs, BackLink } from "../../components/ui";
 import { Skeleton } from "../../components/Skeleton";
 import { deviceImage } from "../../lib/deviceImage";
-import { Icon, type IconName } from "../../components/icons";
-import { workspaceInfo, workspaces, type Workspace } from "../network/schema";
 import { Detail } from "./Detail";
 import { NetworkMap } from "./NetworkMap";
 import { hubStatusFrom, type HubStatus } from "../../lib/hubStatus";
@@ -14,22 +12,6 @@ import { useFleet, type FleetData } from "../../lib/useFleet";
 import { HubChip } from "./HubChip";
 
 export interface RouterRow extends Router { is_online?: boolean; transport?: string; last_seen_at?: string }
-
-const NET_ICONS: Record<Workspace, IconName> = { wan: "globe", ip: "nodes", vlan: "grid", existing: "device", protection: "shield", qos: "pulse", wifi: "link", pppoe: "users" };
-
-/** Internet setup is a first-class part of the Router tab, not buried under More. */
-function InternetSetup() {
-  const { t, tn } = useI18n();
-  return (
-    <section className="stack" aria-labelledby="net-setup">
-      <h2 id="net-setup">{t("title.network")}</h2>
-      <nav className="tiles">
-        <a className="tile" href="#/network/new"><span className="tile-ico"><Icon name="pin" /></span><b>{t("nw.title")}</b></a>
-        {workspaces.map((k) => <a key={k} className="tile" href={"#/network/" + k}><span className="tile-ico"><Icon name={NET_ICONS[k]} /></span><b>{tn(workspaceInfo[k][0])}</b></a>)}
-      </nav>
-    </section>
-  );
-}
 
 // Once the status has loaded, a router it does not list is "unavailable", not "checking".
 const hubStatusFromFleet = (fleet: FleetData | undefined, routers: RouterRow[]): Record<string, HubStatus> => ({ ...Object.fromEntries(routers.map((d): [string, HubStatus] => [d.device_id, { state: "unknown" }])), ...hubStatusFrom(fleet) });
@@ -56,10 +38,6 @@ export function Routers({ sub, params }: { sub: string; params: URLSearchParams 
     <>
       <h1>{t("title.router")}</h1>
       {tabs}
-      {list.length > 0 && <div className="row" style={{ justifyContent: "flex-start", flexWrap: "wrap" }}>
-        {list.some((d) => d.deployment_layer === "MAIN_GATEWAY") && <a className="pill" href="#/hub">{t("hub.delete")} · {t("hub.title")}</a>}
-        {list.some((d) => d.deployment_layer !== "MAIN_GATEWAY") && <a className="pill" href="#/managed-devices">{t("hub.delete")} · {t("dm.title")}</a>}
-      </div>}
       {!list.length && <Note>{t("r.empty")}</Note>}
       <div className="router-grid">
         {list.map((d) => (
@@ -76,8 +54,11 @@ export function Routers({ sub, params }: { sub: string; params: URLSearchParams 
           </a>
         ))}
       </div>
-      <InternetSetup />
-      <section className="glass pad stack"><SectionHead title={t("r.tools")} help={t("r.toolsHelp")} /><div className="scroll-x"><a className="pill" href="#/hub">{t("hub.title")}</a><a className="pill" href="#/network">{t("title.network")}</a><a className="pill" href="#/topology">{t("tp.title")}</a></div></section>
+      <section className="glass pad stack"><SectionHead title={t("r.tools")} help={t("r.toolsHelp")} /><div className="scroll-x">
+        <a className="pill" href="#/hub">{t("hub.title")}</a>
+        {list.some((d) => d.deployment_layer !== "MAIN_GATEWAY") && <a className="pill" href="#/managed-devices">{t("dm.title")}</a>}
+        <a className="pill" href="#/topology">{t("tp.title")}</a>
+      </div></section>
     </>
   );
 }
