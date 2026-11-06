@@ -58,14 +58,14 @@ func TestWebFigReadChangesNothingAndPlansOneRule(t *testing.T) {
 	}
 }
 
-func TestWebFigPrefersHTTPSWhenOnlyHTTPSIsOn(t *testing.T) {
+func TestWebFigUsesTheTunnelWhenOnlyHTTPSIsOn(t *testing.T) {
 	r := &webFigScriptRunner{services: "mm|www|80|true|\nmm|www-ssl|8443|false|10.77.0.0/24\n", rules: 1}
 	access, err := readWebFigAccess(context.Background(), r, webFigTestTunnel, "10.77.0.1/32")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !access.Ready || access.Scheme != "https" || access.Port != 8443 {
-		t.Fatalf("%+v", access)
+	if access.Ready || !access.enableWWW || access.Scheme != "http" || access.Port != 80 || len(access.Plan) == 0 {
+		t.Fatalf("an HTTPS-only router must get a reviewed plan, not a dead end: %+v", access)
 	}
 }
 

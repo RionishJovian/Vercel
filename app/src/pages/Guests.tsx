@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import { api, fetcher, isUnauthorized } from "../lib/api";
 import { asArray, type Me, type Router } from "../lib/types";
+import { useVisibleInterval } from "../lib/polling";
 import { useI18n } from "../i18n";
 import { BackLink, Note, PageHead } from "../components/ui";
 import { Skeleton } from "../components/Skeleton";
@@ -36,6 +37,9 @@ async function readVoucherFacts(codes: string[]): Promise<Map<string, VoucherFac
   return out;
 }
 
+/** Each read asks the router, so this is slower than the port rates. */
+const GUESTS_REFRESH_MS = 30000;
+
 export function Guests({ me }: { me: Me }) {
   const { t } = useI18n();
   const routers = useSWR<{ routers?: RouterX[] }>("/routers", fetcher);
@@ -49,13 +53,16 @@ export function Guests({ me }: { me: Me }) {
   const [status, setStatus] = useState(""), [site, setSite] = useState(""), [device, setDevice] = useState(""), [q, setQ] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const [picked, setPicked] = useState<Set<string>>(new Set());
-  const alive = useRef(true);
+  const alive = useRef(true), refreshing = useRef(false), generation = useRef(0);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   const canEdit = EDITORS.includes(me.user?.user_role ?? "");
 
-  const reload = useCallback(async () => {
-    if (!gateways.length) { setSources([]); setStatus(t("gu.noSources")); return; }
-    setReading(true); setStatus(t("gu.refreshing"));
+  // A background refresh changes only the figures. It leaves the owner's selection
+  // and any message alone, and quietly keeps the last reading if it fails.
+  const reload = useCallback(async (background = false) => {
+    if (!gateways.length) { setSources([]); if (!background) setStatus(t("gu.noSources")); return; }
+    if (!background) { setReading(true); setStatus(t("gu.refreshing")); }
+    const started = background ? generation.current : ++generation.current;
     const next: Source[] = new Array(gateways.length);
     let cursor = 0;
     async function worker() {
@@ -76,11 +83,15 @@ export function Guests({ me }: { me: Me }) {
       let known: Map<string, VoucherFact> | null = null;
       try { known = await readVoucherFacts(next.flatMap((s) => (s?.ok ? s.sessions.map((x) => x.values?.user ?? "") : []))); }
       catch (e) { if (isUnauthorized(e)) throw e; }
-      if (alive.current) { setSources(next); setFacts(known); setReadAt(Date.now()); setStatus(""); setPicked(new Set()); }
+      if (!alive.current || (background && generation.current !== started)) return;
+      setSources(next); setFacts(known); setReadAt(Date.now());
+      if (!background) { setStatus(""); setPicked(new Set()); }
     }
-    finally { if (alive.current) setReading(false); }
+    catch (e) { if (!background || isUnauthorized(e)) throw e; }
+    finally { if (alive.current && !background) setReading(false); }
   }, [gateways, t]);
   useEffect(() => { if (routers.data) void reload(); }, [routers.data, reload]);
+  useVisibleInterval(() => { if (!reading && !busy && !refreshing.current) { refreshing.current = true; void reload(true).finally(() => { refreshing.current = false; }); } }, GUESTS_REFRESH_MS, !!routers.data);
 
   if (routers.isLoading) return <><BackLink href="#/more">{t("tab.more")}</BackLink><Skeleton h={300} /></>;
   const siteIds = [...new Set(gateways.map((g) => g.site_id || "unassigned"))];
