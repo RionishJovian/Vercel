@@ -10,7 +10,7 @@ interface SavedPortal { mobile_payment_enabled?: boolean; guest_plans?: unknown[
 interface Plan { profile: string; steps: string[]; file?: string; version: string; confirmation: string; preview_html?: string; media_host?: string; media_port?: string }
 
 /** Installs the saved guest login page on a gateway: review first, then a backed-up, read-back-verified apply. */
-export function GuestDeploy() {
+export function GuestDeploy({ onInstalled }: { onInstalled?: () => void } = {}) {
   const { t } = useI18n();
   const routers = useSWR<{ routers?: Router[] }>("/routers", fetcher);
   const gateways = asArray<Router>(routers.data?.routers).filter((r) => r.deployment_layer === "MAIN_GATEWAY");
@@ -52,6 +52,7 @@ export function GuestDeploy() {
       const r = await api.post<{ result?: { verified?: boolean; backup?: string } }>(`/routers/${encodeURIComponent(gw.device_id)}/portal/apply`, { profile: approved.profile, version: approved.version, confirmation: approved.confirmation, media_host: approved.media_host || "", media_port: approved.media_port || "" });
       if (!r.result?.verified) throw new Error(t("gd2.notVerified"));
       setStatus(`${t("gd2.verified")} ${r.result.backup ?? ""}. ${t("gd2.testGuest")}`);
+      onInstalled?.();
     } catch (e) {
       if (isUnauthorized(e)) throw e;
       const rolled = (e as { data?: { result?: { rolled_back?: boolean } } } | null)?.data?.result?.rolled_back;
