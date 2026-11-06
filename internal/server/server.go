@@ -562,6 +562,10 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	if err := startLiveApplier(cfg, messagingClient, sugar, monitoringService, db, backupHandler, securityHandler, incidentActionHandler, topologyHandler, guestWifiHandler); err != nil {
 		return nil, err
 	}
+	webFigProxy, err := configureWebFig(securityHandler, db, cfg)
+	if err != nil {
+		return nil, err
+	}
 
 	return &Server{
 		cfg:   cfg,
@@ -570,7 +574,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		gin:   r,
 		http: &http.Server{
 			Addr:           fmt.Sprintf(":%d", cfg.Server.Port),
-			Handler:        r,
+			Handler:        withWebFigHost(webFigProxy, r),
 			ReadTimeout:    cfg.Server.ReadTimeout,
 			WriteTimeout:   cfg.Server.WriteTimeout,
 			MaxHeaderBytes: 1 << 20,
@@ -708,6 +712,7 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 				routers.GET("/:id/portal/profiles", auth.RequireMinRole(model.RoleAdmin), securityHandler.PortalDeployment)
 				routers.POST("/:id/portal/:action", auth.RequireMinRole(model.RoleAdmin), securityHandler.PortalDeployment)
 				routers.POST("/:id/webfig/secure", auth.RequireMinRole(model.RoleAdmin), securityHandler.ConfigureWebFig)
+				handler.RegisterWebFigRoutes(routers, securityHandler)
 				routers.GET("/:id", routerHandler.GetRouter)
 				// Router write is OWNER/ADMIN (C3 hierarchy; explicit per RM).
 				routers.POST("", auth.RequireMinRole(model.RoleAdmin), routerHandler.CreateRouter)
