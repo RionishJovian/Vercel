@@ -2,6 +2,7 @@ package routeros
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -259,5 +260,20 @@ func TestGuestVPNPlanIsScopedToForwardedHotspotTraffic(t *testing.T) {
 	r.objects["hotspots"]["*A"]["interface"] = "mmh-test"
 	if _, _, err := buildNetworkPlan(context.Background(), r, req); err == nil {
 		t.Fatal("allowed a restriction on the Hub tunnel")
+	}
+}
+
+func TestPreviewSendsEmptyWarningsNotNull(t *testing.T) {
+	a := quickConfigApplier(lanRouter())
+	review, err := a.PreviewNetwork(context.Background(), "biz-1", "dev-1", NetworkRequest{Kind: "port_label", Values: map[string]string{"interface": "ether2", "comment": "Lobby AP"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := json.Marshal(review)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), `"warnings":[`) {
+		t.Fatalf("the console maps over warnings, so null crashes the page: %s", body)
 	}
 }
