@@ -26,11 +26,24 @@ type Result struct {
 // Listen reads announcements until the window ends or ctx is cancelled.
 // A run that hears nothing is a normal result: it proves nothing about whether a router is near.
 func Listen(ctx context.Context, src PacketSource, a Adapter, window time.Duration, clock func() time.Time) (Result, error) {
+	return ListenProgress(ctx, src, a, window, clock, 0, nil)
+}
+
+// ListenProgress is Listen that also calls report with the results so far every `every` (when positive).
+// An error from report ends the run, so a helper whose session ended stops listening.
+func ListenProgress(ctx context.Context, src PacketSource, a Adapter, window time.Duration, clock func() time.Time, every time.Duration, report func(Result) error) (Result, error) {
 	end := clock().Add(window)
+	next := clock().Add(every)
 	col := NewCollector()
 	var res Result
 	buf := make([]byte, maxPacket+1)
 	for ctx.Err() == nil && clock().Before(end) {
+		if every > 0 && report != nil && !clock().Before(next) {
+			next = clock().Add(every)
+			if err := report(finish(col, res)); err != nil {
+				return finish(col, res), err
+			}
+		}
 		_ = src.SetReadDeadline(clock().Add(time.Second))
 		n, addr, err := src.ReadFrom(buf)
 		if err != nil {
