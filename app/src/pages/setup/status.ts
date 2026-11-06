@@ -1,5 +1,5 @@
 /** Quick setup progress, worked out from what the app and router actually report. A click never marks a step done. */
-export type StepKey = "site" | "connect";
+export type StepKey = "site" | "connect" | "hotspot";
 export type StepState = "done" | "current" | "todo";
 export interface GatewayLike { device_id: string; management_connected?: boolean }
 export interface SetupInput {
@@ -9,6 +9,8 @@ export interface SetupInput {
   selected: string;
   /** Shared router status, keyed by device id. */
   states: ReadonlyMap<string | undefined, string>;
+  /** Hotspot login profiles read from the router. Undefined while unread or when the read failed. */
+  hotspotProfiles?: number;
 }
 export interface SetupStatus {
   router?: GatewayLike;
@@ -27,6 +29,8 @@ export function setupStatus(i: SetupInput): SetupStatus {
     steps: [
       { key: "site", state: siteDone ? "done" : "current" },
       { key: "connect", state: !siteDone ? "todo" : connected ? "done" : "current" },
+      // Done only when the router itself reports a Hotspot profile; a form submission alone proves nothing.
+      { key: "hotspot", state: !connected ? "todo" : (i.hotspotProfiles ?? 0) > 0 ? "done" : "current" },
     ],
   };
 }
