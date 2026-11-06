@@ -1,0 +1,204 @@
+package webfig
+
+import (
+	"context"
+	"crypto/tls"
+	"errors"
+	"fmt"
+	"log"
+	"net"
+	"net/http"
+	"net/http/httputil"
+	"strconv"
+	"strings"
+	"time"
+)
+
+const (
+	cookieName    = "__Host-mm_webfig"
+	openPath      = "/__mm/open"
+	recheckPeriod = 30 * time.Second
+)
+
+// Checker confirms a session may continue: the login is still valid, the role
+// still qualifies, the switch still allows it, the router is still this tenant's
+// at this address. Any error ends the session.
+type Checker func(context.Context, Grant) error
+
+// Proxy serves only the WebFig hostname. It has no route to the application and
+// never sees the application's cookies, which are host-only on the main domain.
+type Proxy struct {
+	host      string
+	store     *Store
+	check     Checker
+	transport http.RoundTripper
+}
+
+func NewProxy(host string, store *Store, check Checker) *Proxy {
+	return &Proxy{host: strings.ToLower(host), store: store, check: check, transport: newTransport()}
+}
+
+// newTransport has no response timeout on purpose: WebFig holds one /jsproxy
+// request open until something changes, and ending it logs the user out. A
+// session's own deadline bounds it instead. Router certificates are self-signed,
+// and the WireGuard tunnel has already authenticated the peer.
+func newTransport() *http.Transport {
+	return &http.Transport{
+		DialContext:           (&net.Dialer{Timeout: 10 * time.Second}).DialContext,
+		TLSClientConfig:       &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // see above
+		TLSHandshakeTimeout:   10 * time.Second,
+		DisableCompression:    true,
+		MaxIdleConnsPerHost:   4,
+		IdleConnTimeout:       30 * time.Second,
+		ResponseHeaderTimeout: 0,
+	}
+}
+
+// Handles reports whether a request belongs to this proxy.
+func (p *Proxy) Handles(r *http.Request) bool {
+	host := r.Host
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	return strings.EqualFold(host, p.host)
+}
+
+// allowedPath lists what WebFig itself uses. Everything else on the router's web
+// server, such as /rest, is not part of this feature.
+func allowedPath(path string) bool {
+	switch path {
+	case "/", "/webfig", "/jsproxy", "/mikrotik_logo.png", "/favicon.png", "/favicon.ico", "/graphs":
+		return true
+	}
+	for _, prefix := range []string{"/webfig/", "/jsproxy/", "/assets/", "/graphs/", "/skins/"} {
+		if strings.HasPrefix(path, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func safetyHeaders(h http.Header) {
+	h.Set("Strict-Transport-Security", "max-age=31536000")
+	h.Set("X-Frame-Options", "DENY")
+	h.Set("Content-Security-Policy", "frame-ancestors 'none'")
+	h.Set("Referrer-Policy", "no-referrer")
+	h.Set("X-Content-Type-Options", "nosniff")
+	h.Set("X-Robots-Tag", "noindex, nofollow")
+}
+
+func notice(w http.ResponseWriter, status int, title, body string) {
+	safetyHeaders(w.Header())
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(status)
+	fmt.Fprintf(w, `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>%s</title><style>body{font:16px system-ui,sans-serif;margin:0;min-height:100vh;display:grid;place-items:center;background:#0c1f1a;color:#e8f2ee}main{max-width:26rem;padding:2rem;text-align:center}p{opacity:.8}</style></head><body><main><h1>%s</h1><p>%s</p></main></body></html>`, title, title, body)
+}
+
+func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == openPath {
+		p.open(w, r)
+		return
+	}
+	cookie, err := r.Cookie(cookieName)
+	if err != nil {
+		notice(w, http.StatusUnauthorized, "Open WebFig from Mega Magic", "This page opens from the router's page in Mega Magic. You can close this tab and open it again there.")
+		return
+	}
+	grant, expires, due, ok := p.store.Lookup(cookie.Value, recheckPeriod)
+	if !ok {
+		notice(w, http.StatusUnauthorized, "WebFig session ended", "WebFig sessions last one hour. Open it again from the router's page in Mega Magic.")
+		return
+	}
+	if due {
+		if err := p.check(r.Context(), grant); err != nil {
+			p.store.Revoke(cookie.Value)
+			notice(w, http.StatusForbidden, "WebFig session ended", "This access is no longer allowed. Open it again from the router's page in Mega Magic.")
+			return
+		}
+	}
+	// SameSite stops other sites sending the cookie; this also stops them writing.
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		if origin := r.Header.Get("Origin"); origin != "https://"+p.host {
+			notice(w, http.StatusForbidden, "Request refused", "This request did not come from WebFig.")
+			return
+		}
+	}
+	if !allowedPath(r.URL.Path) {
+		notice(w, http.StatusNotFound, "Not available", "Only WebFig is available here.")
+		return
+	}
+	// The server's 30 second limits fit API calls, not WebFig's long-held request
+	// or a file upload. The session's deadline replaces them for this request.
+	rc := http.NewResponseController(w)
+	_ = rc.SetReadDeadline(expires)
+	_ = rc.SetWriteDeadline(expires)
+	ctx, cancel := context.WithDeadline(r.Context(), expires)
+	defer cancel()
+	p.reverse(grant).ServeHTTP(w, r.WithContext(ctx))
+}
+
+func (p *Proxy) open(w http.ResponseWriter, r *http.Request) {
+	value, expires, ok := p.store.Redeem(r.URL.Query().Get("ticket"))
+	if r.Method != http.MethodGet || !ok {
+		notice(w, http.StatusUnauthorized, "This link has expired", "Links to WebFig work once, for one minute. Open it again from the router's page in Mega Magic.")
+		return
+	}
+	safetyHeaders(w.Header())
+	http.SetCookie(w, &http.Cookie{Name: cookieName, Value: value, Path: "/", Expires: expires, Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode})
+	w.Header().Set("Cache-Control", "no-store")
+	http.Redirect(w, r, "/webfig/", http.StatusFound)
+}
+
+func (p *Proxy) reverse(g Grant) *httputil.ReverseProxy {
+	target := net.JoinHostPort(g.Host, strconv.Itoa(g.Port))
+	return &httputil.ReverseProxy{
+		Transport:     p.transport,
+		FlushInterval: -1,
+		Rewrite: func(pr *httputil.ProxyRequest) {
+			pr.Out.URL.Scheme, pr.Out.URL.Host, pr.Out.Host = g.Scheme, target, target
+			forwardCookies(pr.Out)
+			for _, name := range []string{"Authorization", "Origin", "Referer", "X-Forwarded-For", "X-Forwarded-Host", "X-Forwarded-Proto", "X-Real-Ip", "Via"} {
+				pr.Out.Header.Del(name)
+			}
+		},
+		ModifyResponse: func(res *http.Response) error {
+			safetyHeaders(res.Header)
+			if location := res.Header.Get("Location"); location != "" {
+				for _, prefix := range []string{"http://" + target, "https://" + target, "http://" + g.Host, "https://" + g.Host} {
+					if rest, found := strings.CutPrefix(location, prefix); found {
+						if rest == "" {
+							rest = "/"
+						}
+						res.Header.Set("Location", rest)
+						break
+					}
+				}
+			}
+			return nil
+		},
+		ErrorHandler: func(rw http.ResponseWriter, req *http.Request, err error) {
+			if errors.Is(err, context.Canceled) {
+				return
+			}
+			if errors.Is(err, context.DeadlineExceeded) && req.Context().Err() != nil {
+				notice(rw, http.StatusUnauthorized, "WebFig session ended", "WebFig sessions last one hour. Open it again from the router's page in Mega Magic.")
+				return
+			}
+			log.Printf("webfig: device %s: %v", g.DeviceID, err)
+			notice(rw, http.StatusBadGateway, "The router did not answer", "Magic Hub could not reach WebFig on this router just now. Check that the router is online, then try again.")
+		},
+	}
+}
+
+// forwardCookies passes the router's own cookies and drops the proxy's session.
+func forwardCookies(out *http.Request) {
+	cookies := out.Cookies()
+	out.Header.Del("Cookie")
+	for _, c := range cookies {
+		if c.Name == cookieName {
+			continue
+		}
+		out.AddCookie(&http.Cookie{Name: c.Name, Value: c.Value})
+	}
+}

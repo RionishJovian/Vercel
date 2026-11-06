@@ -9,6 +9,7 @@ import { BackLink, Field, Note, PageHead } from "../../components/ui";
 import { Skeleton } from "../../components/Skeleton";
 import { Enrollment, Script } from "./Enrollment";
 import { Maintenance } from "./Maintenance";
+import { WebFig } from "./WebFig";
 import { DeviceForm, LAYERS } from "../devices/DeviceForm";
 import { enrollmentUnavailableKey } from "./messages";
 import { ConnectionCheck } from "./ConnectionCheck";
@@ -78,6 +79,7 @@ function Card({ r, state, canEdit, cap, openId, setOpen, onChanged }: { r: GW; s
         {canEdit && !editing && <button className="pill" type="button" onClick={() => setEditing(true)}>{t("dm.edit")}</button>}
         {canEdit && !del.confirm && <button className="pill danger" type="button" onClick={() => setDel({ confirm: true, busy: false })}>{t("hub.delete")}</button>}
       </div>
+      {canEdit && r.management_connected && <WebFig id={r.device_id} />}
       {maint && <Maintenance id={r.device_id} name={r.hardware_name ?? ""} canEdit={canEdit} />}
       {editing && <DeviceForm rec={r} layers={LAYERS} onDone={() => { setEditing(false); onChanged(); }} onCancel={() => setEditing(false)} />}
       {del.confirm && (
