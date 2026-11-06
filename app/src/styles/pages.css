@@ -399,3 +399,6 @@ a.rowitem:hover { border-color: var(--jade); transform: translateX(2px); }
 
 /* A locked form group keeps its layout: the fieldset only carries the disabled state. */
 fieldset.nolock { border: 0; padding: 0; margin: 0; min-width: 0; }
+
+/* "Advanced" and "Cannot open it?" disclosures: a full-size touch target, like Hint. */
+.adv summary { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; cursor: pointer; }

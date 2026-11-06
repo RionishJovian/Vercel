@@ -48,3 +48,38 @@ Date: 2026-11-06. Scope: **discovery only**, on a real RouterBOARD, against a **
 - Android Chrome and iPhone Safari (Stage B).
 - Windows; other RouterOS versions and models; the router's default configuration after the reset was not inspected.
 - A before-and-after router export.
+
+# Stage B: phones (guided mode)
+
+Status: **rehearsed on an emulated Android Chrome phone; not yet run on real phones.** The blueprint requires Android Chrome and iPhone Safari to be verified separately, and a simulation does not count as hardware verification.
+
+## Rehearsal (emulated, local server)
+
+- **Environment:** the built-in browser at 375x812 with a Pixel 8 / Chrome user agent, against the local rehearsal stack with discovery on. This is a rehearsal, not a real device.
+- **iPhone Safari:** no iPhone simulator is installed on this Mac, so Safari was **not** rehearsed at all.
+- **Guided panel:** opens; the "I am connected" confirmation reveals the address field with `192.168.88.1` labelled "Suggested address, Not verified"; **Open the router page** is `http://192.168.88.1`, `target=_blank`, `rel="noopener noreferrer"`; the page has no horizontal overflow.
+- **Burmese:** the whole panel renders with no raw translation keys.
+- **Touch targets:** found one below the 44 px guideline (the "Cannot open it?" disclosure, 24 px); fixed with a shared `.adv summary` rule, re-measured at 44 px.
+- **Automatic section:** hidden by default against production (the capability endpoint is absent while discovery is off); visible and working in the local stack (Stage A).
+
+## Real-phone checklist
+
+Open the preview of PR 145: `https://mega-magic-git-feat-discovery-console-magic-2c1b.vercel.app/v2/`. It is behind Vercel sign-in (sign in with the account that owns the project), and it talks to the production API, so sign in to Mega Magic with your normal account. Production has discovery off, so only the guided panel appears, which is exactly what Stage B tests. Run each check on **Android Chrome** and, separately, **iPhone Safari**, and note the phone model and browser version.
+
+1. Magic Hub, then Add RouterBOARD: the **Discover nearby router** panel is there, collapsed.
+2. Tap **Show**. Nothing asks for a permission. The text explains that the page cannot scan the network.
+3. Tick **I am connected to the router's own Wi-Fi or cable**, with the phone actually on the router's Wi-Fi. The address field shows `192.168.88.1`, "Suggested address", "Not verified".
+4. Tap **Open the router page**. The router's own login page opens in a new tab (`http://192.168.88.1`). Record whether it opened, and whether the browser warned about a non-secure page.
+5. Type a public address such as `8.8.8.8`: it is refused with a message. Type `192.168.1.1`: the label changes to "Entered by you".
+6. Tap **Continue to Magic Hub**: the name field is focused.
+7. Open **Cannot open it?**: the list is readable and the tap target is comfortable.
+8. Switch to Burmese: every line is in Burmese; nothing looks like a code such as `dn.title`.
+9. Rotate the phone and zoom text to its largest: no horizontal scrolling, no overlapping controls.
+10. With a screen reader (TalkBack or VoiceOver), the checkbox, address field and status line are announced; the status text says "Not verified".
+11. Put the phone on guest Wi-Fi or mobile data and repeat step 4: the router page should not open. Record what the browser shows. This is the failure the help text describes.
+
+## Not covered by this stage
+
+- Phones **cannot** run the helper. Automatic discovery needs a laptop, so on a phone only the guided mode is in scope, as the blueprint says.
+- A router that has never connected to Magic Hub.
+- Enrollment (Stage C).
