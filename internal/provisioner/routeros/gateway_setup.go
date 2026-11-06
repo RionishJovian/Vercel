@@ -21,7 +21,9 @@ var gatewayAddressPattern = regexp.MustCompile(`(?m)^\s*address:\s*(\S+)`)
 var gatewayLocks sync.Map
 
 // GatewaySetup adds a separate customer network. It never rewrites an existing
-// default route, management address, bridge membership, or WAN configuration.
+// default route, management address or WAN configuration. A factory router has
+// every port in its LAN bridge, so a chosen port may leave that bridge: the
+// review says so and a failed setup puts it back.
 type GatewaySetup struct {
 	Name          string   `json:"name"`
 	WAN           string   `json:"wan_interface"`
@@ -35,6 +37,10 @@ type GatewaySetup struct {
 	RadiusAddress string   `json:"radius_address"`
 	RadiusSecret  string   `json:"radius_secret"`
 	Confirmation  string   `json:"confirmation"`
+	// LeaveBridge is read from the router, never from the request. It is part
+	// of the reviewed plan, so a port that joins a bridge after preview fails
+	// the confirmation check.
+	LeaveBridge string `json:"leave_bridge,omitempty"`
 }
 
 type GatewayPlan struct {
@@ -161,6 +167,9 @@ func gatewaySteps(g GatewaySetup, network *net.IPNet) (GatewayPlan, []gatewaySte
 	iface := g.LAN
 	steps := []gatewayStep{}
 	labels := []string{}
+	if g.LeaveBridge != "" {
+		labels = append(labels, "Take "+g.LAN+" out of bridge "+g.LeaveBridge+". Anything plugged into or joined to it leaves that network, including your computer if it is connected here")
+	}
 	add := func(menu, field, key, label string, values map[string]string) {
 		steps = append(steps, gatewayStep{menu, field, key, values})
 		labels = append(labels, label)
@@ -191,6 +200,47 @@ func gatewaySteps(g GatewaySetup, network *net.IPNet) (GatewayPlan, []gatewaySte
 	body, _ := json.Marshal(g)
 	hash := sha256.Sum256(body)
 	return GatewayPlan{Steps: labels, Confirmation: hex.EncodeToString(hash[:]), Network: network.String(), Interface: iface}, steps
+}
+
+// gatewayBridgePort reports the bridge a chosen port belongs to, if any.
+func gatewayBridgePort(ctx context.Context, r CommandRunner, lan string) (bridge, comment string, err error) {
+	menu := networkMenu{path: "/interface bridge port", fields: []string{"interface", "bridge", "dynamic", "comment"}}
+	command := strings.Replace(networkReadCommand(menu), menu.path+" find]", menu.path+" find where interface="+routerOSQuoted(lan)+"]", 1)
+	out, err := r.Run(ctx, command)
+	if err != nil {
+		return "", "", fmt.Errorf("could not read the bridge ports")
+	}
+	objects, err := parseNetworkObjects(menu, out, "gateway")
+	if err != nil || len(objects) > 1 {
+		return "", "", fmt.Errorf("could not read the bridge ports")
+	}
+	if len(objects) == 0 {
+		return "", "", nil
+	}
+	v := objects[0].Values
+	if v["dynamic"] == "true" || v["dynamic"] == "yes" || !gatewayInterfacePattern.MatchString(v["bridge"]) {
+		return "", "", fmt.Errorf("this port was added to a bridge automatically; choose another port")
+	}
+	return v["bridge"], v["comment"], nil
+}
+
+// gatewayPortQuiet is true only when the router says the chosen port has no
+// link. A Wi-Fi access point with no client is not running, and RouterOS marks
+// a DHCP server or Hotspot on it invalid until the first client joins.
+func gatewayPortQuiet(ctx context.Context, r CommandRunner, g GatewaySetup) bool {
+	if g.VLAN > 0 {
+		return false
+	}
+	interfaces, err := gatewayInterfaces(ctx, r)
+	if err != nil {
+		return false
+	}
+	for _, i := range interfaces {
+		if i.Name == g.LAN {
+			return !i.Running
+		}
+	}
+	return false
 }
 
 func gatewaySelector(s gatewayStep) string { return s.field + "=" + routerOSQuoted(s.key) }
@@ -233,12 +283,6 @@ func gatewayPreflight(ctx context.Context, r CommandRunner, g GatewaySetup, netw
 		n, e := count("/interface print count-only where name=" + routerOSQuoted(iface) + " disabled=no")
 		if e != nil || n != 1 {
 			return fmt.Errorf("interface %s is missing or disabled", iface)
-		}
-	}
-	if g.VLAN == 0 {
-		n, e := count("/interface bridge port print count-only where interface=" + routerOSQuoted(g.LAN))
-		if e != nil || n > 0 {
-			return fmt.Errorf("use the LAN bridge itself, not a bridge member port")
 		}
 	}
 	for _, menu := range []string{"/ip address", "/ip dhcp-server", "/ip hotspot"} {
@@ -285,9 +329,20 @@ func (a *DeviceApplier) PreviewGateway(ctx context.Context, businessID, deviceID
 	if e != nil {
 		return GatewayPlan{}, e
 	}
+	g.LeaveBridge = ""
+	if g.VLAN == 0 {
+		if g.LeaveBridge, _, e = gatewayBridgePort(ctx, r, g.LAN); e != nil {
+			return GatewayPlan{}, e
+		}
+	}
 	plan, steps := gatewaySteps(g, network)
-	e = gatewayPreflight(ctx, r, g, network, steps)
-	return plan, e
+	if e = gatewayPreflight(ctx, r, g, network, steps); e != nil {
+		return plan, e
+	}
+	if gatewayPortQuiet(ctx, r, g) {
+		plan.Steps = append(plan.Steps, g.LAN+" has no client connected now, so its DHCP and Hotspot start when the first client joins")
+	}
+	return plan, nil
 }
 
 func (a *DeviceApplier) ApplyGateway(ctx context.Context, businessID, deviceID string, request GatewaySetup) (GatewayResult, error) {
@@ -295,11 +350,7 @@ func (a *DeviceApplier) ApplyGateway(ctx context.Context, businessID, deviceID s
 	if e != nil {
 		return GatewayResult{}, e
 	}
-	plan, steps := gatewaySteps(g, network)
-	result := GatewayResult{Plan: plan}
-	if g.Confirmation != plan.Confirmation {
-		return result, fmt.Errorf("preview the current settings before applying")
-	}
+	result := GatewayResult{}
 	lock, _ := gatewayLocks.LoadOrStore(businessID+":"+deviceID, &sync.Mutex{})
 	mu := lock.(*sync.Mutex)
 	mu.Lock()
@@ -311,12 +362,24 @@ func (a *DeviceApplier) ApplyGateway(ctx context.Context, businessID, deviceID s
 	if e != nil {
 		return result, e
 	}
+	g.LeaveBridge = ""
+	portComment := ""
+	if g.VLAN == 0 {
+		if g.LeaveBridge, portComment, e = gatewayBridgePort(ctx, r, g.LAN); e != nil {
+			return result, e
+		}
+	}
+	plan, steps := gatewaySteps(g, network)
+	result.Plan = plan
+	if g.Confirmation != plan.Confirmation {
+		return result, fmt.Errorf("preview the current settings before applying")
+	}
 	if e = gatewayPreflight(ctx, r, g, network, steps); e != nil {
 		return result, e
 	}
 	// Survives an API restart: an earlier router-side network undo job may
 	// still be running even when the in-memory cooldown was lost.
-	jobs, jobErr := networkCount(ctx, r, "/system script job print count-only")
+	jobs, jobErr := networkCount(ctx, r, a.activeJobsQuery(ctx, businessID, deviceID))
 	if jobErr != nil || jobs != 1 {
 		return result, fmt.Errorf("router has an active script job; wait before creating another network")
 	}
@@ -327,6 +390,7 @@ func (a *DeviceApplier) ApplyGateway(ctx context.Context, businessID, deviceID s
 		}
 	}
 	created := []gatewayStep{}
+	portRemoved := false
 	rollback := func() {
 		cleanup, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
@@ -341,8 +405,31 @@ func (a *DeviceApplier) ApplyGateway(ctx context.Context, businessID, deviceID s
 				ok = false
 			}
 		}
+		if portRemoved {
+			restore := "/interface bridge port add bridge=" + routerOSQuoted(g.LeaveBridge) + " comment=" + routerOSQuoted(portComment) + " interface=" + routerOSQuoted(g.LAN)
+			if _, e := r.Run(cleanup, restore); e != nil {
+				ok = false
+			}
+			out, e := r.Run(cleanup, "/interface bridge port print count-only where interface="+routerOSQuoted(g.LAN))
+			if e != nil || strings.TrimSpace(out) != "1" {
+				ok = false
+			}
+		}
 		result.RolledBack = ok
 	}
+	if g.LeaveBridge != "" {
+		portRemoved = true
+		if _, e = r.Run(ctx, "/interface bridge port remove [find interface="+routerOSQuoted(g.LAN)+"]"); e != nil {
+			rollback()
+			return result, fmt.Errorf("could not take %s out of bridge %s; check rollback status", g.LAN, g.LeaveBridge)
+		}
+		out, e := r.Run(ctx, "/interface bridge port print count-only where interface="+routerOSQuoted(g.LAN))
+		if e != nil || strings.TrimSpace(out) != "0" {
+			rollback()
+			return result, fmt.Errorf("%s did not leave bridge %s; check rollback status", g.LAN, g.LeaveBridge)
+		}
+	}
+	quiet := gatewayPortQuiet(ctx, r, g)
 	for _, s := range steps {
 		keys := make([]string, 0, len(s.values))
 		for k := range s.values {
@@ -390,7 +477,7 @@ func (a *DeviceApplier) ApplyGateway(ctx context.Context, businessID, deviceID s
 			return result, fmt.Errorf("gateway scalar readback missing or ambiguous at %s", s.menu)
 		}
 		actual := objects[0].Values
-		if actual["invalid"] == "yes" || actual["invalid"] == "true" {
+		if (actual["invalid"] == "yes" || actual["invalid"] == "true") && !quiet {
 			rollback()
 			return result, fmt.Errorf("RouterOS marked %s invalid", s.menu)
 		}

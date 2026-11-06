@@ -501,3 +501,9 @@ func TestNetworkWANAtomicApplyUpdateAndHealthRollback(t *testing.T) {
 }
 
 func init() { runPrune = func(f func()) { f() } } // deterministic: tests run cleanup inline
+
+func TestNetworkJobCheckIgnoresOtherUsersTerminals(t *testing.T) {
+	if got := activeJobsCommand("mega-magic"); !strings.Contains(got, `type!=login`) || !strings.Contains(got, `owner="mega-magic"`) {
+		t.Fatalf("logins by other users must not count, the app's own must: %s", got)
+	}
+}

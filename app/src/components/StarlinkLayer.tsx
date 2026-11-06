@@ -51,10 +51,10 @@ function removeLayers(m: MapLibre) {
   try { for (const id of [ICONS, TRAILS, OUTLINE]) { m.removeLayer(id); m.removeSource(id); } m.removeImage(ICON); } catch { /* nothing left to remove */ }
 }
 
-/** Off until asked for. Draws only what the orbit data supports, and nothing when that data is old or missing. */
-export default function StarlinkLayer({ map, onActive }: { map: MapLibre; onActive: (on: boolean) => void }) {
+/** Draws only what the orbit data supports, and nothing when that data is old or missing. */
+export default function StarlinkLayer({ map, onActive, defaultOn = false, compact = false }: { map: MapLibre; onActive: (on: boolean) => void; defaultOn?: boolean; compact?: boolean }) {
   const { t } = useI18n();
-  const [on, setOn] = useState(false);
+  const [on, setOn] = useState(defaultOn);
   const [view, setView] = useState<{ state: OrbitFrame["state"]; ageHours?: number; count: number }>({ state: "loading", count: 0 });
 
   useEffect(() => {
@@ -96,7 +96,8 @@ export default function StarlinkLayer({ map, onActive }: { map: MapLibre; onActi
       <button type="button" className="pill starlink-toggle" aria-pressed={on} onClick={() => setOn((x) => !x)}>
         <span className="starlink-mark" aria-hidden="true" />{t("starlink.toggle")}
       </button>
-      {on && (
+      {on && compact && (view.state === "stale" || view.state === "unavailable") && <p className="note small" role="status">{t(view.state === "stale" ? "starlink.stale" : "starlink.unavailable")}</p>}
+      {on && !compact && (
         <div className="note starlink-panel small">
           <p role="status">
             {view.state === "loading" && t("starlink.loading")}

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import useSWR from "swr";
 import { api, fetcher, isUnauthorized } from "../../lib/api";
 import { asArray, type Router } from "../../lib/types";
@@ -17,7 +17,7 @@ export function GuestDeploy() {
   const [id, setId] = useState(() => { try { return sessionStorage.getItem("mm_selected_router") ?? ""; } catch { return ""; } });
   const [profiles, setProfiles] = useState<string[] | null>(null), [profile, setProfile] = useState("");
   const [plan, setPlan] = useState<Plan | null>(null), [status, setStatus] = useState(""), [busy, setBusy] = useState(false);
-  const rev = useRef(0);
+  const [attempt, setAttempt] = useState(0);
   // The install uses the saved page, so this reads what is saved, not the unsaved form.
   const saved = useSWR<{ config?: SavedPortal } & SavedPortal>("/portal/config", fetcher, { shouldRetryOnError: false });
   const portal: SavedPortal | undefined = saved.data?.config ?? saved.data;
@@ -28,14 +28,15 @@ export function GuestDeploy() {
   useEffect(() => {
     setPlan(null); setProfile(""); setProfiles(null); setStatus("");
     if (!gw) return;
-    const mine = ++rev.current;
+    const controller = new AbortController();
     setStatus(t("gd2.loadingProfiles"));
-    api.get<{ profiles?: string[] }>(`/routers/${encodeURIComponent(gw.device_id)}/portal/profiles`).then((r) => {
-      if (mine !== rev.current) return;
+    api.get<{ profiles?: string[] }>(`/routers/${encodeURIComponent(gw.device_id)}/portal/profiles`, controller.signal).then((r) => {
+      if (controller.signal.aborted) return;
       const list = asArray<string>(r.profiles); setProfiles(list);
       if (list.length === 1) { setProfile(list[0]); setStatus(t("gd2.profileFound")); } else setStatus(list.length ? "" : t("gd2.noProfile"));
-    }).catch((e) => { if (isUnauthorized(e)) throw e; if (mine === rev.current) { setProfiles([]); setStatus(errorText(e, t("gd2.connectFirst"))); } });
-  }, [gw?.device_id, t]); // eslint-disable-line react-hooks/exhaustive-deps
+    }).catch((e) => { if (isUnauthorized(e)) throw e; if (!controller.signal.aborted) { setProfiles([]); setStatus(errorText(e, t("gd2.connectFirst"))); } });
+    return () => controller.abort();
+  }, [gw?.device_id, t, attempt]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function review() {
     if (!gw || !profile) return;
@@ -67,6 +68,10 @@ export function GuestDeploy() {
         <>
           {gateways.length > 1 && <label className="field"><span>{t("v.f.gateway")}</span><select className="input" value={gw?.device_id ?? ""} disabled={busy} onChange={(e) => { setId(e.target.value); try { sessionStorage.setItem("mm_selected_router", e.target.value); } catch { /* ignore */ } }}><option value="">{t("net.chooseRouter")}</option>{gateways.map((g) => <option key={g.device_id} value={g.device_id}>{g.hardware_name || g.device_id}</option>)}</select></label>}
           <label className="field"><span>{t("gd2.profile")}</span><select className="input" value={profile} disabled={busy || !profiles?.length} onChange={(e) => { setProfile(e.target.value); setPlan(null); setStatus(""); }}><option value="">{profiles === null ? t("gd2.selectGateway") : t("gd2.selectProfile")}</option>{(profiles ?? []).map((p) => <option key={p} value={p}>{p}</option>)}</select></label>
+          {gw && profiles?.length === 0 && <div className="row">
+            <a className="pill" href={"#/network/new?router=" + encodeURIComponent(gw.device_id)}>{t("nw.title")}</a>
+            <button className="pill" type="button" disabled={busy} onClick={() => setAttempt(n => n + 1)}>{t("c.retry")}</button>
+          </div>}
           {noPlans && <Note kind="warn">{t("gd2.noPlansWarn")}</Note>}
           <button className="btn quiet" type="button" disabled={busy || !profile} onClick={() => void review()}>{t("gd2.review")}</button>
           {plan && (

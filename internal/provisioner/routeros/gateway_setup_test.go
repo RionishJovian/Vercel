@@ -18,6 +18,9 @@ type gatewayRunner struct {
 	routes      string
 	interfaces  string
 	radiusProbe string
+	scopedJobs  string
+	portRunning bool
+	invalidMenu string
 }
 
 var gatewayTestFields = regexp.MustCompile(`([a-z-]+)="([^"\\]*)"`)
@@ -51,7 +54,13 @@ func (r *gatewayRunner) Run(_ context.Context, cmd string) (string, error) {
 	if strings.HasPrefix(cmd, "/interface print count-only") {
 		return "1", nil
 	}
-	if cmd == "/system script job print count-only" {
+	if strings.HasPrefix(cmd, "/system script job print count-only") {
+		if !strings.Contains(cmd, "owner=") {
+			return "5", nil // an admin's open terminals are counted by the unscoped query
+		}
+		if r.scopedJobs != "" {
+			return r.scopedJobs, nil
+		}
 		return "1", nil
 	}
 	if strings.HasPrefix(cmd, ":foreach id in=[") {
@@ -61,7 +70,9 @@ func (r *gatewayRunner) Run(_ context.Context, cmd string) (string, error) {
 		}
 		out := "id: *1\n"
 		for _, field := range regexp.MustCompile(`:put \("([a-z-]+): "`).FindAllStringSubmatch(cmd, -1) {
-			if field[1] != "id" {
+			if field[1] == "invalid" && menu == r.invalidMenu {
+				out += "invalid: true\n"
+			} else if field[1] != "id" {
 				out += field[1] + ": " + r.objects[menu][field[1]] + "\n"
 			}
 		}
@@ -257,5 +268,132 @@ func TestGatewaySetupAcceptsReachableRADIUS(t *testing.T) {
 	}
 	if err := gatewayPreflight(context.Background(), r, g, network, steps); err != nil {
 		t.Fatalf("reachable RADIUS must be accepted, got %v", err)
+	}
+}
+
+func factoryPort(lan string, running bool) *gatewayRunner {
+	state := "no"
+	if running {
+		state = "yes"
+	}
+	return &gatewayRunner{
+		objects:    map[string]map[string]string{"/interface bridge port": {"interface": lan, "bridge": "bridge", "dynamic": "false", "comment": "defconf"}},
+		interfaces: "name: ether1\ntype: ether\nrunning: yes\nname: " + lan + "\ntype: wifi\nrunning: " + state + "\n",
+	}
+}
+
+func TestGatewaySetupIgnoresOtherUsersTerminals(t *testing.T) {
+	r := &gatewayRunner{objects: map[string]map[string]string{}}
+	a := quickConfigApplier(r)
+	g := validGatewaySetup()
+	plan, e := a.PreviewGateway(context.Background(), "biz-1", "dev-1", g)
+	if e != nil {
+		t.Fatal(e)
+	}
+	g.Confirmation = plan.Confirmation
+	if result, e := a.ApplyGateway(context.Background(), "biz-1", "dev-1", g); e != nil || !result.Verified {
+		t.Fatalf("an admin's open terminal must not block setup: %+v %v", result, e)
+	}
+}
+
+func TestGatewaySetupStillRefusesARealJob(t *testing.T) {
+	r := &gatewayRunner{objects: map[string]map[string]string{}, scopedJobs: "2"}
+	a := quickConfigApplier(r)
+	g := validGatewaySetup()
+	plan, e := a.PreviewGateway(context.Background(), "biz-1", "dev-1", g)
+	if e != nil {
+		t.Fatal(e)
+	}
+	g.Confirmation = plan.Confirmation
+	if _, e = a.ApplyGateway(context.Background(), "biz-1", "dev-1", g); e == nil || !strings.Contains(e.Error(), "active script job") {
+		t.Fatalf("a running script must still block setup: %v", e)
+	}
+	if len(r.objects) != 0 {
+		t.Fatalf("nothing may be written: %v", r.objects)
+	}
+}
+
+func TestGatewaySetupTakesAFactoryPortOutOfTheBridge(t *testing.T) {
+	r := factoryPort("ether2", true)
+	a := quickConfigApplier(r)
+	g := validGatewaySetup()
+	plan, e := a.PreviewGateway(context.Background(), "biz-1", "dev-1", g)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if !strings.Contains(plan.Steps[0], "bridge") || !strings.Contains(plan.Steps[0], "ether2") {
+		t.Fatalf("the review must say the port leaves the bridge: %v", plan.Steps)
+	}
+	if r.objects["/interface bridge port"] == nil {
+		t.Fatal("preview changed the bridge")
+	}
+	g.Confirmation = plan.Confirmation
+	result, e := a.ApplyGateway(context.Background(), "biz-1", "dev-1", g)
+	if e != nil || !result.Verified {
+		t.Fatalf("%+v %v", result, e)
+	}
+	if r.objects["/interface bridge port"] != nil {
+		t.Fatal("the port stayed in the bridge")
+	}
+}
+
+func TestGatewaySetupPutsThePortBackOnRollback(t *testing.T) {
+	r := factoryPort("ether2", true)
+	r.failMenu = "/ip dhcp-server"
+	a := quickConfigApplier(r)
+	g := validGatewaySetup()
+	plan, e := a.PreviewGateway(context.Background(), "biz-1", "dev-1", g)
+	if e != nil {
+		t.Fatal(e)
+	}
+	g.Confirmation = plan.Confirmation
+	result, e := a.ApplyGateway(context.Background(), "biz-1", "dev-1", g)
+	if e == nil || !result.RolledBack {
+		t.Fatalf("%+v %v", result, e)
+	}
+	port := r.objects["/interface bridge port"]
+	if port["interface"] != "ether2" || port["bridge"] != "bridge" || port["comment"] != "defconf" {
+		t.Fatalf("the port was not restored: %v", port)
+	}
+}
+
+func TestGatewaySetupRefusesADynamicBridgePort(t *testing.T) {
+	r := factoryPort("ether2", true)
+	r.objects["/interface bridge port"]["dynamic"] = "true"
+	if _, e := quickConfigApplier(r).PreviewGateway(context.Background(), "biz-1", "dev-1", validGatewaySetup()); e == nil {
+		t.Fatal("a dynamic bridge port is not ours to move")
+	}
+}
+
+func TestGatewaySetupAcceptsAQuietAccessPoint(t *testing.T) {
+	r := factoryPort("ether2", false)
+	r.invalidMenu = "/ip dhcp-server"
+	a := quickConfigApplier(r)
+	g := validGatewaySetup()
+	plan, e := a.PreviewGateway(context.Background(), "biz-1", "dev-1", g)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if !strings.Contains(strings.Join(plan.Steps, " "), "first client") {
+		t.Fatalf("the review must warn about a quiet port: %v", plan.Steps)
+	}
+	g.Confirmation = plan.Confirmation
+	if result, e := a.ApplyGateway(context.Background(), "biz-1", "dev-1", g); e != nil || !result.Verified {
+		t.Fatalf("no client yet must not fail setup: %+v %v", result, e)
+	}
+}
+
+func TestGatewaySetupStillFailsInvalidOnARunningPort(t *testing.T) {
+	r := factoryPort("ether2", true)
+	r.invalidMenu = "/ip dhcp-server"
+	a := quickConfigApplier(r)
+	g := validGatewaySetup()
+	plan, e := a.PreviewGateway(context.Background(), "biz-1", "dev-1", g)
+	if e != nil {
+		t.Fatal(e)
+	}
+	g.Confirmation = plan.Confirmation
+	if _, e = a.ApplyGateway(context.Background(), "biz-1", "dev-1", g); e == nil || !strings.Contains(e.Error(), "invalid") {
+		t.Fatalf("invalid on a running port is a real fault: %v", e)
 	}
 }

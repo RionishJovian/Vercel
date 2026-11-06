@@ -47,7 +47,7 @@ Older notes that name `web/app.html` or ask for UI in `src/` are obsolete: new c
 
 **Visual design**
 - 2026-10-23: Jade Glass — cool silver surfaces, emerald accents, precision geometric navigation icons, smooth object-free forest-toned background. No scenic photos, abstract silk, organic pebble icons or brass accents. Day/Night, readable status colours, reduced effects, keyboard/touch access and mobile navigation are required. The theme emits `day`/`night`.
-- Guest voucher screen (2026-10-23): dark emerald liquid-glass card, luminous green connect button, dark optical-glass wallpaper, no phone bezels; one renderer for owner preview and router deployment; bundle assets locally; preserve CHAP/PAP, consent, error/retry and first-use behaviour.
+- Guest voucher screen (2026-10-23): dark emerald liquid-glass card, luminous green connect button, dark optical-glass wallpaper, no phone bezels; one renderer for owner preview and router deployment (the owner removed the separate "Voucher page" preview on 2026-11-06, so the editor now previews the hosted Guest Portal, not the router page); bundle assets locally; preserve CHAP/PAP, consent, error/retry and first-use behaviour.
 
 **Routers and guests**
 - 2026-10-29: router actions open on the current Magic Hub router. Do not repeat device selection per setting; use a single registered router automatically; legacy multi-router workspaces choose context once; keep the target visible, reject stale or foreign selections, lock context during writes; keep explicit review/apply gates. Reuse saved Magic Hub access everywhere; review/apply is for intentional changes, not monitoring.
@@ -68,20 +68,20 @@ Older notes that name `web/app.html` or ask for UI in `src/` are obsolete: new c
 
 ## 5. Write gates (state read from production on 2026-11-06)
 
-Writes to routers are fail-closed: each needs an env var that is exactly `"true"`, and the deploy script sets none of them.
+Writes to routers are fail-closed: each needs an env var that is exactly `"true"`, and the deploy script sets none of them. Some gates live in the server's `deploy/compose.go-restore.yaml` rather than `.env.production`, and deploys keep them, so git does not show the live state.
 
 | Gate | Production | Notes |
 |---|---|---|
 | `MM_NETWORK_CONTROLS_ENABLED` | on (owner confirmed) | base gate for network, guest and device controls |
 | `MM_NETWORK_ADDRESS_CONTROLS_ENABLED` | on (owner confirmed) | |
 | `MM_MANAGEMENT_MIGRATION_ENABLED` | on (owner confirmed) | |
-| `MM_GUEST_ACTIONS_ENABLED` | off | Kick/Ban/router Delete; keep off until a hardware trial |
-| `MM_DEVICE_CONTROLS_ENABLED` | off | Topology device controls; keep off until a hardware trial |
+| `MM_GUEST_ACTIONS_ENABLED` | on (owner decision 2026-11-06) | Kick/Ban/router Delete. Most of the trial passed; see `docs/HARDWARE-TRIAL-RESULTS-20261106.md` |
+| `MM_DEVICE_CONTROLS_ENABLED` | on (owner decision 2026-11-06) | Topology device controls. Trial partly run; see the same record |
 | `MM_BROADBAND_WRITES_ENABLED` | off | paid PPPoE writes locked since the 2026-11-04 incident until a router trial |
 | `MM_FIRMWARE_UPGRADE_ENABLED` | off | |
-| `MM_NETWORK_WIFI_CONTROLS_ENABLED` | off | |
+| `MM_NETWORK_WIFI_CONTROLS_ENABLED` | on (owner decision 2026-11-06) | physical-radio trial not run yet |
 
-Re-read the server environment before relying on this table; it is a dated observation. Because pushes to `main` deploy, a PR that adds or depends on a gate must default to off.
+The owner asked for server-wide router read/write/edit/delete on 2026-11-06. These gates apply to every customer on the server. Re-read the server environment before relying on this table; it is a dated observation. Because pushes to `main` deploy, a PR that adds or depends on a gate must default to off.
 
 ## 6. Working rules
 
@@ -92,6 +92,8 @@ Re-read the server environment before relying on this table; it is a dated obser
 - Record durable design feedback and owner decisions here with a date.
 
 ## 7. Open items and known drift (as of 2026-11-06)
+
+- Real-router results and open bugs: `docs/HARDWARE-TRIAL-RESULTS-20261106.md`. The owner's hAP ax2 is no longer at factory settings.
 
 - `/Users/aces/AGENTS.md` (workspace file outside this repo) still names the Hostinger host and `ssh mikromagic-hostinger`; it is out of date and not changed here.
 - Dependabot PRs 91, 92, 93 (Vite, `@vitejs/plugin-react`, TypeScript 7) fail `npm ci` on peer-dependency conflicts; PR 87 (Go modules) needs a rebase onto the `ENVIRONMENT` binding fix. PR 45 says it needs a router test before deploy. Each now deploys on merge.

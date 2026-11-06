@@ -36,7 +36,7 @@ export const workspaces = ["wan", "ip", "vlan", "existing", "protection", "qos",
 export type Workspace = (typeof workspaces)[number];
 export const choices: Record<Workspace, string[]> = {
   protection: ["firewall", "shield"], qos: ["fairshare", "queue"], ip: ["ip_address", "routes", "dhcp", "pool", "dhcp_network", "lease"], vlan: ["vlan"],
-  wan: ["wan", "pppoe_client"], pppoe: ["pppoe_server", "pppoe_service", "subscriber", "ppp_profile"], wifi: ["wifi", "wireless"],
+  wan: ["wan"], pppoe: ["pppoe_server", "pppoe_client", "pppoe_service", "subscriber", "ppp_profile"], wifi: ["wifi", "wireless"],
   existing: ["edit_network", "dhcp", "pool", "dhcp_network", "hotspot", "hotspot_profile", "lease", "queue", "move_network", "remove_network"],
 };
 export const workspaceInfo: Record<Workspace, [string, string]> = {
