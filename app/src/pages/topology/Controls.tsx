@@ -5,7 +5,7 @@ import { useI18n } from "../../i18n";
 import { Note } from "../../components/ui";
 import type { PortInfo, TNode } from "./project";
 
-interface Review { steps: string[]; warnings: string[]; confirmation: string }
+interface Review { steps: string[]; warnings: string[] | null; confirmation: string }
 interface Context { routerId: string; routerName: string; locked: boolean; guestLocked: boolean; onChanged: () => void; onPending: (revertAt: string) => void }
 
 const KINDS = ["other", "switch", "ap", "computer", "printer", "controller"];
@@ -41,7 +41,7 @@ function Reviewed({ ctx, kind, values, label, done, danger, disabled }: { ctx: C
           <b>{t("net.reviewTitle")}</b>
           <p className="soft small">{t("net.router")}: <b>{ctx.routerName}</b></p>
           <ul className="steps">{review.steps.map((x, i) => <li key={i}>{x}</li>)}</ul>
-          {review.warnings.map((w, i) => <p className="small" key={i}>{w}</p>)}
+          {(review.warnings ?? []).map((w, i) => <p className="small" key={i}>{w}</p>)}
           <label className="check"><span>{t("net.consent")}</span><input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} /></label>
           <div className="row" style={{ justifyContent: "flex-start", flexWrap: "wrap" }}>
             <button className="pill" type="button" disabled={busy} onClick={() => setReview(null)}>{t("c.cancel")}</button>

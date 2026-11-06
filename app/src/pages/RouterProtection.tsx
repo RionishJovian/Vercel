@@ -8,7 +8,7 @@ import { asArray, type Router } from "../lib/types";
 import { objectsOf, type Inventory } from "./network/schema";
 
 type Request = { kind: "firewall" | "shield" | "guest_vpn"; id: string; values: Record<string, string> };
-type Review = { steps: string[]; warnings: string[]; confirmation: string };
+type Review = { steps: string[]; warnings: string[] | null; confirmation: string };
 const disabled = (value?: string) => value === "yes" || value === "true";
 
 function ProtectionSwitches({ router, onLock }: { router: Router; onLock: (locked: boolean) => void }) {
@@ -85,7 +85,7 @@ function ProtectionSwitches({ router, onLock }: { router: Router; onLock: (locke
     {plan && <div className="note warn stack">
       <h3>{t("prot.review")}</h3>
       <ul>{plan.review.steps.map(step => <li key={step}>{step}</li>)}</ul>
-      {plan.review.warnings.map(w => <p key={w}>{w}</p>)}
+      {(plan.review.warnings ?? []).map(w => <p key={w}>{w}</p>)}
       <div className="row"><button type="button" className="pill" disabled={busy} onClick={() => setPlan(null)}>{t("c.cancel")}</button>
         <button type="button" className="btn" disabled={busy} onClick={() => void apply()}>{t("prot.apply")}</button></div>
     </div>}

@@ -448,6 +448,10 @@ func (a *DeviceApplier) PreviewNetwork(ctx context.Context, businessID, deviceID
 		}
 		labels = append(labels, step.Label+" — "+strings.Join(details, "; "))
 	}
+	// The console maps over warnings, and a nil slice would reach it as null.
+	if warnings == nil {
+		warnings = []string{}
+	}
 	return NetworkReview{token, labels, warnings, expiry}, nil
 }
 func networkStepSelector(s networkStep) string {
