@@ -112,6 +112,7 @@ func buildNetworkPlan(ctx context.Context, r CommandRunner, request NetworkReque
 	allowed := map[string]string{
 		"firewall":        "interface disabled",
 		"shield":          "disabled",
+		"guest_vpn":       "disabled",
 		"fairshare":       "name target max-limit disabled",
 		"wan":             "mode wan1 wan2 gateway1 gateway2",
 		"pppoe_client":    "name interface user password disabled distance",
@@ -188,7 +189,7 @@ func buildNetworkPlan(ctx context.Context, r CommandRunner, request NetworkReque
 	boolValue := func(value string) bool { return value == "yes" || value == "no" }
 	var err error
 	switch request.Kind {
-	case "firewall", "shield", "fairshare":
+	case "firewall", "shield", "guest_vpn", "fairshare":
 		return buildHubManagementPlan(ctx, r, request)
 	case "ip_address":
 		return finishNetworkPlan(buildIPAddressPlan(ctx, r, request))
