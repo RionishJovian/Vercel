@@ -38,7 +38,7 @@ export function Routers({ sub, params }: { sub: string; params: URLSearchParams 
     <>
       <h1>{t("title.router")}</h1>
       {tabs}
-      {!list.length && <Note>{t("r.empty")} <a className="link" href="#/setup">{t("qs.title")}</a></Note>}
+      {!list.length && <Note>{t("r.empty")}</Note>}
       <div className="router-grid">
         {list.map((d) => (
           <a className="glass pad router-card" key={d.device_id} href={"#/router/" + encodeURIComponent(d.device_id)}>
@@ -55,6 +55,7 @@ export function Routers({ sub, params }: { sub: string; params: URLSearchParams 
         ))}
       </div>
       <section className="glass pad stack"><SectionHead title={t("r.tools")} help={t("r.toolsHelp")} /><div className="scroll-x">
+        <a className="pill" href="#/setup">{t("qs.title")}</a>
         <a className="pill" href="#/hub">{t("hub.title")}</a>
         {list.some((d) => d.deployment_layer !== "MAIN_GATEWAY") && <a className="pill" href="#/managed-devices">{t("dm.title")}</a>}
         <a className="pill" href="#/topology">{t("tp.title")}</a>

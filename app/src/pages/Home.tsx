@@ -80,7 +80,7 @@ export function Home({ me }: { me: Me }) {
                 <b className="num">{up} / {total}</b>
               </div>
             )}
-            {list && list.length === 0 ? <p className="note warn">{t("home.noRouters")} <a className="link" href="#/router">{t("home.addRouter")}</a></p> : null}
+            {list && list.length === 0 ? <p className="note warn">{t("home.noRouters")} <a className="link" href="#/setup">{t("qs.title")}</a></p> : null}
           </section>
           <section className="glass pad">
             <h2>{t("home.vouchers")}</h2>
