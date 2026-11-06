@@ -1,7 +1,9 @@
 package discovery
 
 import (
+	"crypto/sha256"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/netip"
@@ -14,20 +16,23 @@ import (
 // MNDP is MikroTik Neighbor Discovery: UDP 5678 broadcast.
 // Layout from Wireshark's open-source dissector (packet-mndp.c): a 4-byte header (2 unknown bytes, then a
 // big-endian sequence number), then repeated TLVs of big-endian 2-byte type, 2-byte length (value only), value.
-// Only checked against that source and synthetic packets so far; NOT yet against a real router capture.
+// Checked on 2026-11-06 against a real capture from a hAP ax2 (RouterOS 7.25): TLV type/length are big-endian and the
+// header is 4 bytes that this parser ignores. Other models, RouterOS versions and operating systems are not yet checked.
+// The MAC TLV is the sending interface's address, and unknown TLVs (for example 0x12, 0x13) occur in real packets.
 const (
 	mndpPort      = 5678
 	maxPacket     = 1500
 	maxText       = 64
 	mndpHeaderLen = 4
 
-	tlvMAC       = 1
-	tlvIdentity  = 5
-	tlvVersion   = 7
-	tlvPlatform  = 8
-	tlvBoard     = 12
-	tlvInterface = 16
-	tlvIPv4      = 17
+	tlvMAC        = 1
+	tlvIdentity   = 5
+	tlvVersion    = 7
+	tlvPlatform   = 8
+	tlvSoftwareID = 11
+	tlvBoard      = 12
+	tlvInterface  = 16
+	tlvIPv4       = 17
 )
 
 var (
@@ -103,6 +108,12 @@ func (MikroTik) Parse(p []byte, from netip.AddrPort, now time.Time) (Observation
 				return Observation{}, fmt.Errorf("%w: not a unicast device address", ErrBadField)
 			}
 			o.MAC, gotMAC = mac, true
+		case tlvSoftwareID:
+			// Only ever kept as a one-way hash: it is tied to the device's license.
+			if n > 0 && n <= maxText {
+				h := sha256.Sum256(val)
+				o.DeviceKey = "sw:" + hex.EncodeToString(h[:8])
+			}
 		case tlvIdentity:
 			o.Identity = clean(val)
 		case tlvVersion:
@@ -124,6 +135,7 @@ func (MikroTik) Parse(p []byte, from netip.AddrPort, now time.Time) (Observation
 	if !gotMAC {
 		return Observation{}, ErrNoMAC
 	}
+	o.MACs = []string{o.MAC}
 	if from.IsValid() {
 		o.SourceIP = from.Addr().Unmap().String()
 		if o.ClaimedIP != "" && o.ClaimedIP != o.SourceIP {

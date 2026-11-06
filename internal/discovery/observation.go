@@ -13,10 +13,17 @@ const StatusNearbyUnverified = "nearby_unverified"
 
 // Observation is one device announcement. Empty strings mean "not advertised", never a guess.
 type Observation struct {
-	Brand     string `json:"brand"`
-	Method    string `json:"method"`
-	Status    string `json:"status"`
-	MAC       string `json:"mac"`
+	Brand  string `json:"brand"`
+	Method string `json:"method"`
+	Status string `json:"status"`
+	// MAC is the address of the interface that sent the announcement. A router sends from each interface with
+	// that interface's own MAC, so it is not a stable identity for the whole device; see MACs and DeviceKey.
+	MAC string `json:"mac"`
+	// MACs lists every interface address heard for this device during the run.
+	MACs []string `json:"macs,omitempty"`
+	// DeviceKey groups announcements from one device (a hash of its advertised software id, which is never
+	// shown or stored in clear). Empty when the device did not advertise one; grouping then falls back to MAC.
+	DeviceKey string `json:"device_key,omitempty"`
 	Identity  string `json:"identity,omitempty"`
 	Board     string `json:"board,omitempty"`
 	Platform  string `json:"platform,omitempty"`
