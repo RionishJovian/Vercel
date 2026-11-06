@@ -1,113 +1,98 @@
-# Console frontend — owner decision 2026-11-01
+# AGENTS.md — Mega Magic
 
-The console is the React app in `app/`, served at `/v2/`. The old `web/app.html`, the vanilla `web/v2` and their UI tests were removed; `/app.html` redirects to `/v2/`. `web/` now holds only the landing, pricing, sign-in and guest portal pages plus shared assets. Older notes below that name `web/app.html` are historical. Several The old console-only files in `web/assets` were removed with it.
+Last audited against the repo and production: 2026-11-06. Statements marked
+**(owner decision)** are product rules; statements marked **(verified)** were
+checked against code, CI or the live server on that date; **(not verified)**
+means no check was made. Dated notes are evidence of that day, not live state.
 
-# Default app workspace — owner decision 2026-10-28
+## 1. Source identity
 
-The owner requested consolidation into one current local workspace and removal of the older app workspaces. This section supersedes conflicting repository names, source paths, continuation instructions and historical defaults below.
+- Local workspace: `/Users/aces/GitHub/Mega-Magic`. Remote: `https://github.com/RionishJovian/Vercel.git`; default branch `main` (verified). Read `.repo-identity.json` and `docs/WORKSPACE-CONSOLIDATION-20261028.md` first.
+- Do not restore or use older folders (for example `/Users/aces/123/...` or `~/GitHub/Mega-Magic-App`) based on their names or on older docs. `docs/HERMES-BUILD-CONTEXT.md` and `docs/HERMES-CONTINUATION-20261021.md` describe that old checkout and its remote (`RionishJovian/Mega`); they are historical.
+- Never force-push or replace `main` with another history. Work on a branch and merge reviewed PRs normally. (On 2026-10-25 `main` was force-replaced by an October 7 history; recovery notes are in git history and `docs/`.)
+- `.local/` holds private recovery records. It is git-ignored; never publish, package or treat it as source (verified: in `.gitignore`).
 
-- Default local workspace: `/Users/aces/GitHub/Mega-Magic`.
-- Default GitHub repository: `https://github.com/RionishJovian/Vercel.git`; default branch: `main`.
-- Current app: Go API (`cmd/server`, `internal`, `pkg`) and production frontend (`web`). `src`, Python backend and Sites files are retained historical/prototype material.
-- Read `.repo-identity.json` and `docs/WORKSPACE-CONSOLIDATION-20261028.md` before implementation. The consolidated source combines Vercel main `14b20de6`, the October 28 local feature changes, and the October 28 release frontend. Use this folder for future work; do not restore an old folder based on its name or historical instructions.
+## 2. Layout (verified 2026-11-06)
+
+| Path | What it is |
+|---|---|
+| `cmd/server`, `internal/`, `pkg/` | Go API (module `mega-magic`) |
+| `app/` | React console, built with Vite and served at `/v2/` |
+| `web/` | Landing, pricing, sign-in, media and guest portal pages plus shared assets. The old `web/app.html`, vanilla `web/v2` and their tests are gone; `/app.html` redirects (302) to `/v2/` |
+| `deploy/`, `Dockerfile.prod`, `Dockerfile.web.prod` | Release scripts, Caddy config, container images |
+| `vercel.json`, `proxy.js`, `vercel-public/` | Vercel frontend; `/api/v1` is proxied to `https://megamagic.tech` |
+| `src/`, `worker/`, `.openai/hosting.json`, `scripts/prepare-sites-build.mjs`, `tests/sites-worker.test.mjs` | Separate Sites prototype and historical Python/prototype material. Keep intact; it is not the production app and its build is not proof the app works |
+
+Older notes that name `web/app.html` or ask for UI in `src/` are obsolete: new console UI goes in `app/`.
+
+## 3. Build, test, release
+
+- CI is `.github/workflows/deploy.yml` ("Validate and release Mega Magic") plus `codeql.yml`.
+- `validate` (every push and PR) runs: Go toolchain check, `npm run test:deployment`, `test:vercel`, `npm run build`, `test:critical-ui`, `app/` lint/test/build, `go test -race ./internal/...`, `go build ./...`, a reachable-vulnerability scan, deploy/backup script syntax checks and the migration-runner test.
+- `npm run build` builds the Vercel frontend (`web/` plus `app/` at `/v2/`) via `scripts/prepare-vercel-build.mjs`. The Sites prototype uses `npm run build:sites` and `npm run test:sites`; run those only for a Sites handoff.
+- **Deploy (owner decision 2026-11-06, PR 134):** every push to `main` that passes `validate` builds images and runs `deploy-vps` automatically. Manual dispatch with `deploy_vps` still re-releases. This replaced the manual-only gate from 2026-10-25. Consequence: merging any PR, including Dependabot bumps and PRs marked "needs a router test", goes live. Check write gates (section 5) before merging.
+- The deploy script backs up, applies migrations, verifies public `/ready` and security headers, keeps a rollback copy and rolls back on failure.
+- Production host: Vultr Singapore `magic-app` (`207.148.76.172`); `megamagic.tech` resolves there (verified). Hostinger (`srv2032937`, `156.67.216.128`) and the Z.com servers are discontinued; do not use or restore them. SSH uses the key recorded in the owner's SSH config, not a password. Never store credentials in this file.
+- Proof of what is live: the API container image carries the label `org.opencontainers.image.revision` (matched `2ff77b1` on 2026-11-06), and served console assets can be hashed against a local `app/` build (matched on that date). `/api/v1/version` returns `0.1.0-dev` and does not identify the commit; an image tag alone is not proof of served content.
+- Do not edit files inside running containers.
+- Local tests: database tests need an explicitly selected disposable database (`MM_TEST_DB_URL`); never reuse production connection settings. Skipped database tests are not integration coverage. Do not start `deploy/compose.go-restore.yaml` for tests.
+
+## 4. Product rules (owner decisions)
+
+**Console and navigation**
+- 2026-10-18: the revamp reuses the existing app, services, auth, tenant isolation and data; no rebuild or data reset. Navigation is business-task based: Overview; Business (Revenue, Internet Vouchers, Jellyfin dashboards); Operations; Guest Portals; Store; Management. Operations covers Sites (required before router onboarding), Magic Hub one-paste connection, Devices, Site Topology, Guests, Fleet Health and guided Internet Setup.
+- 2026-10-25: keep short task labels and minimal descriptions; group related screens into shared workspaces (Magic Hub owns site, connection, discovery, network and maintenance; Vouchers owns internet guest-page design; Jellyfin owns its dashboard and separate guest page). Preserve old deep links, API authorization, role boundaries and review/apply confirmations. Never hide errors, live status, limits or consequential warnings.
+- Internet Hotspot Portal (data/time sales and vouchers) stays separate from the Jellyfin Guest Portal.
+- 2026-10-22: third-party products are server-side API engines behind Mega Magic's own screens and accounts. No redirects, iframes, embedded dashboards or separate customer logins; keep service credentials out of browsers.
+
+**Visual design**
+- 2026-10-23: Jade Glass — cool silver surfaces, emerald accents, precision geometric navigation icons, smooth object-free forest-toned background. No scenic photos, abstract silk, organic pebble icons or brass accents. Day/Night, readable status colours, reduced effects, keyboard/touch access and mobile navigation are required. The theme emits `day`/`night`.
+- Guest voucher screen (2026-10-23): dark emerald liquid-glass card, luminous green connect button, dark optical-glass wallpaper, no phone bezels; one renderer for owner preview and router deployment; bundle assets locally; preserve CHAP/PAP, consent, error/retry and first-use behaviour.
+
+**Routers and guests**
+- 2026-10-29: router actions open on the current Magic Hub router. Do not repeat device selection per setting; use a single registered router automatically; legacy multi-router workspaces choose context once; keep the target visible, reject stale or foreign selections, lock context during writes; keep explicit review/apply gates. Reuse saved Magic Hub access everywhere; review/apply is for intentional changes, not monitoring.
+- New Internet guest voucher codes are 8 characters from `ABCDEFGHJKMNPQRSTVWXYZ` (no I, L, O, U) (verified: `internal/voucher/voucher.go`). Preserve existing codes, batches, quotas and first-use evidence; distinguish installing codes on the router from refreshing usage back into the app. The portal editor stays under Vouchers → Guest page with the `#portal` deep link.
+- Topology (2026-10-29): a visual device-image diagram with connection lines, interface labels, status and a clickable inspector, in Jade Glass. Use real model imagery when identified. Distinguish observed associations/forwarding ports from unknown physical attachments; never invent switch hops or online status.
+- Guests is an automatic session dashboard across business sites, not onboarding. Gateway Hotspot sessions do not prove physical AP attachment. Friendly discovery labels are metadata, not authentication or proof of online state.
 - Telemetry uses the existing Admin role and EnableLive read interface. Preserve tenant checks, voucher batch recovery/printing guards, account pass checks, typed router operations and explicit write gates.
-- `.local/` contains private local recovery records and is excluded from Git and frontend packaging. Do not publish it or treat it as active app source.
-- Consolidation is a local source change. It does not deploy code, migrate a database, modify a router, or certify current live/physical readings. Historical deployment records are dated evidence.
+- Never claim discovery, device actions or connectivity work without live evidence. Manual estimates or topology never count as discovered telemetry or verified enforcement.
 
-## Owner-confirmed router context — 2026-10-29
+**Accounts and passes** (2026-10-24; the code in `internal/subscription` and handlers was not re-audited line by line — **not verified**)
+- The platform administrator manages client accounts. Each client has one authorized login, one private internal workspace, one site and one MikroTik router managed through Magic Hub. No staff users or invitations. Keep `business_id` tenant isolation internally; preserve existing users/history and do not guess the login in ambiguous legacy workspaces.
+- Individual monthly and annual passes share features; only validity differs. A seven-day transition starts once when enforcement deploys; the platform administrator is exempt. Expiry blocks app management, not already-running guest internet. Old Store purchases do not activate passes.
 
-Router actions open directly for the current Magic Hub router. Do not repeat
-device selection inside each setting or action. Automatically use a single
-registered router; legacy multi-router workspaces choose context once above
-the settings. Keep the target visible, reject stale/foreign selections, and
-lock context changes during writes. Preserve explicit review/apply gates.
+**Other**
+- Site WAN/budget and topology editors share one revision; saving one must preserve the other.
+- SME sidebar guidance is named "Did you know?"; platform publishers manage sourced cards. Keep compatibility "unchecked" until trusted router discovery exists. VPN, HotSpot/portal and RADIUS are separate roles. Local User Manager is a proposed option only.
+- Read-only router inventory is gated by `provisioner.inventory_enabled` and must not enable the applier, guest disconnection or network writes.
 
-## Owner-confirmed guest voucher simplicity — 2026-10-29
+## 5. Write gates (state read from production on 2026-11-06)
 
-New Internet guest voucher codes use eight uppercase letters, avoiding ambiguous
-I, L, O and U. Preserve existing issued codes, batch identities, quotas and
-first-use evidence. Distinguish installing codes on the router from refreshing
-usage back into the app. The Internet Portal editor remains under Vouchers →
-Guest page, with the existing `#portal` deep link.
+Writes to routers are fail-closed: each needs an env var that is exactly `"true"`, and the deploy script sets none of them.
 
-## Owner-confirmed topology — 2026-10-29
+| Gate | Production | Notes |
+|---|---|---|
+| `MM_NETWORK_CONTROLS_ENABLED` | on (owner confirmed) | base gate for network, guest and device controls |
+| `MM_NETWORK_ADDRESS_CONTROLS_ENABLED` | on (owner confirmed) | |
+| `MM_MANAGEMENT_MIGRATION_ENABLED` | on (owner confirmed) | |
+| `MM_GUEST_ACTIONS_ENABLED` | off | Kick/Ban/router Delete; keep off until a hardware trial |
+| `MM_DEVICE_CONTROLS_ENABLED` | off | Topology device controls; keep off until a hardware trial |
+| `MM_BROADBAND_WRITES_ENABLED` | off | paid PPPoE writes locked since the 2026-11-04 incident until a router trial |
+| `MM_FIRMWARE_UPGRADE_ENABLED` | off | |
+| `MM_NETWORK_WIFI_CONTROLS_ENABLED` | off | |
 
-Site topology must present the RouterBOARD and observed connected devices as a
-visual device-image diagram, with connection lines, interface labels, status and
-a clickable inspector, following the Ruijie interaction model within Jade Glass.
-Use actual model imagery where identified and library device symbols otherwise.
-Preserve the distinction between observed associations/forwarding ports and
-unknown physical attachments; never invent switch hops or online status.
+Re-read the server environment before relying on this table; it is a dated observation. Because pushes to `main` deploy, a PR that adds or depends on a gate must default to off.
 
-# Historical instructions retained for provenance
+## 6. Working rules
 
-# Prototype Instructions
+- Run and drive the local app yourself and verify changes in a browser; do not hand the user server-start instructions.
+- Real-router testing happens after the app itself is ready; do not claim live connectivity, physical readings or router state without evidence.
+- Third-party router behaviour you are unsure about: read forum.mikrotik.com and the RouterOS manual, then confirm on a router.
+- Consolidation, docs and design notes are source changes. They do not deploy code, migrate a database, modify a router or certify live state. (Note: a merge to `main` now does deploy; see section 3.)
+- Record durable design feedback and owner decisions here with a date.
 
-Run the local server yourself and open the preview in the browser available to this environment. Do not give the user server-start instructions when you can run it.
+## 7. Open items and known drift (as of 2026-11-06)
 
-Before making substantial visual changes, use the Product Design plugin's `get-context` skill when the visual source is unclear or no longer matches the current goal. When the user gives durable prototype-specific design feedback, preferences, or decisions, record them in `AGENTS.md`.
-
-When implementing from a selected generated mock, treat that image as the source of truth for layout, component anatomy, density, spacing, color, typography, visible content, and hierarchy.
-
-Build app UI in `src/`. Keep `.openai/hosting.json`, `worker/index.js`, `scripts/prepare-sites-build.mjs`, and `tests/sites-worker.test.mjs` intact so the same local prototype can be handed to Sites. Before a Sites handoff, run `npm run build` and `npm run test:sites`; the build must leave `dist/client/index.html`, `dist/server/index.js`, and `dist/.openai/hosting.json`.
-
-# Current development sequence
-
-The user requested deferring live router configuration and verification on 2026-10-06. Continue web-app workflows without requiring VPS/router details. Preserve Magic Hub, MikroTik, WAN, captive-portal enforcement and telemetry as pending requirements; do not claim live connectivity.
-
-SME sidebar guidance is named 'Did you know?'. Platform publishers manage sourced cards. Keep compatibility marked unchecked until trusted router discovery exists. VPN, HotSpot/portal and RADIUS are separate roles. Local User Manager is a proposed authentication option; preserve it without claiming integration exists.
-
-The user requested continuing through remaining non-live work without pausing for approval after each feature on 2026-10-06. Implement and verify consecutive work items, retaining the whole product scope. Pause only for real permission/access blockers or material business choices. Do not imply background execution continues after a final reply. Site WAN/budget and topology editors share one revision; preserve both settings when saving. Manual estimates/topology never count as discovered telemetry or verified enforcement.
-
-# Owner-confirmed revamp boundary — 2026-10-18
-
-The user explicitly clarified that the planned workflow/navigation changes are a revamp of this existing app, NOT a full rebuild. Reuse and improve existing working screens, backend services, authentication, tenant isolation, database records, Hub integrations and deployment. Do not replace the stack, create a parallel product or reset data as part of this revamp. Make targeted changes and verify existing behavior remains intact.
-
-Organize the owner experience around business tasks, not separate RouterOS engineering menus. Preserve the agreed top-level groups: Overview; Business (Revenue, Internet Vouchers, Jellyfin dashboards); Operations; Guest Portals; Store; Management. Operations includes Sites as the required step before router onboarding, Magic Hub one-paste connection, Devices, Site Topology with supported quick actions, Guests with verified statuses/actions, Fleet Health, and guided Internet Setup. Store lists platform items for sale. Internet Hotspot Portal is for internet data/time sales and vouchers only; keep Jellyfin Guest Portal and its server configuration separate. Never represent discovery, device actions or connectivity as working without corresponding live evidence.
-
-For this live Go-app revamp, the existing UI source is `web/app.html` and `web/assets/`, served with the existing Go API. Preserve the separate `src/`/Sites prototype scaffolding; do not replace the production app with it. Read-only inventory is separately gated by `provisioner.inventory_enabled`; it must never enable the applier, guest disconnection or network writes implicitly. Friendly discovery labels are metadata, not device authentication or proof of online state.
-
-Guests is an automatically loaded session dashboard across business sites, not router onboarding. Guests may arrive via downstream APs and switches; gateway Hotspot sessions do not prove physical AP attachment. Reuse saved Magic Hub management access throughout the app. Remember a valid working router across configuration pages and automatically use a single registered router; selecting a target in a multi-router business is context, not a new connection. Reserve review/apply for intentional configuration changes, never routine monitoring.
-
-# Hermes local continuation — 2026-10-21
-
-## Owner-confirmed product direction — 2026-10-22
-
-- Third-party products are API engines behind Mega Magic's own interface, accounts and workflows, analogous to Hermes using OpenRouter. Do not substitute redirects, embedded third-party dashboards, iframes, widgets or separate customer logins. Build our screens over server-side provider integrations; keep service credentials out of customer browsers.
-- The owner rejects the current frontend appearance and requests an Apple Liquid Glass-inspired visual system covering windows/panels, scrollbars, backgrounds, appearance, icons and widgets. Apply this as an existing-app revamp; preserve the approved navigation, tenant isolation and Internet/Jellyfin separation. Establish a visual target before broad UI implementation. A web adaptation must retain readable data surfaces, keyboard/touch access, reduced-effects fallbacks and mobile captive-portal usability.
-- This request currently authorizes planning. Do not treat the catalog shortlist or this design preference as instruction to install every service, replace the stack or deploy a redesign without its implementation and verification steps.
-
-Before continuing this checkout, read `docs/HERMES-BUILD-CONTEXT.md` and
-`docs/HERMES-CONTINUATION-20261021.md`. They record verified local environment,
-source identity, build boundaries and the exact incomplete-commit resume point.
-This checkout's observed origin is `RionishJovian/Mega`; similarly named repos
-under `~/GitHub/` are separate and must not be substituted silently.
-
-The role-vs-tier dependency set for `b5e7c0c` is now committed locally
-(`d153af2`, plus stale-suite test alignments `2e6b5c4` and `f074134`); the
-committed source passes `test:critical-ui`, the web audit and the Go suite
-in an isolated export. Unrelated workflow-revamp work remains uncommitted —
-keep separating it into coherent commits and preserve it. `npm run build`
-checks the separate Sites prototype; validate production `web/app.html` and
-the Go API independently. Older Hermes/Triage live-state notes are dated
-reports, not fresh deployment or customer-router verification.
-
-## Owner-confirmed visual target — 2026-10-23
-
-Jade Glass selected with cool silver surfaces and emerald accents, precision geometric navigation icons and smooth object-free forest-toned background. Avoid scenic photographs, abstract silk, organic pebble icons and everyday brass accents. Preserve production workflows; adapt the existing web app rather than substituting the fixture previews. Day/Night, readable status colours, reduced effects and mobile navigation remain required.
-
-## Owner-selected guest voucher screen — 2026-10-23
-
-For the guest Internet voucher portal, the owner selected the supplied dark emerald liquid-glass phone reference: silver glass card edges, a dimensional glass Wi-Fi mark, luminous green connect button and dark optical-glass wallpaper. This supersedes the earlier plain silver guest-card direction for this screen only. Use the same renderer for owner preview and router deployment; bundle visual assets locally so unauthenticated guests need no external asset access. Preserve real voucher entry, CHAP/PAP, consent, error/retry and first-use behaviour. Do not draw phone bezels or notches inside the guest page.
-
-## Owner-confirmed client model — 2026-10-24
-
-The platform administrator manages client accounts. Each client owns a MikroTik RouterBOARD and uses Mega Magic/Magic Hub for cloud remote management. Each client has one authorized login, one private internal business workspace, one site and one router. Clients do not create staff users or invitations. Preserve existing users/history; do not guess the authorized login in ambiguous legacy workspaces. Keep business_id tenant isolation internally. Individual monthly/annual passes share features; validity differs. A seven-day transition starts once when enforcement deploys, and the platform administrator is exempt. Expiry blocks app management, not already-running guest internet. Old Store purchases do not activate these passes.
-
-## Owner-confirmed simplicity — 2026-10-25
-
-Keep the production Jade Glass theme, with short task labels and minimal descriptions. Group related screens into shared workspaces instead of repeating them in the sidebar. Magic Hub owns site, connection, discovery, network and maintenance; Vouchers owns internet guest-page design; Jellyfin owns its media dashboard and separate media guest page. Preserve old deep links, API authorization, role boundaries, review/apply confirmations and honest unavailable states. Use optional Help for explanations; never hide errors, live status, limits or consequential warnings.
-
-## Verified release recovery — 2026-10-25
-
-GitHub main was accidentally force-replaced by an October 7 source history and the running web container was overwritten without updating its image identity. This removed the Vercel web build/proxy/CI, reverted the simplified app and introduced CSS expecting light/dark while theme.js emits day/night. Recover from the verified production line, not the old /Users/aces/123 checkout. Never force-push or replace main with another repository history. Preserve new work on a branch and merge reviewed changes normally. Use this repository's web frontend; keep src/Sites separate. Do not edit running-container files directly or trust an image tag as proof of served content. Compare served hashes against the release source and keep rollback copies. New versions are required when restoring previously overwritten cached assets.
+- `/Users/aces/AGENTS.md` (workspace file outside this repo) still names the Hostinger host and `ssh mikromagic-hostinger`; it is out of date and not changed here.
+- Dependabot PRs 91, 92, 93 (Vite, `@vitejs/plugin-react`, TypeScript 7) fail `npm ci` on peer-dependency conflicts; PR 87 (Go modules) needs a rebase onto the `ENVIRONMENT` binding fix. PR 45 says it needs a router test before deploy. Each now deploys on merge.
+- Lint and tests for `app/` run in CI; the Go binary is tied to a commit only through the image label.
