@@ -57,5 +57,6 @@ ${wifi ? `:local mmRadio [/interface wifi find where default-name=$mmUplink and 
 :if ([:len [/ip route find where dst-address="0.0.0.0/0" and active=yes and gateway=$mmGateway]] = 0) do={ :error "STOP: no active default route through the WAN; undo in Safe Mode with Ctrl+D" }
 :put "WAN DHCP and default route are ready. Continuing with Magic Hub."
 `;
-  return script.replace("{", () => "{" + network);
+  const blockStart = script.indexOf("{") + 1;
+  return script.slice(0, blockStart) + network + script.slice(blockStart);
 }
