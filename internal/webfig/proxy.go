@@ -40,12 +40,11 @@ func NewProxy(host string, store *Store, check Checker) *Proxy {
 
 // newTransport has no response timeout on purpose: WebFig holds one /jsproxy
 // request open until something changes, and ending it logs the user out. A
-// session's own deadline bounds it instead. Router certificates are self-signed,
-// and the WireGuard tunnel has already authenticated the peer.
+// session's own deadline bounds it instead. HTTPS upstreams use the system
+// trust store and must present a certificate valid for the target address.
 func newTransport() *http.Transport {
 	return &http.Transport{
 		DialContext:           (&net.Dialer{Timeout: 10 * time.Second}).DialContext,
-		TLSClientConfig:       &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // see above
 		TLSHandshakeTimeout:   10 * time.Second,
 		DisableCompression:    true,
 		MaxIdleConnsPerHost:   4,
@@ -186,6 +185,11 @@ func (p *Proxy) reverse(g Grant) *httputil.ReverseProxy {
 				return
 			}
 			log.Printf("webfig: device %s: %v", g.DeviceID, err)
+			var certErr *tls.CertificateVerificationError
+			if errors.As(err, &certErr) {
+				notice(rw, http.StatusBadGateway, "Router certificate could not be verified", "HTTPS WebFig needs a trusted certificate valid for this router's Magic Hub address.")
+				return
+			}
 			notice(rw, http.StatusBadGateway, "The router did not answer", "Magic Hub could not reach WebFig on this router just now. Check that the router is online, then try again.")
 		},
 	}

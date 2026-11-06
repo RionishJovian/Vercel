@@ -237,3 +237,25 @@ func TestLockSwitch(t *testing.T) {
 		t.Fatal("entitlement table is wrong")
 	}
 }
+
+func TestProxyRejectsUntrustedRouterCertificate(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("untrusted TLS request reached the router")
+	}))
+	t.Cleanup(srv.Close)
+	host, port, err := net.SplitHostPort(srv.Listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	n, err := strconv.Atoi(port)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := NewProxy("webfig.test", NewStore(), allow)
+	grant := Grant{UserID: "u1", BusinessID: "b1", DeviceID: "d1", Role: "OWNER", AuthSessionID: "s1", Scheme: "https", Host: host, Port: n}
+	cookie := openSession(t, p, grant)
+	w := request(p, http.MethodGet, "/webfig/", cookie, "")
+	if w.Code != http.StatusBadGateway || !strings.Contains(w.Body.String(), "Router certificate could not be verified") {
+		t.Fatalf("expected TLS verification refusal, got %d: %s", w.Code, w.Body.String())
+	}
+}
