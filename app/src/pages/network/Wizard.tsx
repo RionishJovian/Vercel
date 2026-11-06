@@ -11,6 +11,14 @@ interface Defaults { name?: string; gateway_cidr?: string; pool_start?: string; 
 interface Approved { request: Record<string, unknown>; steps: string[]; confirmation: string }
 const LAN_TYPES = ["ether", "bridge", "bond", "vlan", "wlan", "wifi", "wireless"];
 
+/** For a new owner: the uplink is the port whose DHCP client has a gateway, and guests go on a spare Wi-Fi radio if there is one. Only a starting choice; the review shows what will change. */
+export function suggestPorts(ifaces: Iface[], clients: Array<{ values?: { interface?: string; gateway?: string } }>): { wan: string; lan: string } {
+  const known = (name?: string) => !!name && ifaces.some((i) => i.name === name);
+  const wan = clients.map((c) => c.values).find((v) => v?.gateway && known(v.interface))?.interface ?? "";
+  const lan = ifaces.find((i) => i.name !== wan && (i.type === "wifi" || i.type === "wlan" || i.type === "wireless"))?.name ?? "";
+  return { wan, lan };
+}
+
 /** Creates a separate customer LAN with DHCP and an optional Hotspot. It never touches the uplink, default route or management. */
 export function Wizard({ router, canEdit, reason, compact, onApplied }: { router?: RouterRow; canEdit: boolean; reason?: string; compact?: boolean; onApplied?: () => void }) {
   const { t } = useI18n();
@@ -18,6 +26,7 @@ export function Wizard({ router, canEdit, reason, compact, onApplied }: { router
   const [approved, setApproved] = useState<Approved | null>(null), [status, setStatus] = useState<{ kind: "" | "ok" | "warn"; text: string }>({ kind: "", text: "" });
   const [busy, setBusy] = useState(false), [applying, setApplying] = useState(false);
   const [retry, setRetry] = useState(0);
+  const [suggested, setSuggested] = useState({ wan: "", lan: "" });
   const form = useRef<HTMLFormElement>(null);
   const base = router ? `/routers/${encodeURIComponent(router.device_id)}/gateway/` : "";
 
@@ -27,11 +36,18 @@ export function Wizard({ router, canEdit, reason, compact, onApplied }: { router
     const controller = new AbortController();
     const timer = window.setTimeout(() => controller.abort(), 20000);
     Promise.all([api.get<{ interfaces?: Iface[] }>(base + "interfaces", controller.signal), api.get<{ defaults?: Defaults }>(base + "defaults", controller.signal)])
-      .then(([i, d]) => { if (live) setLoad({ k: "ready", ifaces: asArray<Iface>(i.interfaces), d: d.defaults ?? {} }); })
+      .then(async ([i, d]) => {
+        const ifaces = asArray<Iface>(i.interfaces);
+        // A failed read only means no suggestion: the owner still chooses.
+        const seen = compact ? await api.get<{ inventory?: { objects?: { dhcp_clients?: unknown[] } } }>(`/routers/${encodeURIComponent(router!.device_id)}/network/inventory`, controller.signal).catch(() => null) : null;
+        if (!live) return;
+        setSuggested(suggestPorts(ifaces, asArray(seen?.inventory?.objects?.dhcp_clients) as never[]));
+        setLoad({ k: "ready", ifaces, d: d.defaults ?? {} });
+      })
       .catch((e) => { if (isUnauthorized(e)) throw e; if (live) setLoad({ k: "error", msg: controller.signal.aborted ? "router-read-timeout" : errorText(e, "") }); })
       .finally(() => window.clearTimeout(timer));
     return () => { live = false; controller.abort(); window.clearTimeout(timer); };
-  }, [base, retry]);
+  }, [base, retry, compact]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!canEdit) return <Note>{t("nw.needAdmin")}</Note>;
   // Nothing is hidden: with no router, or one that cannot be read, the whole form
@@ -93,8 +109,8 @@ export function Wizard({ router, canEdit, reason, compact, onApplied }: { router
       <fieldset className="glass pad stack fs" disabled={applying || !!offline}>
         <legend>{t("nw.networkName")}</legend>
         <label className="field"><span>{t("nw.name")}</span><input className="input" name="name" required maxLength={24} pattern="[A-Za-z0-9][A-Za-z0-9_\-]*" defaultValue={d.name || "guest-lan"} /></label>
-        <label className="field"><span>{t("nw.uplink")}</span><select className="input" name="wan_interface" required>{opt(ifaces.filter((i) => i.type !== "loopback"))}</select></label>
-        <label className="field"><span>{t("nw.lan")}</span><select className="input" name="lan_interface" required>{opt(ifaces.filter((i) => LAN_TYPES.includes(i.type ?? "")))}</select></label>
+        <label className="field"><span>{t("nw.uplink")}</span><select className="input" name="wan_interface" required defaultValue={suggested.wan}>{opt(ifaces.filter((i) => i.type !== "loopback"))}</select></label>
+        <label className="field"><span>{t("nw.lan")}</span><select className="input" name="lan_interface" required defaultValue={suggested.lan}>{opt(ifaces.filter((i) => LAN_TYPES.includes(i.type ?? "")))}</select></label>
         {compact ? <details className="adv"><summary>{t("nw.advanced")}</summary><div className="stack">{vlanField}<Hint>{t("nw.vlanHelp")}</Hint></div></details> : vlanField}
         <Hint>{t("nw.lanHelp")}{compact ? "" : " " + t("nw.vlanHelp")}</Hint>
       </fieldset>
