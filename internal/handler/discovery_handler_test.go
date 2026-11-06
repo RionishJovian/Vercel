@@ -25,6 +25,9 @@ type fakeDiscovery struct {
 	gotObs    []discoverystore.ObservationIn
 	gotToken  string
 	gotSite   string
+	sel       discoverystore.Selection
+	selErr    error
+	linkErr   error
 }
 
 func (f *fakeDiscovery) Create(_ context.Context, _, _, site string) (discoverystore.Created, error) {
@@ -34,7 +37,11 @@ func (f *fakeDiscovery) Create(_ context.Context, _, _, site string) (discoverys
 func (f *fakeDiscovery) Get(context.Context, string, string) (discoverystore.View, error) {
 	return f.view, f.getErr
 }
-func (f *fakeDiscovery) Cancel(context.Context, string, string) error { return f.getErr }
+func (f *fakeDiscovery) Select(context.Context, string, string, string) (discoverystore.Selection, error) {
+	return f.sel, f.selErr
+}
+func (f *fakeDiscovery) Link(context.Context, string, string, string, string) error { return f.linkErr }
+func (f *fakeDiscovery) Cancel(context.Context, string, string) error               { return f.getErr }
 func (f *fakeDiscovery) Pair(context.Context, string) (discoverystore.Paired, error) {
 	return f.paired, f.pairErr
 }
@@ -58,6 +65,8 @@ func router(f *fakeDiscovery) *gin.Engine {
 	r.POST("/s", owner, h.CreateSession)
 	r.GET("/s/:id", owner, h.GetSession)
 	r.DELETE("/s/:id", owner, h.CancelSession)
+	r.POST("/s/:id/select", owner, h.SelectCandidate)
+	r.POST("/s/:id/link", owner, h.LinkRouter)
 	r.POST("/s/:id/pair", h.Pair)
 	r.POST("/s/:id/observations", h.Observations)
 	return r
@@ -80,7 +89,7 @@ func upload(obs string) string { return `{"observations":[` + obs + `]}` }
 func TestDiscoveryHandlerCannotReachARouter(t *testing.T) {
 	// The store interface is the whole of the handler's reach. Nothing in it can read, log in to or configure a router.
 	ty := reflect.TypeOf((*DiscoveryStore)(nil)).Elem()
-	allowed := map[string]bool{"Create": true, "Get": true, "Cancel": true, "Pair": true, "AddObservations": true}
+	allowed := map[string]bool{"Create": true, "Get": true, "Cancel": true, "Pair": true, "AddObservations": true, "Select": true, "Link": true}
 	for i := 0; i < ty.NumMethod(); i++ {
 		if !allowed[ty.Method(i).Name] {
 			t.Fatalf("unexpected capability on the discovery store: %s", ty.Method(i).Name)
@@ -194,5 +203,33 @@ func TestObservationsAuthAndRateErrors(t *testing.T) {
 	w := do(router(&fakeDiscovery{obsErr: discoverystore.ErrTooFast}), "POST", "/s/"+sid+"/observations", upload(goodObs), "Authorization", "Bearer "+strings.Repeat("a", 64))
 	if w.Code != http.StatusTooManyRequests || w.Header().Get("Retry-After") == "" {
 		t.Fatalf("too fast: %d", w.Code)
+	}
+}
+
+func TestSelectAndLink(t *testing.T) {
+	key := "sw:0123456789abcdef"
+	f := &fakeDiscovery{sel: discoverystore.Selection{DeviceKey: key, SuggestedName: "hAP", LocalAddress: "192.168.88.1"}}
+	if w := do(router(f), "POST", "/s/"+sid+"/select", `{"device_key":"`+key+`"}`); w.Code != 200 || !strings.Contains(w.Body.String(), "192.168.88.1") {
+		t.Fatalf("select: %d %s", w.Code, w.Body)
+	}
+	for _, bad := range []string{`{"device_key":"nope"}`, `{}`, `{"device_key":"` + key + `","router_id":"x"}`} {
+		if w := do(router(f), "POST", "/s/"+sid+"/select", bad); w.Code != 400 {
+			t.Errorf("select %s: %d", bad, w.Code)
+		}
+	}
+	if w := do(router(&fakeDiscovery{selErr: discoverystore.ErrUnavailable}), "POST", "/s/"+sid+"/select", `{"device_key":"`+key+`"}`); w.Code != 404 {
+		t.Errorf("a candidate that is not in your session must look missing: %d", w.Code)
+	}
+	if w := do(router(f), "POST", "/s/"+sid+"/link", `{"device_key":"`+key+`","router_id":"`+sid+`"}`); w.Code != 204 {
+		t.Errorf("link: %d", w.Code)
+	}
+	if w := do(router(f), "POST", "/s/"+sid+"/link", `{"device_key":"`+key+`","router_id":"nope"}`); w.Code != 400 {
+		t.Errorf("link with a malformed router id: %d", w.Code)
+	}
+	if w := do(router(&fakeDiscovery{linkErr: discoverystore.ErrConflict}), "POST", "/s/"+sid+"/link", `{"device_key":"`+key+`","router_id":"`+sid+`"}`); w.Code != 409 {
+		t.Errorf("conflict: %d", w.Code)
+	}
+	if w := do(router(&fakeDiscovery{linkErr: discoverystore.ErrUnavailable}), "POST", "/s/"+sid+"/link", `{"device_key":"`+key+`","router_id":"`+sid+`"}`); w.Code != 404 {
+		t.Errorf("unselected or foreign: %d", w.Code)
 	}
 }

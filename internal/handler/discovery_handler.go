@@ -24,6 +24,8 @@ type DiscoveryStore interface {
 	Cancel(ctx context.Context, bid, id string) error
 	Pair(ctx context.Context, code string) (discoverystore.Paired, error)
 	AddObservations(ctx context.Context, token, sessionID string, in []discoverystore.ObservationIn) (int, int, error)
+	Select(ctx context.Context, bid, id, deviceKey string) (discoverystore.Selection, error)
+	Link(ctx context.Context, bid, id, deviceKey, deviceID string) error
 }
 
 type DiscoveryHandler struct{ store DiscoveryStore }
@@ -247,5 +249,55 @@ func (h *DiscoveryHandler) Observations(c *gin.Context) {
 	default:
 		c.Header("Cache-Control", "no-store")
 		c.JSON(http.StatusOK, gin.H{"accepted": accepted, "dropped": dropped})
+	}
+}
+
+// SelectCandidate records the owner's choice. It registers nothing: the console continues with the existing add-router flow.
+func (h *DiscoveryHandler) SelectCandidate(c *gin.Context) {
+	id, ok := sessionID(c)
+	if !ok {
+		return
+	}
+	var body struct {
+		DeviceKey string `json:"device_key"`
+	}
+	if !decodeStrict(c, &body) || !deviceKeyPattern.MatchString(body.DeviceKey) {
+		if !c.Writer.Written() {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid candidate"})
+		}
+		return
+	}
+	sel, err := h.store.Select(c.Request.Context(), auth.GetBusinessID(c), id, body.DeviceKey)
+	if err != nil {
+		discoveryUnavailable(c, http.StatusNotFound)
+		return
+	}
+	c.Header("Cache-Control", "no-store")
+	c.JSON(http.StatusOK, sel)
+}
+
+// LinkRouter remembers which registered router a selected candidate became. The router itself is created by the existing flow.
+func (h *DiscoveryHandler) LinkRouter(c *gin.Context) {
+	id, ok := sessionID(c)
+	if !ok {
+		return
+	}
+	var body struct {
+		DeviceKey string `json:"device_key"`
+		RouterID  string `json:"router_id"`
+	}
+	if !decodeStrict(c, &body) || !deviceKeyPattern.MatchString(body.DeviceKey) || !discoveryUUID.MatchString(body.RouterID) {
+		if !c.Writer.Written() {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid link"})
+		}
+		return
+	}
+	switch err := h.store.Link(c.Request.Context(), auth.GetBusinessID(c), id, body.DeviceKey, body.RouterID); {
+	case errors.Is(err, discoverystore.ErrConflict):
+		c.JSON(http.StatusConflict, gin.H{"error": "This device is already registered as another router."})
+	case err != nil:
+		discoveryUnavailable(c, http.StatusNotFound)
+	default:
+		c.Status(http.StatusNoContent)
 	}
 }

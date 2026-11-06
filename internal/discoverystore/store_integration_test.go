@@ -7,7 +7,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -79,8 +78,10 @@ func setup(base string) (*database.DB, func(), error) {
 	}
 	// Only this feature's migration is applied on top of the baseline: other migration files assume tables from the
 	// older chain, and this one needs just businesses and sites.
+	// The tenant-role grants migration gives the restricted role the same table access production has (devices, sites).
 	files, _ := filepath.Glob("../../db/migrations/*_discovery_*.sql")
-	sort.Strings(files)
+	grants, _ := filepath.Glob("../../db/migrations/*_tenant_role_grants.sql")
+	files = append(grants, files...)
 	for _, f := range files {
 		if err := run(f); err != nil {
 			return nil, nil, err
@@ -347,5 +348,94 @@ func TestSweepDeletesOldSessionsAndTheirObservations(t *testing.T) {
 	_ = pool.QueryRow(`SELECT (SELECT count(*) FROM discovery_sessions)+(SELECT count(*) FROM discovery_observations)`).Scan(&n)
 	if n != 0 {
 		t.Fatalf("ended sessions and their observations must be deleted after the retention time, %d rows left", n)
+	}
+}
+
+func newRouter(t *testing.T, bid, name string) string {
+	var id string
+	if err := pool.QueryRow(`INSERT INTO devices(business_id,hardware_name,deployment_layer,vendor,category,transport) VALUES($1,$2,'MAIN_GATEWAY','mikrotik','gateway','tunnel') RETURNING device_id`, bid, name).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	return id
+}
+
+func TestSelectLinkAndExistingRouterHint(t *testing.T) {
+	s := skip(t)
+	reset(t)
+	ctx := context.Background()
+	key := "sw:0123456789abcdef"
+	c, p := newPaired(t, s, mine)
+	if _, _, err := s.AddObservations(ctx, p.Token, p.SessionID, []ObservationIn{obs(key), obs("sw:fedcba9876543210")}); err != nil {
+		t.Fatal(err)
+	}
+	router1 := newRouter(t, mine, "Shop router")
+
+	if err := s.Link(ctx, mine, c.SessionID, key, router1); err != ErrUnavailable {
+		t.Fatalf("linking before the owner selected the candidate must fail: %v", err)
+	}
+	sel, err := s.Select(ctx, mine, c.SessionID, key)
+	if err != nil || sel.SuggestedName != "hAP" || sel.Model != "C52iG-5HaxD2HaxD" || sel.LocalAddress != "192.168.88.1" || sel.Existing != nil {
+		t.Fatalf("select: %+v %v", sel, err)
+	}
+	if _, err := s.Select(ctx, mine, c.SessionID, "sw:00000000000000aa"); err != ErrUnavailable {
+		t.Fatalf("a candidate that was never heard in this session cannot be selected: %v", err)
+	}
+	if _, err := s.Select(ctx, other, c.SessionID, key); err != ErrUnavailable {
+		t.Fatalf("another business must not select: %v", err)
+	}
+	// Selecting a second candidate moves the selection.
+	if _, err := s.Select(ctx, mine, c.SessionID, "sw:fedcba9876543210"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Link(ctx, mine, c.SessionID, key, router1); err != ErrUnavailable {
+		t.Fatalf("only the currently selected candidate may be linked: %v", err)
+	}
+	if _, err := s.Select(ctx, mine, c.SessionID, key); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Link(ctx, mine, c.SessionID, key, newRouter(t, other, "Someone else's")); err != ErrUnavailable {
+		t.Fatalf("a router of another business cannot be linked: %v", err)
+	}
+	if err := s.Link(ctx, mine, c.SessionID, key, router1); err != nil {
+		t.Fatalf("link: %v", err)
+	}
+	if err := s.Link(ctx, mine, c.SessionID, key, router1); err != nil {
+		t.Fatalf("linking the same router again is harmless: %v", err)
+	}
+	if err := s.Link(ctx, mine, c.SessionID, key, newRouter(t, mine, "Second")); err != ErrConflict {
+		t.Fatalf("a device already registered as one router must not be linked to another: %v", err)
+	}
+
+	// A later session now says the device is already registered.
+	if err := s.Cancel(ctx, mine, c.SessionID); err != nil {
+		t.Fatal(err)
+	}
+	_, p2 := newPaired(t, s, mine)
+	if _, _, err := s.AddObservations(ctx, p2.Token, p2.SessionID, []ObservationIn{obs(key)}); err != nil {
+		t.Fatal(err)
+	}
+	v, _ := s.Get(ctx, mine, p2.SessionID)
+	if len(v.Candidates) != 1 || v.Candidates[0].Existing == nil || v.Candidates[0].Existing.Name != "Shop router" {
+		t.Fatalf("the candidate must show the router it already is: %+v", v.Candidates)
+	}
+	// Another business hearing the same device sees nothing of this.
+	if _, err := pool.Exec(`DELETE FROM discovery_sessions`); err != nil {
+		t.Fatal(err)
+	}
+	_, p3 := newPaired(t, s, other)
+	if _, _, err := s.AddObservations(ctx, p3.Token, p3.SessionID, []ObservationIn{obs(key)}); err != nil {
+		t.Fatal(err)
+	}
+	if v, _ := s.Get(ctx, other, p3.SessionID); v.Candidates[0].Existing != nil {
+		t.Fatalf("the hint must not cross businesses: %+v", v.Candidates[0].Existing)
+	}
+	// Deleting the router record frees the key.
+	if _, err := pool.Exec(`DELETE FROM devices WHERE device_id=$1`, router1); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	_ = pool.QueryRow(`SELECT count(*) FROM discovery_links`).Scan(&n)
+	if n != 0 {
+		t.Fatalf("deleting the router must remove its discovery link, %d left", n)
 	}
 }
