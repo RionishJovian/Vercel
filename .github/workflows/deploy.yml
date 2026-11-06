@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       deploy_vps:
-        description: 'Release this main commit to the existing production VPS'
+        description: 'Re-release this main commit to the existing production VPS (pushes to main deploy automatically)'
         type: boolean
         default: false
         required: true
@@ -75,7 +75,7 @@ jobs:
 
   build:
     needs: validate
-    if: github.event_name == 'workflow_dispatch' && inputs.deploy_vps && github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.deploy_vps))
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -134,7 +134,7 @@ jobs:
 
   deploy-vps:
     needs: build
-    if: github.event_name == 'workflow_dispatch' && inputs.deploy_vps && github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.deploy_vps))
     environment: production
     runs-on: ubuntu-24.04
     permissions:
