@@ -13,6 +13,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"time"
@@ -26,6 +27,7 @@ func main() {
 	window := flag.Duration("window", 40*time.Second, "how long to listen (5s-2m); routers announce about every 30s by default")
 	pair := flag.String("pair", "", "pairing code shown in Mega Magic; uploads what is heard to your own account")
 	server := flag.String("server", "https://megamagic.tech", "Mega Magic address (https only)")
+	caFile := flag.String("ca-file", "", "PEM file with one extra certificate authority to trust, for testing against a server with its own local certificate (certificate checking stays on)")
 	dry := flag.Bool("dry-run", false, "print exactly what would be uploaded and send nothing")
 	flag.Parse()
 	if *window < 5*time.Second || *window > 2*time.Minute {
@@ -39,7 +41,14 @@ func main() {
 	var up *discovery.Uploader
 	if *pair != "" {
 		var err error
-		if up, err = discovery.NewUploader(*server, nil); err != nil {
+		var hc *http.Client
+		if *caFile != "" {
+			if hc, err = discovery.ClientWithExtraCA(*caFile); err != nil {
+				fmt.Fprintln(os.Stderr, "cannot use the CA file:", err)
+				os.Exit(2)
+			}
+		}
+		if up, err = discovery.NewUploader(*server, hc); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(2)
 		}

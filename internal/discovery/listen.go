@@ -3,6 +3,7 @@ package discovery
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"net/netip"
 	"os"
@@ -75,5 +76,10 @@ func finish(c *Collector, r Result) Result {
 
 // OpenUDP opens the adapter's port for receiving only.
 func OpenUDP(a Adapter) (*net.UDPConn, error) {
-	return net.ListenUDP("udp4", &net.UDPAddr{Port: a.Port()})
+	lc := net.ListenConfig{Control: shareablePort}
+	pc, err := lc.ListenPacket(context.Background(), "udp4", fmt.Sprintf(":%d", a.Port()))
+	if err != nil {
+		return nil, err
+	}
+	return pc.(*net.UDPConn), nil
 }

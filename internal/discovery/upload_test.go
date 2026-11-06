@@ -3,8 +3,11 @@ package discovery
 import (
 	"context"
 	"encoding/json"
+	"encoding/pem"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -186,5 +189,46 @@ func TestListenProgressReportsAndStopsWhenTheSessionEnds(t *testing.T) {
 	})
 	if err != ErrSessionEnded || calls != 2 || res.Packets == 0 {
 		t.Fatalf("a failing report must end the run: calls=%d err=%v res=%+v", calls, err, res)
+	}
+}
+
+func TestExtraCAIsTrustedOnlyWhenGiven(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(201)
+		_, _ = w.Write([]byte(`{"session_id":"s","helper_token":"` + strings.Repeat("a", 64) + `","expires_at":"2026-11-06T12:00:00Z"}`))
+	}))
+	defer srv.Close()
+	pemPath := filepath.Join(t.TempDir(), "ca.pem")
+	if err := os.WriteFile(pemPath, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw}), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// Without the extra authority the certificate is refused.
+	plain, _ := NewUploader(srv.URL, nil)
+	if _, err := plain.Pair(context.Background(), "ABCDEF-GHJKMNPQ"); err == nil {
+		t.Fatal("an unknown certificate authority must be refused by default")
+	}
+	// With it, that one authority is trusted and normal verification still runs.
+	hc, err := ClientWithExtraCA(pemPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, _ := NewUploader(srv.URL, hc)
+	if _, err := u.Pair(context.Background(), "ABCDEF-GHJKMNPQ"); err != nil {
+		t.Fatalf("the extra authority must be trusted: %v", err)
+	}
+	// A different certificate is still refused: the option adds one authority, it does not switch checking off.
+	other := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	defer other.Close()
+	u2, _ := NewUploader(other.URL, hc)
+	if _, err := u2.Pair(context.Background(), "ABCDEF-GHJKMNPQ"); err == nil {
+		t.Fatal("a certificate from a different authority must still fail")
+	}
+	if _, err := ClientWithExtraCA(filepath.Join(t.TempDir(), "missing.pem")); err == nil {
+		t.Fatal("a missing file must be an error")
+	}
+	bad := filepath.Join(t.TempDir(), "bad.pem")
+	_ = os.WriteFile(bad, []byte("not a certificate"), 0o600)
+	if _, err := ClientWithExtraCA(bad); err == nil {
+		t.Fatal("a file without a certificate must be an error")
 	}
 }
