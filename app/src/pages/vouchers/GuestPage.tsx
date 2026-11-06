@@ -53,11 +53,7 @@ export function GuestPage({ hideDeploy }: { hideDeploy?: boolean } = {}) {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [msg, setMsg] = useState<ReactNode>(null);
   const [busy, setBusy] = useState(false);
-  const [dest, setDest] = useState<"router" | "hosted">("router");
-  const [note, setNote] = useState("");
-  const [html, setHtml] = useState<string | null>(null);
   const hosted = useRef<HTMLIFrameElement>(null);
-  const router = useRef<HTMLIFrameElement>(null);
   const initial = useRef(false);
 
   useEffect(() => { if (!initial.current && (data || (error && (error as { status?: number }).status === 404))) { initial.current = true; setDraft(fromConfig(cfg)); } }, [data, error, cfg]);
@@ -69,25 +65,13 @@ export function GuestPage({ hideDeploy }: { hideDeploy?: boolean } = {}) {
   useEffect(() => {
     const onReady = (ev: MessageEvent) => {
       const type = (ev.data as { type?: string } | null)?.type;
-      if (ev.origin === location.origin && type === "mm-portal-preview-ready") pushHosted();
-      // The router page preview is a sandboxed srcdoc frame (origin "null"); only its own window may ask to switch tabs.
-      if (type === "mm-portal-preview-pay" && ev.source === router.current?.contentWindow) setDest("hosted");
+      if (ev.origin === location.origin && ev.source === hosted.current?.contentWindow && type === "mm-portal-preview-ready") pushHosted();
     };
     window.addEventListener("message", onReady);
     return () => window.removeEventListener("message", onReady);
   }, [pushHosted]);
 
-  // The server renders the router voucher page, so the preview is the page guests get.
-  useEffect(() => {
-    if (!draft) return;
-    if (dest === "hosted") { setNote(t("g.previewHostedNote")); pushHosted(); return; }
-    let live = true; setNote(t("g.previewLoading"));
-    const timer = setTimeout(async () => {
-      try { const res = await api.post<{ html?: string }>("/portal/router-preview", previewConfig(draft, cfg)); if (!live) return; if (typeof res.html !== "string") throw new Error("no-html"); setHtml(res.html); setNote(t("g.previewNote")); }
-      catch (e) { if (isUnauthorized(e)) { location.reload(); return; } if (live) { setHtml(null); setNote(t("g.previewFailed")); } }
-    }, 300);
-    return () => { live = false; clearTimeout(timer); };
-  }, [draft, dest, cfg, pushHosted, t]);
+  useEffect(() => { pushHosted(); }, [pushHosted]);
 
   if (isLoading || !draft) return error && (error as { status?: number }).status !== 404 ? <Note kind="bad">{t("c.loadFailed")}</Note> : <Skeleton h={420} />;
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setDraft((d) => (d ? { ...d, [k]: v } : d));
@@ -118,18 +102,11 @@ export function GuestPage({ hideDeploy }: { hideDeploy?: boolean } = {}) {
   return (
     <div className="gp-layout">
       <section className="glass pad stack gp-preview" aria-labelledby="gp-prev">
-        <h2 id="gp-prev">{t("g.preview")}</h2>
-        <div className="row">
-          <div className="seg" role="group" aria-label={t("g.preview")}>
-            <button type="button" aria-pressed={dest === "router"} onClick={() => setDest("router")}>{t("g.destRouter")}</button>
-            <button type="button" aria-pressed={dest === "hosted"} onClick={() => setDest("hosted")}>{t("g.destHosted")}</button>
-          </div>
-        </div>
+        <h2 id="gp-prev">{t("g.guestPortal")}</h2>
         <div className="phone">
-          <iframe className="gp-frame" ref={router} hidden={dest !== "router"} sandbox="allow-scripts" title={t("g.preview")} srcDoc={html ?? undefined} />
-          <iframe className="gp-frame" ref={hosted} hidden={dest !== "hosted"} src="/portal.html?preview=1" title={t("g.previewHosted")} />
+          <iframe className="gp-frame" ref={hosted} src="/portal.html?preview=1" title={t("g.guestPortal")} />
         </div>
-        <p className="soft small" role="status">{note}</p>
+        <p className="soft small">{t("g.previewHostedNote")}</p>
         {draft.payment && !draft.plans.some((p) => !blankPlan(p)) && <Note kind="warn">{t("g.noPlansWarn")}</Note>}
       </section>
 

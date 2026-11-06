@@ -6,7 +6,7 @@ import { choices, currentNames, descriptions, editNetworkValues, initialValues, 
 import type { RouterRow } from "../routers";
 import { errorText } from "../../lib/errors";
 
-interface Review { steps: string[]; warnings: string[]; confirmation: string }
+interface Review { steps: string[]; warnings: string[] | null; confirmation: string }
 
 /**
  * A change that reshaped something in use is applied but not final: the router's own
@@ -178,7 +178,7 @@ function TaskForm({ kind, inv, defaults, routerId, routerName, locked, setLocked
           <h3>{t("net.reviewTitle")}</h3>
           <p className="soft small">{t("net.router")}: <b>{routerName}</b></p>
           <ul className="steps">{review.steps.map((x, i) => <li key={i}>{x}</li>)}</ul>
-          {review.warnings.map((w, i) => <Note kind="warn" key={i}>{w}</Note>)}
+          {(review.warnings ?? []).map((w, i) => <Note kind="warn" key={i}>{w}</Note>)}
           <label className="check"><span>{t("net.consent")}</span><input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} /></label>
           <button className="btn" type="button" disabled={!consent || locked} onClick={() => void apply()}>{t("net.apply")}</button>
         </div>

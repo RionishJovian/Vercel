@@ -79,6 +79,13 @@ describe("topology projection for controls", () => {
 });
 
 describe("controls on the topology page", () => {
+  it("keeps the page up when a review has no warnings", async () => {
+    respond = (path) => path.endsWith("/network/preview") ? json(200, { review: { steps: ["Remove the block"], warnings: null, confirmation: "tok" } }) : null;
+    open(); await pick("AP");
+    fireEvent.click(await screen.findByRole("button", { name: "Block internet" }));
+    expect(await screen.findByText("Remove the block")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /apply/i })).toBeTruthy();
+  });
   it("reviews, then applies, a block only after consent", async () => {
     respond = (path, body) => {
       if (path.endsWith("/network/preview")) { expect(body).toEqual({ kind: "device_block", id: "", values: { mac: "02:00:00:00:00:20" } }); return json(200, { review: { steps: ["Block internet"], warnings: ["Same-switch traffic continues."], confirmation: "tok" } }); }

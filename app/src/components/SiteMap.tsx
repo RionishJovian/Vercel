@@ -5,14 +5,14 @@ import StarlinkLayer from "./StarlinkLayer";
 
 export interface MapSite { site_id: string; name: string; latitude?: number | null; longitude?: number | null }
 export type PathState = "online" | "offline" | "unassigned";
-interface Props { sites: MapSite[]; states: Record<string, PathState>; selected: string; onSelect: (id: string) => void; pick?: { lat: string; lng: string; onPick: (lat: number, lng: number) => void } }
+interface Props { home?: boolean; sites: MapSite[]; states: Record<string, PathState>; selected: string; onSelect: (id: string) => void; pick?: { lat: string; lng: string; onPick: (lat: number, lng: number) => void } }
 
 export const validCoordinates = (s: { latitude?: unknown; longitude?: unknown }) =>
   s.latitude !== null && s.latitude !== undefined && s.latitude !== "" && s.longitude !== null && s.longitude !== undefined && s.longitude !== "" &&
   Number.isFinite(Number(s.latitude)) && Number.isFinite(Number(s.longitude)) && Math.abs(Number(s.latitude)) <= 85.051129 && Math.abs(Number(s.longitude)) <= 180;
 
 /** Pins show each site's management-path state. Tiles come from OpenFreeMap; site names and router details never leave Mega Magic. */
-export default function SiteMap({ sites, states, selected, onSelect, pick }: Props) {
+export default function SiteMap({ sites, states, selected, onSelect, pick, home = false }: Props) {
   const box = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
   const markers = useRef<maplibregl.Marker[]>([]);
@@ -21,7 +21,7 @@ export default function SiteMap({ sites, states, selected, onSelect, pick }: Pro
   handlers.current = { onSelect, pick };
   const [loaded, setLoaded] = useState<maplibregl.Map | null>(null);
   // While the Starlink layer holds the Myanmar view, a status update must not pull the map back to a site.
-  const overview = useRef(false), lastSelected = useRef(selected);
+  const overview = useRef(home), lastSelected = useRef(selected);
   const onOverview = useCallback((on: boolean) => { overview.current = on; }, []);
   const positioned = sites.filter(validCoordinates);
 
@@ -72,7 +72,7 @@ export default function SiteMap({ sites, states, selected, onSelect, pick }: Pro
   return (
     <div className="site-map-frame">
       <div ref={box} className="site-map" role="region" aria-label="Site map" />
-      {loaded && !pick && <StarlinkLayer map={loaded} onActive={onOverview} />}
+      {loaded && !pick && <StarlinkLayer map={loaded} onActive={onOverview} defaultOn={home} compact={home} />}
     </div>
   );
 }
