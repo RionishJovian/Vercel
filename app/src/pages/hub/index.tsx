@@ -13,6 +13,7 @@ import { DeviceForm, LAYERS } from "../devices/DeviceForm";
 import { enrollmentUnavailableKey } from "./messages";
 import { ConnectionCheck } from "./ConnectionCheck";
 import { DiscoverRouter } from "./DiscoverRouter";
+import type { DiscoveryPrefill } from "./DiscoverHelper";
 import type { RouterRow } from "../routers";
 import { errorText } from "../../lib/errors";
 
@@ -95,9 +96,11 @@ function Card({ r, state, canEdit, cap, openId, setOpen, onChanged }: { r: GW; s
   );
 }
 
-function AddGateway({ sites, onDone }: { sites: Array<{ site_id: string; name: string }>; onDone: (id: string) => void }) {
+export function AddGateway({ sites, onDone }: { sites: Array<{ site_id: string; name: string }>; onDone: (id: string) => void }) {
   const { t } = useI18n();
   const [msg, setMsg] = useState(""), [busy, setBusy] = useState(false);
+  // Set when the owner picked a nearby router from discovery. Only hints: nothing is registered or verified by it.
+  const [prefill, setPrefill] = useState<DiscoveryPrefill | null>(null);
   async function add(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     // React clears currentTarget once the handler yields, so keep the form for after the awaits.
@@ -109,19 +112,23 @@ function AddGateway({ sites, onDone }: { sites: Array<{ site_id: string; name: s
       const res = await api.post<{ router?: { device_id?: string } }>("/routers", { hardware_name: name, device_model: null, deployment_layer: "MAIN_GATEWAY", management_ip: null, mac_address: null, vendor: "mikrotik", category: "gateway", transport: "tunnel" });
       const id = res.router?.device_id;
       if (id) { try { await api.put(`/vps/peers/${encodeURIComponent(id)}/site`, { site_id: site }); } catch (err) { if (isUnauthorized(err)) throw err; setMsg(errorText(err, t("hub.siteFail"))); } }
+      // Remember which discovered device this became, so a later discovery can say "already registered". Best effort: the router exists either way.
+      if (id && prefill) { try { await api.post(`/discovery/sessions/${prefill.sessionId}/link`, { device_key: prefill.deviceKey, router_id: id }); } catch (err) { if (isUnauthorized(err)) throw err; } }
+      setPrefill(null);
       form.reset(); onDone(id ?? "");
     } catch (err) { if (isUnauthorized(err)) throw err; setMsg(err instanceof ApiError && err.status === 403 ? t("hub.forbidden") : errorText(err, t("hub.addFail"))); }
     setBusy(false);
   }
   return (
     <>
-    {sites.length > 0 && <DiscoverRouter onContinue={() => document.getElementById("gw-name")?.focus()} />}
+    {sites.length > 0 && <DiscoverRouter sites={sites} onContinue={() => document.getElementById("gw-name")?.focus()} onSelected={(p) => { setPrefill(p); setMsg(""); window.setTimeout(() => document.getElementById("gw-name")?.focus(), 0); }} />}
     <form className="glass pad stack" onSubmit={add}>
       <h2>{t("hub.add")}</h2>
       {!sites.length ? <Note kind="warn">{t("hub.needSite")} <a className="link" href="#/sites">{t("title.sites")}</a></Note> : (
         <>
-          <Field label={t("hub.rbName")} htmlFor="gw-name"><input className="input" id="gw-name" name="name" maxLength={120} required /></Field>
-          <Field label={t("hub.site")} htmlFor="gw-site"><select className="input" id="gw-site" name="site" required defaultValue=""><option value="" disabled>{t("hub.chooseSite")}</option>{sites.map((s) => <option key={s.site_id} value={s.site_id}>{s.name}</option>)}</select></Field>
+          <Field label={t("hub.rbName")} htmlFor="gw-name"><input className="input" id="gw-name" name="name" maxLength={120} required key={"n" + (prefill?.deviceKey ?? "")} defaultValue={prefill?.name ?? ""} /></Field>
+          <Field label={t("hub.site")} htmlFor="gw-site"><select className="input" id="gw-site" name="site" required key={"s" + (prefill?.deviceKey ?? "")} defaultValue={prefill?.siteId && sites.some((x) => x.site_id === prefill.siteId) ? prefill.siteId : ""}><option value="" disabled>{t("hub.chooseSite")}</option>{sites.map((s) => <option key={s.site_id} value={s.site_id}>{s.name}</option>)}</select></Field>
+          {prefill && <Note>{t("dn.h.prefilled")} {prefill.address && <>{t("dn.h.localAddress")} <b className="num">{prefill.address}</b> ({t("dn.notVerified")}).</>} {prefill.model && <>{t("dn.h.model")}: {prefill.model}.</>}</Note>}
           <p className="soft small">{t("hub.autoAddress")}</p>
           {msg && <Note kind="bad">{msg}</Note>}
           <button className="btn" type="submit" disabled={busy}>{t("hub.create")}</button>

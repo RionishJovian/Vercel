@@ -298,3 +298,9 @@ func (h *DiscoveryHandler) LinkRouter(c *gin.Context) {
 		c.Status(http.StatusNoContent)
 	}
 }
+
+// Capability tells the console discovery is switched on. When it is off the route does not exist, so the console hides the feature.
+func (h *DiscoveryHandler) Capability(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
+	c.JSON(http.StatusOK, gin.H{"enabled": true})
+}
