@@ -84,6 +84,7 @@ var networkMenus = map[string]networkMenu{
 	"routes":            {"/ip route", []string{"dst-address", "gateway", "distance", "check-gateway", "scope", "target-scope", "routing-table", "comment", "disabled", "dynamic"}},
 	"dhcp_clients":      {"/ip dhcp-client", []string{"interface", "gateway", "add-default-route", "disabled"}},
 	"pppoe_clients":     {"/interface pppoe-client", []string{"name", "interface", "user", "password", "add-default-route", "default-route-distance", "use-peer-dns", "disabled"}},
+	"ppp_active":        {"/ppp active", []string{"name", "service", "caller-id", "address", "uptime"}},
 	"ppp_profiles":      {"/ppp profile", []string{"name", "local-address", "remote-address", "dns-server", "rate-limit", "only-one", "comment"}},
 	"pppoe_servers":     {"/interface pppoe-server server", []string{"service-name", "interface", "default-profile", "authentication", "one-session-per-host", "disabled"}},
 	"subscribers":       {"/ppp secret", []string{"name", "password", "service", "profile", "disabled", "comment"}},

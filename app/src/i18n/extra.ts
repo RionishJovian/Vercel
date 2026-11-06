@@ -1,6 +1,7 @@
 // Strings added by the React app. Burmese is a first draft for native-speaker review.
 const extra = {
   en: {
+    "pp.sessions": "Connected now", "pp.noSessions": "No PPPoE clients are connected right now.",
     "wf.title": "WebFig Cloud Access",
     "wf.locked": "WebFig Cloud Access is locked for this account.",
     "wf.update": "Update RouterOS before opening WebFig. Installed version",
@@ -155,6 +156,7 @@ const extra = {
     "md.sub": "Advice only. It never changes your network.", "md.hello": "Ask about your devices, Jellyfin, or where things are in the app.", "md.p1": "How are my devices doing?", "md.p2": "Where do I add the Jellyfin library?", "md.p3": "Where do I connect the gateway?", "md.you": "You", "md.thinking": "Thinking…", "md.ask": "What can I help with?", "md.note": "Advice only. Nothing is changed.", "md.send": "Send", "md.close": "Close Magic Dude", "md.empty": "No answer yet. Please ask again.", "md.locked": "Magic Dude needs an unlock key. Ask your owner or admin.", "md.limit": "The AI usage limit is full. Try again later.", "md.fail": "No answer right now. Please try again. Nothing was changed.", "md.failNote": "The question could not be sent.",
   },
   my: {
+    "pp.sessions": "ယခု ချိတ်ဆက်ထားသည်", "pp.noSessions": "ယခု ချိတ်ဆက်ထားသော PPPoE client မရှိပါ။",
     "wf.title": "WebFig Cloud Access",
     "wf.locked": "ဤအကောင့်အတွက် WebFig Cloud Access ကို ပိတ်ထားပါသည်။",
     "wf.update": "WebFig မဖွင့်မီ RouterOS ကို အပ်ဒိတ်လုပ်ပါ။ လက်ရှိဗားရှင်း",
