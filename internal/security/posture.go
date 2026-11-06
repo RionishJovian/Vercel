@@ -462,19 +462,24 @@ func SummarizeForChannel(version, channel string, table []Advisory) PostureSumma
 	return s
 }
 
-// WebFigProxyUnsafe reports RouterOS versions with CVE-2026-67281, an unauthenticated
-// file read through WebFig's /jsproxy (7.20 up to 7.23.3, 7.24 up to 7.24.1).
-// An unreadable version counts as unsafe.
+// WebFigProxyUnsafe reports RouterOS versions older than the CVE-2026-67281 fixes
+// (6.49.21, 7.23.4, 7.24.2), an unauthenticated file read through WebFig's /jsproxy.
+// The official record names 7.20 and later, but some advisories list older releases
+// too, so everything below a fixed version is refused. An unreadable version counts
+// as unsafe.
 func WebFigProxyUnsafe(version string) bool {
 	major, minor, patch, ok := parseVersion(version)
 	if !ok {
+		return true
+	}
+	if major < 6 || (major == 6 && (minor < 49 || (minor == 49 && patch < 21))) {
 		return true
 	}
 	if major != 7 {
 		return false
 	}
 	switch {
-	case minor >= 20 && minor <= 22:
+	case minor <= 22:
 		return true
 	case minor == 23:
 		return patch < 4
