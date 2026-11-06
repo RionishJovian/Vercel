@@ -57,11 +57,13 @@ export function DiscoverHelper({ sites, onSelected }: { sites: Array<{ site_id: 
   const cap = useSWR<{ enabled?: boolean }>("/discovery/capability", fetcher, { shouldRetryOnError: false });
   const [site, setSite] = useState(""), [busy, setBusy] = useState(false), [err, setErr] = useState("");
   const [session, setSession] = useState<{ id: string; code: string } | null>(null), [copied, setCopied] = useState(false);
-  const view = useSWR<SessionView>(session ? `/discovery/sessions/${session.id}` : null, fetcher, {
-    shouldRetryOnError: false, refreshInterval: (d) => (d && (d.state === "open" || d.state === "paired") ? 3000 : 0),
-  });
+  // A fixed interval switched by state, not a function of the data: SWR reads a function-style interval once, before any
+  // data exists, so it would return 0 and never poll.
+  const [polling, setPolling] = useState(false);
+  const view = useSWR<SessionView>(session ? `/discovery/sessions/${session.id}` : null, fetcher, { shouldRetryOnError: false, refreshInterval: polling ? 3000 : 0 });
   const v = view.data;
   const live = !!v && (v.state === "open" || v.state === "paired");
+  useEffect(() => { if (v && !live) setPolling(false); }, [v, live]);
   const now = useNow(live);
   if (cap.error || !cap.data?.enabled) return null;
 
@@ -70,7 +72,7 @@ export function DiscoverHelper({ sites, onSelected }: { sites: Array<{ site_id: 
     setBusy(true); setErr("");
     try {
       const r = await api.post<{ session_id: string; pairing_code: string }>("/discovery/sessions", chosenSite ? { site_id: chosenSite } : {});
-      setSession({ id: r.session_id, code: r.pairing_code }); setCopied(false);
+      setSession({ id: r.session_id, code: r.pairing_code }); setCopied(false); setPolling(true);
     } catch (e) {
       if (isUnauthorized(e)) throw e;
       setErr(e instanceof ApiError && e.status === 409 ? t("dn.h.alreadyOpen") : t("dn.h.startFail"));

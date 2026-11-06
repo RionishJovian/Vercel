@@ -105,4 +105,24 @@ describe("DiscoverHelper", () => {
     fireEvent.click(screen.getByRole("button", { name: "Cancel session" }));
     await vi.waitFor(() => expect(calls.some((c) => c.method === "DELETE" && c.path === `/discovery/sessions/${SID}`)).toBe(true));
   });
+
+  it("keeps checking by itself and shows a router once the helper has heard it", async () => {
+    open(); await start();
+    await screen.findByText(/Waiting for the helper/);
+    expect(screen.queryByText("Nearby MikroTik router")).toBeNull();
+    // The helper pairs and uploads; nobody touches the page.
+    view = { ...view, state: "paired", pairing_expires_at: undefined, candidates: [CAND] };
+    await screen.findByText("Nearby MikroTik router", {}, { timeout: 6000 });
+    screen.getByText(/The helper is connected and listening/);
+  }, 10000);
+
+  it("stops checking once the session has ended", async () => {
+    open(); await start();
+    await screen.findByText(/Waiting for the helper/);
+    view = { ...view, state: "cancelled" };
+    await screen.findByText("The session was cancelled.", {}, { timeout: 6000 });
+    const before = calls.filter((c) => c.method === "GET" && c.path === `/discovery/sessions/${SID}`).length;
+    await new Promise((r) => setTimeout(r, 3600));
+    expect(calls.filter((c) => c.method === "GET" && c.path === `/discovery/sessions/${SID}`).length).toBe(before);
+  }, 15000);
 });
