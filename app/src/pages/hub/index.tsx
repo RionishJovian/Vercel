@@ -12,6 +12,7 @@ import { Maintenance } from "./Maintenance";
 import { DeviceForm, LAYERS } from "../devices/DeviceForm";
 import { enrollmentUnavailableKey } from "./messages";
 import { ConnectionCheck } from "./ConnectionCheck";
+import { DiscoverRouter } from "./DiscoverRouter";
 import type { RouterRow } from "../routers";
 import { errorText } from "../../lib/errors";
 
@@ -113,6 +114,8 @@ function AddGateway({ sites, onDone }: { sites: Array<{ site_id: string; name: s
     setBusy(false);
   }
   return (
+    <>
+    {sites.length > 0 && <DiscoverRouter onContinue={() => document.getElementById("gw-name")?.focus()} />}
     <form className="glass pad stack" onSubmit={add}>
       <h2>{t("hub.add")}</h2>
       {!sites.length ? <Note kind="warn">{t("hub.needSite")} <a className="link" href="#/sites">{t("title.sites")}</a></Note> : (
@@ -125,6 +128,7 @@ function AddGateway({ sites, onDone }: { sites: Array<{ site_id: string; name: s
         </>
       )}
     </form>
+    </>
   );
 }
 
