@@ -16,7 +16,6 @@ beforeEach(() => {
     const path = String(url).replace("/api/v1", "");
     if (path === "/portal/config" && init?.method === "PUT") { config = { ...config, ...JSON.parse(String(init.body)) }; return json(200, {}); }
     if (path === "/portal/config") return json(200, { config });
-    if (path === "/portal/router-preview") return json(200, { html: "<p>preview</p>" });
     if (path === "/routers") return json(200, { routers: [{ device_id: "d1", hardware_name: "Shop", deployment_layer: "MAIN_GATEWAY" }] });
     if (path.endsWith("/portal/profiles")) return json(200, { profiles: ["hotspot1"] });
     return json(200, {});
@@ -30,6 +29,13 @@ const open = async () => {
 };
 
 describe("bank transfer with no saved plans", () => {
+  it("shows only the hosted Guest Portal preview", async () => {
+    config = { voucher_login_enabled: true, mobile_payment_enabled: true, guest_plans: [PLAN] };
+    await open();
+    expect(screen.getByTitle("Guest Portal").getAttribute("src")).toBe("/portal.html?preview=1");
+    expect(document.querySelectorAll(".gp-preview iframe")).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: "Voucher page" })).toBeNull();
+  });
   it("warns in both the preview and the install review", async () => {
     config = { voucher_login_enabled: true, mobile_payment_enabled: true, guest_plans: [] };
     await open();

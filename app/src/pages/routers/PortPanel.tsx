@@ -10,7 +10,7 @@ type Tone = "up" | "down" | "off" | "unknown";
 const toneOf = (i?: PortState): Tone => (!i ? "unknown" : i.disabled ? "off" : i.running ? "up" : "down");
 
 /** The router's real back panel with each Ethernet port lit by what the router reports. Never guesses: a port the router did not report is shown as unknown. */
-export function PortPanelView({ panel, ports, words, measuring }: { panel: Panel; ports: readonly PortState[]; words: Words; measuring: string | null }) {
+export function PortPanelView({ panel, ports, words, measuring, settings }: { panel: Panel; ports: readonly PortState[]; words: Words; measuring: string | null; settings?: (port: string) => string }) {
   const { t } = useI18n();
   const byName = new Map(ports.map((p) => [p.name, p]));
   const [picked, setPicked] = useState<string>("");
@@ -25,7 +25,7 @@ export function PortPanelView({ panel, ports, words, measuring }: { panel: Panel
   const active = picked ? label(picked) : null;
   return (
     <div className="port-panel-wrap stack">
-      <div className="port-panel" style={{ aspectRatio: `${panel.width} / ${panel.height}` }}>
+      <div className={"port-panel" + (panel.height > panel.width ? " portrait" : "")} style={{ aspectRatio: `${panel.width} / ${panel.height}` }}>
         <img src={import.meta.env.BASE_URL + panel.image} alt={panel.alt} width={panel.width} height={panel.height} loading="lazy" />
         {panel.ports.map((spot) => {
           const l = label(spot.name);
@@ -40,6 +40,7 @@ export function PortPanelView({ panel, ports, words, measuring }: { panel: Panel
       <p className="soft small" role="status">
         {active ? <><b>{picked}</b> <span className={"chip " + (active.tone === "up" ? "ok" : active.tone === "off" ? "bad" : "warn")}>{active.status}</span>{active.line ? <span className="num"> {active.line}</span> : null}</> : t("pp.hint")}
       </p>
+      {active && byName.has(picked) && settings && <a className="pill port-settings" href={settings(picked)}>{t("home.managePorts")} · {picked}</a>}
       {active && active.hints.map((h) => <p key={h.id} className="small cable-hint" data-tone={h.tone}>{t("ch." + h.id)}</p>)}
     </div>
   );

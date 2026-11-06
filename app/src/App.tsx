@@ -99,7 +99,7 @@ export function App() {
     case "platform": page = <Platform me={me} sub={route.sub} />; tab = "more"; break;
     case "vouchers": page = <Vouchers sub={route.sub} />; break;
     case "more": page = <More me={me} onSignedOut={signedOut} />; break;
-    case "home": page = <Home me={me} />; break;
+    case "home": page = <Home key={route.params.get("router")} me={me} routerId={route.params.get("router")} />; break;
     default: location.replace("#/home"); page = null;
   }
   return <Shell active={tab}><PageBoundary key={route.name + "/" + route.sub}><Suspense fallback={<Skeleton h={240} />}>{page}</Suspense></PageBoundary></Shell>;
