@@ -1,5 +1,6 @@
 import useSWR from "swr";
 import { fetcher } from "../../lib/api";
+import { keepPolling } from "../../lib/polling";
 import { asArray } from "../../lib/types";
 import { useI18n } from "../../i18n";
 import { Note } from "../../components/ui";
@@ -23,7 +24,7 @@ const Kv = ({ k, v }: { k: string; v: string }) => <div className="row small"><s
 /** Read-only live health. Network writes stay held server-side until a physical router acceptance test has passed. */
 export function Detail({ id, router }: { id: string; router?: RouterRow }) {
   const { t } = useI18n();
-  const { data, error, isLoading, mutate } = useSWR<{ telemetry?: Telemetry }>(`/routers/${encodeURIComponent(id)}/telemetry`, fetcher, { refreshInterval: 15000 });
+  const { data, error, isLoading, mutate } = useSWR<{ telemetry?: Telemetry }>(`/routers/${encodeURIComponent(id)}/telemetry`, fetcher, keepPolling(15000));
   const tele = data?.telemetry, snap = tele?.snapshot, r = snap?.resources ?? {};
   const words = { updateAvail: t("r.updateAvail"), noNewer: t("r.noNewer"), fwUpgrade: t("r.fwUpgrade"), full: t("r.full"), half: t("r.half") };
   return (
