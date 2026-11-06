@@ -118,12 +118,9 @@ func (h *DiscoveryHandler) CancelSession(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-// Pair: the helper trades the code for a token. Its only identity is the code; a supplied business id is never read.
+// Pair: the helper trades the code for a token. The code alone identifies the session (it carries a short id and a
+// secret), so the helper needs no session id. A supplied business id is never read, and every failure looks the same.
 func (h *DiscoveryHandler) Pair(c *gin.Context) {
-	id, ok := sessionID(c)
-	if !ok {
-		return
-	}
 	var body struct {
 		Code string `json:"pairing_code"`
 	}
@@ -131,7 +128,7 @@ func (h *DiscoveryHandler) Pair(c *gin.Context) {
 		return
 	}
 	p, err := h.store.Pair(c.Request.Context(), body.Code)
-	if err != nil || p.SessionID != id {
+	if err != nil {
 		discoveryUnavailable(c, http.StatusUnauthorized)
 		return
 	}

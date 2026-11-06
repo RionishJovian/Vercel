@@ -49,7 +49,7 @@ func registerDiscoveryRoutes(r *gin.Engine, service *auth.Service, db *database.
 	r.DELETE(base+"/:id", with(owner, h.CancelSession)...)
 	r.POST(base+"/:id/select", with(owner, h.SelectCandidate)...)
 	r.POST(base+"/:id/link", with(owner, h.LinkRouter)...)
-	r.POST(base+"/:id/pair", with(helper, h.Pair)...)
+	r.POST("/api/v1/discovery/pair", with(helper, h.Pair)...)
 	r.POST(base+"/:id/observations", with(helper, h.Observations)...)
 	return store, nil
 }
