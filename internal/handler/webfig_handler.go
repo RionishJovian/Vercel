@@ -183,6 +183,12 @@ func (h *SecurityHandler) WebFigOpen(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Sign in again to open WebFig"})
 		return
 	}
+	// The checks below read the router at this address. The ticket must go to the same one.
+	checked, err := control.targets.TargetForDevice(c.Request.Context(), businessID, deviceID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Router not found"})
+		return
+	}
 	access, err := control.router.WebFigAccessState(c.Request.Context(), businessID, deviceID, tunnel, control.sourceCIDR)
 	if err != nil {
 		webFigFailure(c, err)
@@ -203,25 +209,26 @@ func (h *SecurityHandler) WebFigOpen(c *gin.Context) {
 		return
 	}
 	host, _, err := net.SplitHostPort(target.Addr)
-	if err != nil {
+	if err != nil || target.Addr != checked.Addr {
 		c.JSON(http.StatusConflict, gin.H{"error": "This router has no Magic Hub address", "code": "webfig_no_tunnel"})
 		return
 	}
-	ticket, err := control.store.Issue(webfig.Grant{UserID: auth.GetUserID(c), BusinessID: businessID, DeviceID: deviceID, Role: auth.GetUserRole(c), AuthSessionID: authSession, Scheme: access.Scheme, Host: host, Port: access.Port})
+	ticket, label, err := control.store.Issue(webfig.Grant{UserID: auth.GetUserID(c), BusinessID: businessID, DeviceID: deviceID, Role: auth.GetUserRole(c), AuthSessionID: authSession, Scheme: access.Scheme, Host: host, Port: access.Port})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not open WebFig"})
 		return
 	}
 	control.record(c, businessID, deviceID, "router.webfig.opened", "by user "+auth.GetUserID(c)+": session up to "+strconv.Itoa(int(webfig.SessionLifetime.Minutes()))+" minutes")
 	c.Header("Cache-Control", "no-store")
-	c.JSON(http.StatusOK, gin.H{"url": fmt.Sprintf("https://%s/__mm/open?ticket=%s", control.host, url.QueryEscape(ticket))})
+	c.JSON(http.StatusOK, gin.H{"url": fmt.Sprintf("https://%s.%s/__mm/open?ticket=%s", label, control.host, url.QueryEscape(ticket))})
 }
 
 // WebFigChecker re-confirms a running session against the database: the login,
-// the role, the switch, and that the router is still this tenant's at this address.
+// the role, the switch, the account's pass, and that the router is still this
+// tenant's at this address. passAccess is nil when passes aren't enforced.
 func WebFigChecker(db interface {
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
-}, targets routeros.TargetSource) webfig.Checker {
+}, targets routeros.TargetSource, passAccess func(context.Context, string) (bool, error)) webfig.Checker {
 	return func(ctx context.Context, g webfig.Grant) error {
 		var role string
 		err := db.QueryRowContext(ctx, `SELECT s.user_role FROM auth_sessions s
@@ -233,8 +240,26 @@ func WebFigChecker(db interface {
 		if err != nil {
 			return fmt.Errorf("login no longer valid: %w", err)
 		}
+		if err := webFigPassValid(ctx, g.BusinessID, passAccess); err != nil {
+			return err
+		}
 		return webFigStillAllowed(ctx, g, role, targets)
 	}
+}
+
+// webFigPassValid ends a session when the account's pass ends. An unreadable pass counts as ended.
+func webFigPassValid(ctx context.Context, businessID string, passAccess func(context.Context, string) (bool, error)) error {
+	if passAccess == nil {
+		return nil
+	}
+	allowed, err := passAccess(ctx, businessID)
+	if err != nil {
+		return fmt.Errorf("account pass could not be read: %w", err)
+	}
+	if !allowed {
+		return errors.New("account pass has ended")
+	}
+	return nil
 }
 
 func webFigStillAllowed(ctx context.Context, g webfig.Grant, role string, targets routeros.TargetSource) error {

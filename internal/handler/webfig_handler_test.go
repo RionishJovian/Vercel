@@ -10,10 +10,12 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"errors"
 	"mega-magic/internal/auth"
 	"mega-magic/internal/model"
 	"mega-magic/internal/provisioner/routeros"
 	"mega-magic/internal/webfig"
+	"net/url"
 )
 
 const (
@@ -182,8 +184,63 @@ func TestWebFigOpenBindsTicketToTenantAndTunnelAddress(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil || w.Code != 200 {
 		t.Fatalf("%d %s", w.Code, w.Body)
 	}
-	if !strings.HasPrefix(body.URL, "https://webfig.test/__mm/open?ticket=") || fake.lastBusiness != webFigOwner {
+	parsed, err := url.Parse(body.URL)
+	if err != nil || parsed.Scheme != "https" || !strings.HasSuffix(parsed.Host, ".webfig.test") || parsed.Path != "/__mm/open" || parsed.Query().Get("ticket") == "" || fake.lastBusiness != webFigOwner {
 		t.Fatalf("url=%q business=%q", body.URL, fake.lastBusiness)
+	}
+	w = webFigCall(r, http.MethodPost, "/routers/"+webFigDevice+"/webfig/session", "")
+	var again struct {
+		URL string `json:"url"`
+	}
+	_ = json.Unmarshal(w.Body.Bytes(), &again)
+	if other, _ := url.Parse(again.URL); other == nil || other.Host == parsed.Host {
+		t.Fatalf("two sessions must not share an address: %q %q", body.URL, again.URL)
+	}
+}
+
+type webFigMovingTargets struct{ calls int }
+
+func (m *webFigMovingTargets) TargetForDevice(context.Context, string, string) (*routeros.DeviceTarget, error) {
+	m.calls++
+	addr := "10.77.0.9:22"
+	if m.calls > 2 {
+		addr = "10.77.0.10:22"
+	}
+	return &routeros.DeviceTarget{DeviceID: webFigDevice, Addr: addr}, nil
+}
+
+func TestWebFigOpenRefusesWhenTheAddressChangesMidway(t *testing.T) {
+	t.Setenv("MM_WEBFIG_ACCESS", "open")
+	gin.SetMode(gin.TestMode)
+	h := &SecurityHandler{}
+	h.webFig = &WebFigControl{router: &webFigFake{state: routeros.WebFigAccess{Ready: true, Version: "7.25", Scheme: "http", Port: 80}}, targets: &webFigMovingTargets{}, store: webfig.NewStore(), host: "webfig.test", sourceCIDR: "10.77.0.1/32",
+		record: func(*gin.Context, string, string, string, string) {}}
+	r := gin.New()
+	group := r.Group("/routers", func(c *gin.Context) {
+		c.Set(auth.ContextKeyUserRole, string(model.RoleOwner))
+		c.Set(auth.ContextKeyBusinessID, webFigOwner)
+		c.Set(auth.ContextKeyUserID, "user-1")
+		c.Set("auth_session_id", "session-1")
+	})
+	RegisterWebFigRoutes(group, h)
+	if w := webFigCall(r, http.MethodPost, "/routers/"+webFigDevice+"/webfig/session", ""); w.Code != http.StatusConflict {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+}
+
+func TestWebFigSessionEndsWithTheAccountPass(t *testing.T) {
+	ctx := context.Background()
+	if webFigPassValid(ctx, webFigOwner, nil) != nil {
+		t.Fatal("passes not enforced must not end a session")
+	}
+	valid := func(context.Context, string) (bool, error) { return true, nil }
+	ended := func(context.Context, string) (bool, error) { return false, nil }
+	unread := func(context.Context, string) (bool, error) { return false, errors.New("db") }
+	if webFigPassValid(ctx, webFigOwner, valid) != nil {
+		t.Fatal("valid pass ended the session")
+	}
+	if webFigPassValid(ctx, webFigOwner, ended) == nil || webFigPassValid(ctx, webFigOwner, unread) == nil {
+		t.Fatal("an ended or unreadable pass must end the session")
 	}
 }
 

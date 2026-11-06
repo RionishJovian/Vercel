@@ -50,7 +50,22 @@ func Entitled(mode Mode, role string) bool {
 	return false
 }
 
-// HostFromEnv is the proxy's own public hostname. Empty means it is not set up.
+// HostFromEnv is the proxy's own domain. Each session opens on a random subdomain
+// of it, so it needs a wildcard certificate. Empty means it is not set up.
 func HostFromEnv() string {
-	return strings.ToLower(strings.TrimSpace(os.Getenv("MM_WEBFIG_HOST")))
+	return SafeHost(os.Getenv("MM_WEBFIG_HOST"))
+}
+
+// appDomain is the console's domain. Routers decide what the proxy serves, and a
+// page on a subdomain counts as the same site as its parent: it could set cookies
+// on the console. So WebFig must live on a separate domain.
+const appDomain = "megamagic.tech"
+
+// SafeHost returns the cleaned domain, or empty when it can't be used safely.
+func SafeHost(raw string) string {
+	host := strings.ToLower(strings.TrimSpace(raw))
+	if !strings.Contains(host, ".") || strings.ContainsAny(host, "/:*@ ") || host == appDomain || strings.HasSuffix(host, "."+appDomain) {
+		return ""
+	}
+	return host
 }

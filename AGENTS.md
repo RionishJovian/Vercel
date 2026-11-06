@@ -80,6 +80,7 @@ Writes to routers are fail-closed: each needs an env var that is exactly `"true"
 | `MM_BROADBAND_WRITES_ENABLED` | off | paid PPPoE writes locked since the 2026-11-04 incident until a router trial |
 | `MM_FIRMWARE_UPGRADE_ENABLED` | off | |
 | `MM_NETWORK_WIFI_CONTROLS_ENABLED` | on (owner decision 2026-11-06) | physical-radio trial not run yet |
+| `MM_WEBFIG_ACCESS` | off (unset) | Values `open` and `locked`. Also needs `MM_WEBFIG_HOST`; see `docs/WEBFIG-CLOUD-ACCESS.md` |
 
 The owner asked for server-wide router read/write/edit/delete on 2026-11-06. These gates apply to every customer on the server. Re-read the server environment before relying on this table; it is a dated observation. Because pushes to `main` deploy, a PR that adds or depends on a gate must default to off.
 
@@ -93,6 +94,7 @@ The owner asked for server-wide router read/write/edit/delete on 2026-11-06. The
 
 ## 7. Open items and known drift (as of 2026-11-06)
 
+- WebFig Cloud Access has never signed in to a real router. AGENTS section 4 (2026-10-22) bars embedded third-party dashboards and separate logins; the owner has not yet recorded whether WebFig, in its own tab with the router's own login, is an accepted exception.
 - Real-router results and open bugs: `docs/HARDWARE-TRIAL-RESULTS-20261106.md`. The owner's hAP ax2 is no longer at factory settings.
 
 - `/Users/aces/AGENTS.md` (workspace file outside this repo) still names the Hostinger host and `ssh mikromagic-hostinger`; it is out of date and not changed here.

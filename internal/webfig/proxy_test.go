@@ -39,9 +39,23 @@ func fakeRouter(t *testing.T) (*routerRecord, Grant) {
 	return rec, Grant{UserID: "u1", BusinessID: "b1", DeviceID: "d1", Role: "OWNER", AuthSessionID: "s1", Scheme: "http", Host: host, Port: n}
 }
 
+// host is the subdomain of the session the test opened last.
+var host = "webfig.test"
+
+func issue(t *testing.T, p *Proxy, g Grant) string {
+	t.Helper()
+	ticket, label, err := p.store.Issue(g)
+	if err != nil {
+		t.Fatal(err)
+	}
+	host = label + ".webfig.test"
+	return ticket
+}
+
 func request(p *Proxy, method, path, cookie, origin string) *httptest.ResponseRecorder {
-	r := httptest.NewRequest(method, "https://webfig.test"+path, nil)
-	r.Host = "webfig.test"
+	r := httptest.NewRequest(method, "https://webfig.test/", nil)
+	r.URL.Path, r.URL.RawQuery, _ = strings.Cut(path, "?")
+	r.Host = host
 	if cookie != "" {
 		r.AddCookie(&http.Cookie{Name: cookieName, Value: cookie})
 		r.AddCookie(&http.Cookie{Name: "username", Value: "admin"})
@@ -57,10 +71,7 @@ func request(p *Proxy, method, path, cookie, origin string) *httptest.ResponseRe
 
 func openSession(t *testing.T, p *Proxy, g Grant) string {
 	t.Helper()
-	ticket, err := p.store.Issue(g)
-	if err != nil {
-		t.Fatal(err)
-	}
+	ticket := issue(t, p, g)
 	w := request(p, http.MethodGet, openPath+"?ticket="+url.QueryEscape(ticket), "", "")
 	if w.Code != http.StatusFound || w.Header().Get("Location") != "/webfig/" {
 		t.Fatalf("open: %d %q", w.Code, w.Header().Get("Location"))
@@ -82,7 +93,7 @@ func allow(context.Context, Grant) error { return nil }
 func TestTicketWorksOnceAndExpires(t *testing.T) {
 	_, g := fakeRouter(t)
 	p := NewProxy("webfig.test", NewStore(), allow)
-	ticket, _ := p.store.Issue(g)
+	ticket := issue(t, p, g)
 	if w := request(p, http.MethodGet, openPath+"?ticket="+url.QueryEscape(ticket), "", ""); w.Code != http.StatusFound {
 		t.Fatalf("first use: %d", w.Code)
 	}
@@ -91,7 +102,7 @@ func TestTicketWorksOnceAndExpires(t *testing.T) {
 	}
 	now := time.Now()
 	p.store.now = func() time.Time { return now }
-	late, _ := p.store.Issue(g)
+	late := issue(t, p, g)
 	p.store.now = func() time.Time { return now.Add(TicketLifetime) }
 	if w := request(p, http.MethodGet, openPath+"?ticket="+url.QueryEscape(late), "", ""); w.Code != http.StatusUnauthorized {
 		t.Fatalf("expired ticket must fail: %d", w.Code)
@@ -148,7 +159,7 @@ func TestWritesFromOtherOriginsAreRefused(t *testing.T) {
 	rec, g := fakeRouter(t)
 	p := NewProxy("webfig.test", NewStore(), allow)
 	value := openSession(t, p, g)
-	for _, origin := range []string{"", "https://evil.test", "https://megamagic.tech"} {
+	for _, origin := range []string{"", "https://evil.test", "https://megamagic.tech", "https://webfig.test", "https://other.webfig.test"} {
 		if w := request(p, http.MethodPost, "/jsproxy", value, origin); w.Code != http.StatusForbidden {
 			t.Fatalf("origin %q: %d", origin, w.Code)
 		}
@@ -156,7 +167,7 @@ func TestWritesFromOtherOriginsAreRefused(t *testing.T) {
 	if len(rec.hits) != 0 {
 		t.Fatalf("router contacted: %v", rec.hits)
 	}
-	if w := request(p, http.MethodPost, "/jsproxy", value, "https://webfig.test"); w.Code != 200 {
+	if w := request(p, http.MethodPost, "/jsproxy", value, "https://"+host); w.Code != 200 {
 		t.Fatalf("own origin: %d", w.Code)
 	}
 }
@@ -210,8 +221,8 @@ func TestHeldRequestOutlivesServerWriteTimeout(t *testing.T) {
 	defer front.Close()
 	go func() { time.Sleep(700 * time.Millisecond); close(rec.block) }()
 	req, _ := http.NewRequest(http.MethodPost, front.URL+"/jsproxy", strings.NewReader("x"))
-	req.Host = "webfig.test"
-	req.Header.Set("Origin", "https://webfig.test")
+	req.Host = host
+	req.Header.Set("Origin", "https://"+host)
 	req.AddCookie(&http.Cookie{Name: cookieName, Value: value})
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -257,5 +268,151 @@ func TestProxyRejectsUntrustedRouterCertificate(t *testing.T) {
 	w := request(p, http.MethodGet, "/webfig/", cookie, "")
 	if w.Code != http.StatusBadGateway || !strings.Contains(w.Body.String(), "Router certificate could not be verified") {
 		t.Fatalf("expected TLS verification refusal, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestEachSessionIsItsOwnOrigin(t *testing.T) {
+	rec, g := fakeRouter(t)
+	p := NewProxy("webfig.test", NewStore(), allow)
+	first := openSession(t, p, g)
+	firstHost := host
+	second := openSession(t, p, g)
+	if host == firstHost || !strings.HasSuffix(host, ".webfig.test") {
+		t.Fatalf("sessions share an address: %q %q", firstHost, host)
+	}
+	if w := request(p, http.MethodGet, "/webfig/", first, ""); w.Code != http.StatusUnauthorized {
+		t.Fatalf("a session's cookie must not work on another session's address: %d", w.Code)
+	}
+	host = firstHost
+	if w := request(p, http.MethodGet, "/webfig/", second, ""); w.Code != http.StatusUnauthorized {
+		t.Fatalf("second cookie on first address: %d", w.Code)
+	}
+	if w := request(p, http.MethodGet, "/webfig/", first, ""); w.Code != 200 {
+		t.Fatalf("opening a second session must leave the first working: %d", w.Code)
+	}
+	host = "webfig.test"
+	if w := request(p, http.MethodGet, "/webfig/", first, ""); w.Code != http.StatusUnauthorized {
+		t.Fatalf("the bare domain serves no session: %d", w.Code)
+	}
+	if len(rec.hits) != 1 {
+		t.Fatalf("router contacted: %v", rec.hits)
+	}
+}
+
+func TestTicketOnlyWorksOnItsOwnAddress(t *testing.T) {
+	_, g := fakeRouter(t)
+	p := NewProxy("webfig.test", NewStore(), allow)
+	ticket := issue(t, p, g)
+	right := host
+	host = "someone-else.webfig.test"
+	if w := request(p, http.MethodGet, openPath+"?ticket="+url.QueryEscape(ticket), "", ""); w.Code != http.StatusUnauthorized {
+		t.Fatalf("wrong address: %d", w.Code)
+	}
+	host = right
+	if w := request(p, http.MethodGet, openPath+"?ticket="+url.QueryEscape(ticket), "", ""); w.Code != http.StatusUnauthorized {
+		t.Fatalf("a tried ticket stays spent: %d", w.Code)
+	}
+}
+
+func TestRouterRepliesCannotReachOutsideTheSession(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		for _, c := range []string{"__Host-mm_webfig=attacker; Path=/; Secure", "__Secure-x=attacker; Secure", "mm_access=attacker; Domain=megamagic.tech; Path=/", "username=admin; Path=/"} {
+			w.Header().Add("Set-Cookie", c)
+		}
+		for _, name := range []string{"Service-Worker-Allowed", "Clear-Site-Data", "Alt-Svc", "Access-Control-Allow-Origin", "Link"} {
+			w.Header().Set(name, "x")
+		}
+		w.Header().Set("Content-Security-Policy", "frame-ancestors *")
+	}))
+	t.Cleanup(srv.Close)
+	u, _ := url.Parse(srv.URL)
+	h, port, _ := net.SplitHostPort(u.Host)
+	n, _ := strconv.Atoi(port)
+	p := NewProxy("webfig.test", NewStore(), allow)
+	value := openSession(t, p, Grant{Scheme: "http", Host: h, Port: n})
+	w := request(p, http.MethodGet, "/webfig/", value, "")
+	for _, c := range w.Result().Cookies() {
+		if c.Domain != "" || !c.Secure || c.Name == cookieName || strings.HasPrefix(c.Name, "__") {
+			t.Fatalf("unsafe cookie passed: %+v", c)
+		}
+	}
+	names := []string{}
+	for _, c := range w.Result().Cookies() {
+		names = append(names, c.Name)
+	}
+	if strings.Join(names, ",") != "mm_access,username" {
+		t.Fatalf("WebFig's own cookies must still pass, host-only: %v", names)
+	}
+	for _, name := range []string{"Service-Worker-Allowed", "Clear-Site-Data", "Alt-Svc", "Access-Control-Allow-Origin", "Link"} {
+		if w.Header().Get(name) != "" {
+			t.Fatalf("%s passed", name)
+		}
+	}
+	if w.Header().Get("Content-Security-Policy") != "frame-ancestors 'none'" {
+		t.Fatalf("router replaced the safety header: %q", w.Header().Get("Content-Security-Policy"))
+	}
+}
+
+func TestBackgroundScriptsAreRefused(t *testing.T) {
+	rec, g := fakeRouter(t)
+	p := NewProxy("webfig.test", NewStore(), allow)
+	value := openSession(t, p, g)
+	r := httptest.NewRequest(http.MethodGet, "https://webfig.test/webfig/x.js", nil)
+	r.Host = host
+	r.Header.Set("Service-Worker", "script")
+	r.AddCookie(&http.Cookie{Name: cookieName, Value: value})
+	w := httptest.NewRecorder()
+	p.ServeHTTP(w, r)
+	if w.Code != http.StatusForbidden || len(rec.hits) != 0 {
+		t.Fatalf("%d %v", w.Code, rec.hits)
+	}
+}
+
+func TestPathsCannotEscapeTheAllowList(t *testing.T) {
+	rec, g := fakeRouter(t)
+	p := NewProxy("webfig.test", NewStore(), allow)
+	value := openSession(t, p, g)
+	for _, raw := range []string{"/webfig/../rest/system/resource", "/webfig/./x", "/jsproxy/..", `/webfig/..\\rest`, "/webfig/%2e%2e/rest", "/webfig/%252e%252e/rest", "/webfig/..%2frest", "/webfig/%2E%2E%2Frest"} {
+		parsed, err := url.ParseRequestURI(raw)
+		if err != nil {
+			parsed = &url.URL{Path: raw}
+		}
+		r := httptest.NewRequest(http.MethodGet, "https://webfig.test/", nil)
+		r.URL = parsed
+		r.Host = host
+		r.AddCookie(&http.Cookie{Name: cookieName, Value: value})
+		w := httptest.NewRecorder()
+		p.ServeHTTP(w, r)
+		if w.Code != http.StatusNotFound {
+			t.Fatalf("%s: %d", raw, w.Code)
+		}
+	}
+	if len(rec.hits) != 0 {
+		t.Fatalf("router contacted: %v", rec.hits)
+	}
+}
+
+func TestRevokingEndsHeldRequests(t *testing.T) {
+	rec, g := fakeRouter(t)
+	rec.block = make(chan struct{})
+	defer close(rec.block)
+	p := NewProxy("webfig.test", NewStore(), allow)
+	value := openSession(t, p, g)
+	done := make(chan int, 1)
+	go func() { done <- request(p, http.MethodPost, "/jsproxy", value, "https://"+host).Code }()
+	time.Sleep(150 * time.Millisecond)
+	p.store.Revoke(value)
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("a held request kept running after the session was revoked")
+	}
+}
+
+func TestWebFigMustLiveOnItsOwnDomain(t *testing.T) {
+	for raw, want := range map[string]string{"": "", "megamagic.tech": "", "webfig.megamagic.tech": "", "WEBFIG.MEGAMAGIC.TECH": "", "localhost": "", "*.routers.example": "", "routers.example:443": "", " Routers.Example ": "routers.example"} {
+		if got := SafeHost(raw); got != want {
+			t.Fatalf("%q: %q", raw, got)
+		}
 	}
 }
