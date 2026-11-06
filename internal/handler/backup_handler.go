@@ -40,6 +40,9 @@ func (h *BackupHandler) EnableLive(applier provisioner.Applier, otp *provisioner
 	h.otp = otp
 }
 
+func (h *BackupHandler) captureAvailable() bool { return h.applier != nil }
+func (h *BackupHandler) restoreAvailable() bool { return h.applier != nil && h.otp.Configured() }
+
 // ListBackups: GET /api/v1/devices/:id/backups
 func (h *BackupHandler) ListBackups(c *gin.Context) {
 	businessID := auth.GetBusinessID(c)
@@ -70,7 +73,8 @@ func (h *BackupHandler) ListBackups(c *gin.Context) {
 			"created_at": b.CreatedAt,
 		})
 	}
-	c.JSON(http.StatusOK, gin.H{"backups": backups, "count": len(backups)})
+	// The console enables its buttons from these, so they say what these routes would really do.
+	c.JSON(http.StatusOK, gin.H{"backups": backups, "count": len(backups), "capture_available": h.captureAvailable(), "restore_available": h.restoreAvailable()})
 }
 
 // CreateBackup: POST /api/v1/devices/:id/backups  (capture a fresh snapshot)

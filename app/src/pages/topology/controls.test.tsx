@@ -53,6 +53,11 @@ const writes = () => calls.filter((c) => c.method !== "GET");
 
 describe("topology projection for controls", () => {
   const g = project(GW, inventory() as never, [], [AP_RECORD]);
+  it("reads RouterOS 7.25's semicolon as well as a comma between port and bridge", () => {
+    const inv = inventory();
+    (inv.objects as { neighbors: Array<{ values: Record<string, string> }> }).neighbors[0].values.interface = "ether2;bridge1";
+    expect(project(GW, inv as never, [], [AP_RECORD]).devices.find((d) => d.mac === "02:00:00:00:00:20")?.ports).toEqual(["ether2"]);
+  });
   it("shows the port, not the bridge, when the router reports both", () => { expect(g.devices.find((d) => d.mac === "02:00:00:00:00:20")?.ports).toEqual(["ether2"]); });
   it("keeps a platform out of the model field", () => { expect(g.devices.find((d) => d.mac === "02:00:00:00:00:20")).toMatchObject({ model: "cAP ax", platform: "MikroTik" }); });
   it("matches a saved record to what the router reported, adding no node", () => {

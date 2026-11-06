@@ -68,7 +68,22 @@ function CurrentSettings({ inv, kind }: { inv: Inventory; kind: string }) {
   );
 }
 
-function TaskForm({ kind, inv, defaults, routerId, routerName, locked, setLocked, onPending, prefill }: { kind: string; inv: Inventory; defaults: Record<string, string>; routerId: string; routerName: string; locked: boolean; setLocked: (b: boolean) => void; onPending: (revertAt: string) => void; prefill?: URLSearchParams }) {
+/** Who is connected over PPPoE right now, as the router reports it. This is every session, not just paid accounts. */
+function PppSessions({ inv }: { inv: Inventory }) {
+  const { t } = useI18n();
+  if (inv.available?.ppp_active !== true) return null;
+  const rows = objectsOf(inv, "ppp_active").filter((o) => (o.values.service ?? "pppoe") === "pppoe");
+  return (
+    <section className="glass pad stack" aria-label={t("pp.sessions")}>
+      <h3>{t("pp.sessions")} · <span className="num">{rows.length}</span></h3>
+      {!rows.length ? <p className="soft small">{t("pp.noSessions")}</p> : <ul className="stack">
+        {rows.map((o) => <li key={o.id} className="row small"><b>{o.values.name}</b><span className="soft num">{[o.values.address, o.values["caller-id"], o.values.uptime].filter(Boolean).join(" · ")}</span></li>)}
+      </ul>}
+    </section>
+  );
+}
+
+function TaskForm({ kind, inv, defaults, routerId, routerName, locked, setLocked, onPending, onApplied, prefill }: { onApplied: () => void; kind: string; inv: Inventory; defaults: Record<string, string>; routerId: string; routerName: string; locked: boolean; setLocked: (b: boolean) => void; onPending: (revertAt: string) => void; prefill?: URLSearchParams }) {
   const { t, tn } = useI18n();
   const s = schema[kind], list = useMemo(() => listFor(inv, kind), [inv, kind]);
   const [recordId, setRecordId] = useState("");
@@ -140,7 +155,7 @@ function TaskForm({ kind, inv, defaults, routerId, routerName, locked, setLocked
       // Secrets never linger in the form once applied.
       setValues((v) => Object.fromEntries(Object.entries(v).map(([k, x]) => [k, isSecretField(k) ? "" : x])));
       if (data.result.pending_confirm && data.result.revert_at) { onPending(data.result.revert_at); setStatus(t("net.heldApplied")); return; }
-      if (mine === stamp.current) { setStatus(`${t("net.verified")} ${data.result.backup ?? ""}. ${t("net.testClient")}`); setApplied(true); }
+      if (mine === stamp.current) { setStatus(`${t("net.verified")} ${data.result.backup ?? ""}. ${t("net.testClient")}`); setApplied(true); onApplied(); }
     } catch (err) {
       if (isUnauthorized(err)) throw err;
       const rolled = err instanceof ApiError && (err.data as { result?: { rolled_back?: boolean } } | null)?.result?.rolled_back;
@@ -204,6 +219,7 @@ export function NetworkEditor({ workspace, router, canEdit, reason, prefill }: {
   const [locked, setLocked] = useState(false);
   const [pendingAt, setPendingAt] = useState(""), [pendingNote, setPendingNote] = useState("");
   const rev = useRef(0);
+  const formTop = useRef<HTMLElement>(null);
   const readController = useRef<AbortController | null>(null);
   useEffect(() => { setTask(linkedTask(workspace)); }, [workspace, prefill?.get("task")]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -227,6 +243,16 @@ export function NetworkEditor({ workspace, router, canEdit, reason, prefill }: {
   }, [routerId, workspace]);
   useEffect(() => { const generation = rev; void reload(); return () => { generation.current++; readController.current?.abort(); }; }, [reload]);
 
+  // After a change: update the counts and lists without replacing the form, which
+  // is still showing the result. A failed read just leaves the last ones showing.
+  const refreshQuietly = useCallback(async () => {
+    if (!routerId) return;
+    const mine = ++rev.current;
+    try {
+      const data = await api.get<{ inventory: Inventory }>(`/routers/${encodeURIComponent(routerId)}/network/inventory`);
+      if (mine === rev.current) setLoad((l) => (l.kind === "ready" ? { ...l, inv: data.inventory } : l));
+    } catch (err) { if (isUnauthorized(err)) throw err; }
+  }, [routerId]);
   const finishPending = useCallback((message: string) => { setPendingAt(""); setPendingNote(message); void reload(); }, [reload]);
   const [name] = workspaceInfo[workspace];
   const loading = load.kind === "loading";
@@ -261,13 +287,14 @@ export function NetworkEditor({ workspace, router, canEdit, reason, prefill }: {
       {!offline && <div className="row"><span className="soft small">{t("net.loaded")}: {(inv.interfaces ?? []).length} {t("net.interfaces")}</span><button className="pill" type="button" disabled={locked || waiting} onClick={() => void reload()}>{t("net.refresh")}</button></div>}
       {kinds.length > 1 && <div className="tasks compact" role="group" aria-label={tn(name)}>
         {kinds.map((k) => (
-          <button type="button" className="task" key={k} aria-pressed={k === task} disabled={locked || waiting} onClick={() => setTask(k)}>
+          <button type="button" className="task" key={k} aria-pressed={k === task} disabled={locked || waiting} onClick={() => { setTask(k); requestAnimationFrame(() => formTop.current?.scrollIntoView?.({ block: "start", behavior: "smooth" })); }}>
             <b>{tn(schema[k].title)}</b>
-            {!offline && <span className="mute small">{schema[k].menu ? `${objectsOf(inv, schema[k].menu!).length} ${t("net.records")}` : t("net.wizard")}</span>}
+            {!offline && <span className="mute small">{schema[k].menu ? `${listFor(inv, k).length} ${t("net.records")}` : t("net.wizard")}</span>}
           </button>
         ))}
       </div>}
-      <section className="stack" aria-live="polite">
+      {workspace === "pppoe" && !offline && <PppSessions inv={inv} />}
+      <section className="stack" aria-live="polite" ref={formTop} style={{ scrollMarginTop: 80 }}>
         {kinds.length > 1 && <SectionHead level={3} title={tn(s.title)} help={tn(descriptions[task])} />}
         {!offline && <CurrentSettings inv={inv} kind={task} />}
         {blocked ? <Note>{blocked}</Note> : (
@@ -275,7 +302,7 @@ export function NetworkEditor({ workspace, router, canEdit, reason, prefill }: {
             {writeHold && <Note kind="warn">{writeHold}</Note>}
             {!writeHold && (task === "ip_address" || task === "vlan" || task === "remove_network" || task === "edit_network" || task === "move_network") && inv.address_preview_only === true && <Note kind="warn">{t("net.addressPreview")}</Note>}
             <fieldset className="nolock" disabled={offline || !!writeHold || waiting}>
-              <TaskForm key={task + (offline ? "-unavailable" : "-ready")} kind={task} inv={inv} defaults={defaults} routerId={routerId} routerName={router?.hardware_name ?? ""} locked={locked || offline || !!writeHold || waiting} setLocked={setLocked} onPending={(at) => { setPendingNote(""); setPendingAt(at); }} prefill={prefill} />
+              <TaskForm key={task + (offline ? "-unavailable" : "-ready")} onApplied={() => void refreshQuietly()} kind={task} inv={inv} defaults={defaults} routerId={routerId} routerName={router?.hardware_name ?? ""} locked={locked || offline || !!writeHold || waiting} setLocked={setLocked} onPending={(at) => { setPendingNote(""); setPendingAt(at); }} prefill={prefill} />
             </fieldset>
           </>
         )}

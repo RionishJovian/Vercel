@@ -138,12 +138,14 @@ func readWebFigAccess(ctx context.Context, runner CommandRunner, tunnel, sourceC
 	switch {
 	case hasWWW && !www.disabled:
 		access.Service, access.Scheme, row = "www", "http", www
-	case hasSecure && !secure.disabled:
-		access.Service, access.Scheme, row = "www-ssl", "https", secure
 	case hasWWW:
+		// Used even when www-ssl is on: its certificate is rarely trusted for a tunnel
+		// address, so the proxy would refuse it, and the tunnel is already encrypted.
 		access.Service, access.Scheme, row = "www", "http", www
 		access.enableWWW = true
-		access.Plan = append(access.Plan, fmt.Sprintf("Turn on the router's web service (www, port %d) for the Hub address %s only. WebFig is off on this router today.", www.port, sourceIP))
+		access.Plan = append(access.Plan, fmt.Sprintf("Turn on the router's web service (www, port %d) for the Hub address %s only. Traffic stays inside the encrypted Magic Hub tunnel, and nothing else can use it.", www.port, sourceIP))
+	case hasSecure && !secure.disabled:
+		access.Service, access.Scheme, row = "www-ssl", "https", secure
 	default:
 		return access, fmt.Errorf("could not read the router's web services")
 	}

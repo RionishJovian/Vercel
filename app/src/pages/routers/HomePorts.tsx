@@ -4,6 +4,7 @@ import { Note } from "../../components/ui";
 import { Skeleton } from "../../components/Skeleton";
 import { useI18n } from "../../i18n";
 import { fetcher } from "../../lib/api";
+import { keepPolling } from "../../lib/polling";
 import { panelFor } from "../../lib/portPanels";
 import { asArray, type Router } from "../../lib/types";
 import { PortPanelView, type PortState } from "./PortPanel";
@@ -16,7 +17,7 @@ interface PortSnapshot { read_at?: string; resources?: { board_name?: string }; 
 export function HomePorts({ router }: { router: Router }) {
   const { t } = useI18n();
   const { data, error, isLoading, mutate } = useSWR<{ telemetry?: { snapshot?: PortSnapshot } }>(
-    `/routers/${encodeURIComponent(router.device_id)}/telemetry`, fetcher, { refreshInterval: 15000 },
+    `/routers/${encodeURIComponent(router.device_id)}/telemetry`, fetcher, keepPolling(15000),
   );
   const snap = data?.telemetry?.snapshot;
   const [reads, setReads] = useState(0), readAt = snap?.read_at;
