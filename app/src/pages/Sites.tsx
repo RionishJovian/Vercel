@@ -5,22 +5,14 @@ import { asArray, num, type Me } from "../lib/types";
 import { useI18n } from "../i18n";
 import { BackLink, Field, Note, PageHead } from "../components/ui";
 import { Skeleton } from "../components/Skeleton";
+import { connectionIsFresh, stateOf, type Site, type Conn } from "../lib/siteState";
+export { connectionIsFresh } from "../lib/siteState";
 import { errorText } from "../lib/errors";
 
 const SiteMap = lazy(() => import("../components/SiteMap"));
 
-interface Site { site_id: string; name: string; location?: string | null; timezone?: string | null; latitude?: number | null; longitude?: number | null; notes?: string | null; device_count?: number }
-interface Conn { site_id?: string | null; cloud_status?: string; cloud_last_seen_at?: string }
 const EDITORS = ["OWNER", "ADMIN", "DEVELOPER"];
 const SELECTED = "mm_selected_site";
-
-/** A path is live only when its last report is recent (5 minutes) and not from the future. */
-export function connectionIsFresh(c: Conn, now = Date.now()): boolean {
-  const seen = Date.parse(c.cloud_last_seen_at ?? "");
-  return String(c.cloud_status ?? "").toLowerCase() === "online" && Number.isFinite(seen) && seen <= now + 30000 && now - seen <= 300000;
-}
-type PathState = "online" | "offline" | "unassigned";
-const stateOf = (site: Site, conns: Conn[]): PathState => { const p = conns.filter((c) => c.site_id === site.site_id); return p.some((c) => connectionIsFresh(c)) ? "online" : p.length ? "offline" : "unassigned"; };
 
 function SiteForm({ site, coords, setCoords, onDone, onCancel }: { site: Site | null; coords: { lat: string; lng: string }; setCoords: (c: { lat: string; lng: string }) => void; onDone: () => void; onCancel: () => void }) {
   const { t } = useI18n();

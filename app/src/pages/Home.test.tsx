@@ -7,6 +7,7 @@ import type { Me } from "../lib/types";
 type FleetResult = { data?: unknown; error?: unknown; isLoading: boolean };
 let fleet: FleetResult;
 let report: { status: number; body: unknown }, routers: unknown;
+vi.mock("../components/SiteMap", () => ({ default: ({ home }: { home: boolean }) => <div role="region" aria-label={home ? "Myanmar map with Starlink on" : "Site map"} /> }));
 vi.mock("../lib/useFleet", () => ({ useFleet: () => fleet }));
 import { Home } from "./Home";
 
@@ -24,6 +25,8 @@ beforeEach(() => {
   vi.stubGlobal("fetch", vi.fn(async (url: string) => {
     const path = String(url).replace("/api/v1", "");
     if (path === "/voucher-report") return json(report.status, report.body);
+    if (path === "/sites") return json(200, { sites: [] });
+    if (path === "/router-connections") return json(200, { connections: [] });
     if (path === "/routers") return json(200, routers);
     return json(404, {});
   }));
@@ -33,12 +36,13 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 const open = () => render(<SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0, shouldRetryOnError: false }}><I18nProvider><Home me={me} /></I18nProvider></SWRConfig>);
 
 describe("Home", () => {
-  it("greets the owner by name and shows today's revenue against their own average", async () => {
+  it("greets the owner by name and shows the Myanmar map and ports before the stock card", async () => {
     open();
     expect(screen.getByRole("heading", { level: 1 }).textContent).toContain("Daw Mya");
-    expect(await screen.findByText("12,500")).toBeTruthy();   // today
-    expect(screen.getByText("70,000")).toBeTruthy();           // last 7 days
-    expect(screen.getByText("300,000")).toBeTruthy();          // last 30 days
+    const map = await screen.findByRole("region", { name: "Myanmar map with Starlink on" });
+    const ports = screen.getByRole("heading", { name: "Ports" });
+    expect(map.compareDocumentPosition(ports) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByText("12,500")).toBeNull();
     expect(screen.getByText("40")).toBeTruthy();               // vouchers ready
   });
 

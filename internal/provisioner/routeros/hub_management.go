@@ -2,6 +2,7 @@ package routeros
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"net"
 	"strings"
@@ -44,9 +45,8 @@ func readHubHealth(ctx context.Context, r CommandRunner) map[string]string {
 	return result
 }
 
-// These operations deliberately own a small, explicit scope. "Shield" removes
-// one reviewed HotSpot exemption, not MAC spoofing protection or a paid-login
-// bypass. No default firewall, WAN, management or voucher rule is adopted.
+// Each protection owns a narrow rule or a reviewed HotSpot binding.
+// Default firewall, WAN, management and voucher rules remain outside its scope.
 func buildHubManagementPlan(ctx context.Context, r CommandRunner, req NetworkRequest) ([]networkStep, []string, error) {
 	v := req.Values
 	if v["disabled"] != "yes" && v["disabled"] != "no" {
@@ -121,7 +121,7 @@ func buildHubManagementPlan(ctx context.Context, r CommandRunner, req NetworkReq
 				return nil, nil, fmt.Errorf("dynamic rules cannot be changed")
 			}
 			if v["disabled"] == "no" {
-				first, e := r.Run(ctx, `:put [:pick [/ip firewall filter find] 0]`)
+				first, e := r.Run(ctx, `:put [:pick [/ip firewall filter find where dynamic=no and chain=input] 0]`)
 				if e != nil || strings.TrimSpace(first) != req.ID {
 					return nil, nil, fmt.Errorf("protection rule is no longer first; review rule ordering separately")
 				}
@@ -132,25 +132,97 @@ func buildHubManagementPlan(ctx context.Context, r CommandRunner, req NetworkReq
 		}
 		warnings = append(warnings, "Asymmetric routing can classify legitimate packets as invalid; review the routing design first. This drops invalid IPv4 input on one port only. It is not a complete firewall, IPv6 policy, or an internet access switch. Turning it off preserves all other rules.")
 	case "shield":
-		// Only disable a selected bypass; never create/re-enable an exemption.
-		if req.ID == "" || v["disabled"] != "yes" {
-			return nil, nil, fmt.Errorf("select one active bypass to disable; creating or enabling bypasses is not supported")
+		if req.ID == "" {
+			return nil, nil, fmt.Errorf("select a HotSpot bypass binding")
 		}
 		old, e := networkReadOne(ctx, r, "bindings", req.ID, map[string]string{"type": "", "comment": "", "disabled": "", "mac-address": "", "address": "", "server": ""})
 		if e != nil {
 			return nil, nil, e
 		}
-		if old["type"] != "bypassed" || networkBool(old["disabled"]) != "no" {
-			return nil, nil, fmt.Errorf("select an active bypass binding")
+		if old["type"] != "bypassed" {
+			return nil, nil, fmt.Errorf("select a bypass binding")
 		}
-		if strings.HasPrefix(strings.ToLower(old["comment"]), "mm-") {
-			return nil, nil, fmt.Errorf("managed exemptions require their owning workflow; this control cannot change them")
+		const prefix = "mm-shield:"
+		markerFor := func(comment string) string {
+			sum := sha256.Sum256([]byte(strings.Join([]string{req.ID, old["mac-address"], old["address"], old["server"], comment}, "\x00")))
+			return fmt.Sprintf("%s%x:%s", prefix, sum[:8], comment)
 		}
-		old["disabled"] = "yes"
-		if e := edit("bindings", req.ID, "Disable the selected HotSpot bypass; the client must use normal portal login", old); e != nil {
+		// Include the binding identity in the review fingerprint and the stored marker.
+		comment := old["comment"]
+		if v["disabled"] == "yes" {
+			if networkBool(old["disabled"]) != "no" || strings.HasPrefix(strings.ToLower(comment), "mm-") || len(comment) > 200 {
+				return nil, nil, fmt.Errorf("select an active, unmanaged bypass with a short comment")
+			}
+			old["comment"] = markerFor(comment)
+		} else {
+			_, original, ok := strings.Cut(strings.TrimPrefix(comment, prefix), ":")
+			if !ok || !strings.HasPrefix(comment, prefix) || markerFor(original) != comment || networkBool(old["disabled"]) != "yes" {
+				return nil, nil, fmt.Errorf("only a binding previously disabled by this shield can be restored")
+			}
+			old["comment"] = original
+		}
+		old["disabled"] = v["disabled"]
+		if e := edit("bindings", req.ID, "Change the selected HotSpot bypass binding only", old); e != nil {
 			return nil, nil, e
 		}
-		warnings = append(warnings, "This client may lose its exempt internet access. Active sessions may continue until reauthentication. Other bindings, walled-garden rules and managed grace access are unchanged; this does not prove the entire portal is bypass-proof.")
+		warnings = append(warnings, "Restoring an exemption lets this client bypass normal HotSpot login. Existing sessions may continue until reauthentication. Managed grace access and other bindings are unchanged.")
+	case "guest_vpn":
+		if req.ID != "" {
+			return nil, nil, fmt.Errorf("this control manages its own firewall rule")
+		}
+		hotspots, e := read("hotspots")
+		if e != nil {
+			return nil, nil, e
+		}
+		var interfaces []string
+		for _, h := range hotspots {
+			if networkBool(h.Values["disabled"]) == "no" {
+				interfaces = append(interfaces, h.Values["interface"])
+			}
+		}
+		if len(interfaces) != 1 || !gatewayInterfacePattern.MatchString(interfaces[0]) || strings.HasPrefix(interfaces[0], "mmh-") {
+			return nil, nil, fmt.Errorf("guest VPN restriction requires exactly one enabled HotSpot on a guest interface")
+		}
+		const marker = "mm-guest-vpn-udp"
+		desired := map[string]string{"chain": "forward", "action": "drop", "hotspot": "from-client", "in-interface": interfaces[0], "protocol": "udp", "dst-port": "500,1194,1701,4500,51820", "comment": marker, "disabled": v["disabled"]}
+		filters, e := read("filters")
+		if e != nil {
+			return nil, nil, e
+		}
+		var existing string
+		for _, rule := range filters {
+			if rule.Values["comment"] != marker {
+				continue
+			}
+			if existing != "" || networkBool(rule.Values["dynamic"]) != "no" {
+				return nil, nil, fmt.Errorf("guest VPN rule is ambiguous or dynamic")
+			}
+			for key, value := range desired {
+				if key != "disabled" && !networkEqual(key, rule.Values[key], value) {
+					return nil, nil, fmt.Errorf("guest VPN rule changed; review it on the router first")
+				}
+			}
+			existing = rule.ID
+		}
+		if existing == "" {
+			if v["disabled"] == "yes" {
+				return nil, nil, fmt.Errorf("guest VPN restriction is already off")
+			}
+			if e = add("filters", "comment", marker, "Restrict common UDP VPN ports on forwarded HotSpot traffic", desired, true); e != nil {
+				return nil, nil, e
+			}
+		} else {
+			if v["disabled"] == "no" {
+				first, e := r.Run(ctx, `:put [:pick [/ip firewall filter find where dynamic=no and chain=forward] 0]`)
+				if e != nil || strings.TrimSpace(first) != existing {
+					return nil, nil, fmt.Errorf("guest VPN rule is no longer the first static forward rule")
+				}
+			}
+			if e = edit("filters", existing, "Toggle the managed guest VPN rule", map[string]string{"disabled": v["disabled"]}); e != nil {
+				return nil, nil, e
+			}
+		}
+		warnings = append(warnings, "IPv4 HotSpot forward traffic only. Blocks UDP destination ports 500, 1194, 1701, 4500 and 51820. Other VPN ports, HTTPS tunnels, IPv6 and already-fasttracked connections may continue. Turning this off removes only this restriction.")
 	case "fairshare":
 		name := v["name"]
 		if !gatewayNamePattern.MatchString(name) {

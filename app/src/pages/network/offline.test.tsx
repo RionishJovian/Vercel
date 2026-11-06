@@ -31,13 +31,13 @@ describe("network pages without a usable router", () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ routers: [] }), { status: 200, headers: { "content-type": "application/json" } })));
     const { container } = wrap(<SWRConfig value={{ provider: () => new Map(), shouldRetryOnError: false }}><Network me={{ user: { user_role: "OWNER" } } as never} sub="" /></SWRConfig>);
     await screen.findByText(/No router is connected to this account/);
-    expect(container.querySelectorAll(".task").length).toBeGreaterThan(0);
+    expect(container.querySelector("fieldset.nolock")).toBeTruthy();
     expect(container.querySelector('a[href="#/network/new"]')).toBeTruthy();
   });
   it("shows the settings while the router read is still pending, with changes locked", async () => {
     vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
     const { container } = wrap(<NetworkEditor workspace="wan" canEdit router={router} />);
-    expect(container.querySelectorAll(".task").length).toBeGreaterThan(0);
+    expect(container.querySelector("fieldset.nolock")).toBeTruthy();
     expect((container.querySelector("fieldset.nolock") as HTMLFieldSetElement).disabled).toBe(true);
   });
 
