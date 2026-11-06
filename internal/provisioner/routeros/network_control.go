@@ -397,6 +397,22 @@ var networkPending sync.Map
 // owned selectors. This map is guarded by the per-device gateway lock.
 var networkGuardUntil sync.Map
 
+// activeJobsCommand counts everything that could still change the router: all
+// scripts, and every session of the app's own account. An administrator's open
+// terminal or WinBox window is a login, not work in progress, so it is left out.
+func activeJobsCommand(user string) string {
+	return "/system script job print count-only where type!=login or owner=" + routerOSQuoted(user)
+}
+
+// activeJobsQuery falls back to the strict count, which refuses when anything
+// else is open, if the management account cannot be read.
+func (a *DeviceApplier) activeJobsQuery(ctx context.Context, businessID, deviceID string) string {
+	if t, err := a.src.TargetForDevice(ctx, businessID, deviceID); err == nil && t != nil && strings.TrimSpace(t.User) != "" {
+		return activeJobsCommand(t.User)
+	}
+	return "/system script job print count-only"
+}
+
 func (a *DeviceApplier) PreviewNetwork(ctx context.Context, businessID, deviceID string, request NetworkRequest) (NetworkReview, error) {
 	r, err := runnerForDevice(ctx, a.src, a.factory, a.timeout, businessID, deviceID)
 	if err != nil {
@@ -620,8 +636,8 @@ func (a *DeviceApplier) ApplyNetwork(ctx context.Context, businessID, deviceID s
 	if len(steps) == 1 && steps[0].Action != "" {
 		return runDeviceAction(ctx, r, steps[0])
 	}
-	jobs, e := networkCount(ctx, r, "/system script job print count-only")
 	// RouterOS includes the current SSH script itself in this count.
+	jobs, e := networkCount(ctx, r, a.activeJobsQuery(ctx, businessID, deviceID))
 	if e != nil || jobs != 1 {
 		return result, fmt.Errorf("router has an active script job; wait for it to finish before changing network settings")
 	}
