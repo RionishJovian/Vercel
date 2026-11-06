@@ -7,6 +7,7 @@ import { useI18n } from "../../i18n";
 import { BackLink, Note, PageHead } from "../../components/ui";
 import { Skeleton } from "../../components/Skeleton";
 import { AddGateway } from "../hub";
+import { Wizard } from "../network/Wizard";
 import { Enrollment } from "../hub/Enrollment";
 import { enrollmentUnavailableKey } from "../hub/messages";
 import { setupStatus, type GatewayLike } from "./status";
@@ -27,16 +28,20 @@ export function QuickSetup({ me }: { me: Me }) {
   const cap = useSWR<Capability>(canEdit ? "/vps/enrollment-capability" : null, fetcher, { shouldRetryOnError: false });
   const [picked, setPicked] = useState(read());
   const back = <BackLink href="#/router">{t("title.router")}</BackLink>;
-  if (routers.isLoading || sitesRes.isLoading) return <>{back}<Skeleton h={300} /></>;
-  if (routers.error || sitesRes.error) return <>{back}<Note kind="bad">{t("c.loadFailed")}</Note></>;
-
   const sites = asArray<{ site_id: string; name: string }>(sitesRes.data?.sites);
   const gateways = asArray<GW>(routers.data?.routers).filter((r) => r.deployment_layer === "MAIN_GATEWAY");
   const states = new Map(asArray<{ device_id?: string; state?: string }>(fleet.data?.peers).map((p) => [p.device_id, String(p.state ?? "unknown").toLowerCase()]));
-  const status = setupStatus({ sites: sites.length, gateways, selected: picked, states });
+  const connectedStatus = setupStatus({ sites: sites.length, gateways, selected: picked, states });
+  const connectedRouter = connectedStatus.router as GW | undefined;
+  // Read what the router itself has. Only after management access is verified, and only for people who can act on it.
+  const profiles = useSWR<{ profiles?: string[] }>(canEdit && connectedRouter?.management_connected ? `/routers/${encodeURIComponent(connectedRouter.device_id)}/portal/profiles` : null, fetcher, { shouldRetryOnError: false });
+  if (routers.isLoading || sitesRes.isLoading) return <>{back}<Skeleton h={300} /></>;
+  if (routers.error || sitesRes.error) return <>{back}<Note kind="bad">{t("c.loadFailed")}</Note></>;
+
+  const status = setupStatus({ sites: sites.length, gateways, selected: picked, states, hotspotProfiles: profiles.data ? asArray<string>(profiles.data.profiles).length : undefined });
   const router = status.router as GW | undefined;
   const current = status.steps.find((s) => s.state === "current")?.key;
-  const refresh = () => { void routers.mutate(); void fleet.mutate(); };
+  const refresh = () => { void routers.mutate(); void fleet.mutate(); void profiles.mutate(); };
   const pick = (id: string) => { setPicked(id); try { if (id) sessionStorage.setItem(KEY, id); } catch { /* ignore */ } };
   const capability = cap.data ?? { available: false, code: "capability_unavailable" };
 
@@ -73,11 +78,19 @@ export function QuickSetup({ me }: { me: Me }) {
         <Enrollment id={router.device_id} onVerified={refresh} />
       ) : <Note>{t(enrollmentUnavailableKey(capability.code))}</Note>)}
 
+      {router && status.steps[1].state === "done" && <Note kind={status.live ? "ok" : "warn"}>{t("hub.connected")} {status.live ? t("qs.live") : t("qs.notLive")}</Note>}
+
+      {current === "hotspot" && router && (
+        <>
+          {profiles.error && <Note kind="warn">{t("qs.profilesUnread")}</Note>}
+          <Wizard key={router.device_id} router={router} canEdit={canEdit} reason={status.live ? undefined : t("qs.notLive")} compact onApplied={refresh} />
+        </>
+      )}
+
       {!current && router && (
         <section className="glass pad stack" aria-live="polite">
-          <Note kind="ok">{t("hub.connected")}</Note>
-          <p className="soft small">{status.live ? t("qs.live") : t("qs.notLive")}</p>
-          <a className="btn" href="#/network/new">{t("qs.nextHotspot")}</a>
+          <Note kind="ok">{t("qs.hotspotDone")}</Note>
+          <a className="btn" href="#/vouchers/guest">{t("qs.nextGuest")}</a>
         </section>
       )}
     </>

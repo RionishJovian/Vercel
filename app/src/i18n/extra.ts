@@ -1,6 +1,7 @@
 // Strings added by the React app. Burmese is a first draft for native-speaker review.
 const extra = {
   en: {
+    "nw.advanced": "Advanced (optional)", "qs.s.hotspot": "Hotspot network", "qs.hotspotDone": "The router has a Hotspot login profile.", "qs.nextGuest": "Next: Guest page", "qs.profilesUnread": "Could not read the router's Hotspot profiles, so this step cannot be confirmed yet.",
     "qs.title": "Quick setup", "qs.lead": "From a new router to a working guest Wi-Fi page, one step at a time. Each step is marked done only when the app has confirmed it.", "qs.progress": "Setup progress", "qs.s.site": "Site", "qs.s.connect": "Connect router", "qs.needSite": "Add a site first. Your router belongs to a site.", "qs.live": "The router answers through Magic Hub right now.", "qs.notLive": "The router is connected but is not answering right now. Check its power and internet before changing its settings.", "qs.nextHotspot": "Next: Hotspot network",
     "pp.sessions": "Connected now", "pp.noSessions": "No PPPoE clients are connected right now.",
     "wf.title": "WebFig Cloud Access",
@@ -157,6 +158,7 @@ const extra = {
     "md.sub": "Advice only. It never changes your network.", "md.hello": "Ask about your devices, Jellyfin, or where things are in the app.", "md.p1": "How are my devices doing?", "md.p2": "Where do I add the Jellyfin library?", "md.p3": "Where do I connect the gateway?", "md.you": "You", "md.thinking": "Thinking…", "md.ask": "What can I help with?", "md.note": "Advice only. Nothing is changed.", "md.send": "Send", "md.close": "Close Magic Dude", "md.empty": "No answer yet. Please ask again.", "md.locked": "Magic Dude needs an unlock key. Ask your owner or admin.", "md.limit": "The AI usage limit is full. Try again later.", "md.fail": "No answer right now. Please try again. Nothing was changed.", "md.failNote": "The question could not be sent.",
   },
   my: {
+    "nw.advanced": "အဆင့်မြင့် (မဖြစ်မနေမလို)", "qs.s.hotspot": "Hotspot ကွန်ယက်", "qs.hotspotDone": "Router တွင် Hotspot login profile ရှိပြီ။", "qs.nextGuest": "နောက်တစ်ဆင့်: Guest စာမျက်နှာ", "qs.profilesUnread": "Router ၏ Hotspot profile များကို မဖတ်နိုင်သဖြင့် ဤအဆင့်ကို မအတည်ပြုနိုင်သေးပါ။",
     "qs.title": "အမြန်စနစ်ထည့်သွင်းမှု", "qs.lead": "ရောက်စ router မှ အလုပ်လုပ်သော guest Wi-Fi စာမျက်နှာအထိ တစ်ဆင့်ချင်း။ အက်ပ်က အတည်ပြုပြီးမှသာ အဆင့်တစ်ခုကို ပြီးစီးသည်ဟု မှတ်သည်။", "qs.progress": "စနစ်ထည့်သွင်းမှု တိုးတက်မှု", "qs.s.site": "ဆိုက်", "qs.s.connect": "Router ချိတ်ဆက်ရန်", "qs.needSite": "အရင်ဆုံး ဆိုက်တစ်ခု ထည့်ပါ။ သင့် router သည် ဆိုက်တစ်ခုနှင့် သက်ဆိုင်သည်။", "qs.live": "Router သည် Magic Hub မှတစ်ဆင့် ယခု တုံ့ပြန်နေသည်။", "qs.notLive": "Router ချိတ်ဆက်ထားသော်လည်း ယခု မတုံ့ပြန်ပါ။ ဆက်တင်မပြောင်းမီ ၎င်း၏ ဓာတ်အားနှင့် အင်တာနက်ကို စစ်ပါ။", "qs.nextHotspot": "နောက်တစ်ဆင့်: Hotspot ကွန်ယက်",
     "pp.sessions": "ယခု ချိတ်ဆက်ထားသည်", "pp.noSessions": "ယခု ချိတ်ဆက်ထားသော PPPoE client မရှိပါ။",
     "wf.title": "WebFig Cloud Access",

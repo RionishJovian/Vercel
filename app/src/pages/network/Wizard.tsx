@@ -12,7 +12,7 @@ interface Approved { request: Record<string, unknown>; steps: string[]; confirma
 const LAN_TYPES = ["ether", "bridge", "bond", "vlan", "wlan", "wifi", "wireless"];
 
 /** Creates a separate customer LAN with DHCP and an optional Hotspot. It never touches the uplink, default route or management. */
-export function Wizard({ router, canEdit, reason }: { router?: RouterRow; canEdit: boolean; reason?: string }) {
+export function Wizard({ router, canEdit, reason, compact, onApplied }: { router?: RouterRow; canEdit: boolean; reason?: string; compact?: boolean; onApplied?: () => void }) {
   const { t } = useI18n();
   const [load, setLoad] = useState<{ k: "loading" } | { k: "error"; msg: string } | { k: "ready"; ifaces: Iface[]; d: Defaults }>(router ? { k: "loading" } : { k: "error", msg: "" });
   const [approved, setApproved] = useState<Approved | null>(null), [status, setStatus] = useState<{ kind: "" | "ok" | "warn"; text: string }>({ kind: "", text: "" });
@@ -64,6 +64,7 @@ export function Wizard({ router, canEdit, reason }: { router?: RouterRow; canEdi
       const r = await api.post<{ result?: { verified?: boolean; backup?: string } }>(base + "apply", request);
       if (r.result?.verified !== true) throw new Error(t("nw.notVerified"));
       if (form.current) (form.current.elements.namedItem("radius_secret") as HTMLInputElement).value = "";
+      onApplied?.();
       setStatus({ kind: "ok", text: `${t("nw.applied")} ${t("nw.backup")}: ${r.result.backup ?? ""}. ${t("nw.testGuest")}` });
     } catch (err) {
       if (isUnauthorized(err)) throw err;
@@ -72,6 +73,14 @@ export function Wizard({ router, canEdit, reason }: { router?: RouterRow; canEdi
     }
     setApplying(false);
   }
+
+  const vlanField = <label className="field"><span>{t("nw.vlan")}</span><input className="input" name="vlan_id" type="number" min={0} max={4094} defaultValue={0} /></label>;
+  const dnsField = <label className="field"><span>{t("nw.dns")}</span><input className="input" name="dns_servers" required defaultValue="1.1.1.1, 8.8.8.8" /></label>;
+  const radiusFields = <>
+    <label className="field"><span>{t("nw.radius")}</span><input className="input" name="radius_address" placeholder="10.0.0.10" autoComplete="off" /></label>
+    <label className="field"><span>{t("nw.radiusSecret")}</span><input className="input" name="radius_secret" type="password" minLength={8} maxLength={128} autoComplete="new-password" /></label>
+    <Hint>{t("nw.radiusHelp")}</Hint>
+  </>;
 
   return (
     <form key={load.k} ref={form} className="stack nwform" onSubmit={preview} onInput={invalidate} onChange={invalidate}>
@@ -86,8 +95,8 @@ export function Wizard({ router, canEdit, reason }: { router?: RouterRow; canEdi
         <label className="field"><span>{t("nw.name")}</span><input className="input" name="name" required maxLength={24} pattern="[A-Za-z0-9][A-Za-z0-9_\-]*" defaultValue={d.name || "guest-lan"} /></label>
         <label className="field"><span>{t("nw.uplink")}</span><select className="input" name="wan_interface" required>{opt(ifaces.filter((i) => i.type !== "loopback"))}</select></label>
         <label className="field"><span>{t("nw.lan")}</span><select className="input" name="lan_interface" required>{opt(ifaces.filter((i) => LAN_TYPES.includes(i.type ?? "")))}</select></label>
-        <label className="field"><span>{t("nw.vlan")}</span><input className="input" name="vlan_id" type="number" min={0} max={4094} defaultValue={0} /></label>
-        <Hint>{t("nw.lanHelp")} {t("nw.vlanHelp")}</Hint>
+        {compact ? <details className="adv"><summary>{t("nw.advanced")}</summary><div className="stack">{vlanField}<Hint>{t("nw.vlanHelp")}</Hint></div></details> : vlanField}
+        <Hint>{t("nw.lanHelp")}{compact ? "" : " " + t("nw.vlanHelp")}</Hint>
       </fieldset>
       <fieldset className="glass pad stack fs" disabled={applying || !!offline}>
         <legend>{t("nw.addresses")}{d.gateway_cidr ? ` · ${d.gateway_cidr} (${t("nw.suggested")})` : ""}</legend>
@@ -96,15 +105,13 @@ export function Wizard({ router, canEdit, reason }: { router?: RouterRow; canEdi
           <label className="field"><span>{t("nw.poolStart")}</span><input className="input" name="pool_start" required defaultValue={d.pool_start || ""} placeholder="192.168.50.10" /></label>
           <label className="field"><span>{t("nw.poolEnd")}</span><input className="input" name="pool_end" required defaultValue={d.pool_end || ""} placeholder="192.168.50.250" /></label>
         </div>
-        <label className="field"><span>{t("nw.dns")}</span><input className="input" name="dns_servers" required defaultValue="1.1.1.1, 8.8.8.8" /></label>
+        {compact ? <details className="adv"><summary>{t("nw.advanced")}</summary>{dnsField}</details> : dnsField}
         <Hint>{t("nw.addrHelp")}</Hint>
       </fieldset>
       <fieldset className="glass pad stack fs" disabled={applying || !!offline}>
         <legend>{t("nw.hotspotTitle")}</legend>
         <label className="check"><span>{t("nw.hotspot")}</span><input type="checkbox" name="hotspot" defaultChecked /></label>
-        <label className="field"><span>{t("nw.radius")}</span><input className="input" name="radius_address" placeholder="10.0.0.10" autoComplete="off" /></label>
-        <label className="field"><span>{t("nw.radiusSecret")}</span><input className="input" name="radius_secret" type="password" minLength={8} maxLength={128} autoComplete="new-password" /></label>
-        <Hint>{t("nw.radiusHelp")}</Hint>
+        {compact ? <details className="adv"><summary>{t("nw.advanced")}</summary><div className="stack">{radiusFields}</div></details> : radiusFields}
       </fieldset>
       <button className="btn" type="submit" disabled={busy || applying || !!offline}>{t("nw.preview")}</button>
       {status.text && <p className={"note " + status.kind} role="status" aria-live="polite">{status.text}</p>}
