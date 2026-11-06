@@ -36,12 +36,13 @@ const AIUsage = lazy(() => import("./pages/dev/AIUsage").then(m => ({ default: m
 const UnlockKeys = lazy(() => import("./pages/dev/UnlockKeys").then(m => ({ default: m.UnlockKeys })));
 const Translations = lazy(() => import("./pages/dev/Translations").then(m => ({ default: m.Translations })));
 const Coins = lazy(() => import("./pages/dev/Coins").then(m => ({ default: m.Coins })));
+const QuickSetup = lazy(() => import("./pages/setup").then(m => ({ default: m.QuickSetup })));
 const Team = lazy(() => import("./pages/dev/Team").then(m => ({ default: m.Team })));
 import { Skeleton } from "./components/Skeleton";
 
 const PAGE_TITLES: Record<string, string> = {
   home: "title.home", router: "title.router", vouchers: "title.vouchers", jellyfin: "title.jellyfin", more: "title.more", revenue: "title.revenue", store: "title.store",
-  platform: "title.platform", network: "title.network", sites: "title.sites", fleet: "fl.title", guests: "gu.title", incidents: "inc.title", events: "ev.title", security: "sec.title",
+  platform: "title.platform", setup: "qs.title", network: "title.network", sites: "title.sites", fleet: "fl.title", guests: "gu.title", incidents: "inc.title", events: "ev.title", security: "sec.title",
   backups: "bk.title", topology: "tp.title", devices: "dv.title", "managed-devices": "dm.title", profile: "pf.title", guide: "gd.title", hub: "hub.title", templates: "dev.tpl.title",
   termlog: "dev.tl.title", scans: "dev.sc.title", aiusage: "dev.ai.title", unlockkeys: "dev.uk.title", i18n: "dev.tr.title", coins: "dev.co.title", team: "dev.tm.title",
 };
@@ -95,6 +96,7 @@ export function App() {
     case "team": page = <Team />; tab = "more"; break;
     case "managed-devices": page = <ManagedDevices me={me} />; tab = "more"; break;
     case "hub": page = <Hub me={me} />; tab = "more"; break;
+    case "setup": page = <QuickSetup me={me} />; tab = "router"; break;
     case "store": page = <Store me={me} />; tab = "more"; break;
     case "platform": page = <Platform me={me} sub={route.sub} />; tab = "more"; break;
     case "vouchers": page = <Vouchers sub={route.sub} />; break;

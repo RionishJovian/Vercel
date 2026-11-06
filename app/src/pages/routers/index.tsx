@@ -38,7 +38,7 @@ export function Routers({ sub, params }: { sub: string; params: URLSearchParams 
     <>
       <h1>{t("title.router")}</h1>
       {tabs}
-      {!list.length && <Note>{t("r.empty")}</Note>}
+      {!list.length && <Note>{t("r.empty")} <a className="link" href="#/setup">{t("qs.title")}</a></Note>}
       <div className="router-grid">
         {list.map((d) => (
           <a className="glass pad router-card" key={d.device_id} href={"#/router/" + encodeURIComponent(d.device_id)}>
