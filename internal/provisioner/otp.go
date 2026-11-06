@@ -105,6 +105,18 @@ func NewTOTPVerifierWithProvider(cfg TOTPConfig, secrets OtpSecretProvider) *TOT
 
 var _ OtpVerifier = (*TOTPVerifier)(nil)
 
+// Configured reports whether a code could ever be accepted. Without a secret every
+// code is refused, so anything that needs one is not really available.
+func (v *TOTPVerifier) Configured() bool {
+	if v == nil {
+		return false
+	}
+	if shared, ok := v.secrets.(SharedOtpSecret); ok {
+		return len(shared.Secret) > 0
+	}
+	return v.secrets != nil
+}
+
 // Verify implements provisioner.OtpVerifier. It returns true only for a code
 // that matches the peer's secret within the accepted window AND has not already
 // been accepted for that step. Every failure path returns (false, nil).

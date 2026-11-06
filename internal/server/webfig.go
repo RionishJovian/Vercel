@@ -1,8 +1,10 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"net/http"
+	"time"
 
 	"mega-magic/internal/config"
 	"mega-magic/internal/database"
@@ -31,10 +33,16 @@ func configureWebFig(h *handler.SecurityHandler, db *database.DB, cfg *config.Co
 	router := routeros.NewDeviceApplier(targets, appCfg.Timeout, nil, appCfg.Interface, appCfg.ListenPortRotateTo, appCfg.ResetHold)
 	store := webfig.NewStore()
 	h.EnableWebFig(router, targets, store, host, cfg.WireGuard.ManagementSourceCIDR)
-	return webfig.NewProxy(host, store, handler.WebFigChecker(db, targets)), nil
+	var passAccess func(context.Context, string) (bool, error)
+	if cfg.Billing.IndividualPassesEnabled {
+		passAccess = func(ctx context.Context, businessID string) (bool, error) {
+			return database.AccountPassBusinessAccess(ctx, db, businessID, time.Now().UTC())
+		}
+	}
+	return webfig.NewProxy(host, store, handler.WebFigChecker(db, targets, passAccess)), nil
 }
 
-// withWebFigHost sends only the WebFig hostname to the proxy, before any
+// withWebFigHost sends only the WebFig domain and its subdomains to the proxy, before any
 // application route or middleware. No other host can reach a router this way, and
 // the WebFig host cannot reach the application.
 func withWebFigHost(proxy *webfig.Proxy, app http.Handler) http.Handler {

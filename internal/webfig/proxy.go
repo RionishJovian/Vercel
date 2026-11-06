@@ -25,8 +25,8 @@ const (
 // at this address. Any error ends the session.
 type Checker func(context.Context, Grant) error
 
-// Proxy serves only the WebFig hostname. It has no route to the application and
-// never sees the application's cookies, which are host-only on the main domain.
+// Proxy serves only the WebFig domain and its session subdomains. It has no route
+// to the application, and that domain shares nothing with the application's.
 type Proxy struct {
 	host      string
 	store     *Store
@@ -55,11 +55,62 @@ func newTransport() *http.Transport {
 
 // Handles reports whether a request belongs to this proxy.
 func (p *Proxy) Handles(r *http.Request) bool {
-	host := r.Host
-	if h, _, err := net.SplitHostPort(host); err == nil {
-		host = h
+	host := strings.ToLower(requestHost(r))
+	return host == p.host || strings.HasSuffix(host, "."+p.host)
+}
+
+func requestHost(r *http.Request) string {
+	if h, _, err := net.SplitHostPort(r.Host); err == nil {
+		return h
 	}
-	return strings.EqualFold(host, p.host)
+	return r.Host
+}
+
+// label is the session subdomain this request came in on. Empty for anything else.
+func (p *Proxy) label(r *http.Request) string {
+	label, found := strings.CutSuffix(strings.ToLower(requestHost(r)), "."+p.host)
+	if !found || label == "" || strings.Contains(label, ".") {
+		return ""
+	}
+	return label
+}
+
+// safePath refuses anything a router's web server could read as a different path
+// than the allow-list saw, including when it is encoded.
+func safePath(r *http.Request) bool {
+	for _, value := range []string{r.URL.Path, r.URL.EscapedPath()} {
+		lower := strings.ToLower(value)
+		if strings.Contains(lower, "\\") || strings.Contains(lower, "%2e") || strings.Contains(lower, "%2f") || strings.Contains(lower, "%5c") || strings.Contains(lower, "%25") {
+			return false
+		}
+		for _, segment := range strings.Split(value, "/") {
+			if segment == "." || segment == ".." {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// cleanRouterResponse keeps what WebFig needs from a router's reply and drops what
+// could reach beyond this session's own origin. A router's owner controls this
+// reply, so nothing in it is trusted.
+func cleanRouterResponse(h http.Header) {
+	cookies := (&http.Response{Header: h}).Cookies()
+	h.Del("Set-Cookie")
+	for _, c := range cookies {
+		if c.Name == cookieName || strings.HasPrefix(c.Name, "__Host-") || strings.HasPrefix(c.Name, "__Secure-") {
+			continue
+		}
+		c.Domain = ""
+		c.Secure = true
+		if line := c.String(); line != "" {
+			h.Add("Set-Cookie", line)
+		}
+	}
+	for _, name := range []string{"Service-Worker-Allowed", "Clear-Site-Data", "Alt-Svc", "Access-Control-Allow-Origin", "Access-Control-Allow-Credentials", "Link"} {
+		h.Del(name)
+	}
 }
 
 // allowedPath lists what WebFig itself uses. Everything else on the router's web
@@ -95,8 +146,9 @@ func notice(w http.ResponseWriter, status int, title, body string) {
 }
 
 func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	label := p.label(r)
 	if r.URL.Path == openPath {
-		p.open(w, r)
+		p.open(w, r, label)
 		return
 	}
 	cookie, err := r.Cookie(cookieName)
@@ -104,13 +156,13 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		notice(w, http.StatusUnauthorized, "Open WebFig from Mega Magic", "This page opens from the router's page in Mega Magic. You can close this tab and open it again there.")
 		return
 	}
-	grant, expires, due, ok := p.store.Lookup(cookie.Value, recheckPeriod)
+	live, ok := p.store.Lookup(cookie.Value, label, recheckPeriod)
 	if !ok {
 		notice(w, http.StatusUnauthorized, "WebFig session ended", "WebFig sessions last one hour. Open it again from the router's page in Mega Magic.")
 		return
 	}
-	if due {
-		if err := p.check(r.Context(), grant); err != nil {
+	if live.Due {
+		if err := p.check(r.Context(), live.Grant); err != nil {
 			p.store.Revoke(cookie.Value)
 			notice(w, http.StatusForbidden, "WebFig session ended", "This access is no longer allowed. Open it again from the router's page in Mega Magic.")
 			return
@@ -118,28 +170,44 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	// SameSite stops other sites sending the cookie; this also stops them writing.
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
-		if origin := r.Header.Get("Origin"); origin != "https://"+p.host {
+		if origin := r.Header.Get("Origin"); origin != "https://"+label+"."+p.host {
 			notice(w, http.StatusForbidden, "Request refused", "This request did not come from WebFig.")
 			return
 		}
 	}
-	if !allowedPath(r.URL.Path) {
+	// A background script could outlive this session and rewrite later pages.
+	if r.Header.Get("Service-Worker") != "" {
+		notice(w, http.StatusForbidden, "Request refused", "This request is not part of WebFig.")
+		return
+	}
+	if !safePath(r) || !allowedPath(r.URL.Path) {
 		notice(w, http.StatusNotFound, "Not available", "Only WebFig is available here.")
 		return
 	}
 	// The server's 30 second limits fit API calls, not WebFig's long-held request
 	// or a file upload. The session's deadline replaces them for this request.
 	rc := http.NewResponseController(w)
-	_ = rc.SetReadDeadline(expires)
-	_ = rc.SetWriteDeadline(expires)
-	ctx, cancel := context.WithDeadline(r.Context(), expires)
+	_ = rc.SetReadDeadline(live.Expires)
+	_ = rc.SetWriteDeadline(live.Expires)
+	ctx, cancel := context.WithDeadline(r.Context(), live.Expires)
 	defer cancel()
-	p.reverse(grant).ServeHTTP(w, r.WithContext(ctx))
+	go func() {
+		select {
+		case <-live.Done:
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+	p.reverse(live.Grant).ServeHTTP(w, r.WithContext(ctx))
 }
 
-func (p *Proxy) open(w http.ResponseWriter, r *http.Request) {
-	value, expires, ok := p.store.Redeem(r.URL.Query().Get("ticket"))
-	if r.Method != http.MethodGet || !ok {
+func (p *Proxy) open(w http.ResponseWriter, r *http.Request, label string) {
+	if r.Method != http.MethodGet {
+		notice(w, http.StatusUnauthorized, "This link has expired", "Links to WebFig work once, for one minute. Open it again from the router's page in Mega Magic.")
+		return
+	}
+	value, expires, ok := p.store.Redeem(r.URL.Query().Get("ticket"), label)
+	if !ok {
 		notice(w, http.StatusUnauthorized, "This link has expired", "Links to WebFig work once, for one minute. Open it again from the router's page in Mega Magic.")
 		return
 	}
@@ -162,6 +230,7 @@ func (p *Proxy) reverse(g Grant) *httputil.ReverseProxy {
 			}
 		},
 		ModifyResponse: func(res *http.Response) error {
+			cleanRouterResponse(res.Header)
 			safetyHeaders(res.Header)
 			if location := res.Header.Get("Location"); location != "" {
 				for _, prefix := range []string{"http://" + target, "https://" + target, "http://" + g.Host, "https://" + g.Host} {
