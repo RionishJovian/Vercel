@@ -83,6 +83,7 @@ type SecurityHandler struct {
 	managementMoves managementMigrationController
 	routerTelemetry *routertelemetry.Service
 	trustedCIDRs    []string
+	webFig          *WebFigControl
 }
 
 func NewSecurityHandler(db *database.DB, deviceRepo *database.DeviceRepository) *SecurityHandler {

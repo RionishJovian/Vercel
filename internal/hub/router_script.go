@@ -40,6 +40,12 @@ func GenerateRouterKeypair() (privateKey, publicKey string, err error) {
 	return base64.StdEncoding.EncodeToString(private), base64.StdEncoding.EncodeToString(public), nil
 }
 
+// TunnelInterfaceName is the Magic Hub WireGuard interface on a router.
+func TunnelInterfaceName(deviceID string) (string, error) {
+	name, _, err := scriptNames(deviceID)
+	return name, err
+}
+
 func scriptNames(deviceID string) (string, string, error) {
 	if !identifier.MatchString(deviceID) {
 		return "", "", fmt.Errorf("invalid gateway identity")
@@ -301,6 +307,7 @@ func BuildDisconnectScript(deviceID string, peer Peer, managementUser string) (s
 # Removes this router's Magic Hub setup: its management user, group, SSH key and firewall
 # rules, then its tunnel. SSH service settings are left as they are. Safe to paste again.
 /ip/firewall/filter remove [find where comment="%[1]s"]
+/ip/firewall/filter remove [find where comment="mega-magic:webfig"]
 /ip/firewall/nat remove [find where comment="%[1]s"]
 :local mmAccount [/user find where name="%[2]s"]
 :if ([:len $mmAccount] = 1) do={
