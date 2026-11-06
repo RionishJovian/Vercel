@@ -42,7 +42,7 @@ import { Skeleton } from "./components/Skeleton";
 
 const PAGE_TITLES: Record<string, string> = {
   home: "title.home", router: "title.router", vouchers: "title.vouchers", jellyfin: "title.jellyfin", more: "title.more", revenue: "title.revenue", store: "title.store",
-  platform: "title.platform", setup: "qs.title", network: "title.network", sites: "title.sites", fleet: "fl.title", guests: "gu.title", incidents: "inc.title", events: "ev.title", security: "sec.title",
+  platform: "title.platform", setup: "qs.title", network: "title.network", pppoe: "title.pppoe", sites: "title.sites", fleet: "fl.title", guests: "gu.title", incidents: "inc.title", events: "ev.title", security: "sec.title",
   backups: "bk.title", topology: "tp.title", devices: "dv.title", "managed-devices": "dm.title", profile: "pf.title", guide: "gd.title", hub: "hub.title", templates: "dev.tpl.title",
   termlog: "dev.tl.title", scans: "dev.sc.title", aiusage: "dev.ai.title", unlockkeys: "dev.uk.title", i18n: "dev.tr.title", coins: "dev.co.title", team: "dev.tm.title",
 };
@@ -77,6 +77,7 @@ export function App() {
     case "fleet": page = <Fleet />; tab = "more"; break;
     case "guests": page = <Guests me={me} />; tab = "more"; break;
     case "sites": page = <Sites me={me} />; tab = "more"; break;
+    case "pppoe": page = <Network me={me} sub="pppoe" params={route.params} />; tab = "router"; break;
     case "network": page = <Network me={me} sub={route.sub} params={route.params} />; tab = "router"; break;
     case "incidents": page = <Incidents me={me} />; tab = "more"; break;
     case "events": page = <Events />; tab = "more"; break;
@@ -101,7 +102,7 @@ export function App() {
     case "platform": page = <Platform me={me} sub={route.sub} />; tab = "more"; break;
     case "vouchers": page = <Vouchers sub={route.sub} />; break;
     case "more": page = <More me={me} onSignedOut={signedOut} />; break;
-    case "home": page = <Home me={me} />; break;
+    case "home": page = <Home key={route.params.get("router")} me={me} routerId={route.params.get("router")} />; break;
     default: location.replace("#/home"); page = null;
   }
   return <Shell active={tab}><PageBoundary key={route.name + "/" + route.sub}><Suspense fallback={<Skeleton h={240} />}>{page}</Suspense></PageBoundary></Shell>;
