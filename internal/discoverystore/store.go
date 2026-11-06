@@ -63,8 +63,16 @@ type Candidate struct {
 	HeardCount int       `json:"heard_count"`
 	LastSeen   time.Time `json:"last_seen"`
 	Selected   bool      `json:"selected"`
+	// Existing is set when this device was already registered from a discovery. A hint, not proof of identity.
+	Existing *ExistingRouter `json:"existing_router,omitempty"`
 	// Status is always "nearby_unverified": hearing a device proves nothing about ownership, connection or online state.
 	Status string `json:"status"`
+}
+
+// ExistingRouter names the registered router a discovered device became.
+type ExistingRouter struct {
+	DeviceID string `json:"device_id"`
+	Name     string `json:"name"`
 }
 
 type View struct {
@@ -180,9 +188,12 @@ func (s *Store) Get(ctx context.Context, bid, id string) (View, error) {
 			t := paired.Time
 			v.PairedAt = &t
 		}
-		rows, err := tx.QueryContext(ctx, `SELECT device_key,macs,COALESCE(identity,''),COALESCE(board,''),COALESCE(platform,''),COALESCE(version,''),COALESCE(interface_name,''),
-			COALESCE(host(claimed_ip),''),COALESCE(host(source_ip),''),ip_mismatch,ip_changed,heard_count,last_received_at,selected_at IS NOT NULL
-			FROM discovery_observations WHERE session_id=$1 AND business_id=$2 ORDER BY last_received_at DESC, device_key`, id, bid)
+		rows, err := tx.QueryContext(ctx, `SELECT o.device_key,o.macs,COALESCE(o.identity,''),COALESCE(o.board,''),COALESCE(o.platform,''),COALESCE(o.version,''),COALESCE(o.interface_name,''),
+			COALESCE(host(o.claimed_ip),''),COALESCE(host(o.source_ip),''),o.ip_mismatch,o.ip_changed,o.heard_count,o.last_received_at,o.selected_at IS NOT NULL,
+			COALESCE(l.device_id::text,''),COALESCE(dv.hardware_name,'')
+			FROM discovery_observations o LEFT JOIN discovery_links l ON l.business_id=o.business_id AND l.device_key=o.device_key
+			LEFT JOIN devices dv ON dv.device_id=l.device_id AND dv.business_id=l.business_id
+			WHERE o.session_id=$1 AND o.business_id=$2 ORDER BY o.last_received_at DESC, o.device_key`, id, bid)
 		if err != nil {
 			return err
 		}
@@ -190,8 +201,12 @@ func (s *Store) Get(ctx context.Context, bid, id string) (View, error) {
 		for rows.Next() {
 			var c Candidate
 			var macs pq.StringArray
-			if err := rows.Scan(&c.DeviceKey, &macs, &c.Identity, &c.Board, &c.Platform, &c.Version, &c.Interface, &c.ClaimedIP, &c.SourceIP, &c.IPMismatch, &c.IPChanged, &c.HeardCount, &c.LastSeen, &c.Selected); err != nil {
+			var linkedID, linkedName string
+			if err := rows.Scan(&c.DeviceKey, &macs, &c.Identity, &c.Board, &c.Platform, &c.Version, &c.Interface, &c.ClaimedIP, &c.SourceIP, &c.IPMismatch, &c.IPChanged, &c.HeardCount, &c.LastSeen, &c.Selected, &linkedID, &linkedName); err != nil {
 				return err
+			}
+			if linkedID != "" {
+				c.Existing = &ExistingRouter{DeviceID: linkedID, Name: linkedName}
 			}
 			c.MACs, c.Status = []string(macs), "nearby_unverified"
 			v.Candidates = append(v.Candidates, c)
@@ -376,4 +391,85 @@ func isHex(s string) bool {
 		}
 	}
 	return true
+}
+
+// Selection is what the owner chose. LocalAddress is where the router's own page may be, never verified.
+type Selection struct {
+	DeviceKey     string          `json:"device_key"`
+	SuggestedName string          `json:"suggested_name"`
+	Model         string          `json:"device_model,omitempty"`
+	LocalAddress  string          `json:"local_address,omitempty"`
+	SiteID        string          `json:"site_id,omitempty"`
+	Existing      *ExistingRouter `json:"existing_router,omitempty"`
+}
+
+var ErrConflict = errors.New("device already registered")
+
+// Select records the owner's choice of one candidate. Only one candidate is selected at a time. Nothing is registered here:
+// the console then uses the existing add-router and one-paste flow.
+func (s *Store) Select(ctx context.Context, bid, id, deviceKey string) (Selection, error) {
+	out := Selection{DeviceKey: deviceKey}
+	err := s.tenant(ctx, bid, func(tx *sql.Tx) error {
+		var site sql.NullString
+		var live bool
+		if err := tx.QueryRowContext(ctx, `SELECT site_id,(state IN ('open','paired') AND expires_at>now()) FROM discovery_sessions WHERE session_id=$1 AND business_id=$2 FOR UPDATE`, id, bid).Scan(&site, &live); err != nil || !live {
+			return ErrUnavailable
+		}
+		var identity, board, ip, src string
+		if err := tx.QueryRowContext(ctx, `SELECT COALESCE(identity,''),COALESCE(board,''),COALESCE(host(claimed_ip),''),COALESCE(host(source_ip),'') FROM discovery_observations WHERE session_id=$1 AND business_id=$2 AND device_key=$3`, id, bid, deviceKey).Scan(&identity, &board, &ip, &src); err != nil {
+			return ErrUnavailable
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE discovery_observations SET selected_at=CASE WHEN device_key=$3 THEN now() ELSE NULL END WHERE session_id=$1 AND business_id=$2`, id, bid, deviceKey); err != nil {
+			return err
+		}
+		out.SiteID, out.Model = site.String, board
+		out.SuggestedName = firstNonEmpty(identity, board, "MikroTik router")
+		// Prefer the address the announcement actually came from over the one it claims.
+		out.LocalAddress = firstNonEmpty(src, ip)
+		var did, dname string
+		err := tx.QueryRowContext(ctx, `SELECT l.device_id::text,d.hardware_name FROM discovery_links l JOIN devices d ON d.device_id=l.device_id AND d.business_id=l.business_id WHERE l.business_id=$1 AND l.device_key=$2`, bid, deviceKey).Scan(&did, &dname)
+		if err == nil {
+			out.Existing = &ExistingRouter{DeviceID: did, Name: dname}
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		return nil
+	})
+	return out, err
+}
+
+func firstNonEmpty(v ...string) string {
+	for _, s := range v {
+		if s != "" {
+			return s
+		}
+	}
+	return ""
+}
+
+// Link remembers that the selected candidate became this registered router. It requires the owner's earlier selection, so a
+// discovery result can never register or claim anything by itself.
+func (s *Store) Link(ctx context.Context, bid, id, deviceKey, deviceID string) error {
+	return s.tenant(ctx, bid, func(tx *sql.Tx) error {
+		var selected bool
+		if err := tx.QueryRowContext(ctx, `SELECT selected_at IS NOT NULL FROM discovery_observations WHERE session_id=$1 AND business_id=$2 AND device_key=$3`, id, bid, deviceKey).Scan(&selected); err != nil || !selected {
+			return ErrUnavailable
+		}
+		var ok bool
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM devices WHERE device_id=$1 AND business_id=$2)`, deviceID, bid).Scan(&ok); err != nil || !ok {
+			return ErrUnavailable
+		}
+		var existing string
+		err := tx.QueryRowContext(ctx, `SELECT device_id::text FROM discovery_links WHERE business_id=$1 AND device_key=$2`, bid, deviceKey).Scan(&existing)
+		switch {
+		case err == nil && existing == deviceID:
+			return nil
+		case err == nil:
+			return ErrConflict
+		case !errors.Is(err, sql.ErrNoRows):
+			return err
+		}
+		_, err = tx.ExecContext(ctx, `INSERT INTO discovery_links(business_id,device_key,device_id) VALUES($1,$2,$3)`, bid, deviceKey, deviceID)
+		return err
+	})
 }
