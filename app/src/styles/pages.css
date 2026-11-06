@@ -409,3 +409,11 @@ a.rowitem:hover { border-color: var(--jade); transform: translateX(2px); }
 
 /* A locked form group keeps its layout: the fieldset only carries the disabled state. */
 fieldset.nolock { border: 0; padding: 0; margin: 0; min-width: 0; }
+
+.protection-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 12px; }
+.protection-card { flex: 1; }
+.protection-switch { flex: none; width: 52px; min-height: 44px; border: 0; background: transparent; padding: 7px 0; }
+.protection-switch span { display: block; position: relative; height: 28px; border-radius: 999px; background: var(--glass-strong); border: 1px solid var(--edge); }
+.protection-switch span::after { content: ""; position: absolute; inset: 3px auto 3px 4px; width: 20px; border-radius: 50%; background: var(--ink); }
+.protection-switch[aria-checked="true"] span { background: var(--jade); }
+.protection-switch[aria-checked="true"] span::after { inset-inline-start: 25px; background: var(--bg-0); }

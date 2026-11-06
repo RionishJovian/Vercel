@@ -70,7 +70,7 @@ type networkMenu struct {
 }
 
 var networkMenus = map[string]networkMenu{
-	"filters":           {"/ip firewall filter", []string{"chain", "action", "connection-state", "in-interface", "comment", "disabled", "dynamic"}},
+	"filters":           {"/ip firewall filter", []string{"chain", "action", "connection-state", "in-interface", "comment", "disabled", "dynamic", "hotspot", "protocol", "dst-port"}},
 	"bindings":          {"/ip hotspot ip-binding", []string{"mac-address", "address", "server", "type", "comment", "disabled"}},
 	"queue_types":       {"/queue type", []string{"name", "kind", "pcq-rate", "pcq-classifier"}},
 	"addresses":         {"/ip address", []string{"address", "interface", "comment", "disabled", "dynamic"}},

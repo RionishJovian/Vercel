@@ -5,6 +5,7 @@ import { asArray } from "../lib/types";
 import { useI18n } from "../i18n";
 import { BackLink, Note, PageHead, IconTile } from "../components/ui";
 import { Skeleton } from "../components/Skeleton";
+import { RouterProtection } from "./RouterProtection";
 import { errorText } from "../lib/errors";
 
 interface Adv { id: string; title: string; fix_unavailable?: boolean }
@@ -73,6 +74,7 @@ export function Security() {
   return (
     <>
       {back}<PageHead title={t("sec.title")} help={t("sec.lead")} />
+      <RouterProtection />
       {!devices.length ? <Note>{t("sec.none")}</Note> : (
         <>
           <div className="capsules wrap">{stat("affected", data.affected)}{stat("safe", data.safe)}{stat("unknown", data.unknown)}{stat("unpatchable", data.unpatchable)}{stat("exploited", data.exploited)}</div>

@@ -13,7 +13,7 @@ type hubTestRunner struct {
 }
 
 func (r *hubTestRunner) Run(ctx context.Context, cmd string) (string, error) {
-	if cmd == `:put [:pick [/ip firewall filter find where dynamic=no] 0]` {
+	if cmd == `:put [:pick [/ip firewall filter find where dynamic=no] 0]` || cmd == `:put [:pick [/ip firewall filter find where dynamic=no and chain=input] 0]` {
 		return r.first, nil
 	}
 	out, e := r.networkRunner.Run(ctx, cmd)
@@ -90,8 +90,21 @@ func TestHubShieldRequiresExplicitUnmanagedBypassAndRejectsDrift(t *testing.T) {
 		t.Fatalf("%+v %v", result, e)
 	}
 	req.Values["disabled"] = "no"
+	req.Confirmation = ""
+	binding := r.objects["bindings"]["*A"]
+	binding["address"] = "192.0.2.41"
 	if _, _, e := buildNetworkPlan(ctx, r, req); e == nil {
-		t.Fatal("enabled bypass")
+		t.Fatal("restored a changed binding")
+	}
+	binding["address"] = "192.0.2.40"
+	review, e = a.PreviewNetwork(ctx, "biz-1", "dev-1", req)
+	if e != nil {
+		t.Fatal(e)
+	}
+	req.Confirmation = review.Confirmation
+	result, e = a.ApplyNetwork(ctx, "biz-1", "dev-1", req)
+	if e != nil || !result.Verified || binding["disabled"] != "no" || binding["comment"] != "Printer" {
+		t.Fatalf("%+v %v, binding: %v", result, e, binding)
 	}
 }
 func TestHubFairshareLifecycleAndConflicts(t *testing.T) {
@@ -225,5 +238,26 @@ func TestHubOverviewDoesNotReadFullConfigurationOrSecrets(t *testing.T) {
 		if strings.Contains(cmd, "/ppp secret") || strings.Contains(cmd, "/ip firewall") || strings.Contains(cmd, "/queue") {
 			t.Fatal("overview read a configuration menu")
 		}
+	}
+}
+
+func TestGuestVPNPlanIsScopedToForwardedHotspotTraffic(t *testing.T) {
+	r := networkFixture()
+	r.objects["hotspots"] = map[string]map[string]string{
+		"*A": {"name": "guests", "interface": "guest-bridge", "disabled": "no"},
+	}
+	req := NetworkRequest{Kind: "guest_vpn", Values: map[string]string{"disabled": "no"}}
+	steps, _, err := buildNetworkPlan(context.Background(), r, req)
+	if err != nil || len(steps) != 1 {
+		t.Fatalf("expected a single managed restriction: %+v %v", steps, err)
+	}
+	step := steps[0]
+	if step.Values["chain"] != "forward" || step.Values["hotspot"] != "from-client" ||
+		step.Values["in-interface"] != "guest-bridge" || step.Values["protocol"] != "udp" || !step.First {
+		t.Fatalf("unexpected filter scope: %+v", step)
+	}
+	r.objects["hotspots"]["*A"]["interface"] = "mmh-test"
+	if _, _, err := buildNetworkPlan(context.Background(), r, req); err == nil {
+		t.Fatal("allowed a restriction on the Hub tunnel")
 	}
 }

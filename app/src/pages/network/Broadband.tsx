@@ -78,6 +78,11 @@ export function Broadband({ routerId, routerName, canEdit, onBusyChange }: { rou
    </div>
   </Note>}
   {notice && <div role="status"><Note kind={failed ? "warn" : undefined}>{notice}</Note></div>}
+  {data && !error && <dl className="capsules wrap" aria-label={t("bb.overview")}>
+   <div className="capsule"><dt>{t("bb.title")}</dt><dd>{data.accounts.length}</dd></div>
+   <div className="capsule"><dt>{t("bb.sessionsSeen")}</dt><dd>{data.accounts.filter(a => a.session).length}</dd></div>
+   <div className="capsule"><dt>{t("bb.suspendedCount")}</dt><dd>{data.accounts.filter(a => a.observation?.suspended === true).length}</dd></div>
+  </dl>}
   {data && !data.accounts.length && <p>{t("bb.empty")}</p>}
   {data?.accounts.map((a) => {
    const s = a.observation, now = Date.now() / 1000;
