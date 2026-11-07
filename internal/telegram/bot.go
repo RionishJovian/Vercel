@@ -1,7 +1,6 @@
 // Package telegram holds the shared, injectable Telegram transport seam used by
-// BOTH the provisioner approve-gate and the billing notify path — a single seam,
-// so a later real Bot-API transport is wired once. Nothing here touches a real
-// bot; tests inject fakes.
+// the provisioner approval gate and account notification/decision paths.
+// Production uses the Bot API; tests use injected local transports.
 package telegram
 
 import (
@@ -50,11 +49,15 @@ type Bot struct {
 
 	// long-poll window for getUpdates
 	pollTimeout time.Duration
-	// allowChat, when >0, filters received updates to one chat (the operator).
+	// allowChat, when nonzero, filters received updates to one chat (the operator).
 	allowChat int64
 
-	mu     sync.Mutex
-	offset int64 // next update_id to fetch
+	mu         sync.Mutex
+	offset     int64 // next update_id to fetch
+	nextMu     sync.Mutex
+	pending    []InboundMessage
+	onPoll     func(error)
+	onDelivery func(error)
 }
 
 // BotOption configures a Bot.
@@ -71,12 +74,21 @@ func WithPollTimeout(d time.Duration) BotOption { return func(b *Bot) { b.pollTi
 // WithAllowChat filters inbound updates to a single operator chat id.
 func WithAllowChat(chatID int64) BotOption { return func(b *Bot) { b.allowChat = chatID } }
 
+// Observers receive sanitized errors and never credentials.
+func WithPollObserver(f func(error)) BotOption     { return func(b *Bot) { b.onPoll = f } }
+func WithDeliveryObserver(f func(error)) BotOption { return func(b *Bot) { b.onDelivery = f } }
+func (b *Bot) delivered(err error) {
+	if b.onDelivery != nil {
+		b.onDelivery(err)
+	}
+}
+
 // NewBot builds a Bot-API transport.
 func NewBot(token string, opts ...BotOption) *Bot {
 	b := &Bot{
 		token:       token,
 		base:        "https://api.telegram.org",
-		client:      &http.Client{Timeout: 60 * time.Second},
+		client:      &http.Client{Timeout: 60 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
 		pollTimeout: 10 * time.Second,
 	}
 	for _, o := range opts {
@@ -90,7 +102,8 @@ var _ InboundSource = (*Bot)(nil)
 var _ ButtonMessenger = (*Bot)(nil)
 
 // SendMessage implements Messenger.
-func (b *Bot) SendMessage(target, text string) error {
+func (b *Bot) SendMessage(target, text string) (err error) {
+	defer func() { b.delivered(err) }()
 	// target may be a numeric chat id (string) or a @username.
 	vals := url.Values{}
 	vals.Set("chat_id", target)
@@ -105,7 +118,7 @@ func (b *Bot) SendMessage(target, text string) error {
 		return err
 	}
 	if !resp.OK {
-		return fmt.Errorf("telegram sendMessage: %s", resp.Description)
+		return fmt.Errorf("telegram sendMessage: %s", strings.ReplaceAll(resp.Description, b.token, "[redacted]"))
 	}
 	return nil
 }
@@ -114,7 +127,8 @@ func (b *Bot) SendMessage(target, text string) error {
 // Approve/Reject keyboard. callback_data carries the request id so the bridge's
 // existing ParsePurchaseReply path acts on a press. The callback is answered by
 // the bridge (Bot.AnswerCallback) after it acts, clearing the spinner.
-func (b *Bot) SendButtons(target, text, requestID string) error {
+func (b *Bot) SendButtons(target, text, requestID string) (err error) {
+	defer func() { b.delivered(err) }()
 	markup := fmt.Sprintf(
 		`{"inline_keyboard":[[{"text":"Approve","callback_data":"approve %s"},{"text":"Reject","callback_data":"reject %s"}]]}`,
 		requestID, requestID)
@@ -137,7 +151,7 @@ func (b *Bot) SendButtons(target, text, requestID string) error {
 		return err
 	}
 	if !resp.OK {
-		return fmt.Errorf("telegram sendMessage: %s", resp.Description)
+		return fmt.Errorf("telegram sendMessage: %s", strings.ReplaceAll(resp.Description, b.token, "[redacted]"))
 	}
 	return nil
 }
@@ -200,7 +214,7 @@ func (b *Bot) VerifyToken() (bool, string) {
 		return false, err.Error()
 	}
 	if !resp.OK {
-		return false, resp.Description
+		return false, strings.ReplaceAll(resp.Description, b.token, "[redacted]")
 	}
 	return true, ""
 }
@@ -218,7 +232,7 @@ func (b *Bot) AwaitReply(requestID string, timeout time.Duration) (string, strin
 			continue
 		}
 		for _, m := range msgs {
-			if m.FromID != 0 && b.allowChat > 0 && m.ChatID != b.allowChat {
+			if m.FromID != 0 && b.allowChat != 0 && m.ChatID != b.allowChat {
 				continue
 			}
 			if strings.Contains(m.Text, requestID) {
@@ -232,8 +246,21 @@ func (b *Bot) AwaitReply(requestID string, timeout time.Duration) (string, strin
 
 // Next implements InboundSource.
 func (b *Bot) Next(ctx context.Context) (InboundMessage, error) {
+	b.nextMu.Lock()
+	defer b.nextMu.Unlock()
 	for {
+		if ctx.Err() != nil {
+			return InboundMessage{}, ctx.Err()
+		}
+		if len(b.pending) > 0 {
+			m := b.pending[0]
+			b.pending = b.pending[1:]
+			return m, nil
+		}
 		msgs, err := b.nextBatch(ctx)
+		if b.onPoll != nil && ctx.Err() == nil {
+			b.onPoll(err)
+		}
 		if err != nil {
 			if ctx.Err() != nil {
 				return InboundMessage{}, ctx.Err()
@@ -243,7 +270,8 @@ func (b *Bot) Next(ctx context.Context) (InboundMessage, error) {
 			continue
 		}
 		if len(msgs) > 0 {
-			return msgs[0], nil
+			b.pending = msgs
+			continue
 		}
 	}
 }
@@ -295,7 +323,7 @@ func (b *Bot) nextBatch(ctx context.Context) ([]InboundMessage, error) {
 		return nil, err
 	}
 	if !resp.OK {
-		return nil, fmt.Errorf("telegram getUpdates: %s", resp.Description)
+		return nil, fmt.Errorf("telegram getUpdates: %s", strings.ReplaceAll(resp.Description, b.token, "[redacted]"))
 	}
 
 	var pass []InboundMessage
@@ -333,7 +361,7 @@ func (b *Bot) nextBatch(ctx context.Context) ([]InboundMessage, error) {
 		} else {
 			continue
 		}
-		if b.allowChat > 0 && (m.ChatID != b.allowChat) {
+		if b.allowChat != 0 && (m.ChatID != b.allowChat) {
 			continue
 		}
 		pass = append(pass, m)
@@ -345,23 +373,52 @@ func (b *Bot) do(ctx context.Context, method string, vals url.Values, out any) e
 	u := fmt.Sprintf("%s/bot%s/%s", b.base, b.token, method)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, strings.NewReader(vals.Encode()))
 	if err != nil {
-		return err
+		return fmt.Errorf("telegram %s: invalid request", method)
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	resp, err := b.client.Do(req)
 	if err != nil {
-		return err
+		return fmt.Errorf("telegram %s: connection failed", method)
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
-		return err
+		return fmt.Errorf("telegram %s: response could not be read", method)
 	}
 	if resp.StatusCode >= 300 {
-		return fmt.Errorf("telegram %s: http %d: %s", method, resp.StatusCode, strings.TrimSpace(string(body)))
+		return fmt.Errorf("telegram %s: http %d", method, resp.StatusCode)
 	}
 	if out != nil {
 		return json.Unmarshal(body, out)
+	}
+	return nil
+}
+
+// Probe checks credentials and receiver compatibility without consuming updates.
+func (b *Bot) Probe(ctx context.Context) error {
+	var me struct {
+		OK bool `json:"ok"`
+	}
+	if err := b.do(ctx, "getMe", url.Values{}, &me); err != nil {
+		return err
+	}
+	if !me.OK {
+		return fmt.Errorf("Telegram token could not be verified")
+	}
+	var webhook struct {
+		OK     bool `json:"ok"`
+		Result struct {
+			URL string `json:"url"`
+		} `json:"result"`
+	}
+	if err := b.do(ctx, "getWebhookInfo", url.Values{}, &webhook); err != nil {
+		return err
+	}
+	if !webhook.OK {
+		return fmt.Errorf("Telegram webhook status could not be verified")
+	}
+	if webhook.Result.URL != "" {
+		return fmt.Errorf("This bot already has a webhook; disconnect its other integration first")
 	}
 	return nil
 }

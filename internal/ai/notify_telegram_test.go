@@ -122,7 +122,7 @@ func TestFanout_dropsNilSinks(t *testing.T) {
 func TestFormatIncidentLine_defaults(t *testing.T) {
 	inc := &model.Incident{ID: "x", Kind: "ai_latency_spike", Severity: "", SubjectID: "dev-1", OpenedAt: time.Now().UTC()}
 	line := formatIncidentLine(inc)
-	if !strings.HasPrefix(line, "AI alert [info] ") {
+	if !strings.HasPrefix(line, "Platform alert [info] ") {
 		t.Fatalf("empty severity must default to info: %q", line)
 	}
 	if !strings.Contains(line, "dev-1") {

@@ -60,7 +60,7 @@ func (b *PurchaseBridge) Run(ctx context.Context) error {
 }
 
 func (b *PurchaseBridge) handle(m InboundMessage) {
-	if b.authorize != nil && !b.authorize(m, "") {
+	if b.authorize == nil || !b.authorize(m, "") {
 		if bot, ok := b.msg.(*Bot); ok && m.CallbackID != "" {
 			_ = bot.AnswerCallback(m.CallbackID, "You are not authorized to approve this payment")
 		}

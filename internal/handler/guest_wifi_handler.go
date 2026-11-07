@@ -56,6 +56,13 @@ func findGuestPlan(plans []model.GuestPlan, key string) *model.GuestPlan {
 //   - BRIDGE: the same shared decide-core is used by the owner's per-business
 //     Telegram bot so HTTP and bot act identically (single money path).
 type GuestWifiHandler struct {
+	telegramRuntime interface {
+		Status(string) telegram.RuntimeStatus
+		Wake()
+		Probe(context.Context, string) error
+		SendTest(context.Context, string) error
+	}
+
 	db             *database.DB
 	deviceRepo     *database.DeviceRepository
 	botRepo        *database.BusinessTelegramBotRepository
@@ -69,6 +76,28 @@ type GuestWifiHandler struct {
 		ConfigureGuestGrace(context.Context, string, string, routeros.GuestGrace) error
 		DecideGuestAccess(context.Context, string, string, string, string, bool, int, int, int, int) error
 	}
+}
+
+func (h *GuestWifiHandler) EnableTelegramRuntime(r interface {
+	Status(string) telegram.RuntimeStatus
+	Wake()
+	Probe(context.Context, string) error
+	SendTest(context.Context, string) error
+}) {
+	h.telegramRuntime = r
+}
+func (h *GuestWifiHandler) botRuntimeStatus(c *gin.Context, enabled bool) telegram.RuntimeStatus {
+	status := telegram.RuntimeStatus{Scope: "business", Receiver: "unavailable", Token: "unknown", LastDelivery: "not_tested"}
+	if h.telegramRuntime != nil {
+		status = h.telegramRuntime.Status(auth.GetBusinessID(c))
+	}
+	if auth.GetUserRole(c) == string(model.RoleDeveloper) {
+		status.Scope = "platform"
+	}
+	if !enabled {
+		status.Receiver = "disabled"
+	}
+	return status
 }
 
 func (h *GuestWifiHandler) EnableGuestGrace(router interface {
@@ -461,7 +490,7 @@ func (h *GuestWifiHandler) notifyOwnerPurchase(req *model.GuestPurchaseRequest, 
 	}
 	// Prefer inline Approve/Reject buttons when the transport is the real Bot;
 	// fall back to typed-text instructions otherwise (e.g. test fakes).
-	if bot, okb := msg.(*telegram.Bot); okb {
+	if bot, okb := msg.(telegram.ButtonMessenger); okb {
 		_ = bot.SendButtons(target, text, req.ID)
 		return
 	}
@@ -498,6 +527,8 @@ func (h *GuestWifiHandler) GetBotBinding(c *gin.Context) {
 			"bot_token":        maskToken(bot.BotToken),
 		}
 	}
+	out["runtime"] = h.botRuntimeStatus(c, bot != nil && bot.Enabled)
+	c.Header("Cache-Control", "no-store")
 	c.JSON(http.StatusOK, out)
 }
 
@@ -519,11 +550,32 @@ func (h *GuestWifiHandler) PutBotBinding(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	if body.ApproverUserID < 0 || body.ApproverUserID > 9007199254740991 || (body.Enabled && (body.ApproverUserID == 0 || body.TargetChatID == 0)) {
+	if body.TargetChatID < -9007199254740991 || body.TargetChatID > 9007199254740991 || body.ApproverUserID < 0 || body.ApproverUserID > 9007199254740991 || (body.Enabled && (body.ApproverUserID == 0 || body.TargetChatID == 0)) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Enter a positive Telegram user ID and an approval chat ID before enabling approvals"})
 		return
 	}
+	if body.Enabled && body.TargetChatID > 0 && body.TargetChatID != body.ApproverUserID {
+		c.JSON(400, gin.H{"error": "For a private chat, use the approver's Telegram user ID as the approval chat ID"})
+		return
+	}
+	var platformOwned bool
+	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
+		return tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM users WHERE business_id=$1 AND user_role='DEVELOPER' AND is_active)`, businessID).Scan(&platformOwned)
+	})
+	if err != nil {
+		c.JSON(503, gin.H{"error": "Telegram account scope unavailable"})
+		return
+	}
+	if platformOwned && auth.GetUserRole(c) != string(model.RoleDeveloper) {
+		c.JSON(403, gin.H{"error": "Only the platform administrator may change this bot"})
+		return
+	}
 	token := strings.TrimSpace(body.BotToken)
+	if len(token) > 256 || strings.HasPrefix(token, "enc:") || strings.ContainsAny(token, "\r\n\t ") {
+		c.JSON(400, gin.H{"error": "Invalid bot token format"})
+		return
+	}
+
 	if token == "" {
 		// An empty token means "keep the already-bound secret". This lets an
 		// owner change the chat or enabled state from a masked profile form without
@@ -547,7 +599,7 @@ func (h *GuestWifiHandler) PutBotBinding(c *gin.Context) {
 			return
 		}
 	}
-	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
+	err = h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
 		return h.botRepo.UpsertTXN(tx, &model.BusinessTelegramBot{
 			BusinessID:     businessID,
 			BotToken:       token,
@@ -560,6 +612,10 @@ func (h *GuestWifiHandler) PutBotBinding(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
 		return
 	}
+	if h.telegramRuntime != nil {
+		h.telegramRuntime.Wake()
+	}
+	c.Header("Cache-Control", "no-store")
 	c.JSON(http.StatusOK, gin.H{"enabled": body.Enabled, "target_chat_id": body.TargetChatID, "approver_user_id": body.ApproverUserID, "bot_token": maskToken(token)})
 }
 
@@ -586,6 +642,17 @@ func (h *GuestWifiHandler) TestBotBinding(c *gin.Context) {
 	}
 	if bot == nil || strings.TrimSpace(bot.BotToken) == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "no bot token bound"})
+		return
+	}
+	if h.telegramRuntime != nil {
+		err := h.telegramRuntime.Probe(c.Request.Context(), businessID)
+		detail := ""
+		if err != nil {
+			detail = err.Error()
+		}
+		h.telegramRuntime.Wake()
+		c.Header("Cache-Control", "no-store")
+		c.JSON(200, gin.H{"ok": err == nil, "detail": detail, "runtime": h.botRuntimeStatus(c, bot.Enabled)})
 		return
 	}
 	// Build the transport from the token and probe getMe.
@@ -749,4 +816,17 @@ func (h *GuestWifiHandler) RejectGuest(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"applied": true, "request": id})
+}
+
+// SendBotTest sends only after an explicit owner click, using the saved target.
+func (h *GuestWifiHandler) SendBotTest(c *gin.Context) {
+	if h.telegramRuntime == nil {
+		c.JSON(503, gin.H{"error": "Telegram receiver unavailable"})
+		return
+	}
+	if err := h.telegramRuntime.SendTest(c.Request.Context(), auth.GetBusinessID(c)); err != nil {
+		c.JSON(409, gin.H{"ok": false, "error": err.Error()})
+		return
+	}
+	c.JSON(200, gin.H{"ok": true})
 }

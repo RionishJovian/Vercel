@@ -46,7 +46,7 @@ func (n *TelegramNotifier) IncidentOpened(_ string, inc *model.Incident) {
 
 // formatIncidentLine renders the single-line alert:
 //
-//	AI alert [critical] Router dev-9 latency_spike: latency 540ms (incident <id>) at <UTC>
+//	Platform alert [critical] Router dev-9 latency_spike: latency 540ms (incident <id>) at <UTC>
 func formatIncidentLine(inc *model.Incident) string {
 	sev := strings.TrimSpace(inc.Severity)
 	if sev == "" {
@@ -60,7 +60,7 @@ func formatIncidentLine(inc *model.Incident) string {
 		subject = "unknown"
 	}
 
-	line := fmt.Sprintf("AI alert [%s] %s %s", sev, subject, strings.TrimSpace(inc.Kind))
+	line := fmt.Sprintf("Platform alert [%s] %s %s", sev, subject, strings.TrimSpace(inc.Kind))
 	if inc.Detail != nil && strings.TrimSpace(*inc.Detail) != "" {
 		line += ": " + strings.TrimSpace(*inc.Detail)
 	}

@@ -96,6 +96,7 @@ func (h *AuthHandler) requestPaidAccountRenewal(c *gin.Context, in accountRenewa
 		return
 	}
 	var id, status string
+	created := false
 	err := runInTenant(c, h.db, auth.GetBusinessID(c), func(tx *sql.Tx) error {
 		if e := h.checkoutActor(tx, c); e != nil {
 			return e
@@ -147,11 +148,16 @@ func (h *AuthHandler) requestPaidAccountRenewal(c *gin.Context, in accountRenewa
 		}
 		snapshot, _ := json.Marshal(bankAccount)
 		status = "pending"
-		return tx.QueryRow(`INSERT INTO app_account_pass_renewals(user_id,business_id,plan,amount_mmk,bank_account_id,bank_reference,bank_snapshot,idempotency_key) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8) RETURNING id`, auth.GetUserID(c), auth.GetBusinessID(c), in.Plan, product.PriceMMK, in.BankAccountID, in.BankReference, string(snapshot), in.IdempotencyKey).Scan(&id)
+		e = tx.QueryRow(`INSERT INTO app_account_pass_renewals(user_id,business_id,plan,amount_mmk,bank_account_id,bank_reference,bank_snapshot,idempotency_key) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8) RETURNING id`, auth.GetUserID(c), auth.GetBusinessID(c), in.Plan, product.PriceMMK, in.BankAccountID, in.BankReference, string(snapshot), in.IdempotencyKey).Scan(&id)
+		created = e == nil
+		return e
 	})
 	if err != nil {
 		checkoutError(c, err)
 		return
+	}
+	if created && h.NotifyRenewal != nil {
+		h.NotifyRenewal(id)
 	}
 	c.Header("Cache-Control", "no-store")
 	c.JSON(http.StatusOK, gin.H{"id": id, "status": status, "plan": in.Plan, "payment_verified": status == "approved", "message": "Payment reference submitted for platform verification. Access changes only after approval."})

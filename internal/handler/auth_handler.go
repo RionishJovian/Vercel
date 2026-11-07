@@ -22,6 +22,7 @@ const (
 
 // AuthHandler handles authentication endpoints
 type AuthHandler struct {
+	NotifyRenewal              func(string)
 	IndividualPassesEnabled    bool
 	RegistrationClosed         bool
 	SubscriptionOnly           bool

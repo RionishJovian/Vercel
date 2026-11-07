@@ -250,7 +250,7 @@ func TestPurchaseBridge_decidesApprove(t *testing.T) {
 	src := &fakeSource{msgs: []InboundMessage{{ChatID: 1, Text: "approve pur-1"}}}
 	dec := &fakeDecider{resolved: map[string]string{"pur-1": "bizA"}}
 	msgr := &fakeMsg{}
-	b := NewPurchaseBridge(src, msgr, "999", dec)
+	b := newTestBridge(src, msgr, "999", dec)
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() { time.Sleep(300 * time.Millisecond); cancel() }()
 	_ = b.Run(ctx)
@@ -272,7 +272,7 @@ func TestPurchaseBridge_callbackTapAnswersSpinner(t *testing.T) {
 	src := &fakeSource{msgs: []InboundMessage{{ChatID: 123, MessageID: 777, Text: "approve pur-9", CallbackID: "cbid1"}}}
 	dec := &fakeDecider{resolved: map[string]string{"pur-9": "bizA"}}
 	bot := NewBot("TOK", WithBase(fake.srv.URL), WithPollTimeout(time.Millisecond))
-	b := NewPurchaseBridge(src, bot, "123", dec)
+	b := newTestBridge(src, bot, "123", dec)
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() { time.Sleep(300 * time.Millisecond); cancel() }()
 	_ = b.Run(ctx)
@@ -306,7 +306,7 @@ func TestPurchaseBridge_unparseableIgnored(t *testing.T) {
 	src := &fakeSource{msgs: []InboundMessage{{Text: "what do you want"}, {Text: "approve pur-2"}}}
 	dec := &fakeDecider{resolved: map[string]string{"pur-2": "bizA"}}
 	msgr := &fakeMsg{}
-	b := NewPurchaseBridge(src, msgr, "999", dec)
+	b := newTestBridge(src, msgr, "999", dec)
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() { time.Sleep(300 * time.Millisecond); cancel() }()
 	_ = b.Run(ctx)
@@ -319,7 +319,7 @@ func TestPurchaseBridge_unknownRequestDenied(t *testing.T) {
 	src := &fakeSource{msgs: []InboundMessage{{Text: "reject ghost-1"}}}
 	dec := &fakeDecider{notFoundIDs: map[string]bool{"ghost-1": true}}
 	msgr := &fakeMsg{}
-	b := NewPurchaseBridge(src, msgr, "999", dec)
+	b := newTestBridge(src, msgr, "999", dec)
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() { time.Sleep(300 * time.Millisecond); cancel() }()
 	_ = b.Run(ctx)
@@ -329,4 +329,11 @@ func TestPurchaseBridge_unknownRequestDenied(t *testing.T) {
 	if len(msgr.sent) != 1 {
 		t.Fatalf("expected a not-found ack, got %v", msgr.sent)
 	}
+}
+
+// Most tests isolate decision parsing; authorization has its own denial tests.
+func newTestBridge(src InboundSource, msg Messenger, target string, d PurchaseDecider) *PurchaseBridge {
+	b := NewPurchaseBridge(src, msg, target, d)
+	b.SetAuthorization(func(InboundMessage, string) bool { return true })
+	return b
 }

@@ -4,10 +4,12 @@ import { api, ApiError, fetcher, isUnauthorized } from "../lib/api";
 import { useI18n, type Lang } from "../i18n";
 import { BackLink, Field, Note } from "../components/ui";
 import { Skeleton } from "../components/Skeleton";
+import { TelegramStatus, type BotRuntime } from "./TelegramStatus";
+import { keepPolling } from "../lib/polling";
 import { errorText } from "../lib/errors";
 
 interface Profile { full_name: string; email: string; user_role: string; language?: string; has_avatar?: boolean; has_cover?: boolean }
-interface Telegram { enabled?: boolean; target_chat_id?: number; approver_user_id?: number; bot_token?: string }
+interface Telegram { enabled?: boolean; target_chat_id?: number; approver_user_id?: number; bot_token?: string; runtime?: BotRuntime }
 const initials = (s?: string) => (s ?? "?").trim().split(/\s+/).slice(0, 2).map((p) => p[0]?.toUpperCase() ?? "").join("") || "?";
 
 async function assetUrl(kind: "avatar" | "cover"): Promise<string> {
@@ -36,7 +38,7 @@ function Photo({ kind, has, bump }: { kind: "avatar" | "cover"; has?: boolean; b
 export function ProfilePage() {
   const { t, lang, setLang } = useI18n();
   const prof = useSWR<Profile>("/me/profile", fetcher);
-  const tg = useSWR<Telegram>("/guest-wifi/telegram-bot", fetcher, { shouldRetryOnError: false });
+  const tg = useSWR<Telegram>("/guest-wifi/telegram-bot", fetcher, { ...keepPolling(5000) });
   const [msg, setMsg] = useState<Record<string, { bad?: boolean; text: string }>>({});
   const [bump, setBump] = useState(0);
   const say = (k: string, text: string, bad = false) => setMsg((m) => ({ ...m, [k]: { text, bad } }));
@@ -62,17 +64,23 @@ export function ProfilePage() {
   async function saveTelegram(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const f = new FormData(e.currentTarget), chat = String(f.get("chat")).trim(), user = String(f.get("user")).trim(), enabled = f.get("enabled") === "on";
+    if ((chat && (!/^-?[1-9]\d*$/.test(chat) || !Number.isSafeInteger(Number(chat)))) || (user && (!/^[1-9]\d*$/.test(user) || !Number.isSafeInteger(Number(user)))) || (enabled && (!chat || !user))) { say("tg", t("pf.tgInvalid"), true); return; }
+    if (enabled && Number(chat) > 0 && Number(chat) !== Number(user)) { say("tg", t("tg.privateMismatch"), true); return; }
     say("tg", t("pf.saving"));
     try {
-      if ((chat && (!/^-?[1-9]\d*$/.test(chat) || !Number.isSafeInteger(Number(chat)))) || (user && (!/^[1-9]\d*$/.test(user) || !Number.isSafeInteger(Number(user)))) || (enabled && (!chat || !user))) throw new Error(t("pf.tgInvalid"));
       await api.put("/guest-wifi/telegram-bot", { bot_token: String(f.get("token")).trim(), target_chat_id: chat ? Number(chat) : 0, approver_user_id: user ? Number(user) : 0, enabled });
-      say("tg", t("pf.tgSaved")); void tg.mutate();
+      say("tg", t("tg.saved")); void tg.mutate();
     } catch (err) { if (isUnauthorized(err)) throw err; say("tg", errorText(err, t("pf.tgFail")), true); }
   }
   async function testBot() {
     say("tg", t("pf.tgChecking"));
-    try { const r = await api.post<{ ok?: boolean; detail?: string }>("/guest-wifi/telegram-bot/test", {}); say("tg", r.ok ? `${t("pf.tgOk")} ${r.detail ?? ""}` : `${t("pf.tgBad")} ${r.detail ?? ""}`, !r.ok); }
+    try { const r = await api.post<{ ok?: boolean; detail?: string }>("/guest-wifi/telegram-bot/test", {}); say("tg", r.ok ? t("tg.probeOk") : `${t("pf.tgBad")} ${r.detail ?? ""}`, !r.ok); void tg.mutate(); }
     catch (err) { if (isUnauthorized(err)) throw err; say("tg", errorText(err, t("pf.tgFail")), true); }
+  }
+  async function sendTest() {
+    say("tg", t("tg.testSending"));
+    try { await api.post("/guest-wifi/telegram-bot/test-message", {}); say("tg", t("tg.testSent")); void tg.mutate(); }
+    catch (err) { if (isUnauthorized(err)) throw err; say("tg", errorText(err, t("tg.testFailed")), true); }
   }
   async function upload(kind: "avatar" | "cover", file?: File) {
     if (!file) return;
@@ -114,15 +122,17 @@ export function ProfilePage() {
         {out("password")}<button className="btn quiet" type="submit">{t("pf.changePw")}</button>
       </form>
 
-      <form className="glass pad stack" onSubmit={saveTelegram} key={JSON.stringify(T)}>
-        <h2>{t("pf.tg")}</h2><p className="soft small">{t("pf.tgHint")}</p>
+      {tg.error ? <Note kind="bad">{t("tg.loadFailed")}</Note> : tg.isLoading ? <Skeleton h={250} /> : <form className="glass pad stack" onSubmit={saveTelegram} key={JSON.stringify([T.bot_token, T.target_chat_id, T.approver_user_id, T.enabled])}>
+        <h2>{t("pf.tg")}</h2><p className="soft small">{p.user_role === "DEVELOPER" ? t("tg.platformScope") : t("tg.businessScope")}</p>
+        <TelegramStatus runtime={T.runtime} />
         <Field label={t("pf.tgToken")} htmlFor="pf-tok"><input className="input" id="pf-tok" name="token" type="password" autoComplete="off" placeholder={T.bot_token ? `${t("pf.tgBound")} ${T.bot_token}` : t("pf.tgPaste")} /></Field>
+        <p className="soft small">{t("tg.chatHelp")}</p>
         <Field label={t("pf.tgChat")} htmlFor="pf-chat"><input className="input" id="pf-chat" name="chat" inputMode="numeric" defaultValue={T.target_chat_id || ""} placeholder="123456789" /></Field>
         <Field label={t("pf.tgUser")} htmlFor="pf-user"><input className="input" id="pf-user" name="user" inputMode="numeric" defaultValue={T.approver_user_id || ""} /></Field>
         <label className="check"><span>{t("pf.tgEnable")}</span><input type="checkbox" name="enabled" defaultChecked={!!T.enabled} /></label>
         {out("tg")}
-        <div className="row" style={{ justifyContent: "flex-start", flexWrap: "wrap" }}><button className="btn" type="submit">{t("pf.tgSave")}</button><button className="btn quiet" type="button" onClick={() => void testBot()}>{t("pf.tgTest")}</button></div>
-      </form>
+        <div className="row" style={{ justifyContent: "flex-start", flexWrap: "wrap" }}><button className="btn" type="submit">{t("pf.tgSave")}</button><button className="btn quiet" type="button" onClick={() => void testBot()}>{t("pf.tgTest")}</button><button className="btn quiet" type="button" disabled={!T.enabled || T.runtime?.receiver !== "running"} onClick={() => void sendTest()}>{t("tg.testSend")}</button></div>
+      </form>}
     </>
   );
 }

@@ -37,6 +37,9 @@ import (
 )
 
 type Server struct {
+	telegramRuntime   *telegram.Runtime
+	telegramCancel    context.CancelFunc
+	telegramDone      chan struct{}
 	broadband         *handler.SecurityHandler
 	cfg               *config.Config
 	log               *logger.Logger
@@ -217,6 +220,17 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	// Translation overrides — a GLOBAL table, so reads are open and writes are
 	// platform-only (see the route block for why).
 	i18nHandler := handler.NewI18nHandler(db, database.NewI18nRepository(db))
+	var storeHandler *handler.StoreHandler
+	var billingHandler *handler.BillingHandler
+	var guestWifiHandler *handler.GuestWifiHandler
+	reservedTelegramToken := ""
+	if cfg.Provisioner.Applier.Enabled {
+		reservedTelegramToken = cfg.Provisioner.Applier.TelegramBotToken
+	}
+	botRuntime := telegram.NewRuntime(telegramBindings{db: db, repo: database.NewBusinessTelegramBotRepository(db), reservedToken: reservedTelegramToken}, func(b telegram.Binding) telegram.PurchaseDecider {
+		return telegram.CompositePurchaseDecider{Deciders: []telegram.PurchaseDecider{handler.AccountRenewalDecider{Handler: platformHandler, ActorID: b.ActorID}, storeHandler, billingHandler}}
+	}, nil)
+	notifierr.SetIncidentSink(ai.NewTelegramNotifier(botRuntime, "platform", sugar))
 	portalHandler := handler.NewPortalHandler(
 		db,
 		database.NewDeviceRepository(db),
@@ -226,47 +240,27 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		database.NewBusinessMeteredQuotaRepository(db),
 		// Option C: on voucher redemption, notify that business's OWN enabled
 		// Telegram bot (informational). Fail closed: no binding / disabled /
-		// feature off / send error => no notification, never fails the redeem.
+		// unavailable receiver / send error => no notification, never fails the redeem.
 		func(businessID, text string) {
-			if !cfg.GuestWifi.Enabled {
+			bot, err := database.NewBusinessTelegramBotRepository(db).GetByBusiness(businessID)
+			if err != nil || bot == nil || !bot.Enabled {
 				return
 			}
-			botRepo := database.NewBusinessTelegramBotRepository(db)
-			bot, err := botRepo.GetByBusiness(businessID)
-			if err != nil || bot == nil || !bot.Enabled || strings.TrimSpace(bot.BotToken) == "" {
-				return
-			}
-			target := "0"
-			if bot.TargetChatID != 0 {
-				target = strconv.FormatInt(bot.TargetChatID, 10)
-			}
-			if msg, ok := telegram.ConfigMessenger(bot.BotToken, target, 30*time.Second); ok {
-				_ = msg.SendMessage(target, text)
+			if msg, ok := botRuntime.MessengerFor(bot.BotToken); ok {
+				_ = msg.SendMessage(strconv.FormatInt(bot.TargetChatID, 10), text)
 			}
 		},
 	)
 
-	// Billing operator loop: a Telegram bot carries BOTH the outbound purchase
-	// notification and the inbound approve/reject reply. It is flag-gated and
-	// default-off; with no token the messenger is nil and the operator decides
-	// on the protected web endpoint (the shared core either way).
+	// Platform notifications use the administrator's saved profile binding.
+	// Legacy server tokens never start a competing update consumer.
+
 	planDurations := billing.PlanDurations{}
 	for k, pc := range cfg.Billing.Plans {
 		planDurations[k] = pc.DurationMinutes
 	}
-	var billingMessenger telegram.Messenger
-	if cfg.Billing.Telegram.Enabled && cfg.Billing.Telegram.BotToken != "" {
-		baseOpt := telegram.WithPollTimeout(cfg.Billing.Telegram.PollTimeout)
-		if cfg.Billing.Telegram.ChatID != 0 {
-			baseOpt = func(b *telegram.Bot) {
-				telegram.WithPollTimeout(cfg.Billing.Telegram.PollTimeout)(b)
-				telegram.WithAllowChat(cfg.Billing.Telegram.ChatID)(b)
-			}
-		}
-		billingMessenger = telegram.NewBot(cfg.Billing.Telegram.BotToken, baseOpt)
-		sugar.Infow("Telegram billing bot configured", "enabled", true)
-	}
-	billingHandler := handler.NewBillingHandler(
+	var billingMessenger telegram.Messenger = botRuntime
+	billingHandler = handler.NewBillingHandler(
 		db,
 		database.NewDeviceRepository(db),
 		database.NewPortalConfigRepository(db),
@@ -277,11 +271,8 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		planDurations,
 		cfg.Billing.ReceiptDir,
 	)
-	operatorChat := ""
-	if cfg.Billing.Telegram.ChatID != 0 {
-		operatorChat = strconv.FormatInt(cfg.Billing.Telegram.ChatID, 10)
-	}
-	storeHandler := handler.NewStoreHandler(
+	operatorChat := "platform"
+	storeHandler = handler.NewStoreHandler(
 		db,
 		database.NewStorePurchaseRepository(db),
 		database.NewPricingRepository(db),
@@ -289,15 +280,12 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		operatorChat,
 	)
 
-	// Guest wifi (Option C): the handler serves the WEB surface (guest purchase,
-	// owner approve/reject, owner bot binding) which is ALWAYS available — shop
-	// owners can run the whole flow from the web, no flag. The per-owner Telegram
-	// bot bridge (the "second apple") is the ONLY piece gated on the flag below.
-	// Two apples: web + bot both work; neither is forced on the user.
+	// The same saved account binding controls notifications and its receiver.
+
 	guestSvcFmt := func(token string) (telegram.Messenger, bool) {
-		return telegram.ConfigMessenger(token, "", 30*time.Second)
+		return botRuntime.MessengerFor(token)
 	}
-	guestWifiHandler := handler.NewGuestWifiHandler(
+	guestWifiHandler = handler.NewGuestWifiHandler(
 		db,
 		database.NewDeviceRepository(db),
 		database.NewBusinessTelegramBotRepository(db),
@@ -307,6 +295,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		cfg.GuestWifi.ReceiptDir,
 		guestSvcFmt,
 	)
+	guestWifiHandler.EnableTelegramRuntime(botRuntime)
 	if err := guestWifiHandler.EnableGuestCookies(cfg.Security.JWTSecret); err != nil {
 		return nil, err
 	}
@@ -445,7 +434,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		return nil, fmt.Errorf("media publishing: %w", err)
 	}
 	if cfg.Media.ConnectorEnabled {
-		if err := registerMediaRoutes(r, authService, db, cfg, handler.SubscriptionAccess(db, cfg.Billing.SubscriptionOnly, cfg.Billing.ExistingAccountPolicy), handler.IndividualPassAccess(db, cfg.Billing.IndividualPassesEnabled)); err != nil {
+		if err := registerMediaRoutes(r, authService, db, cfg, botRuntime, handler.SubscriptionAccess(db, cfg.Billing.SubscriptionOnly, cfg.Billing.ExistingAccountPolicy), handler.IndividualPassAccess(db, cfg.Billing.IndividualPassesEnabled)); err != nil {
 			return nil, fmt.Errorf("media connector schema/routes: %w", err)
 		}
 	}
@@ -492,7 +481,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		OpenRouterModel:  cfg.AI.OpenRouterModel,
 	}
 	aiService := ai.New(messagingClient, database.NewBusinessMeteredQuotaRepository(db), db, ai.NewClient(aiConfig), aiConfig, sugar).
-		WithNotifier(aiIncidentNotifier(cfg, notifierr, sugar))
+		WithNotifier(notifierr)
 	if cfg.Billing.IndividualPassesEnabled {
 		aiService.WithBusinessAccess(func(ctx context.Context, businessID string) (bool, error) {
 			return database.AccountPassBusinessAccess(ctx, db, businessID, time.Now().UTC())
@@ -503,46 +492,14 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	}
 	sugar.Infow("AI service wired", "enabled", cfg.AI.Enabled, "mode", cfg.AI.Mode)
 
-	// Telegram operator purchase bridge: continuous inbound loop that answers
-	// operator "approve <id>" / "reject <id>" replies against the shared money
-	// core. Only starts when the billing telegram bot is configured.
-	if bm, ok := billingMessenger.(*telegram.Bot); ok {
-		target := ""
-		if cfg.Billing.Telegram.ChatID != 0 {
-			target = strconv.FormatInt(cfg.Billing.Telegram.ChatID, 10)
-		}
-		decider := telegram.CompositePurchaseDecider{Deciders: []telegram.PurchaseDecider{storeHandler, billingHandler}}
-		bridge := telegram.NewPurchaseBridge(bm, billingMessenger, target, decider)
-		go func() { _ = bridge.Run(context.Background()) }()
-		sugar.Info("Telegram purchase approve/reject bridge started (inbound loop)")
+	// One receiver per saved token. Role-derived platform bindings use the
+	// existing platform decision cores; customers can decide only their own orders.
+	ownerDecider := telegram.CompositePurchaseDecider{Deciders: []telegram.PurchaseDecider{guestWifiHandler}}
+	if cfg.Media.ConnectorEnabled {
+		ownerDecider.Deciders = append(ownerDecider.Deciders, handler.MediaReceiptDecider{Store: mediaBridge.NewPostgres(db)})
 	}
-
-	// Guest wifi owner-bot supervisor (the "second apple"): one inbound loop per
-	// ENABLED owner bot, re-scanned on the configured interval. THE ONLY guest-wifi
-	// piece gated on the flag — the web surface above is always on. Off by default.
-	if cfg.GuestWifi.Enabled {
-		ownerDecider := telegram.CompositePurchaseDecider{Deciders: []telegram.PurchaseDecider{guestWifiHandler}}
-		if cfg.Media.ConnectorEnabled {
-			ownerDecider.Deciders = append(ownerDecider.Deciders, handler.MediaReceiptDecider{Store: mediaBridge.NewPostgres(db)})
-		}
-		supervisor := NewGuestWifiBridgeSupervisor(
-			db,
-			database.NewBusinessTelegramBotRepository(db),
-			ownerDecider,
-			func(token string) (telegram.Messenger, bool) {
-				return telegram.ConfigMessenger(token, "", 30*time.Second)
-			},
-		)
-		_ = supervisor // retained: loop runs in background below
-		go func() {
-			supervisor.Bump() // immediate first scan
-			for {
-				time.Sleep(cfg.GuestWifi.BridgeScanInterval)
-				supervisor.Bump()
-			}
-		}()
-		sugar.Infow("Guest wifi owner-bot supervisor started", "interval", cfg.GuestWifi.BridgeScanInterval.String())
-	}
+	botRuntime.SetBusinessDecider(ownerDecider)
+	authHandler.NotifyRenewal = func(id string) { platformHandler.NotifyAccountRenewal(id, botRuntime) }
 
 	// Start the recovery worker: consumes peer.recover (from the evaluator),
 	// runs the a/b/c self-healing ladder, emits recovery.result / escalate.
@@ -568,10 +525,11 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	}
 
 	return &Server{
-		cfg:   cfg,
-		log:   log,
-		sugar: sugar,
-		gin:   r,
+		telegramRuntime: botRuntime,
+		cfg:             cfg,
+		log:             log,
+		sugar:           sugar,
+		gin:             r,
 		http: &http.Server{
 			Addr:           fmt.Sprintf(":%d", cfg.Server.Port),
 			Handler:        withWebFigHost(webFigProxy, r),
@@ -926,6 +884,7 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 				gw.GET("/telegram-bot", guestWifiHandler.GetBotBinding)
 				gw.PUT("/telegram-bot", auth.RequireMinRole(model.RoleAdmin), guestWifiHandler.PutBotBinding)
 				gw.POST("/telegram-bot/test", auth.RequireMinRole(model.RoleAdmin), guestWifiHandler.TestBotBinding)
+				gw.POST("/telegram-bot/test-message", auth.RequireMinRole(model.RoleAdmin), guestWifiHandler.SendBotTest)
 				gw.GET("/requests", guestWifiHandler.ListGuestRequests)
 				gw.GET("/revenue", guestWifiHandler.GuestRevenue)
 				gw.POST("/approve/:requestId", auth.RequireMinRole(model.RoleAdmin), guestWifiHandler.ApproveGuest)
@@ -1088,6 +1047,16 @@ func (s *Server) Start() error {
 	bbCtx, bbCancel := context.WithCancel(context.Background())
 	defer bbCancel()
 	go s.runBroadbandSync(bbCtx)
+	if s.telegramRuntime != nil {
+		ctx, cancel := context.WithCancel(context.Background())
+		s.guestRepairMu.Lock()
+		s.telegramCancel = cancel
+		s.telegramDone = make(chan struct{})
+		done := s.telegramDone
+		s.guestRepairMu.Unlock()
+		go func() { defer close(done); s.telegramRuntime.Run(ctx) }()
+		defer cancel()
+	}
 	s.sugar.Infow("Starting HTTP server", "addr", s.http.Addr)
 	return s.http.ListenAndServe()
 }
@@ -1101,6 +1070,17 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		cancel()
 		select {
 		case <-done:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	s.guestRepairMu.Lock()
+	tgCancel, tgDone := s.telegramCancel, s.telegramDone
+	s.guestRepairMu.Unlock()
+	if tgCancel != nil {
+		tgCancel()
+		select {
+		case <-tgDone:
 		case <-ctx.Done():
 			return ctx.Err()
 		}

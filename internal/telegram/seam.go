@@ -42,7 +42,7 @@ func ConfigMessenger(token string, chatID string, poolTimeout time.Duration) (Me
 		return nil, false
 	}
 	opts := []BotOption{WithPollTimeout(poolTimeout)}
-	if id, err := strconv.ParseInt(strings.TrimSpace(chatID), 10, 64); err == nil && id > 0 {
+	if id, err := strconv.ParseInt(strings.TrimSpace(chatID), 10, 64); err == nil && id != 0 {
 		opts = append(opts, WithAllowChat(id))
 	}
 	return NewBot(strings.TrimSpace(token), opts...), true
