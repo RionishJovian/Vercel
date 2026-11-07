@@ -7,6 +7,7 @@ import { Note } from "../../components/ui";
 import { Skeleton } from "../../components/Skeleton";
 import { HeadCheck, Pager } from "../../components/DenseTable";
 import { DEFAULT_LAYOUT, printCodes, type Layout, type PrintVoucher } from "./printCodes";
+import { SlipDialog } from "./SlipDialog";
 
 const DESKTOP_PAGE = 100, PHONE_PAGE = 25;
 const STATUSES = ["unused", "active", "used", "expired", "revoked", "banned"] as const;
@@ -33,6 +34,7 @@ function listKey(page: number, perPage: number, f: { status: string; q: string; 
 export function Stock() {
   const { t } = useI18n();
   const batchesRes = useSWR<Batches>("/guest-vouchers/batches", fetcher);
+  const [slipFor, setSlipFor] = useState<PrintVoucher | null>(null);
   const layoutRes = useSWR<{ layout?: Partial<Layout> }>("/voucher-print-layout", fetcher, { revalidateOnFocus: false });
   // A phone shows fewer rows a page: the pager sits under them, and they stack taller.
   const [PER_PAGE] = useState(() => (window.matchMedia?.("(max-width: 760px)").matches ? PHONE_PAGE : DESKTOP_PAGE));
@@ -250,7 +252,7 @@ export function Stock() {
                           <td data-cell="half-b" data-label={t("v.timeUsed")} className="num" title={asOf}>{time}</td>
                           <td data-cell="actions" className="dt-right">
                             <div className="dt-actions">
-                              <button className="dt-btn" type="button" disabled={!slip} title={slip ? undefined : t("vt.slipOff")} onClick={() => printCodes([v], layout, firstUse)}>{t("vt.slip")}</button>
+                              <button className="dt-btn" type="button" disabled={!slip} title={slip ? undefined : t("vt.slipOff")} onClick={() => setSlipFor(v)}>{t("vt.slip")}</button>
                               <button className={"dt-btn warn" + (isHanded(v) ? " on" : "")} type="button" aria-pressed={isHanded(v)} disabled={!canHandOut(v) || busy} title={handOutOn ? undefined : t("vt.handOutOff")} onClick={() => void setHandOut([v], !isHanded(v))}>{isHanded(v) ? t("vt.handedOut") : t("vt.handOut")}</button>
                               <button className="dt-btn danger" type="button" disabled={!del || busy} title={del ? undefined : deleteNote(v)} onClick={() => void remove([v])}>{t("vt.delete")}</button>
                             </div>
@@ -267,6 +269,7 @@ export function Stock() {
           <ul className="dt-foot">{handOutOn ? null : <li>{t("vt.handOutOff")}</li>}{routerDelete ? null : <li>{t("vt.deleteOff")}</li>}<li>{t("v.liveNote")}</li></ul>
         </>
       )}
+      {slipFor ? <SlipDialog key={slipFor.code} voucher={slipFor} layout={layout} firstUse={firstUse} onClose={() => setSlipFor(null)} /> : null}
     </div>
   );
 }

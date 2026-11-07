@@ -10,7 +10,7 @@ import { qrPath } from "./qr";
 
 const PAPER = [58, 80, 210];
 
-function Preview({ voucher, layout, firstUse }: { voucher: PrintVoucher; layout: Layout; firstUse: string }) {
+export function Preview({ voucher, layout, firstUse }: { voucher: PrintVoucher; layout: Layout; firstUse: string }) {
   const r = receipt(voucher, layout, firstUse);
   const qr = r.qr ? qrPath(r.code) : null;
   return (
