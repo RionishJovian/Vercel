@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -407,6 +408,51 @@ func TestRevokingEndsHeldRequests(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("a held request kept running after the session was revoked")
 	}
+}
+
+// No second browser request arrives to trigger the normal request-time check.
+func TestAccessRevocationEndsHeldRequestWithoutNewTraffic(t *testing.T) {
+	_, g := fakeRouter(t)
+	var revoked atomic.Bool
+	p := NewProxy("webfig.test", NewStore(), func(context.Context, Grant) error {
+		if revoked.Load() {
+			return errors.New("account access revoked")
+		}
+		return nil
+	})
+	started := make(chan struct{})
+	p.transport = heldTransport{started: started}
+	value := openSession(t, p, g)
+	done := make(chan struct{})
+	r := httptest.NewRequest(http.MethodPost, "https://"+host+"/jsproxy", nil)
+	r.Header.Set("Origin", "https://"+host)
+	r.AddCookie(&http.Cookie{Name: cookieName, Value: value})
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+	go func() {
+		p.ServeHTTP(httptest.NewRecorder(), r.WithContext(ctx))
+		close(done)
+	}()
+	<-started
+	revoked.Store(true)
+	select {
+	case <-done:
+	case <-time.After(recheckPeriod + 3*time.Second):
+		cancel()
+		<-done
+		t.Fatal("held request survived account revocation without another browser request")
+	}
+	if _, ok := p.store.Lookup(value, strings.TrimSuffix(host, ".webfig.test"), recheckPeriod); ok {
+		t.Fatal("revoked session is still usable")
+	}
+}
+
+type heldTransport struct{ started chan struct{} }
+
+func (h heldTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	close(h.started)
+	<-r.Context().Done()
+	return nil, r.Context().Err()
 }
 
 func TestWebFigMustLiveOnItsOwnDomain(t *testing.T) {

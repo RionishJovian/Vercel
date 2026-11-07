@@ -20,6 +20,7 @@ A router's owner decides what the proxy gets back, for example by forwarding the
 - Each session gets its own random subdomain, which makes it its own browser origin. One session's page can't touch another's, even in the same browser.
 - A separate domain stops that page setting cookies on the console or counting as the same site.
 - The proxy removes cookies that target other hosts or its own session, and headers such as `Service-Worker-Allowed`. It refuses background-script requests and paths that could leave the allow-list.
+- Held requests recheck account authorization every 30 seconds, even without new browser traffic. A failed check revokes the session and cancels its requests. Each check has a 30-second timeout; requests still have the one-hour session deadline.
 
 To serve it, you need:
 

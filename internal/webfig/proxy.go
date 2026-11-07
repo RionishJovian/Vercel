@@ -192,10 +192,32 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithDeadline(r.Context(), live.Expires)
 	defer cancel()
 	go func() {
-		select {
-		case <-live.Done:
-			cancel()
-		case <-ctx.Done():
+		// A held request may be the only traffic in this session. Recheck it
+		// independently of Lookup so other requests cannot postpone this check.
+		ticker := time.NewTicker(recheckPeriod)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-live.Done:
+				cancel()
+				return
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				// An unavailable authorization service must not leave a router
+				// request running indefinitely either.
+				checkCtx, stop := context.WithTimeout(ctx, recheckPeriod)
+				err := p.check(checkCtx, live.Grant)
+				stop()
+				if ctx.Err() != nil {
+					return
+				}
+				if err != nil {
+					p.store.Revoke(cookie.Value)
+					cancel()
+					return
+				}
+			}
 		}
 	}()
 	p.reverse(live.Grant).ServeHTTP(w, r.WithContext(ctx))
