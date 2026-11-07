@@ -95,7 +95,7 @@ The owner asked for server-wide router read/write/edit/delete on 2026-11-06. The
 ## 7. Open items and known drift (as of 2026-11-06)
 
 - WebFig Cloud Access has never signed in to a real router. AGENTS section 4 (2026-10-22) bars embedded third-party dashboards and separate logins; the owner has not yet recorded whether WebFig, in its own tab with the router's own login, is an accepted exception.
-- Real-router results and open bugs: `docs/HARDWARE-TRIAL-RESULTS-20261106.md`. The owner's hAP ax2 is no longer at factory settings.
+- Real-router results and open bugs: `docs/HARDWARE-TRIAL-RESULTS-20261106.md` and `docs/HARDWARE-TRIAL-RESULTS-20261107.md`. The owner's hAP ax2 is no longer at factory settings.
 
 - `/Users/aces/AGENTS.md` (workspace file outside this repo) still names the Hostinger host and `ssh mikromagic-hostinger`; it is out of date and not changed here.
 - Dependabot PRs 91, 92, 93 (Vite, `@vitejs/plugin-react`, TypeScript 7) fail `npm ci` on peer-dependency conflicts; PR 87 (Go modules) needs a rebase onto the `ENVIRONMENT` binding fix. PR 45 says it needs a router test before deploy. Each now deploys on merge.
