@@ -65,6 +65,23 @@ describe("Vouchers table", () => {
     await waitFor(() => expect(calls.some((c) => c.url.includes("page=1") && c.url.includes("q=ABC"))).toBe(true));
   });
 
+  it("shows one code's slip with its QR code before anything prints", async () => {
+    pages = { 1: { vouchers: [row(1)], total: 1, status_counts: { unused: 1 } } };
+    const print = vi.spyOn(printing, "printCodes").mockImplementation(() => undefined);
+    open();
+    await screen.findByText("CODE1");
+    fireEvent.click(btn(rowOf("CODE1"), "Slip"));
+    const dialog = await screen.findByRole("dialog", { name: "Slip" });
+    expect(dialog.textContent).toContain("CODE1");
+    expect(dialog.querySelector("svg.pl-qr")).not.toBeNull(); // on, even though the saved layout leaves QR off
+    expect(print).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Print" }));
+    expect(print.mock.calls[0][0].map((v) => v.code)).toEqual(["CODE1"]);
+    expect(print.mock.calls[0][1].show_qr).toBe(true);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Slip" })).toBeNull());
+  });
+
   it("keeps a selection across pages and prints it", async () => {
     pages = { 1: { vouchers: [row(1)], total: 150, status_counts: { unused: 150 } }, 2: { vouchers: [row(101)], total: 150, status_counts: { unused: 150 } } };
     const print = vi.spyOn(printing, "printCodes").mockImplementation(() => undefined);
