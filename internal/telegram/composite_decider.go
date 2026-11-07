@@ -30,3 +30,31 @@ func (c CompositePurchaseDecider) DecidePurchaseRequest(businessID, id string, a
 	}
 	return errors.New("request not found")
 }
+
+// ScopedPurchaseDecider lets a platform operator retain their own guest/media
+// workflows without routing other customers' guest payments into that bot.
+type ScopedPurchaseDecider struct {
+	BusinessID string
+	Decider    PurchaseDecider
+}
+
+func (s ScopedPurchaseDecider) ResolveRequestBusiness(id string) (string, error) {
+	business, err := s.Decider.ResolveRequestBusiness(id)
+	if err != nil {
+		return "", err
+	}
+	if business != s.BusinessID {
+		return "", errors.New("request not found")
+	}
+	return business, nil
+}
+func (s ScopedPurchaseDecider) DecidePurchaseRequest(business, id string, approve bool) error {
+	if business != s.BusinessID {
+		return errors.New("request not found")
+	}
+	resolved, err := s.ResolveRequestBusiness(id)
+	if err != nil || resolved != business {
+		return errors.New("request not found")
+	}
+	return s.Decider.DecidePurchaseRequest(business, id, approve)
+}

@@ -19,7 +19,8 @@ type ReceiptMessenger interface {
 	SendReceipt(target, caption, reviewID string, photo []byte) error
 }
 
-func (b *Bot) SendReceipt(target, caption, reviewID string, photo []byte) error {
+func (b *Bot) SendReceipt(target, caption, reviewID string, photo []byte) (err error) {
+	defer func() { b.delivered(err) }()
 	failed := errors.New("receipt could not be delivered to the owner bot")
 	if target == "" || len(caption) > 900 || len(reviewID) == 0 || len(reviewID) > 56 || strings.ContainsAny(reviewID, "\x00\r\n\"\\ ") || len(photo) == 0 || len(photo) > 5<<20 {
 		return failed

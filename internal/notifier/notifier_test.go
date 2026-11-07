@@ -106,3 +106,26 @@ func TestDeliverRefusesAnInvalidURL(t *testing.T) {
 		t.Fatalf("invalid URL delivered: ok=%v err=%q", ok, errText)
 	}
 }
+
+type fixtureIncidentSink struct {
+	count    int
+	business string
+}
+
+func (s *fixtureIncidentSink) IncidentOpened(business string, _ *model.Incident) {
+	s.count++
+	s.business = business
+}
+func TestIncidentSinkReceivesOpenedEvent(t *testing.T) {
+	n := testNotifier()
+	sink := &fixtureIncidentSink{}
+	n.SetIncidentSink(sink)
+	n.IncidentOpened("business-fixture", &model.Incident{ID: "incident-fixture"})
+	if sink.count != 1 || sink.business != "business-fixture" {
+		t.Fatal("platform incident sink was not notified")
+	}
+	n.IncidentOpened("business-fixture", nil)
+	if sink.count != 1 {
+		t.Fatal("nil incident notified")
+	}
+}

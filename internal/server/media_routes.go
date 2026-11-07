@@ -12,12 +12,11 @@ import (
 	"mega-magic/internal/model"
 	"mega-magic/internal/telegram"
 	"strconv"
-	"time"
 )
 
 // Registered only after an explicit feature flag and schema check. Connector
 // and owner surfaces never share authentication middleware or credentials.
-func registerMediaRoutes(r *gin.Engine, service *auth.Service, db *database.DB, cfg *config.Config, access ...gin.HandlerFunc) error {
+func registerMediaRoutes(r *gin.Engine, service *auth.Service, db *database.DB, cfg *config.Config, bots *telegram.Runtime, access ...gin.HandlerFunc) error {
 	var ok bool
 	if e := db.QueryRow(`SELECT count(*)=2 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relname IN ('magic_media_connections','magic_media_jobs') AND c.relrowsecurity AND c.relforcerowsecurity`).Scan(&ok); e != nil {
 		return e
@@ -73,13 +72,20 @@ func registerMediaRoutes(r *gin.Engine, service *auth.Service, db *database.DB, 
 		return bot, nil
 	}
 	purchases := &handler.MediaPurchaseHandler{Store: bridge.NewPostgres(db), Ready: salesReady, ReceiptRoot: cfg.GuestWifi.ReceiptDir,
-		ReviewReady: func(ctx context.Context, bid string) bool { _, e := getBot(ctx, bid); return e == nil },
+		ReviewReady: func(ctx context.Context, bid string) bool {
+			bot, e := getBot(ctx, bid)
+			if e != nil {
+				return false
+			}
+			_, ok := bots.MessengerFor(bot.BotToken)
+			return ok
+		},
 		Notify: func(ctx context.Context, bid string, pass bridge.MediaPass, receipt bridge.MediaReceipt, photo []byte) error {
 			bot, e := getBot(ctx, bid)
 			if e != nil {
 				return e
 			}
-			messenger, ok := telegram.ConfigMessenger(bot.BotToken, "", 30*time.Second)
+			messenger, ok := bots.MessengerFor(bot.BotToken)
 			if !ok {
 				return errors.New("owner bot unavailable")
 			}

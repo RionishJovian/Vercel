@@ -82,7 +82,7 @@ func (h *BillingHandler) notifyOperator(businessID string, req *model.PurchaseRe
 		"amount: " + strconv.Itoa(req.Amount) + "\n" +
 		"status: " + req.Status + "\n" +
 		"action: approve or reject on the billing endpoint"
-	_ = h.messenger.SendMessage(businessID, text)
+	_ = h.messenger.SendMessage("platform", text)
 }
 
 // PublicCreatePurchase: POST /api/v1/portal/:deviceId/purchase (multipart).

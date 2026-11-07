@@ -1,6 +1,7 @@
 package database
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"net"
@@ -35,6 +36,10 @@ func scanBot(row interface{ Scan(...interface{}) error }) (*model.BusinessTelegr
 		return nil, fmt.Errorf("telegram bot token for %s: %w", b.BusinessID, err)
 	}
 	return b, nil
+}
+
+func (r *BusinessTelegramBotRepository) GetByBusinessContext(ctx context.Context, id string) (*model.BusinessTelegramBot, error) {
+	return scanBot(r.db.QueryRowContext(ctx, `SELECT `+botCols+` FROM business_telegram_bots WHERE business_id=$1`, id))
 }
 
 // GetByBusiness returns a business's own bot binding (nil if none configured).

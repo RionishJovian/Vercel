@@ -38,7 +38,7 @@ func TestDecisionAckKeepsFullIDInternal(t *testing.T) {
 	for _, approve := range []bool{true, false} {
 		dec := &fakeDecider{resolved: map[string]string{id: "tenant"}}
 		msg := &fakeMsg{}
-		bridge := NewPurchaseBridge(nil, msg, "operator", dec)
+		bridge := newTestBridge(nil, msg, "operator", dec)
 		command := "reject "
 		if approve {
 			command = "approve "
@@ -57,7 +57,7 @@ func TestBridgeAuthorizationPreventsDecisions(t *testing.T) {
 	for _, business := range []string{"tenant-A", "tenant-B"} {
 		for _, sender := range []int64{123, 999} {
 			dec := &fakeDecider{resolved: map[string]string{"order": business}}
-			bridge := NewPurchaseBridge(nil, &fakeMsg{}, "operator", dec)
+			bridge := newTestBridge(nil, &fakeMsg{}, "operator", dec)
 			bridge.SetAuthorization(func(m InboundMessage, resolved string) bool {
 				return m.FromID == 123 && m.ChatID == 456 && (resolved == "" || resolved == "tenant-A")
 			})

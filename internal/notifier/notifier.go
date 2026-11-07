@@ -31,10 +31,11 @@ const (
 // tenant-bound transaction (WithTenant). Without that, enabling RLS would
 // deny-all the worker's reads/writes and outbound webhooks would silently stop.
 type Notifier struct {
-	webhookRepo *database.WebhookRepository
-	db          *database.DB
-	client      *http.Client
-	logger      *zap.SugaredLogger
+	incidentSink interface{ IncidentOpened(string, *model.Incident) }
+	webhookRepo  *database.WebhookRepository
+	db           *database.DB
+	client       *http.Client
+	logger       *zap.SugaredLogger
 }
 
 func New(repo *database.WebhookRepository, db *database.DB, logger *zap.SugaredLogger) *Notifier {
@@ -45,6 +46,11 @@ func New(repo *database.WebhookRepository, db *database.DB, logger *zap.SugaredL
 		client: security.SafeHTTPClient(10 * time.Second),
 		logger: logger,
 	}
+}
+
+// Set during construction, before evaluators start. Tenant webhooks remain intact.
+func (n *Notifier) SetIncidentSink(sink interface{ IncidentOpened(string, *model.Incident) }) {
+	n.incidentSink = sink
 }
 
 // withTenant runs fn in a transaction RLS-bound to businessID. When no DB handle
@@ -108,6 +114,15 @@ func (n *Notifier) markDeliveryResult(businessID, id, status string, statusCode 
 
 // IncidentOpened delivers an incident.opened event to every subscribed endpoint.
 func (n *Notifier) IncidentOpened(businessID string, inc *model.Incident) {
+	if inc == nil {
+		return
+	}
+	if n.incidentSink != nil {
+		n.incidentSink.IncidentOpened(businessID, inc)
+	}
+	if n.webhookRepo == nil {
+		return
+	}
 	payload, _ := json.Marshal(map[string]any{
 		"event":         "incident.opened",
 		"id":            inc.ID,

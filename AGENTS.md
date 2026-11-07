@@ -62,6 +62,7 @@ Older notes that name `web/app.html` or ask for UI in `src/` are obsolete: new c
 - Individual monthly and annual passes share features; only validity differs. A seven-day transition starts once when enforcement deploys; the platform administrator is exempt. Expiry blocks app management, not already-running guest internet. Old Store purchases do not activate passes.
 
 **Other**
+- 2026-11-07 (owner decision): keep one Telegram setup page under Your profile. A platform-admin binding handles app-pass/platform purchase approvals and platform incident alerts; a customer binding handles only that business’s guest-payment/Jellyfin approvals. Reuse encrypted saved tokens, derive scope from server-side roles, and show receiver/token/approver/delivery evidence separately. Saving a token is not proof a receiver is running; never send a test notification automatically.
 - Site WAN/budget and topology editors share one revision; saving one must preserve the other.
 - SME sidebar guidance is named "Did you know?"; platform publishers manage sourced cards. Keep compatibility "unchecked" until trusted router discovery exists. VPN, HotSpot/portal and RADIUS are separate roles. Local User Manager is a proposed option only.
 - Read-only router inventory is gated by `provisioner.inventory_enabled` and must not enable the applier, guest disconnection or network writes.

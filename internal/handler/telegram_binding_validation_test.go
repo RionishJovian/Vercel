@@ -12,6 +12,7 @@ func TestTelegramBindingRequiresApprover(t *testing.T) {
 		`{"enabled":true,"target_chat_id":-100123,"approver_user_id":0}`,
 		`{"enabled":true,"target_chat_id":0,"approver_user_id":123}`,
 		`{"enabled":true,"target_chat_id":123,"approver_user_id":-1}`,
+		`{"enabled":true,"target_chat_id":456,"approver_user_id":123}`,
 		`{"enabled":true,"target_chat_id":123,"approver_user_id":9007199254740992}`,
 	} {
 		w := httptest.NewRecorder()
