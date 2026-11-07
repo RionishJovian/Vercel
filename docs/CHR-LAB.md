@@ -35,6 +35,20 @@ Results below are from 2026-11-05 on RouterOS 7.24.6.
 
 Facts these found, on 7.24.6: `get` on a missing id inside `:tostr` gives an empty value with no error, so `on-error` does not fire. A session's id can return on the next login. After a block is removed, the host took about 45 s to be listed again.
 
+## Wizard and live-read results (2026-11-06, RouterOS 7.24.6)
+
+`TestCHRLabWizardOnAFactoryStylePort` and `TestCHRLabConnectedSessionsAndBackup`. The first creates its own user `mmlab`, because the app connects as its own account, and needs a login open on the CHR's console. It removes what it creates.
+
+| Area | Result |
+|---|---|
+| A terminal left open | The new job count ignores it (old count 2, new count 1). The app's own SSH command is `type=command`; a terminal is `type=login` |
+| A real script running | Still refuses setup, and nothing changes |
+| A port inside a bridge | Leaves the bridge and the HotSpot runs |
+| A failed step | The port goes back in its bridge with its comment, and no objects are left |
+| A port with no link | DHCP and HotSpot are marked invalid with `Interface not running`, setup succeeds with a warning, and both start by themselves when the link comes up |
+| Connected PPPoE clients | `/ppp active` gives name, service, address and uptime |
+| Capture backup | Works. It writes `/export` and `/system backup` files **on the router**, and the app keeps only routes and tunnel details (2.4 KB against a 25 KB export) |
+
 ## What it cannot show
 
 - Measured throughput through a speed queue.
@@ -56,3 +70,5 @@ Facts these found, on 7.24.6: `get` on a missing id inside `:tostr` gives an emp
 - A multi-line SSH command runs on 7.24.6, but a local variable is empty on the next line.
 - `:return` outside a function stops the script and prints its value.
 - `/system health print terse` is refused on a CHR, so health stays empty there.
+- A DHCP server can't be added on a GRE tunnel, so a tunnel can't stand in for a Wi-Fi AP with no client. A macvlan on a disabled bridge can. A bridge with only a down port still reports running.
+- `/export show-sensitive=no` is refused on 7.24.6; hiding secrets is the default.
