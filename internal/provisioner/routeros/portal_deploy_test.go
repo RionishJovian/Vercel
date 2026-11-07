@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -37,6 +38,8 @@ type portalRunner struct {
 	failLogin       bool
 	failMediaAdd    bool
 	failMediaRemove bool
+	copyTimesOut    bool // RouterOS finishes the files, then holds the command past the SSH timeout.
+	copyPartial     bool // Only login.html lands, and the command fails.
 }
 
 var portalQuoted = regexp.MustCompile(`"((?:\\.|[^"\\])*)"`)
@@ -65,6 +68,31 @@ func (r *portalRunner) Run(_ context.Context, cmd string) (string, error) {
 		return "name: guest-server\nprofile: guest\n", nil
 	case cmd == "/file print count-only where name=\"flash\"":
 		return "1", nil
+	case strings.HasPrefix(cmd, "/file print count-only where name~"):
+		prefix := strings.TrimPrefix(strings.ReplaceAll(q[0][1], `\\`, ""), "^")
+		count := 0
+		for name := range r.files {
+			if strings.HasPrefix(name, prefix) {
+				count++
+			}
+		}
+		return strconv.Itoa(count), nil
+	case strings.HasPrefix(cmd, "/file remove"):
+		if strings.Contains(cmd, "name~") {
+			prefix := strings.TrimPrefix(strings.ReplaceAll(q[0][1], `\\`, ""), "^")
+			for name := range r.files {
+				if strings.HasPrefix(name, prefix) {
+					delete(r.files, name)
+				}
+			}
+			return "", nil
+		}
+		for name := range r.files {
+			if name == q[0][1] || strings.HasPrefix(name, q[0][1]+"/") {
+				delete(r.files, name)
+			}
+		}
+		return "", nil
 	case strings.HasPrefix(cmd, "/file print count-only"):
 		if _, ok := r.files[q[0][1]]; ok {
 			return "1", nil
@@ -82,10 +110,17 @@ func (r *portalRunner) Run(_ context.Context, cmd string) (string, error) {
 			return "", nil
 		}
 		r.files[q[1][1]] = "directory"
+		if r.copyPartial {
+			r.files[q[1][1]+"/login.html"] = r.files[q[0][1]+"/login.html"]
+			return "", errors.New("action timed out")
+		}
 		for name, contents := range r.files {
 			if strings.HasPrefix(name, q[0][1]+"/") {
 				r.files[q[1][1]+strings.TrimPrefix(name, q[0][1])] = contents
 			}
+		}
+		if r.copyTimesOut {
+			return "", errors.New("process exited with signal: action timed out")
 		}
 		return "", nil
 	case strings.HasPrefix(cmd, "/file set"):
@@ -250,6 +285,76 @@ func TestPortalDeploymentPreviewAndApply(t *testing.T) {
 		t.Fatal("isolation or persistent staging failed")
 	}
 }
+
+// RouterOS 7.24.6 can finish a directory copy and then hold the command for 60 seconds, past the SSH timeout. Seen on a CHR at 31 files.
+func TestPortalDeploymentKeepsACopyThatLandedDespiteATimeout(t *testing.T) {
+	r := newPortalRunner()
+	r.copyTimesOut = true
+	a := portalTestApplier(r)
+	ctx := context.Background()
+	plan, err := a.PreviewPortal(ctx, "biz", "device", PortalDeployment{Profile: "guest"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := a.ApplyPortal(ctx, "biz", "device", PortalDeployment{Profile: "guest", Version: plan.Version, Confirmation: plan.Confirmation})
+	if err != nil || !result.Verified || r.directory != strings.TrimSuffix(plan.File, "/login.html") {
+		t.Fatalf("a copy that landed was refused: %+v %v", result, err)
+	}
+}
+
+func TestPortalDeploymentRefusesAndRemovesAPartialCopy(t *testing.T) {
+	old := portalCopyWait
+	portalCopyWait = time.Millisecond
+	defer func() { portalCopyWait = old }()
+	r := newPortalRunner()
+	r.copyPartial = true
+	a := portalTestApplier(r)
+	ctx := context.Background()
+	plan, err := a.PreviewPortal(ctx, "biz", "device", PortalDeployment{Profile: "guest"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = a.ApplyPortal(ctx, "biz", "device", PortalDeployment{Profile: "guest", Version: plan.Version, Confirmation: plan.Confirmation})
+	if err == nil {
+		t.Fatal("a partial copy was accepted")
+	}
+	if r.directory != "hotspot" {
+		t.Fatalf("the active profile moved to %q", r.directory)
+	}
+	if _, left := r.files[plan.File]; left {
+		t.Fatal("the failed copy was left on the router")
+	}
+	if r.files["hotspot/login.html"] != "<html>Original</html>" || r.files["hotspot/md5.js"] == "" {
+		t.Fatal("the source folder was touched")
+	}
+}
+
+// Each install cloned the last folder with every older backup in it, so folders grew until the copy above started to stall.
+func TestPortalDeploymentDoesNotCarryOlderBackupsForward(t *testing.T) {
+	r := newPortalRunner()
+	r.files["hotspot/login-backup-older.html"] = "<html>Older</html>"
+	a := portalTestApplier(r)
+	ctx := context.Background()
+	plan, err := a.PreviewPortal(ctx, "biz", "device", PortalDeployment{Profile: "guest"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := a.ApplyPortal(ctx, "biz", "device", PortalDeployment{Profile: "guest", Version: plan.Version, Confirmation: plan.Confirmation})
+	if err != nil || !result.Verified {
+		t.Fatalf("%+v %v", result, err)
+	}
+	folder := strings.TrimSuffix(plan.File, "/login.html")
+	if _, carried := r.files[folder+"/login-backup-older.html"]; carried {
+		t.Fatal("an older backup was carried into the new folder")
+	}
+	if r.files["hotspot/login-backup-older.html"] != "<html>Older</html>" {
+		t.Fatal("the older folder lost its backup")
+	}
+	if r.files[result.Backup] != "<html>Original</html>" {
+		t.Fatal("this install's own backup is missing")
+	}
+}
+
 func TestPortalDeploymentRejectsStaleAndCrossDevicePreview(t *testing.T) {
 	for _, mode := range []string{"changed", "other-device", "empty"} {
 		t.Run(mode, func(t *testing.T) {

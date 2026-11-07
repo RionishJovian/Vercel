@@ -150,13 +150,16 @@ func TestPortalDeploymentVerifiesCopiedCHAPHelperBeforeProfileSwitch(t *testing.
 		}
 		return out, err
 	}}
+	old := portalCopyWait
+	portalCopyWait = time.Millisecond
+	defer func() { portalCopyWait = old }()
 	a := portalTestApplier(wrapped)
 	plan, err := a.PreviewPortal(context.Background(), "biz", "device", PortalDeployment{Profile: "guest"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	result, err := a.ApplyPortal(context.Background(), "biz", "device", PortalDeployment{Profile: "guest", Version: plan.Version, Confirmation: plan.Confirmation})
-	if err == nil || !strings.Contains(err.Error(), "md5.js") || result.Verified {
+	if err == nil || !strings.Contains(err.Error(), "did not verify") || result.Verified {
 		t.Fatalf("missing copied helper must prevent deployment: result=%+v err=%v", result, err)
 	}
 	if r.directory != "hotspot" || r.files["hotspot/login.html"] != "<html>Original</html>" {

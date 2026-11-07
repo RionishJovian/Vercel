@@ -377,6 +377,28 @@ func portalPreflight(ctx context.Context, r CommandRunner, businessID, deviceID 
 	return s, nil
 }
 
+// How often, and how many times, to read a staged folder back before giving up on it.
+var portalCopyWait = 2 * time.Second
+
+const portalCopyChecks = 5
+
+// portalCopyLanded reports whether the staging folder holds as many files as its source and the same login page.
+func portalCopyLanded(ctx context.Context, r CommandRunner, s portalState) bool {
+	count := func(folder string) string {
+		out, err := r.Run(ctx, "/file print count-only where name~"+routerOSQuoted("^"+regexp.QuoteMeta(strings.Trim(folder, "/"))+"/"))
+		if err != nil {
+			return ""
+		}
+		return strings.TrimSpace(out)
+	}
+	source, copied := count(s.directory), count(s.destination)
+	if source == "" || source == "0" || source != copied {
+		return false
+	}
+	out, err := r.Run(ctx, ":put [/file get [find name="+routerOSQuoted(s.plan.File)+"] contents]")
+	return err == nil && strings.TrimSpace(out) == strings.TrimSpace(s.original)
+}
+
 func (a *DeviceApplier) PreviewPortal(ctx context.Context, businessID, deviceID string, request PortalDeployment) (PortalDeploymentPlan, error) {
 	version := make([]byte, 8)
 	if _, err := rand.Read(version); err != nil {
@@ -412,20 +434,38 @@ func (a *DeviceApplier) ApplyPortal(ctx context.Context, businessID, deviceID st
 	// Preserve the complete original directory; stage before switching the profile.
 	result.Backup = s.destination + "/login-backup-" + request.Version + ".html"
 	file := "name=" + routerOSQuoted(s.plan.File)
-	_, err = r.Run(ctx, "/file copy "+routerOSQuoted(s.directory)+" name="+routerOSQuoted(s.destination))
+	// Nothing points at the staging folder yet, so a failed attempt can take it away rather than leave it on the router's storage.
+	discard := func() {
+		cleanup, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		_, _ = r.Run(cleanup, "/file remove [find where name="+routerOSQuoted(s.destination)+"]")
+	}
+	// The copy's own result is not the answer: RouterOS 7.24.6 can finish the files and then hold the command past the SSH timeout. What is on the router decides.
+	_, _ = r.Run(ctx, "/file copy "+routerOSQuoted(s.directory)+" name="+routerOSQuoted(s.destination))
+	landed := portalCopyLanded(ctx, r, s)
+	for i := 1; !landed && i < portalCopyChecks; i++ {
+		select {
+		case <-ctx.Done():
+			discard()
+			return result, fmt.Errorf("HotSpot directory copy did not verify; active profile unchanged")
+		case <-time.After(portalCopyWait):
+		}
+		landed = portalCopyLanded(ctx, r, s)
+	}
+	if !landed {
+		discard()
+		return result, fmt.Errorf("HotSpot directory copy did not verify; active profile unchanged. Check the router's free storage and try again")
+	}
 	var out string
-	if err == nil {
-		out, err = r.Run(ctx, ":put [/file get [find "+file+"] contents]")
-	}
-	if err != nil || strings.TrimSpace(out) != strings.TrimSpace(s.original) {
-		return result, fmt.Errorf("HotSpot directory copy did not verify; active profile unchanged. RouterOS file copy support is required")
-	}
 	if s.needsCHAP {
 		out, err = r.Run(ctx, "/file print count-only where name="+routerOSQuoted(s.destination+"/md5.js"))
 		if err != nil || strings.TrimSpace(out) != "1" {
+			discard()
 			return result, fmt.Errorf("copied HotSpot CHAP helper md5.js did not verify; active profile unchanged")
 		}
 	}
+	// Older backups stay in their own folders. Left in this copy, every install would be bigger than the last until the copy above starts to stall. Best effort: a leftover backup harms nothing.
+	_, _ = r.Run(ctx, "/file remove [find where name~"+routerOSQuoted("^"+regexp.QuoteMeta(s.destination)+"/login-backup-")+"]")
 	// Keep an original login-page copy in persistent staging as well, because
 	// the old directory can be RAM-backed on devices with a flash disk.
 	_, err = r.Run(ctx, "/file copy "+routerOSQuoted(strings.Trim(s.directory, "/")+"/login.html")+" name="+routerOSQuoted(result.Backup))
@@ -433,6 +473,7 @@ func (a *DeviceApplier) ApplyPortal(ctx context.Context, businessID, deviceID st
 		out, err = r.Run(ctx, ":put [/file get [find name="+routerOSQuoted(result.Backup)+"] contents]")
 	}
 	if err != nil || strings.TrimSpace(out) != strings.TrimSpace(s.original) {
+		discard()
 		return result, fmt.Errorf("persistent login backup did not verify; active profile unchanged")
 	}
 	addedGarden := false
