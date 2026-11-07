@@ -6,7 +6,7 @@ Implementation prepared on 2026-11-07. Deployment and real-message acceptance ar
 
 More → Your profile → Telegram approvals remains the only token form. Saved encrypted tokens are reused; there is no new credential table or required token re-entry.
 
-- An active DEVELOPER account's business binding is the platform bot. It receives current app-pass renewal requests, legacy platform Store/billing purchase requests, and platform incident alerts from policy evaluation and AI. Approvals reuse the same transaction cores as the web console.
+- An active DEVELOPER account's business binding is the platform bot. It receives current app-pass renewal requests, legacy platform Store/billing purchase requests, and platform incident alerts from policy evaluation and AI. Approvals reuse the same transaction cores as the web console. The platform operator also retains their own business’s guest/media decisions through an explicitly tenant-scoped adapter; other customers’ guest/media decisions do not enter that path.
 - Customer bindings handle only their own guest-payment and Jellyfin receipt decisions. A customer bot cannot resolve an order into a decision for another business.
 - Scope and decision actor come from active database roles, never a browser-supplied field. Only the platform administrator may edit a platform-owned binding, including when legacy OWNER accounts share that business.
 - A private approval chat uses the approver's numeric Telegram user ID as its chat ID. Groups use negative chat IDs and a separate positive approver user ID. Chat membership alone never authorizes a decision.

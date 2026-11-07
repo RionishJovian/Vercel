@@ -223,12 +223,13 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	var storeHandler *handler.StoreHandler
 	var billingHandler *handler.BillingHandler
 	var guestWifiHandler *handler.GuestWifiHandler
+	var ownerDecider telegram.CompositePurchaseDecider
 	reservedTelegramToken := ""
 	if cfg.Provisioner.Applier.Enabled {
 		reservedTelegramToken = cfg.Provisioner.Applier.TelegramBotToken
 	}
 	botRuntime := telegram.NewRuntime(telegramBindings{db: db, repo: database.NewBusinessTelegramBotRepository(db), reservedToken: reservedTelegramToken}, func(b telegram.Binding) telegram.PurchaseDecider {
-		return telegram.CompositePurchaseDecider{Deciders: []telegram.PurchaseDecider{handler.AccountRenewalDecider{Handler: platformHandler, ActorID: b.ActorID}, storeHandler, billingHandler}}
+		return telegram.CompositePurchaseDecider{Deciders: []telegram.PurchaseDecider{handler.AccountRenewalDecider{Handler: platformHandler, ActorID: b.ActorID}, storeHandler, billingHandler, telegram.ScopedPurchaseDecider{BusinessID: b.BusinessID, Decider: ownerDecider}}}
 	}, nil)
 	notifierr.SetIncidentSink(ai.NewTelegramNotifier(botRuntime, "platform", sugar))
 	portalHandler := handler.NewPortalHandler(
@@ -494,7 +495,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 
 	// One receiver per saved token. Role-derived platform bindings use the
 	// existing platform decision cores; customers can decide only their own orders.
-	ownerDecider := telegram.CompositePurchaseDecider{Deciders: []telegram.PurchaseDecider{guestWifiHandler}}
+	ownerDecider = telegram.CompositePurchaseDecider{Deciders: []telegram.PurchaseDecider{guestWifiHandler}}
 	if cfg.Media.ConnectorEnabled {
 		ownerDecider.Deciders = append(ownerDecider.Deciders, handler.MediaReceiptDecider{Store: mediaBridge.NewPostgres(db)})
 	}

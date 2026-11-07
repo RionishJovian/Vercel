@@ -279,3 +279,20 @@ func TestDeliveryObserverReceivesFailure(t *testing.T) {
 		t.Fatal("delivery failure was not reported")
 	}
 }
+
+func TestPlatformOwnBusinessDeciderKeepsCustomerPaymentsSeparate(t *testing.T) {
+	inner := &fakeDecider{resolved: map[string]string{"own": "admin-business", "foreign": "customer-business"}}
+	d := ScopedPurchaseDecider{BusinessID: "admin-business", Decider: inner}
+	if err := d.DecidePurchaseRequest("admin-business", "own", true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.ResolveRequestBusiness("foreign"); err == nil {
+		t.Fatal("customer request leaked into platform guest workflow")
+	}
+	if err := d.DecidePurchaseRequest("customer-business", "foreign", true); err == nil {
+		t.Fatal("platform guest workflow decided foreign payment")
+	}
+	if len(inner.decisions) != 1 {
+		t.Fatal("foreign decision reached shared core")
+	}
+}
