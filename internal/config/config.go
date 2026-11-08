@@ -262,6 +262,9 @@ type ProvisionerConfig struct {
 type BackupCaptureConfig struct {
 	Enabled bool `mapstructure:"enabled"`
 	CredentialKey string `mapstructure:"credential_key"`
+	// Password encrypts the RouterOS binary .backup file. Do not reuse an
+	// SME login credential; this is a separate operator-held recovery secret.
+	Password string `mapstructure:"password"`
 	Timeout time.Duration `mapstructure:"timeout"`
 }
 
@@ -440,6 +443,9 @@ func (cfg *Config) Validate() error {
 		}
 	}
 	if cfg.Provisioner.BackupCapture.Enabled {
+		if len(cfg.Provisioner.BackupCapture.Password) < 24 || len(cfg.Provisioner.BackupCapture.Password) > 256 || strings.ContainsAny(cfg.Provisioner.BackupCapture.Password, "\r\n") {
+			problems = append(problems, "provisioner.backup_capture.password must be a separate strong secret (24–256 characters, no newlines)")
+		}
 		key := strings.TrimSpace(cfg.Provisioner.BackupCapture.CredentialKey)
 		if key == "" { key = cfg.Provisioner.Applier.CredentialKey }
 		if _, err := secretbox.New(key); err != nil {
@@ -648,6 +654,7 @@ func setDefaults(v *viper.Viper) {
 	// This independent capability is OFF until explicitly enabled.
 	v.SetDefault("provisioner.backup_capture.enabled", false)
 	v.SetDefault("provisioner.backup_capture.credential_key", "")
+	v.SetDefault("provisioner.backup_capture.password", "")
 	v.SetDefault("provisioner.backup_capture.timeout", "30s")
 	v.SetDefault("provisioner.applier.otp_digits", 6)
 	v.SetDefault("provisioner.applier.otp_step", "30s")
