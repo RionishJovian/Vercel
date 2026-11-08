@@ -3,6 +3,7 @@ package server
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"go.uber.org/zap"
@@ -188,6 +189,9 @@ func wireBackupCapture(cfg *config.Config, sugar *zap.SugaredLogger, db *databas
 	}
 	if db == nil || backup == nil {
 		return errors.New("router backup capture: enabled but database or backup handler unavailable")
+	}
+	if len(c.Password) < 24 || len(c.Password) > 256 || strings.ContainsAny(c.Password, "\r\n") {
+		return errors.New("router backup capture: strong encryption password required (24–256 characters, no newlines)")
 	}
 	key := c.CredentialKey
 	if key == "" {
