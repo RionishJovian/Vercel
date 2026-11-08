@@ -116,8 +116,9 @@ func TestQuickConnectKeepsPrivateKeyOnlyInOnePasteScript(t *testing.T) {
 		t.Fatal("one-paste script lost setup guards")
 	}
 	// Anything belonging to someone else must stop the script before the first change.
-	firstWrite := strings.Index(script, "Remove what an older Mega Magic setup left")
-	for _, guard := range []string{"belongs to another setup", "unexpected peer", "tunnel address already used", "a route to the Hub already exists"} {
+	firstWrite := strings.Index(script, "# APPLY: only add absent resources")
+	if firstWrite < 0 { t.Fatal("missing explicit preflight/apply boundary") }
+	for _, guard := range []string{"belongs to another setup", "multiple existing peers", "tunnel address already assigned elsewhere", "Hub destination route differs", "older Magic Hub tunnel found", "existing tunnel key differs"} {
 		if at := strings.Index(script, guard); at < 0 || at > firstWrite {
 			t.Fatalf("guard %q is missing or comes after the first change", guard)
 		}
@@ -134,6 +135,34 @@ func TestQuickConnectKeepsPrivateKeyOnlyInOnePasteScript(t *testing.T) {
 	}
 	if _, err := BuildQuickConnectScript("gateway", p, otherPrivate); err == nil {
 		t.Fatal("mismatched private key accepted")
+	}
+}
+
+func TestQuickConnectDoesNotDeleteOrReplaceExistingTunnelResources(t *testing.T) {
+	privateKey, publicKey, err := GenerateRouterKeypair()
+	if err != nil { t.Fatal(err) }
+	p := scriptFixture()
+	p.RouterPublicKey = publicKey
+	p.AllowedIPs = []string{"10.77.0.1/32", "10.77.0.9/32"}
+	script, err := BuildQuickConnectScript("gateway", p, privateKey)
+	if err != nil { t.Fatal(err) }
+	for _, forbidden := range []string{
+		"/interface/wireguard remove", "/interface/wireguard/peers remove",
+		"/ip/address remove", "/ip/route remove",
+		"/interface/wireguard set $mmIface private-key=",
+		"/ip/route set $mmItem gateway=", "/ip/address set $mmItem interface=",
+	} {
+		if strings.Contains(script, forbidden) { t.Fatalf("quick paste performs destructive action %q", forbidden) }
+	}
+	for _, guard := range []string{
+		"older Magic Hub tunnel found", "older Magic Hub route found",
+		"existing Hub peer differs", "existing interface address differs",
+		"tunnel address already assigned elsewhere", "Hub destination route differs",
+	} {
+		if !strings.Contains(script, guard) { t.Fatalf("missing non-destructive preflight guard: %q", guard) }
+	}
+	if !strings.Contains(script, "allowed-address=10.77.0.1/32,10.77.0.9/32") {
+		t.Fatal("multi-address allowlist not preserved in new peer creation")
 	}
 }
 
