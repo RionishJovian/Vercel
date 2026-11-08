@@ -83,6 +83,7 @@ func readObservations(ctx context.Context, r CommandRunner) (NetworkInventory, e
 	if len(result.Available) != len(observationOrder) {
 		return NetworkInventory{}, fmt.Errorf("incomplete observation inventory")
 	}
+	result.CAPsMAN = CAPsMANInventory(result)
 	return result, nil
 }
 
