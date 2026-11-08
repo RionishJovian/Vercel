@@ -17,6 +17,10 @@ The backend normalizes and merges only valid unicast MAC addresses, bounds each 
 
 Each discovered identity returns a conservative capability matrix: `gateway_observation=observed` with its source evidence; third-party management, AP client info, SSID control, RF optimization and physical topology are **unknown** until directly verified. No discovered device is automatically registered as managed, configured, rebooted, scanned or authenticated against. Unavailable source menus remain unavailable, not empty-success.
 
+## Generic source adapter contract (implemented but not live-wired)
+
+`internal/discovery/external.go` now accepts independently authenticated **controller inventory** reports through `MergeVerifiedInventory`. It validates freshness, source provenance and gateway scope before merging; joins only by normalized MAC, not matching IP/name/model, and keeps previously observed snapshots immutable on failed or untrusted batches. It never interprets an AP controller listing as permission to change an SSID or radio channel. This is a pure backend integration seam: it is **not connected to a live iKuai/Ruijie/Omada API or enabled by any background worker**. A source adapter must prove tenant/site controller authorization before entering this seam.
+
 ## Limits
 - A silent switch or AP invisible to gateway neighbor/bridge/DHCP/ARP tables may not be discovered.
 - DHCP clients behind NAT or a second home router may appear only as the router's WAN-facing MAC, not all clients behind it.
