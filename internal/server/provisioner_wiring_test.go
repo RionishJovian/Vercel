@@ -116,6 +116,7 @@ func TestWireBackupCaptureIndependentOfLiveApply(t *testing.T) {
 	sugar := zap.NewNop().Sugar()
 	const key = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
 	const password = "Long-Backup-Secret-Only-For-Tests-2026"
+	const archiveKey = "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE="
 	t.Run("off remains disabled", func(t *testing.T) {
 		backup := &handler.BackupHandler{}
 		if err := wireBackupCapture(&config.Config{}, sugar, nil, backup); err != nil {
@@ -141,7 +142,7 @@ func TestWireBackupCaptureIndependentOfLiveApply(t *testing.T) {
 	})
 	t.Run("missing CIDR allowlist fails", func(t *testing.T) {
 		cfg := &config.Config{}
-		cfg.Provisioner.BackupCapture = config.BackupCaptureConfig{Enabled: true, CredentialKey: key, Password: password}
+		cfg.Provisioner.BackupCapture = config.BackupCaptureConfig{Enabled: true, CredentialKey: key, Password: password, ArchiveKey: archiveKey}
 		if err := wireBackupCapture(cfg, sugar, &database.DB{}, &handler.BackupHandler{}); err == nil {
 			t.Fatal("enabled backup without management CIDR must fail")
 		}
@@ -152,6 +153,14 @@ func TestWireBackupCaptureIndependentOfLiveApply(t *testing.T) {
 		cfg.Provisioner.AllowedTargetCIDRs = []string{"10.77.0.0/24"}
 		if err := wireBackupCapture(cfg, sugar, &database.DB{}, &handler.BackupHandler{}); err == nil {
 			t.Fatal("capture cannot start without an encryption password")
+		}
+	})
+	t.Run("missing archive key fails closed", func(t *testing.T) {
+		cfg := &config.Config{}
+		cfg.Provisioner.BackupCapture = config.BackupCaptureConfig{Enabled: true, CredentialKey: key, Password: password}
+		cfg.Provisioner.AllowedTargetCIDRs = []string{"10.77.0.0/24"}
+		if err := wireBackupCapture(cfg, sugar, &database.DB{}, &handler.BackupHandler{}); err == nil {
+			t.Fatal("capture cannot start without archive encryption key")
 		}
 	})
 	t.Run("capture works while applier disabled", func(t *testing.T) {
