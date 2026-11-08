@@ -60,10 +60,10 @@ describe("topology projection for controls", () => {
   });
   it("shows the port, not the bridge, when the router reports both", () => { expect(g.devices.find((d) => d.mac === "02:00:00:00:00:20")?.ports).toEqual(["ether2"]); });
   it("keeps a platform out of the model field", () => { expect(g.devices.find((d) => d.mac === "02:00:00:00:00:20")).toMatchObject({ model: "cAP ax", platform: "MikroTik" }); });
-  it("matches a saved record to what the router reported, adding no node", () => {
+  it("matches saved records to observations and shows unobserved APs without claiming connectivity", () => {
     expect(g.devices.find((d) => d.mac === "02:00:00:00:00:20")).toMatchObject({ kind: "ap", record: { device_id: "ap" } });
     expect(g.devices).toHaveLength(2);
-    expect(project(GW, inventory() as never, [], [{ ...AP_RECORD, mac_address: "02:00:00:00:00:77" }]).devices.some((d) => d.record)).toBe(false);
+    expect(project(GW, inventory() as never, [], [{ ...AP_RECORD, mac_address: "02:00:00:00:00:77" }]).devices.find((d) => d.record?.device_id === "ap")).toMatchObject({ state: "Not observed", direct: false, ports: [] });
   });
   it("marks port state, label and PoE from the reading", () => { expect(g.ports).toEqual([{ name: "ether2", running: true, disabled: false, label: "Floor 2", poe: true }]); });
   it("still lists ports when their labels could not be read, and does not call that a missing source", () => {

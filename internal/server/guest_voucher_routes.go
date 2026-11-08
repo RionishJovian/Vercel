@@ -57,6 +57,48 @@ func registerGuestVoucherRoutes(r *gin.Engine, cfg *config.Config, db *database.
 		Retirer:     voucherLoginTransport{applier: applier},
 	}
 	registerGuestVoucherEndpoints(r, service, db, h, handler.SubscriptionAccess(db, cfg.Billing.SubscriptionOnly, cfg.Billing.ExistingAccountPolicy), handler.IndividualPassAccess(db, cfg.Billing.IndividualPassesEnabled))
+	if cfg.GuestWifi.VIPWiFiEnabled {
+		if err := vipWiFiSchemaReady(db); err != nil { return err }
+		vip := &handler.VIPWiFiHandler{DB: db, Router: vipWiFiTransport{applier: applier}}
+		owner := r.Group("/api/v1/vip-wifi", auth.CookieOrigin(), auth.Middleware(service),
+			auth.RequireActiveTenant(db), auth.RequireMinRole(model.RoleOwner))
+		owner.Use(handler.SubscriptionAccess(db, cfg.Billing.SubscriptionOnly, cfg.Billing.ExistingAccountPolicy),
+			handler.IndividualPassAccess(db, cfg.Billing.IndividualPassesEnabled))
+		owner.GET("", vip.List)
+		owner.POST("", vip.Create)
+		owner.POST("/:id/retry", vip.Retry)
+		owner.POST("/:id/revoke", vip.Revoke)
+	}
+	return nil
+}
+
+// vipWiFiTransport is deliberately separate from normal one-device vouchers.
+type vipWiFiTransport struct { applier *routeros.DeviceApplier }
+func (t vipWiFiTransport) EnsureVIPWiFiCode(ctx context.Context, biz, deviceID string, v handler.VIPWiFiSpec) error {
+	return t.applier.EnsureVIPWiFiCode(ctx, biz, deviceID, routeros.VIPWiFiCode{ID:v.ID, Code:v.Code, MaxDevices:v.MaxDevices})
+}
+func (t vipWiFiTransport) RevokeVIPWiFiCode(ctx context.Context, biz, deviceID string, v handler.VIPWiFiSpec) error {
+	return t.applier.RevokeVIPWiFiCode(ctx, biz, deviceID, routeros.VIPWiFiCode{ID:v.ID, Code:v.Code, MaxDevices:v.MaxDevices})
+}
+
+// VIP refuses startup if an opted-in deployment lacks the separate tenant
+// table, immutable identity guard, or forced RLS. No automatic migration.
+func vipWiFiSchemaReady(db *database.DB) error {
+	var ok bool
+	err := db.QueryRow(`SELECT EXISTS(
+		SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+		WHERE n.nspname='public' AND c.relname='vip_wifi_codes' AND c.relkind='r'
+		AND c.relrowsecurity AND c.relforcerowsecurity
+		AND EXISTS(SELECT 1 FROM pg_trigger t WHERE t.tgrelid=c.oid
+		  AND t.tgname='vip_wifi_code_identity_guard' AND t.tgenabled IN ('O','A'))
+		AND EXISTS(SELECT 1 FROM pg_policy p WHERE p.polrelid=c.oid
+		  AND p.polname='vip_wifi_codes_tenant' AND p.polcmd='*'
+		  AND p.polqual IS NOT NULL AND p.polwithcheck IS NOT NULL)
+		AND has_table_privilege('authenticated',c.oid,'SELECT')
+		AND has_table_privilege('authenticated',c.oid,'INSERT')
+		AND has_table_privilege('authenticated',c.oid,'UPDATE')
+	)`).Scan(&ok)
+	if err!=nil || !ok { return fmt.Errorf("VIP Wi-Fi database isolation/migration unavailable") }
 	return nil
 }
 

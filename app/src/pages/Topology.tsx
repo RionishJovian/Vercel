@@ -32,8 +32,15 @@ function Card({ n, root, on, selected, onPick }: { n: TNode; root?: boolean; on?
 }
 
 export function Topology({ me }: { me: Me }) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const canEdit = EDITORS.includes(me.user?.user_role ?? "");
+  const [view, setView] = useState<"map" | "tree">(() => {
+    try { return sessionStorage.getItem("mm_topology_view") === "tree" ? "tree" : "map"; } catch { return "map"; }
+  });
+  const switchView = (next: "map" | "tree") => {
+    setView(next);
+    try { sessionStorage.setItem("mm_topology_view", next); } catch { /* optional preference */ }
+  };
   const topo = useSWR<Topo>("/topology/map", fetcher);
   const fleet = useFleet({ shouldRetryOnError: false });
   const sitesRes = useSWR<{ sites?: Array<{ site_id: string; name: string }> }>("/sites", fetcher, { shouldRetryOnError: false });
@@ -81,6 +88,13 @@ export function Topology({ me }: { me: Me }) {
   const q = query.trim().toLowerCase();
   const filtered = graph ? graph.devices.filter((n) => [n.name, n.ip, n.mac, n.model, ...n.ports].join(" ").toLowerCase().includes(q)) : [];
   const visible = filtered.slice(0, MAX), up = visible.filter((n) => n.upstream), down = visible.filter((n) => !n.upstream);
+  // Report only the gateway interface where a device was observed. A learned MAC
+  // is not evidence of a physical parent switch, so never fabricate a hop.
+  const groups = new Map<string, TNode[]>();
+  for (const node of down) {
+    const port = node.ports[0] || (lang === "my" ? "ချိတ်ဆက်မှု မသိရသေး" : "Attachment unverified");
+    groups.set(port, [...(groups.get(port) ?? []), node]);
+  }
   const sel = graph && (selected === graph.root.id ? graph.root : graph.devices.find((n) => n.id === selected));
   const pickSite = (v: string) => { setSite(v); setRouterId(""); try { sessionStorage.setItem("mm_selected_site", v); sessionStorage.removeItem("mm_selected_router"); } catch { /* ignore */ } };
   const pickRouter = (v: string) => { setRouterId(v); try { if (v) sessionStorage.setItem("mm_selected_router", v); } catch { /* ignore */ } };
@@ -104,6 +118,10 @@ export function Topology({ me }: { me: Me }) {
           <label className="field"><span>{t("gu.site")}</span><select className="input" value={site} onChange={(e) => pickSite(e.target.value)}><option value="">{t("tp.allSites")}</option>{asArray<{ site_id: string; name: string }>(sitesRes.data?.sites).map((s) => <option key={s.site_id} value={s.site_id}>{s.name}</option>)}</select></label>
           {gateways.length > 1 && <label className="field"><span>{t("v.f.gateway")}</span><select className="input" value={device?.device_id ?? ""} onChange={(e) => pickRouter(e.target.value)}><option value="">{t("net.chooseRouter")}</option>{gateways.map((d) => <option key={d.device_id} value={d.device_id}>{d.hardware_name}</option>)}</select></label>}
         </div>
+        <div className="row nt-view-toggle" role="group" aria-label={lang === "my" ? "ကွန်ရက်ပုံစံ" : "Topology view"}>
+          <button type="button" className={"pill" + (view === "map" ? " on" : "")} aria-pressed={view === "map"} onClick={() => switchView("map")}>{lang === "my" ? "မြေပုံ" : "Map"}</button>
+          <button type="button" className={"pill" + (view === "tree" ? " on" : "")} aria-pressed={view === "tree"} onClick={() => switchView("tree")}>{lang === "my" ? "သစ်ပင်ပုံစံ" : "Tree"}</button>
+        </div>
         <input className="input" type="search" placeholder={t("tp.find")} aria-label={t("tp.find")} value={query} onChange={(e) => setQuery(e.target.value)} />
         <div className="row"><p className="soft small" role="status">{status}</p>{device && <button className="pill" type="button" disabled={reading} onClick={reload}>{t("gu.refresh")}</button>}</div>
       </div>
@@ -112,10 +130,26 @@ export function Topology({ me }: { me: Me }) {
       {!gateways.length ? <Note>{t("tp.noGateway")} <a className="link" href="#/hub">{t("hub.title")}</a></Note> : !graph ? <Note>{t("tp.pick")}</Note> : (
         <div className="nt-layout">
           <section className="glass nt-stage" aria-label={t("tp.title")} aria-busy={reading}>
-            {up.length > 0 && <div className="nt-upstream">{up.map(branch)}</div>}
-            <div className="nt-root"><Card n={{ ...graph.root, state: rootLabel }} root on={rootState === "up"} selected={selected === graph.root.id} onPick={() => setSelected(graph.root.id)} /></div>
-            <div className="nt-children">{down.map(branch)}</div>
-            {!down.length && <p className="nt-none soft small">{t("tp.noDownstream")}</p>}
+            {view === "map" ? <>
+              {up.length > 0 && <div className="nt-upstream">{up.map(branch)}</div>}
+              <div className="nt-root"><Card n={{ ...graph.root, state: rootLabel }} root on={rootState === "up"} selected={selected === graph.root.id} onPick={() => setSelected(graph.root.id)} /></div>
+              <div className="nt-children">{down.map(branch)}</div>
+              {!down.length && <p className="nt-none soft small">{t("tp.noDownstream")}</p>}
+            </> : <div className="nt-tree">
+              <div className="nt-tree-root"><Card n={{ ...graph.root, state: rootLabel }} root on={rootState === "up"} selected={selected === graph.root.id} onPick={() => setSelected(graph.root.id)} /></div>
+              {up.length > 0 && <section className="nt-tree-section" aria-label={lang === "my" ? "အဝင်ချိတ်ဆက်မှု" : "Upstream"}>
+                <h3>{lang === "my" ? "အဝင်ချိတ်ဆက်မှု" : "Upstream — observed"}</h3>
+                <div className="nt-tree-items">{up.map((n) => <div className="nt-tree-item" key={n.id}>{branch(n)}</div>)}</div>
+              </section>}
+              {groups.size > 0 ? <div className="nt-tree-section">
+                <h3>{lang === "my" ? "အောက်ဆင့် ကိရိယာများ" : "Downstream — grouped by observed gateway interface"}</h3>
+                {[...groups].map(([port, nodes]) => <details className="nt-tree-group" key={port} open>
+                  <summary>{port} <span className="soft small">· {nodes.length}</span></summary>
+                  <div className="nt-tree-items">{nodes.map((n) => <div className="nt-tree-item" key={n.id}>{branch(n)}</div>)}</div>
+                </details>)}
+              </div> : <p className="soft small">{t("tp.noDownstream")}</p>}
+              <p className="soft small">{lang === "my" ? "ဆက်စပ်မှုများသည် RouterOS မှ လေ့လာရရှိထားသော အချက်အလက်များသာဖြစ်ပြီး switch ချိတ်ဆက်ပုံကို အတည်မပြုနိုင်သေးပါ။" : "Groups show observed gateway interfaces, not verified switch-to-AP cabling. Unknown attachments are never invented."}</p>
+            </div>}
             {filtered.length > MAX && <p className="soft small">{t("tp.truncated")}</p>}
           </section>
           <aside className="glass pad stack nt-inspector" aria-live="polite">

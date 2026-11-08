@@ -167,6 +167,16 @@ provisioner:
   # Use the WireGuard management subnet(s), never 0.0.0.0/0 or ::/0.
   allowed_target_cidrs:
     - "10.77.0.0/24"
+  # OFF by default: creates .rsc and .backup files ON ROUTER and stores
+  # rollback metadata in DB. Does not transfer files off-device, and cannot
+  # apply/restore router settings. Requires encrypted device SSH credentials,
+  # pinned host key and the target CIDR allowlist above.
+  backup_capture:
+    enabled: false
+    credential_key: ""  # optional fallback to applier.credential_key
+    password: ""        # REQUIRED strong secret for AES-SHA256 encrypted .backup (inject securely)
+    archive_key: ""     # REQUIRED separate 32-byte AES-GCM key for downloaded artifacts
+    timeout: 30s
   applier:
     enabled: false
     credential_key: ""       # base64/hex 32-byte key; inject via env/config
@@ -209,7 +219,17 @@ media:
 guest_wifi:
   enabled: false
   voucher_access_enabled: false
+  vip_wifi_enabled: false # staff-only, multi-device, default off
   bridge_scan_interval: 30s
+
+# Owner review ledger only. No AP write adapter and no auto-apply.
+# Requires ap_radio_proposals migration with forced RLS before enabling.
+ap_optimization:
+  enabled: false # exposes only owner review; never authorizes AP writes
+  omada_inventory_enabled: false # independently gates TP-Link Open API inventory
+  omada_credential_key: "" # required independent AES-256-GCM key, never commit
+  omada_allowed_origins: [] # exact operator-approved HTTPS controller origins
+  omada_allowed_cidrs: [] # narrow controller IP networks, no default route
 
 vps:
   endpoint_host: ""

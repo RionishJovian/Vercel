@@ -55,8 +55,10 @@ export function project(device: GatewayRef, inv: ObsInventory = {}, labels: Labe
         n.upstream = true; n.kind = "upstream"; n.ports.push(v.interface); n.connection = "Uplink neighbour (ARP)";
         if (n.name === "Unknown device") n.name = "Upstream neighbour";
       }
-      if (key === "neighbors" && v.interface) { n.ports.push(...portsOf(v.interface)); n.connection = "Neighbour reported"; n.direct = true; }
-      if (key === "bridge_hosts" && v["on-interface"]) { n.ports.push(v["on-interface"]); n.connection = "Learned on port"; n.direct = true; }
+      if (key === "neighbors" && v.interface) { n.ports.push(...portsOf(v.interface)); n.connection = "L2 neighbour observed; physical hop unverified"; }
+      // A learned bridge MAC may sit several switches away. Never draw it
+      // as a physically direct router-to-device cable.
+      if (key === "bridge_hosts" && v["on-interface"]) { n.ports.push(v["on-interface"]); n.connection = "Learned via gateway port (hop unverified)"; }
       if (key === "wifi_clients") {
         const wifi = wireless.get(v.interface) ?? {};
         n.ports.push(v.interface); n.signal = v.signal; n.state = "Wi-Fi associated"; n.connection = "Wi-Fi"; n.direct = true;
@@ -75,12 +77,25 @@ export function project(device: GatewayRef, inv: ObsInventory = {}, labels: Labe
   for (const v of rows(inv, "device_blocks")) { const n = devices.get(macOf(v["src-mac-address"])); if (n) n.blocked = true; }
   // The guest actions' own ban, an IP binding: a different thing from the firewall block above.
   for (const v of rows(inv, "hotspot_bindings")) { if (v.comment !== "mega-magic:ban" || v.type !== "blocked" || yes(v.disabled)) continue; const n = devices.get(macOf(v["mac-address"])); if (n) n.guestBanned = true; }
-  // A saved record only names what the router reported. It adds no node and no proof of access.
+  // A saved managed AP/switch must still appear when offline or invisible to
+  // a RouterOS neighbour table. Give it a clearly unverified attachment and
+  // NO direct physical line or online indicator. Never fabricate a switch hop.
   for (const record of records) {
+    if (!record.device_id || record.deployment_layer === "MAIN_GATEWAY") continue;
     const mac = macOf(record.mac_address);
-    const n = (mac && devices.get(mac)) || [...devices.values()].find((d) => record.management_ip && d.ip === record.management_ip);
-    if (!n || n.upstream) continue;
-    n.record = record; n.kind = LAYER_KINDS[record.deployment_layer ?? ""] ?? n.kind;
+    let n = (mac && devices.get(mac)) || [...devices.values()].find((d) => record.management_ip && d.ip === record.management_ip);
+    if (!n) {
+      n = { id: "record:" + record.device_id, mac: mac || undefined,
+        name: record.hardware_name || "Registered device", ip: record.management_ip || "",
+        kind: LAYER_KINDS[record.deployment_layer ?? ""] ?? "device", sources: ["Registered inventory (not observed)"],
+        ports: [], state: "Not observed", connection: "Attachment unverified",
+        direct: false, upstream: false };
+      devices.set("record:" + record.device_id, n);
+    }
+    if (n.upstream) continue;
+    n.record = record;
+    n.kind = LAYER_KINDS[record.deployment_layer ?? ""] ?? n.kind;
+    if (record.hardware_name && n.name === "Unknown device") n.name = record.hardware_name;
   }
   for (const label of labels) {
     const n = devices.get(macOf(label.mac));

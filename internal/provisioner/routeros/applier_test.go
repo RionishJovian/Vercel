@@ -242,3 +242,47 @@ func TestSnapshotName_sanitizes(t *testing.T) {
 		t.Fatal("empty peer should still yield a name")
 	}
 }
+
+func TestEncryptedSnapshotVerifiesBothRouterArtifacts(t *testing.T) {
+	const password = "Strong-test-only-backup-secret-2026"
+	fr := &fakeRunner{out: map[string]string{
+		"/file get": "8192\n",
+		"print value-list detail where name=": "name: wg-magichub\nlisten-port: 13231\n",
+		"peers print value-list detail where interface=": "persistent-keepalive: 25s\n",
+		"/ip route print detail": "DAc 10.99.0.0/30 wg-magichub main 0\n",
+	}}
+	snap, err := NewApplier(fr, "wg-magichub", 0, 0).WithBackupPassword(password).
+		Snapshot(context.Background(), "biz-1", "peer2", nil)
+	if err != nil { t.Fatal(err) }
+	if snap.ExportFile == "" || snap.BackupName == "" { t.Fatal("snapshot metadata absent") }
+	calls := fr.joined()
+	if !strings.Contains(calls, "encryption=aes-sha256 password=") {
+		t.Fatal("snapshot must request an encrypted RouterOS binary backup")
+	}
+	if strings.Count(calls, "/file get") != 2 {
+		t.Fatalf("must verify both .backup and .rsc, calls = %q", calls)
+	}
+	if !strings.Contains(calls, ".backup") || !strings.Contains(calls, ".rsc") {
+		t.Fatal("file checks did not cover both artifacts")
+	}
+}
+
+func TestEncryptedSnapshotRejectsMissingArtifact(t *testing.T) {
+	fr := &fakeRunner{out: map[string]string{"/file get": "0\n"}}
+	_, err := NewApplier(fr, "wg-magichub", 0, 0).WithBackupPassword("Strong-test-only-backup-secret-2026").
+		Snapshot(context.Background(), "biz-1", "peer2", nil)
+	if err == nil || !strings.Contains(err.Error(), "missing or empty") {
+		t.Fatalf("an empty router artifact must fail capture: %v", err)
+	}
+}
+
+func TestEncryptedSnapshotNeverLeaksPasswordOnCommandError(t *testing.T) {
+	const password = "Strong-test-only-backup-secret-2026"
+	fr := &fakeRunner{err: map[string]error{"/system backup save": errors.New("secret command rejected")}}
+	_, err := NewApplier(fr, "wg-magichub", 0, 0).WithBackupPassword(password).
+		Snapshot(context.Background(), "biz-1", "peer2", nil)
+	if err == nil { t.Fatal("failure must propagate") }
+	if strings.Contains(err.Error(), password) || strings.Contains(err.Error(), "secret command rejected") {
+		t.Fatal("backup error leaked sensitive command or provider output")
+	}
+}

@@ -19,6 +19,23 @@ describe("topology projection", () => {
   it("treats an ARP neighbour on a station radio as the upstream uplink", () => { const u = g.devices.find((d) => d.mac === "DC:A6:32:00:00:09"); expect(u).toMatchObject({ upstream: true, kind: "upstream", connection: "Uplink neighbour (ARP)" }); });
   it("places a Wi-Fi client on its radio", () => { expect(g.devices.find((d) => d.name === "Phone")).toMatchObject({ ports: ["wifi2"], state: "Wi-Fi associated", direct: true }); });
   it("applies saved names and kinds only to non-upstream devices", () => { expect(g.devices.find((d) => d.mac === "B8:27:EB:11:22:44")).toMatchObject({ name: "Cashier PC", kind: "computer" }); });
+  it("treats bridge-learned devices as downstream paths, not a direct physical cable", () => {
+    const node = g.devices.find((d) => d.mac === "B8:27:EB:11:22:44");
+    expect(node).toMatchObject({ ports: ["ether2"], direct: false, connection: "Learned via gateway port (hop unverified)" });
+  });
+  it("shows registered but unobserved switches and APs without claiming connectivity", () => {
+    const topology = project(gw, inv, [], [
+      { device_id: "sw1", deployment_layer: "DOWNSTREAM_SWITCH", hardware_name: "Managed switch" },
+      { device_id: "ap1", deployment_layer: "ACCESS_POINT", hardware_name: "RG-RAP", management_ip: "192.168.88.50" },
+    ]);
+    expect(topology.devices.find(n => n.id === "record:sw1")).toMatchObject({ kind: "switch", state: "Not observed", direct: false, ports: [] });
+    expect(topology.devices.find(n => n.id === "record:ap1")).toMatchObject({ kind: "ap", state: "Not observed", connection: "Attachment unverified", direct: false });
+  });
+  it("does not create a second node when registered AP MAC matches an observed device", () => {
+    const topology = project(gw, inv, [], [{ device_id: "ap2", deployment_layer: "ACCESS_POINT", hardware_name: "Cashier AP", mac_address: "B8:27:EB:11:22:44" }]);
+    expect(topology.devices.filter(n => n.mac === "B8:27:EB:11:22:44")).toHaveLength(1);
+    expect(topology.devices.find(n => n.mac === "B8:27:EB:11:22:44")?.record?.device_id).toBe("ap2");
+  });
   it("reports unreadable sources instead of guessing", () => { expect(g.unavailable).toEqual(["neighbors"]); });
   it("marks the router read only when the router actually answered", () => { expect(g.root.state).toBe("Router read"); expect(project(gw).root.state).toBe("Not read"); });
 });

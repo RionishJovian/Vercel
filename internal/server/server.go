@@ -428,6 +428,9 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	if err := registerGuestVoucherRoutes(r, cfg, db, authService, voucherHandler); err != nil {
 		return nil, fmt.Errorf("guest voucher routes: %w", err)
 	}
+	if err := registerAPOptimizationRoutes(r, cfg, db, authService); err != nil {
+		return nil, fmt.Errorf("AP optimization review: %w", err)
+	}
 	portalHandler.GuestVoucherAccess = cfg.GuestWifi.VoucherAccessEnabled
 
 	// Start the policy evaluator: watches NATS telemetry and auto-opens incidents.

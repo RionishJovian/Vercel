@@ -8,6 +8,7 @@ import { Skeleton } from "../../components/Skeleton";
 import { DeviceForm, LAYERS, type DeviceRec } from "./DeviceForm";
 import { errorText } from "../../lib/errors";
 import { useFleet } from "../../lib/useFleet";
+import { APOptimizationReviews } from "./APOptimizationReviews";
 
 interface Allowance { routers: number | null; controllers: number | null; sites: number | null; used_routers: number; used_controllers: number; used_sites: number; used_access_points: number; included_router_name?: string }
 interface Request { id: string; kind: string; quantity?: number; user_email?: string; reason?: string; status: string; decided_at?: string }
@@ -73,6 +74,7 @@ export function ManagedDevices({ me }: { me: Me }) {
           </article>
         ))}</div>
       )}
+      {me.user?.user_role === "OWNER" && <APOptimizationReviews />}
       {capacity && a && (
         <section className="glass pad stack"><h2>{t("dm.allowances")}</h2>
           <Row label={t("dm.routers")} granted={a.routers} used={a.used_routers} /><Row label={t("dm.controllers")} granted={a.controllers} used={a.used_controllers} /><Row label={t("pa.sites")} granted={a.sites} used={a.used_sites} /><Row label={t("dm.aps")} granted={null} used={a.used_access_points} />

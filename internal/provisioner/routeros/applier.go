@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"strconv"
 	"strings"
 	"time"
 
@@ -32,6 +33,7 @@ type Applier struct {
 	iface      string
 	rotatePort int
 	resetHold  time.Duration
+	backupPassword string
 	sleep      func(time.Duration)
 	now        func() time.Time
 }
@@ -52,6 +54,13 @@ func NewApplier(run CommandRunner, iface string, rotatePort int, resetHold time.
 	}
 }
 
+// WithBackupPassword enables encryption and explicit size readback for
+// capture-only operations. The password is never logged or returned.
+func (a *Applier) WithBackupPassword(password string) *Applier {
+	a.backupPassword = password
+	return a
+}
+
 var _ provisioner.Applier = (*Applier)(nil)
 
 // Snapshot captures the pre-change state: an on-device .rsc export and a binary
@@ -65,8 +74,34 @@ func (a *Applier) Snapshot(ctx context.Context, _, peerID string, changes []prov
 	if _, err := a.run.Run(ctx, fmt.Sprintf("/export file=%s", routerOSQuoted(name))); err != nil {
 		return provisioner.RollbackSnapshot{}, fmt.Errorf("routeros: snapshot export: %w", err)
 	}
-	if _, err := a.run.Run(ctx, fmt.Sprintf("/system backup save name=%s", routerOSQuoted(name))); err != nil {
-		return provisioner.RollbackSnapshot{}, fmt.Errorf("routeros: snapshot backup: %w", err)
+	backupCmd := fmt.Sprintf("/system backup save name=%s", routerOSQuoted(name))
+	if a.backupPassword != "" {
+		// RouterOS v6.43+ silently creates an UNENCRYPTED binary backup when
+		// no password is supplied. Use AES-SHA256 for independent captures.
+		backupCmd += " encryption=aes-sha256 password=" + routerOSQuoted(a.backupPassword)
+	}
+	if _, err := a.run.Run(ctx, backupCmd); err != nil {
+		return provisioner.RollbackSnapshot{}, fmt.Errorf("routeros: snapshot backup command failed")
+	}
+	var backupBytes, exportBytes int64
+	if a.backupPassword != "" {
+		// Never record "backup created" unless both on-router artifacts are
+		// observed and non-empty. This does not attest off-router durability.
+		for _, filename := range []string{name + ".backup", name + ".rsc"} {
+			sizeText, err := a.run.Run(ctx, fmt.Sprintf(":put [/file get [find where name=%s] size]", routerOSQuoted(filename)))
+			if err != nil {
+				return provisioner.RollbackSnapshot{}, fmt.Errorf("routeros: backup artifact verification failed")
+			}
+			size, err := strconv.ParseInt(strings.TrimSpace(sizeText), 10, 64)
+			if err != nil || size < 1 {
+				return provisioner.RollbackSnapshot{}, fmt.Errorf("routeros: backup artifact missing or empty")
+			}
+			if strings.HasSuffix(filename, ".backup") {
+				backupBytes = size
+			} else {
+				exportBytes = size
+			}
+		}
 	}
 
 	wgIface, err := a.run.Run(ctx, fmt.Sprintf("/interface wireguard print value-list detail where name=%s", routerOSQuoted(a.iface)))
@@ -105,6 +140,8 @@ func (a *Applier) Snapshot(ctx context.Context, _, peerID string, changes []prov
 		Protecting:           changes,
 		ExportFile:           name + ".rsc",
 		BackupName:           name,
+		BackupBytes:         backupBytes,
+		ExportBytes:         exportBytes,
 		WGListenPort:         atoiOr(ifaceKV["listen-port"], 0),
 		WGPeerKeepalive:      peerKV["persistent-keepalive"],
 		WGPeerAllowedAddress: peerKV["allowed-address"],

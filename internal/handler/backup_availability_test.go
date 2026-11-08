@@ -2,9 +2,16 @@ package handler
 
 import (
 	"testing"
+	"context"
 
 	"mega-magic/internal/provisioner"
 )
+
+type fakeBackupArchiver struct{}
+
+func (fakeBackupArchiver) ArchiveSnapshot(context.Context, string, string) (provisioner.RollbackSnapshot, error) {
+	return provisioner.RollbackSnapshot{}, nil
+}
 
 func TestBackupButtonsMatchWhatTheRoutesWouldDo(t *testing.T) {
 	off := &BackupHandler{}
@@ -20,5 +27,14 @@ func TestBackupButtonsMatchWhatTheRoutesWouldDo(t *testing.T) {
 	live.EnableLive(struct{ provisioner.Applier }{}, provisioner.NewTOTPVerifier(provisioner.TOTPConfig{Secret: "JBSWY3DPEHPK3PXP"}))
 	if !live.captureAvailable() || !live.restoreAvailable() {
 		t.Fatal("both routes would work")
+	}
+	captureOnly := &BackupHandler{}
+	captureOnly.EnableCapture(fakeBackupArchiver{})
+	if !captureOnly.captureAvailable() || captureOnly.restoreAvailable() {
+		t.Fatal("capture-only must not grant live restore")
+	}
+	captureOnly.EnableLive(struct{ provisioner.Applier }{}, nil)
+	if !captureOnly.captureAvailable() || captureOnly.restoreAvailable() {
+		t.Fatal("missing OTP must fail closed even with full applier")
 	}
 }

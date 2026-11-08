@@ -3,6 +3,7 @@ package server
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"go.uber.org/zap"
@@ -41,6 +42,13 @@ func startLiveApplier(cfg *config.Config, client *messaging.Client, sugar *zap.S
 	// fails server startup when misconfigured). Gating a read-only monitoring
 	// feature behind a write-capable one made it impossible to enable safely.
 	if err := wirePostureCapture(cfg, sugar, monitor, db); err != nil {
+		return err
+	}
+	// Snapshot capture is an independent, default-off capability. It creates
+	// RouterOS export/backup FILES but never wires Apply/Restore/OTP or the
+	// recovery consumers. A valid target CIDR allowlist, encrypted per-device
+	// credential and pinned SSH host key remain mandatory.
+	if err := wireBackupCapture(cfg, sugar, db, backup); err != nil {
 		return err
 	}
 
@@ -168,6 +176,52 @@ func startLiveApplier(cfg *config.Config, client *messaging.Client, sugar *zap.S
 		sugar.Warn("Telegram approval bridge not configured (no bot messenger) — approval requests will time out and DENY")
 	}
 
+	return nil
+}
+
+// wireBackupCapture is separate from live router configuration changes. The
+// transport is injected through BackupSnapshotter, so no writer is made
+// available to the handler unless the live applier is explicitly enabled.
+func wireBackupCapture(cfg *config.Config, sugar *zap.SugaredLogger, db *database.DB, backup *handler.BackupHandler) error {
+	c := cfg.Provisioner.BackupCapture
+	if !c.Enabled {
+		return nil
+	}
+	if db == nil || backup == nil {
+		return errors.New("router backup capture: enabled but database or backup handler unavailable")
+	}
+	if len(c.Password) < 24 || len(c.Password) > 256 || strings.ContainsAny(c.Password, "\r\n") {
+		return errors.New("router backup capture: strong encryption password required (24–256 characters, no newlines)")
+	}
+	key := c.CredentialKey
+	if key == "" {
+		key = cfg.Provisioner.Applier.CredentialKey
+	}
+	box, err := secretbox.New(key)
+	if err != nil {
+		return fmt.Errorf("router backup capture: credential key: %w", err)
+	}
+	if c.ArchiveKey == key {
+		return errors.New("router backup capture: archive key must be separate from device credential key")
+	}
+	archiveBox, err := secretbox.New(c.ArchiveKey)
+	if err != nil {
+		return fmt.Errorf("router backup capture: archive encryption key: %w", err)
+	}
+	source := database.NewDeviceCredentialSource(db, box)
+	policySource, err := routeros.NewCIDRTargetSource(source, cfg.Provisioner.AllowedTargetCIDRs)
+	if err != nil {
+		return fmt.Errorf("router backup capture target policy: %w", err)
+	}
+	timeout := c.Timeout
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+	snapshotter := routeros.NewDeviceApplier(policySource, timeout, nil,
+		cfg.Provisioner.Applier.Interface, 0, 0).
+		WithBackupPassword(c.Password).WithArchiveBox(archiveBox)
+	backup.EnableCapture(snapshotter)
+	sugar.Info("router backup capture wired independently (on-router artifacts only; full live applier remains separately gated)")
 	return nil
 }
 

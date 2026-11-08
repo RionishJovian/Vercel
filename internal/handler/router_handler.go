@@ -15,6 +15,7 @@ import (
 
 	"mega-magic/internal/auth"
 	"mega-magic/internal/database"
+	"mega-magic/internal/discovery"
 	"mega-magic/internal/model"
 	"mega-magic/internal/provisioner/routeros"
 )
@@ -487,6 +488,44 @@ func (h *RouterHandler) GetRouterObservations(c *gin.Context) {
 	inventory.AddressWriteEnabled = false
 	inventory.AddressPreviewOnly = false
 	c.JSON(200, gin.H{"inventory": inventory, "guest_actions_enabled": h.guestActionsReady()})
+}
+
+// GetRouterDiscovery provides a read-only, normalized discovery snapshot
+// using the SAME tenant-bound gateway credentials as the observation route.
+// It does not probe any LAN address or mutate devices; unsupported management
+// capabilities and physical attachments remain explicitly unverified.
+func (h *RouterHandler) GetRouterDiscovery(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
+	businessID, deviceID := auth.GetBusinessID(c), c.Param("id")
+	var labels []*database.DiscoveryLabel
+	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
+		d, e := h.deviceRepo.GetDeviceByIDTXN(tx, deviceID)
+		if e != nil {return e}
+		if d == nil || d.BusinessID != businessID {
+			return &httpError{status: http.StatusNotFound, msg: "router not found"}
+		}
+		labels, e = h.deviceRepo.GetDiscoveryLabelsTXN(tx, businessID, deviceID)
+		return e
+	})
+	if err != nil {respondErr(c, err);return}
+	if h.observations == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error":"gateway read-only observations unavailable","code":"discovery_unavailable"})
+		return
+	}
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
+	defer cancel()
+	inventory, err := h.observations.ReadObservations(ctx, businessID, deviceID)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error":"gateway discovery observations unavailable","code":"discovery_unavailable"})
+		return
+	}
+	overrides := make([]discovery.Label, 0, len(labels))
+	for _, l := range labels {
+		if l == nil {continue}
+		overrides = append(overrides, discovery.Label{MAC:l.MACAddress,Name:l.Name,Kind:l.Kind})
+	}
+	snapshot := discovery.Build(deviceID, inventory, overrides)
+	c.JSON(http.StatusOK, gin.H{"discovery":snapshot})
 }
 
 // GetDiscoveryLabels returns saved friendly names and types for discovered devices.

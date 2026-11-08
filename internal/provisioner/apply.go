@@ -25,6 +25,14 @@ type RollbackSnapshot struct {
 	// populated by internal/provisioner/routeros.
 	ExportFile           string                    `json:"export_file,omitempty"`
 	BackupName           string                    `json:"backup_name,omitempty"`
+	// Nonzero only for verified encrypted captures. Off-device payloads are
+	// sealed with the dedicated archive key; no raw router file enters the DB.
+	ExportBytes int64 `json:"export_bytes,omitempty"`
+	BackupBytes int64 `json:"backup_bytes,omitempty"`
+	OffDeviceExportSealed string `json:"off_device_export_sealed,omitempty"`
+	OffDeviceBackupSealed string `json:"off_device_backup_sealed,omitempty"`
+	OffDeviceExportSHA256 string `json:"off_device_export_sha256,omitempty"`
+	OffDeviceBackupSHA256 string `json:"off_device_backup_sha256,omitempty"`
 	WGListenPort         int                       `json:"wg_listen_port,omitempty"`
 	WGPeerKeepalive      string                    `json:"wg_peer_keepalive,omitempty"`
 	WGPeerAllowedAddress string                    `json:"wg_peer_allowed_address,omitempty"`
