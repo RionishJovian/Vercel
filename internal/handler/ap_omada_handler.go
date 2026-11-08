@@ -6,7 +6,6 @@ package handler
 import (
  "database/sql"
  "errors"
- "net/http"
  "net/url"
  "strings"
 
