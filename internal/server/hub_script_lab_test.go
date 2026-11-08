@@ -173,13 +173,16 @@ func TestCHRLabOnePaste(t *testing.T) {
 		mustComplete(t, r.pasteWithSSHOpen(scriptA))
 		r.installed(t, a)
 	})
-	t.Run("a new script with a new key on the same record", func(t *testing.T) {
+	t.Run("a new script with a new key stops before replacing current enrollment", func(t *testing.T) {
 		newer, _ := labScript(t, a, "10.77.9.52/32")
-		mustComplete(t, r.paste(newer))
+		out := r.paste(newer)
+		if !strings.Contains(out, "STOP: existing tunnel key differs") {
+			t.Fatalf("expected safe refusal, got:\n%s", out)
+		}
 		r.installed(t, a)
 		name, _ := labNames(a)
-		if got := r.run(`:put [/ip/address get [find where interface="` + name + `"] address]`); !strings.Contains(got, "10.77.9.52/32") {
-			t.Errorf("address not corrected: %s", got)
+		if got := r.run(`:put [/ip/address get [find where interface="` + name + `"] address]`); !strings.Contains(got, "10.77.9.50/32") {
+			t.Errorf("existing tunnel address changed unexpectedly: %s", got)
 		}
 		mustComplete(t, r.paste(scriptA))
 	})
@@ -230,17 +233,23 @@ func TestCHRLabOnePaste(t *testing.T) {
 			t.Errorf("management rule is not first among static rules:\n%s", order)
 		}
 	})
-	t.Run("record deleted, new record on the same router", func(t *testing.T) {
+	t.Run("new enrollment refuses to replace an older Magic Hub tunnel", func(t *testing.T) {
 		scriptB, _ := labScript(t, b, "10.77.9.51/32")
-		mustComplete(t, r.paste(scriptB))
-		r.installed(t, b)
+		out := r.paste(scriptB)
+		if !strings.Contains(out, "STOP: older Magic Hub tunnel found") {
+			t.Fatalf("expected safe migration stop, got:\n%s", out)
+		}
+		r.installed(t, a)
+		if got := r.count(`/interface/wireguard find where name~"^mmh-"`); got != "1" {
+			t.Errorf("old tunnel was deleted or a new one added: %s", got)
+		}
 	})
 	t.Run("something else using the Hub route stops before any change", func(t *testing.T) {
 		r.clean()
 		r.run(`/ip/route add dst-address=10.77.0.1/32 gateway=192.168.64.1 comment=not-ours`)
 		defer r.run(`/ip/route remove [find where comment=not-ours]`)
 		out := r.paste(scriptA)
-		if !strings.Contains(out, "STOP: a route to the Hub already exists") {
+		if !strings.Contains(out, "STOP: Hub destination route differs") {
 			t.Fatalf("want a STOP, got:\n%s", out)
 		}
 		if got := r.count(`/interface/wireguard find where name~"^mmh-"`); got != "0" {

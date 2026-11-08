@@ -178,10 +178,10 @@ func BuildRouterScripts(deviceID string, peer Peer) (RouterScripts, error) {
 // private key is shown only in this authenticated, no-store response and is
 // installed locally by the router.
 //
-// It brings the router to the wanted state from wherever it is, so pasting it
-// again is always safe: what carries this enrollment's marker is corrected, and
-// what an older Mega Magic setup left behind is replaced. Anything belonging to
-// someone else stops the script before the first change.
+// It may create missing resources or re-enable exact matches. Existing
+// tunnels, peers, routes and addresses are never removed or reassigned.
+// Conflicting or older installations require an explicit, separately reviewed
+// migration; the default paste stops before the first write.
 func BuildQuickConnectScript(deviceID string, peer Peer, privateKey string) (string, error) {
 	if !scriptKey(privateKey) {
 		return "", fmt.Errorf("invalid router private key")
@@ -208,75 +208,85 @@ func BuildQuickConnectScript(deviceID string, peer Peer, privateKey string) (str
 
 	w(`{
 # Magic Hub one-paste setup. Paste the entire block in WinBox New Terminal.
-# Scoped tunnel only. Does not enable SSH/REST or change WAN/LAN/firewall/users.
-:local mmOwned do={ :return ([:pick $1 0 15] = "mega-magic:mmh-") }
+# Creates missing tunnel resources only. Does not remove prior tunnels or change WAN/LAN/users.
+# A different enrollment requires an explicit migration, NOT an automatic cleanup.
 
-# Check first: nothing changes if something else already uses these names or addresses.
-:foreach mmItem in=[/interface/wireguard find where name="%[1]s"] do={
-  :if ([/interface/wireguard get $mmItem comment] != "%[2]s") do={ :error "STOP: interface %[1]s belongs to another setup; nothing changed" }
+# PREFLIGHT: inspect all existing Magic Hub identities and destinations before any writes.
+:foreach mmItem in=[/interface/wireguard find where name~"^mmh-"] do={
+  :local mmName [/interface/wireguard get $mmItem name]
+  :local mmComment [/interface/wireguard get $mmItem comment]
+  :if ($mmName != "%[1]s" && [:pick $mmComment 0 15] = "mega-magic:mmh-") do={
+    :error "STOP: older Magic Hub tunnel found. Migrate separately; nothing changed"
+  }
 }
-:foreach mmItem in=[/interface/wireguard/peers find where interface="%[1]s"] do={
-  :if ([/interface/wireguard/peers get $mmItem comment] != "%[2]s") do={ :error "STOP: unexpected peer on the Magic Hub interface; nothing changed" }
+:local mmIface [/interface/wireguard find where name="%[1]s"]
+:if ([:len $mmIface] > 1) do={ :error "STOP: duplicate tunnel interface; nothing changed" }
+:if ([:len $mmIface] = 1) do={
+  :if ([/interface/wireguard get $mmIface comment] != "%[2]s") do={ :error "STOP: interface belongs to another setup; nothing changed" }
+  :if ([/interface/wireguard get $mmIface public-key] != "%[5]s") do={ :error "STOP: existing tunnel key differs; migration required; nothing changed" }
+}
+:local mmPeer [/interface/wireguard/peers find where interface="%[1]s"]
+:if ([:len $mmPeer] > 1) do={ :error "STOP: multiple existing peers; nothing changed" }
+:if ([:len $mmPeer] = 1) do={
+  :if ([/interface/wireguard/peers get $mmPeer comment] != "%[2]s" ||
+       [/interface/wireguard/peers get $mmPeer public-key] != "%[6]s" ||
+       [/interface/wireguard/peers get $mmPeer endpoint-address] != "%[7]s" ||
+       [:tostr [/interface/wireguard/peers get $mmPeer endpoint-port]] != "%[8]s" ||
+       [:tostr [/interface/wireguard/peers get $mmPeer allowed-address]] != "%[9]s") do={
+    :error "STOP: existing Hub peer differs; migration required; nothing changed"
+  }
+}
+:foreach mmItem in=[/ip/address find where interface="%[1]s"] do={
+  :if ([/ip/address get $mmItem address] != "%[3]s" ||
+       [/ip/address get $mmItem comment] != "%[2]s") do={
+    :error "STOP: existing interface address differs; nothing changed"
+  }
 }
 :foreach mmItem in=[/ip/address find where address="%[3]s"] do={
-  :if (![$mmOwned [/ip/address get $mmItem comment]]) do={ :error "STOP: tunnel address already used by another interface; nothing changed" }
-}
-`, name, marker, peer.TunnelAddress)
-	for _, raw := range peer.AllowedIPs {
-		w(`:foreach mmItem in=[/ip/route find where dst-address="%s"] do={
-  :if (![$mmOwned [/ip/route get $mmItem comment]]) do={ :error "STOP: a route to the Hub already exists and is not from Magic Hub; nothing changed" }
-}
-`, raw)
-	}
-	w(`
-# Remove what an older Mega Magic setup left on this router, for example after its record was deleted.
-:foreach mmItem in=[/interface/wireguard find where name~"^mmh-"] do={
-  :local mmOldName [/interface/wireguard get $mmItem name]
-  :local mmOldComment [/interface/wireguard get $mmItem comment]
-  :if ($mmOldName != "%[1]s" && [$mmOwned $mmOldComment]) do={
-    /ip/address remove [find where interface=$mmOldName]
-    /interface/wireguard/peers remove [find where interface=$mmOldName]
-    /interface/wireguard remove $mmItem
-    :put ("Replaced an older Magic Hub tunnel: " . $mmOldName)
+  :if ([/ip/address get $mmItem interface] != "%[1]s" ||
+       [/ip/address get $mmItem comment] != "%[2]s") do={
+    :error "STOP: tunnel address already assigned elsewhere; nothing changed"
   }
 }
-/ip/route remove [find where comment~"^mega-magic:mmh-" and comment!="%[2]s"]
-/ip/address remove [find where comment~"^mega-magic:mmh-" and comment!="%[2]s"]
-
-# Tunnel.
-:local mmIface [/interface/wireguard find where name="%[1]s"]
+:foreach mmItem in=[/ip/route find where comment~"^mega-magic:mmh-"] do={
+  :if ([/ip/route get $mmItem comment] != "%[2]s") do={
+    :error "STOP: older Magic Hub route found. Migrate separately; nothing changed"
+  }
+}
+`, name, marker, peer.TunnelAddress, privateKey, peer.RouterPublicKey, peer.HubPublicKey, host, portRaw, strings.Join(peer.AllowedIPs, ";"))
+for _, raw := range peer.AllowedIPs {
+  w(`:local mmRoute [/ip/route find where dst-address="%[1]s"]
+:if ([:len $mmRoute] > 1) do={ :error "STOP: duplicate Hub routes; nothing changed" }
+:if ([:len $mmRoute] = 1) do={
+  :if ([/ip/route get $mmRoute comment] != "%[2]s" ||
+       [/ip/route get $mmRoute gateway] != "%[3]s") do={
+    :error "STOP: Hub destination route differs; nothing changed"
+  }
+}
+`, raw, marker, name)
+}
+w(`
+# APPLY: only add absent resources or enable the matching enrollment.
 :if ([:len $mmIface] = 0) do={
-  /interface/wireguard add name="%[1]s" mtu=1280 private-key="%[4]s" comment="%[2]s"
+  /interface/wireguard add name="%[1]s" mtu=1280 private-key="%[3]s" comment="%[2]s"
   :set mmIface [/interface/wireguard find where name="%[1]s"]
 }
-:if ([/interface/wireguard get $mmIface public-key] != "%[5]s") do={ /interface/wireguard set $mmIface private-key="%[4]s" }
+:if ([:len $mmIface] != 1) do={ :error "STOP: tunnel creation could not be verified" }
 /interface/wireguard set $mmIface disabled=no
-`, name, marker, peer.TunnelAddress, privateKey, peer.RouterPublicKey)
-	w(`:local mmPeer [/interface/wireguard/peers find where interface="%[1]s"]
-:if ([:len $mmPeer] = 1) do={
-  :if ([/interface/wireguard/peers get $mmPeer public-key] != "%[2]s" || [/interface/wireguard/peers get $mmPeer endpoint-address] != "%[3]s" || [:tostr [/interface/wireguard/peers get $mmPeer endpoint-port]] != "%[4]s" || [:tostr [/interface/wireguard/peers get $mmPeer allowed-address]] != "%[5]s") do={
-    /interface/wireguard/peers remove $mmPeer
-    :set mmPeer ""
-  }
-} else={
-  :if ([:len $mmPeer] > 1) do={ /interface/wireguard/peers remove $mmPeer }
-  :set mmPeer ""
-}
-:if ([:len $mmPeer] = 0) do={ /interface/wireguard/peers add interface="%[1]s" public-key="%[2]s" endpoint-address="%[3]s" endpoint-port=%[4]s allowed-address=%[6]s persistent-keepalive=25s comment="%[7]s" } else={ /interface/wireguard/peers set $mmPeer disabled=no }
-`, name, peer.HubPublicKey, host, portRaw, strings.Join(peer.AllowedIPs, ";"), strings.Join(peer.AllowedIPs, ","), marker)
-	w(`:foreach mmItem in=[/ip/address find where interface="%[1]s" and address!="%[2]s"] do={ /ip/address remove $mmItem }
-:local mmAddr [/ip/address find where address="%[2]s"]
-:if ([:len $mmAddr] = 0) do={ /ip/address add address=%[2]s interface="%[1]s" comment="%[3]s" } else={
-  :foreach mmItem in=$mmAddr do={ /ip/address set $mmItem interface="%[1]s" comment="%[3]s" disabled=no }
-}
-`, name, peer.TunnelAddress, marker)
-	for _, raw := range peer.AllowedIPs {
-		w(`:local mmRoute [/ip/route find where dst-address="%[1]s"]
-:if ([:len $mmRoute] = 0) do={ /ip/route add dst-address=%[1]s gateway="%[2]s" comment="%[3]s" } else={
-  :foreach mmItem in=$mmRoute do={ /ip/route set $mmItem gateway="%[2]s" comment="%[3]s" disabled=no }
-}
+:if ([:len $mmPeer] = 0) do={
+  /interface/wireguard/peers add interface="%[1]s" public-key="%[4]s" endpoint-address="%[5]s" endpoint-port=%[6]s allowed-address=%[7]s persistent-keepalive=25s comment="%[2]s"
+} else={ /interface/wireguard/peers set $mmPeer disabled=no }
+:local mmAddr [/ip/address find where interface="%[1]s" and address="%[8]s"]
+:if ([:len $mmAddr] = 0) do={
+  /ip/address add address=%[8]s interface="%[1]s" comment="%[2]s"
+} else={ /ip/address set $mmAddr disabled=no }
+`, name, marker, privateKey, peer.HubPublicKey, host, portRaw, strings.Join(peer.AllowedIPs, ","), peer.TunnelAddress)
+for _, raw := range peer.AllowedIPs {
+  w(`:if ([:len [/ip/route find where dst-address="%[1]s"]] = 0) do={
+  /ip/route add dst-address=%[1]s gateway="%[2]s" comment="%[3]s"
+} else={ /ip/route set [find where dst-address="%[1]s"] disabled=no }
 `, raw, name, marker)
-	}
+}
 	w(":put \"Tunnel configured.\"\n}")
 	return b.String(), nil
 }
