@@ -365,6 +365,7 @@ func TestBackupCaptureRequiresSeparateStrongPassword(t *testing.T) {
 		t.Fatalf("missing strong password must refuse startup: %v", err)
 	}
 	cfg.Provisioner.BackupCapture.Password = "A-separate-long-recovery-secret-2026"
+	cfg.Provisioner.BackupCapture.ArchiveKey = "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE="
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("valid capture-only config must not require the live applier: %v", err)
 	}
