@@ -110,3 +110,50 @@ func TestStartLiveApplier_enabledButNoClientFailsLoudly(t *testing.T) {
 		t.Fatal("enabled live path without a messaging client must fail loudly")
 	}
 }
+
+func TestWireBackupCaptureIndependentOfLiveApply(t *testing.T) {
+	sugar := zap.NewNop().Sugar()
+	const key = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+	t.Run("off remains disabled", func(t *testing.T) {
+		backup := &handler.BackupHandler{}
+		if err := wireBackupCapture(&config.Config{}, sugar, nil, backup); err != nil {
+			t.Fatalf("disabled backup capture must be no-op: %v", err)
+		}
+		if backup.CaptureEnabledForTest() { t.Fatal("backup was enabled without an opt-in") }
+	})
+	t.Run("missing database fails", func(t *testing.T) {
+		cfg := &config.Config{}
+		cfg.Provisioner.BackupCapture.Enabled = true
+		if err := wireBackupCapture(cfg, sugar, nil, &handler.BackupHandler{}); err == nil {
+			t.Fatal("enabled backup without DB must fail")
+		}
+	})
+	t.Run("bad key fails", func(t *testing.T) {
+		cfg := &config.Config{}
+		cfg.Provisioner.BackupCapture.Enabled = true
+		cfg.Provisioner.AllowedTargetCIDRs = []string{"10.77.0.0/24"}
+		if err := wireBackupCapture(cfg, sugar, &database.DB{}, &handler.BackupHandler{}); err == nil {
+			t.Fatal("enabled backup without decrypt key must fail")
+		}
+	})
+	t.Run("missing CIDR allowlist fails", func(t *testing.T) {
+		cfg := &config.Config{}
+		cfg.Provisioner.BackupCapture = config.BackupCaptureConfig{Enabled: true, CredentialKey: key}
+		if err := wireBackupCapture(cfg, sugar, &database.DB{}, &handler.BackupHandler{}); err == nil {
+			t.Fatal("enabled backup without management CIDR must fail")
+		}
+	})
+	t.Run("capture works while applier disabled", func(t *testing.T) {
+		cfg := &config.Config{}
+		cfg.Provisioner.Applier.Enabled = false
+		cfg.Provisioner.BackupCapture = config.BackupCaptureConfig{Enabled: true, CredentialKey: key}
+		cfg.Provisioner.AllowedTargetCIDRs = []string{"10.77.0.0/24"}
+		backup := &handler.BackupHandler{}
+		if err := wireBackupCapture(cfg, sugar, &database.DB{}, backup); err != nil {
+			t.Fatalf("capture-only wiring failed: %v", err)
+		}
+		if !backup.CaptureEnabledForTest() || backup.RestoreEnabledForTest() {
+			t.Fatal("capture must not grant restore when applier is disabled")
+		}
+	})
+}
