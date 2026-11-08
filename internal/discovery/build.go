@@ -7,7 +7,6 @@ import (
 	"net"
 	"sort"
 	"strings"
-	"time"
 	"unicode"
 
 	"mega-magic/internal/provisioner/routeros"
@@ -219,7 +218,7 @@ func Build(gatewayID string, inv routeros.NetworkInventory, labels []Label) Snap
 			if a == nil {
 				if len(found) >= maxDevices {snap.Truncated = true; continue}
 				a = &aggregate{
-					d: Device{MAC: mac, Kind: "unknown", KindEvidence: "not_verified", Addresses: []string{}, Sources: []string{}, Attachments: []Attachment{}, Capabilities: []Capability{}, PossiblyRandomizedMAC: strings.IndexByte("02468ACE", mac[1]) < 0},
+					d: Device{MAC: mac, Kind: "unknown", KindEvidence: "not_verified", Addresses: []string{}, Sources: []string{}, Attachments: []Attachment{}, Capabilities: []Capability{}, PossiblyRandomizedMAC: false},
 					ips: map[string]bool{}, sources: map[string]bool{}, attachments: map[string]Attachment{},
 				}
 				// A locally administered MAC can rotate; never use it as a
