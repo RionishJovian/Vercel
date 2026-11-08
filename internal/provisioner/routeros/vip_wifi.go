@@ -3,7 +3,6 @@ package routeros
 import (
 	"context"
 	"errors"
-	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -170,4 +169,3 @@ func revokeVIPWiFiCode(ctx context.Context, r CommandRunner, v VIPWiFiCode) erro
 	return nil
 }
 
-var _ = fmt.Sprintf
