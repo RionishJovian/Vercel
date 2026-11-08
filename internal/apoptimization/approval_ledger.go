@@ -70,6 +70,12 @@ func (l *Ledger) ConsumeOwnerApproval(ctx context.Context,tenant,proposalID stri
  if l==nil||l.DB==nil||!ledgerUUID.MatchString(tenant)||!ledgerUUID.MatchString(proposalID){
   return Proposal{},ErrUnapproved
  }
+ // The supplied time is only a corroborating precondition. The database
+ // additionally checks its OWN clock in both SELECT and UPDATE so a stale
+ // caller timestamp cannot replay an expired approval.
+ if now.IsZero() || now.After(time.Now().Add(time.Minute)) {
+  return Proposal{},ErrStale
+ }
  tx,err:=l.DB.BeginTx(ctx,nil)
  if err!=nil{return Proposal{},err}
  defer tx.Rollback()
@@ -80,7 +86,7 @@ func (l *Ledger) ConsumeOwnerApproval(ctx context.Context,tenant,proposalID stri
   var expiry time.Time
   err:=tx.QueryRowContext(ctx,`SELECT proposal,proposal_hash,fingerprint,expires_at
    FROM ap_radio_proposals WHERE business_id=$1 AND id=$2 AND status='approved'
-     AND expires_at>$3 FOR UPDATE`,tenant,proposalID,now).
+     AND expires_at>$3 AND expires_at>clock_timestamp() FOR UPDATE`,tenant,proposalID,now).
    Scan(&raw,&savedHash,&fingerprint,&expiry)
   if err==sql.ErrNoRows{return ErrUnapproved}
   if err!=nil{return err}
@@ -102,7 +108,7 @@ func (l *Ledger) ConsumeOwnerApproval(ctx context.Context,tenant,proposalID stri
   result,err:=tx.ExecContext(ctx,`UPDATE ap_radio_proposals SET
    status='consumed',consumed_at=clock_timestamp()
    WHERE business_id=$1 AND id=$2 AND status='approved'
-     AND expires_at>$3`,tenant,proposalID,now)
+     AND expires_at>$3 AND expires_at>clock_timestamp()`,tenant,proposalID,now)
   if err!=nil{return err}
   rows,err:=result.RowsAffected()
   if err!=nil{return err}
