@@ -7,7 +7,7 @@ import { Note, SectionHead } from "../components/ui";
 import { Skeleton } from "../components/Skeleton";
 import { errorText } from "../lib/errors";
 
-interface Summary { today: number; last7: number; last30: number; all_time: number; total: number; approved: number; pending: number; rejected: number; days: Array<{ key: string; amount: number }>; plans: Array<{ key: string; requests: number; approved: number; revenue: number }> }
+interface Summary { settlement_verified?: boolean; today: number; last7: number; last30: number; all_time: number; total: number; approved: number; pending: number; rejected: number; days: Array<{ key: string; amount: number }>; plans: Array<{ key: string; requests: number; approved: number; revenue: number }> }
 interface Req { id: string; created_at?: string; decided_at?: string; plan_key?: string; amount?: number; bank_reference?: string; tx_last6?: string; status?: string }
 const KEYS = ["today", "last7", "last30", "all_time", "total", "approved", "pending", "rejected"] as const;
 const ok = (v: unknown) => typeof v === "number" && Number.isFinite(v) && v >= 0;
@@ -18,7 +18,7 @@ export const csvCell = (value: unknown) => { let text = String(value == null ? "
 const dayLabel = (k: string) => new Date(`${k}T12:00:00+06:30`).toLocaleDateString(undefined, { weekday: "short", timeZone: "Asia/Yangon" });
 
 export function RevenuePayments({ canDecide }: { canDecide: boolean }) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const sum = useSWR<Summary>("/guest-wifi/revenue", fetcher, { shouldRetryOnError: false });
   const inbox = useSWR<{ requests?: Req[] } | Req[]>("/guest-wifi/requests", fetcher, { shouldRetryOnError: false });
   const [busy, setBusy] = useState(""), [msg, setMsg] = useState("");
@@ -42,6 +42,7 @@ export function RevenuePayments({ canDecide }: { canDecide: boolean }) {
   return (
     <>
       <SectionHead title={t("rp.title")} help={t("rp.help")} />
+      <Note kind="warn">{lang === "my" ? "ဤပမာဏများသည် အက်ပ်အတွင်း အတည်ပြုထားသော ဧည့်သည်ငွေပေးချေမှု တောင်းဆိုချက်များဖြစ်သည်။ ဘဏ်မှ ငွေလက်ခံရရှိမှု အတည်ပြုချက် မဟုတ်ပါ။" : "Approved guest payment requests are app approvals, not bank-confirmed receipts. Verify settlement independently before treating them as collected cash."}</Note>
       {!s ? <Note kind="warn">{t("rp.noTotals")}</Note> : (
         <>
           <div className="capsules wrap">
@@ -53,7 +54,7 @@ export function RevenuePayments({ canDecide }: { canDecide: boolean }) {
           </section>
           <section className="glass pad stack"><h3>{t("rp.funnel")}</h3>
             {([["rp.submitted", s.total], ["rp.approved", s.approved], ["rp.pending", s.pending], ["rp.rejected", s.rejected]] as const).map(([l, v]) => <div className="row small" key={l}><span>{t(l)}</span><b className="num">{v}</b></div>)}
-            <p className="soft small">{t("rp.rate")}: {s.total ? Math.round((s.approved / s.total) * 100) : 0}% · {t("rp.manual")}</p>
+            <p className="soft small">{s.total ? `${t("rp.rate")}: ${Math.round((s.approved / s.total) * 100)}% · ${t("rp.manual")}` : lang === "my" ? "ငွေပေးချေမှု တောင်းဆိုချက်မရှိသေးပါ — အတည်ပြုနှုန်း မသတ်မှတ်နိုင်သေးပါ။" : "No payment requests yet — approval rate is not applicable."}</p>
           </section>
           <section className="glass pad stack"><h3>{t("rp.plans")}</h3>
             {!s.plans.length ? <p className="soft small">{t("rp.noPlans")}</p> : s.plans.map((p) => <div className="row small" key={p.key}><b>{p.key}</b><span className="soft num">{p.requests} / {p.approved} ({p.requests ? Math.round((p.approved / p.requests) * 100) : 0}%)</span><b className="num">{mmk(p.revenue)}</b></div>)}
