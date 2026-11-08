@@ -16,7 +16,7 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
-const open = () => render(<SWRConfig value={{ provider: () => new Map() }}><I18nProvider><Routers sub="" params={new URLSearchParams()} /></I18nProvider></SWRConfig>);
+const open = () => render(<SWRConfig value={{ provider: () => new Map() }}><I18nProvider><Routers sub="" params={new URLSearchParams()} me={{ user: { user_role: "OWNER" } }} /></I18nProvider></SWRConfig>);
 
 describe("Router page navigation", () => {
   it("links to Internet setup once, through the page tabs, and does not repeat that page's own menu", async () => {

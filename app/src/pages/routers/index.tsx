@@ -1,6 +1,6 @@
 import useSWR from "swr";
 import { fetcher } from "../../lib/api";
-import { asArray, type Router } from "../../lib/types";
+import { asArray, type Router, type Me } from "../../lib/types";
 import { useI18n } from "../../i18n";
 import { Note, SectionHead, WorkspaceTabs, BackLink } from "../../components/ui";
 import { Skeleton } from "../../components/Skeleton";
@@ -11,14 +11,14 @@ import { hubStatusFrom, type HubStatus } from "../../lib/hubStatus";
 import { useFleet, type FleetData } from "../../lib/useFleet";
 import { HubChip } from "./HubChip";
 
-export interface RouterRow extends Router { is_online?: boolean; transport?: string; last_seen_at?: string }
+export interface RouterRow extends Router { site_id?: string | null; is_online?: boolean; transport?: string; last_seen_at?: string }
 
 // Once the status has loaded, a router it does not list is "unavailable", not "checking".
 const hubStatusFromFleet = (fleet: FleetData | undefined, routers: RouterRow[]): Record<string, HubStatus> => ({ ...Object.fromEntries(routers.map((d): [string, HubStatus] => [d.device_id, { state: "unknown" }])), ...hubStatusFrom(fleet) });
 
 const seenAt = (value: string | undefined, never: string) => (value && !Number.isNaN(new Date(value).getTime()) ? new Date(value).toLocaleString() : never);
 
-export function Routers({ sub, params }: { sub: string; params: URLSearchParams }) {
+export function Routers({ sub, params, me }: { sub: string; params: URLSearchParams; me: Me }) {
   const { t } = useI18n();
   const { data, error, isLoading } = useSWR<{ routers?: RouterRow[] }>("/routers", fetcher);
   const fleet = useFleet({ shouldRetryOnError: false });
@@ -27,7 +27,7 @@ export function Routers({ sub, params }: { sub: string; params: URLSearchParams 
   if (error) return <Note kind="bad">{t("c.loadFailed")}</Note>;
   const list = asArray<RouterRow>(data?.routers);
   const onMap = sub === "map";
-  if (sub && !onMap) return <><BackLink href="#/router">{t("r.ws.list")}</BackLink><Detail id={sub} router={list.find((d) => d.device_id === sub)} /></>;
+  if (sub && !onMap) return <><BackLink href="#/router">{t("r.ws.list")}</BackLink><Detail id={sub} router={list.find((d) => d.device_id === sub)} canReview={["OWNER", "DEVELOPER"].includes(me.user?.user_role ?? "")} /></>;
 
   const tabs = <WorkspaceTabs items={[{ href: "#/router", label: t("r.ws.list"), current: !onMap }, { href: "#/router/map", label: t("r.ws.map"), current: onMap }, { href: "#/network", label: t("title.network"), current: false }]} />;
   if (onMap) {
