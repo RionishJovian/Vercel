@@ -373,6 +373,9 @@ const (
 // convenient local defaults, while production refuses to boot in a state that
 // can silently bypass tenant isolation or reuse repository-known secrets.
 func (cfg *Config) Validate() error {
+	if cfg.GuestWifi.VIPWiFiEnabled && !cfg.GuestWifi.VoucherAccessEnabled {
+		return fmt.Errorf("guest_wifi.vip_wifi_enabled requires the gated voucher access backend")
+	}
 	if cfg.Billing.SubscriptionOnly && cfg.Billing.IndividualPassesEnabled {
 		return fmt.Errorf("legacy business subscriptions and individual account passes cannot both be enabled")
 	}
