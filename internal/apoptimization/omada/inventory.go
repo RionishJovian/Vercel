@@ -28,10 +28,10 @@ type ControllerDevice struct {
  Status int `json:"status"`
 }
 
-// ReadControllerInventory reads only the documented Open API site devices list.
+// ReadDeviceInventory reads only the documented Open API site devices list.
 // It never asserts a physical connection, RF channel optimization capability,
 // or device management authorization.
-func(c *Client) ReadControllerInventory(ctx context.Context)(ControllerInventory,error){
+func(c *Client) ReadDeviceInventory(ctx context.Context)(ControllerInventory,error){
  if c==nil || c.root==nil {return ControllerInventory{},ErrUnconfigured}
  token,err:=c.postToken(ctx)
  if err!=nil{return ControllerInventory{},err}
