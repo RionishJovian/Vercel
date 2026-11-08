@@ -23,6 +23,9 @@ export function GuestDeploy() {
   const portal: SavedPortal | undefined = saved.data?.config ?? saved.data;
   // A config saved before these flags existed has bank transfer on.
   const noPlans = !!portal && portal.mobile_payment_enabled !== false && !asArray(portal.guest_plans).length;
+  // Never review/apply a portal from an unavailable or incomplete saved configuration.
+  const configReady = !saved.isLoading && !saved.error && !!portal;
+  const canDeploy = configReady && !noPlans;
   const gw = gateways.find((g) => g.device_id === id) ?? (gateways.length === 1 ? gateways[0] : undefined);
 
   useEffect(() => {
@@ -39,14 +42,14 @@ export function GuestDeploy() {
   }, [gw?.device_id, t, attempt]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function review() {
-    if (!gw || !profile) return;
+    if (!gw || !profile || !canDeploy) return;
     setBusy(true); setPlan(null); setStatus(t("gd2.preparing"));
     try { const r = await api.post<{ plan: Plan }>(`/routers/${encodeURIComponent(gw.device_id)}/portal/preview`, { profile, media_host: "", media_port: "" }); setPlan(r.plan); setStatus(t("gd2.reviewReady")); }
     catch (e) { if (isUnauthorized(e)) throw e; setStatus(errorText(e, t("gd2.reviewFail"))); }
     setBusy(false);
   }
   async function apply() {
-    if (!gw || !plan) return;
+    if (!gw || !plan || !canDeploy) return;
     const approved = plan;
     setBusy(true); setPlan(null); setStatus(t("gd2.applying"));
     try {
@@ -72,15 +75,16 @@ export function GuestDeploy() {
             <a className="pill" href={"#/network/new?router=" + encodeURIComponent(gw.device_id)}>{t("nw.title")}</a>
             <button className="pill" type="button" disabled={busy} onClick={() => setAttempt(n => n + 1)}>{t("c.retry")}</button>
           </div>}
+          {!configReady && !saved.isLoading && <Note kind="warn">{t("c.loadFailed")}</Note>}
           {noPlans && <Note kind="warn">{t("gd2.noPlansWarn")}</Note>}
-          <button className="btn quiet" type="button" disabled={busy || !profile} onClick={() => void review()}>{t("gd2.review")}</button>
+          <button className="btn quiet" type="button" disabled={busy || !profile || !canDeploy} onClick={() => void review()}>{t("gd2.review")}</button>
           {plan && (
             <div className="stack" role="region" aria-label={t("gd2.reviewTitle")}>
               <h3>{t("gd2.reviewFor")} {plan.profile}</h3>
               <ol className="steps">{plan.steps.map((s, i) => <li key={i}>{s}</li>)}</ol>
               <p className="soft small">{t("gd2.file")}: {plan.file}. {t("gd2.scope")}</p>
               {typeof plan.preview_html === "string" && <><p className="soft small">{t("gd2.savedDesign")}</p><div className="phone"><iframe className="gp-frame" sandbox="allow-scripts" title={t("gd2.savedDesign")} srcDoc={plan.preview_html} /></div></>}
-              <button className="btn" type="button" disabled={busy} onClick={() => void apply()}>{t("gd2.apply")}</button>
+              <button className="btn" type="button" disabled={busy || !canDeploy} onClick={() => void apply()}>{t("gd2.apply")}</button>
             </div>
           )}
           {status && <p className="note" role="status" aria-live="polite">{status}</p>}

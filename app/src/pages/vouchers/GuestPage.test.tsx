@@ -41,6 +41,7 @@ describe("bank transfer with no saved plans", () => {
     await open();
     await screen.findByText(EDITOR);
     await screen.findByText(INSTALL);
+    expect(screen.getByRole("button", { name: /Review/i }).hasAttribute("disabled")).toBe(true);
   });
   it("treats an older saved page without the setting as bank transfer on", async () => {
     config = { business_name: "Old page" };
@@ -54,6 +55,7 @@ describe("bank transfer with no saved plans", () => {
     await screen.findByText("hotspot1");
     expect(screen.queryByText(EDITOR)).toBeNull();
     expect(screen.queryByText(INSTALL)).toBeNull();
+    expect(screen.getByRole("button", { name: /Review/i }).hasAttribute("disabled")).toBe(false);
   });
   it("stays quiet when bank transfer is off", async () => {
     config = { voucher_login_enabled: true, mobile_payment_enabled: false, guest_plans: [] };
