@@ -18,30 +18,43 @@ import (
 // BackupHandler serves C2: per-device config backups, the change-history
 // timeline, and one-click restore.
 //
-// Fail-closed by default: the live applier + OTP verifier are attached only when
-// the live path is enabled (EnableLive). Until then capture/restore return 503
-// and no device is ever touched. Reads (list/timeline) are always tenant-scoped.
+// Fail-closed by default: backup capture and live restore are separate
+// capabilities. A capture writes named export/.backup artifacts on the ROUTER
+// and stores rollback metadata in the database; it does not transfer those
+// files off-router. Restore is enabled only by the full applier + OTP gate.
+// Reads (list/timeline) remain tenant-scoped.
+type BackupSnapshotter interface {
+	Snapshot(ctx context.Context, businessID, peerID string, changes []provisioner.Change) (provisioner.RollbackSnapshot, error)
+}
+
 type BackupHandler struct {
 	db      *database.DB
 	devices *database.DeviceRepository
 
-	applier provisioner.Applier       // nil => capture/restore fail closed (503)
-	otp     *provisioner.TOTPVerifier // nil/empty-secret => high-risk DENIED
+	capture BackupSnapshotter        // nil => capture fails closed (503)
+	applier provisioner.Applier       // nil => restore fails closed (503)
+	otp     *provisioner.TOTPVerifier // nil/empty-secret => restore high-risk DENIED
 }
 
 func NewBackupHandler(db *database.DB, devices *database.DeviceRepository) *BackupHandler {
 	return &BackupHandler{db: db, devices: devices}
 }
 
-// EnableLive attaches the live applier + OTP verifier (called from the wiring
-// site when provisioner.applier.enabled). Without it, capture/restore stay 503.
+// EnableCapture attaches ONLY the Snapshot interface. It does not provide an
+// Apply or Restore handle, even when the underlying transport supports them.
+// Operator configuration must explicitly permit on-router snapshot artifacts.
+func (h *BackupHandler) EnableCapture(capture BackupSnapshotter) { h.capture = capture }
+
+// EnableLive is the existing full-applier/OTP path. It continues to authorize
+// both capture and restore only when the server wires that path explicitly.
 func (h *BackupHandler) EnableLive(applier provisioner.Applier, otp *provisioner.TOTPVerifier) {
 	h.applier = applier
 	h.otp = otp
+	h.capture = applier
 }
 
-func (h *BackupHandler) captureAvailable() bool { return h.applier != nil }
-func (h *BackupHandler) restoreAvailable() bool { return h.applier != nil && h.otp.Configured() }
+func (h *BackupHandler) captureAvailable() bool { return h.capture != nil }
+func (h *BackupHandler) restoreAvailable() bool { return h.applier != nil && h.otp != nil && h.otp.Configured() }
 
 // ListBackups: GET /api/v1/devices/:id/backups
 func (h *BackupHandler) ListBackups(c *gin.Context) {
@@ -74,15 +87,15 @@ func (h *BackupHandler) ListBackups(c *gin.Context) {
 		})
 	}
 	// The console enables its buttons from these, so they say what these routes would really do.
-	c.JSON(http.StatusOK, gin.H{"backups": backups, "count": len(backups), "capture_available": h.captureAvailable(), "restore_available": h.restoreAvailable()})
+	c.JSON(http.StatusOK, gin.H{"backups": backups, "count": len(backups), "capture_available": h.captureAvailable(), "restore_available": h.restoreAvailable(), "capture_scope": "router_artifacts_and_database_metadata"})
 }
 
 // CreateBackup: POST /api/v1/devices/:id/backups  (capture a fresh snapshot)
 func (h *BackupHandler) CreateBackup(c *gin.Context) {
 	businessID := auth.GetBusinessID(c)
 	deviceID := c.Param("id")
-	if h.applier == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "live applier disabled — backup capture unavailable (fail closed)"})
+	if h.capture == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "router backup capture is disabled; enable provisioner.backup_capture.enabled with pinned per-device SSH access (restore stays separate)"})
 		return
 	}
 
@@ -113,8 +126,9 @@ func (h *BackupHandler) CreateBackup(c *gin.Context) {
 		return
 	}
 
-	// Capture over the SAME applier seam the live path uses.
-	snap, err := h.applier.Snapshot(context.Background(), businessID, deviceID, nil)
+	// Capture uses only the limited Snapshot interface. The implementation
+	// writes artifacts on-router, so it is not a read-only RouterOS operation.
+	snap, err := h.capture.Snapshot(c.Request.Context(), businessID, deviceID, nil)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": "backup capture failed: " + err.Error()})
 		return
@@ -203,8 +217,8 @@ func (h *BackupHandler) Restore(c *gin.Context) {
 	businessID := auth.GetBusinessID(c)
 	deviceID := c.Param("id")
 	backupID := c.Param("backupId")
-	if h.applier == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "live applier disabled — restore unavailable (fail closed)"})
+	if !h.restoreAvailable() {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "live restore is disabled or OTP not configured (fail closed)"})
 		return
 	}
 
