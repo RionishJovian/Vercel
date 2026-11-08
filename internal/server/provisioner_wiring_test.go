@@ -8,6 +8,7 @@ import (
 
 	"mega-magic/internal/config"
 	"mega-magic/internal/database"
+	"mega-magic/internal/handler"
 	"mega-magic/internal/provisioner"
 	"mega-magic/internal/secretbox"
 )
