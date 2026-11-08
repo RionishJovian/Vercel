@@ -110,4 +110,21 @@ func TestAPApprovalOwnerOnlyAndTenantSafe(t *testing.T){
  if _,err=(&apoptimization.Ledger{DB:db}).ConsumeOwnerApproval(context.Background(),owner.BusinessID,id,time.Now());err==nil{
   t.Fatal("used approval was replayed")
  }
+ // A previously valid owner approval must expire according to the database
+ // clock even if a future worker supplies a forged/stale time parameter.
+ short:=proposal
+ short.CreatedAt=time.Now().UTC()
+ short.ExpiresAt=short.CreatedAt.Add(2*time.Second)
+ expiringID,err:=(&apoptimization.Ledger{DB:db}).RecordTrustedProposal(context.Background(),owner.BusinessID,short)
+ if err!=nil{t.Fatal(err)}
+ _,expiringHash,err:=apoptimization.SealProposal(owner.BusinessID,short,time.Now())
+ if err!=nil{t.Fatal(err)}
+ expiringBody,_:=json.Marshal(map[string]any{"approve":true,"proposal_hash":expiringHash,"fingerprint":short.Fingerprint})
+ if w:=request("POST",path+"/"+expiringID+"/decision",ownerToken,string(expiringBody));w.Code!=200{
+  t.Fatalf("short owner approval failed: %d %s",w.Code,w.Body.String())
+ }
+ time.Sleep(2200*time.Millisecond)
+ if _,err:=(&apoptimization.Ledger{DB:db}).ConsumeOwnerApproval(context.Background(),owner.BusinessID,expiringID,short.CreatedAt);err==nil{
+  t.Fatal("expired owner approval accepted via stale caller timestamp")
+ }
 }
