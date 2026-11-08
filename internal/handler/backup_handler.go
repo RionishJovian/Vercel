@@ -56,6 +56,10 @@ func (h *BackupHandler) EnableLive(applier provisioner.Applier, otp *provisioner
 func (h *BackupHandler) captureAvailable() bool { return h.capture != nil }
 func (h *BackupHandler) restoreAvailable() bool { return h.applier != nil && h.otp != nil && h.otp.Configured() }
 
+// Non-sensitive capability probes for server-wiring regression tests.
+func (h *BackupHandler) CaptureEnabledForTest() bool { return h.captureAvailable() }
+func (h *BackupHandler) RestoreEnabledForTest() bool { return h.restoreAvailable() }
+
 // ListBackups: GET /api/v1/devices/:id/backups
 func (h *BackupHandler) ListBackups(c *gin.Context) {
 	businessID := auth.GetBusinessID(c)
