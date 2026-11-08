@@ -34,6 +34,29 @@ describe("CAPsMAN evidence", () => {
     expect(screen.getByText(/AP count unknown/)).toBeTruthy();
     expect(screen.getByText(/SSID synchronization and AP configuration are not enabled/)).toBeTruthy();
   });
+  it("previews proposed SSID but blocks every AP without authenticated write evidence", async () => {
+    inventory = { observed_at: "2026-11-08T10:00:00Z", write_enabled: false, wifi_write_enabled: false,
+      capsman: { write_enabled: false, controllers: [
+        { family: "modern", inventory_available: true, radio_inventory_available: true,
+          caps: [{ identity: "lobby-cap", state: "running", state_known: true, online_verified: false, ssid_verified: false }] },
+      ], profiles: [{ family: "modern", name: "guest", ssid: "Existing Guest", broadcasting_verified: false }] } };
+    load();
+    expect(await screen.findByText("lobby-cap")).toBeTruthy();
+    fireEvent.change(screen.getByRole("textbox", { name: "Proposed Wi-Fi name" }), { target: { value: "Magic Guest" } });
+    fireEvent.click(screen.getByRole("button", { name: "Preview impact (no changes)" }));
+    expect(screen.getByText(/APs verified eligible for change: 0/)).toBeTruthy();
+    expect(screen.getByText(/Blocked — per-AP SSID readback, write and rollback unverified/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /apply|save|approve/i })).toBeNull();
+    expect(vi.mocked(fetch).mock.calls.length).toBe(1);
+  });
+  it("disables invalid oversized UTF-8 proposed SSID", async () => {
+    inventory = { write_enabled: false, wifi_write_enabled: false, capsman: {
+      write_enabled: false, controllers: [], profiles: [] } };
+    load();
+    await screen.findByText(/No readable profile records/);
+    fireEvent.change(screen.getByRole("textbox", { name: "Proposed Wi-Fi name" }), { target: { value: "မြန်မာအမည်ရှည်ရှည်" } });
+    expect((screen.getByRole("button", { name: "Preview impact (no changes)" }) as HTMLButtonElement).disabled).toBe(true);
+  });
   it("refuses inventory evidence that reports enabled writes", async () => {
     inventory = { write_enabled: true, wifi_write_enabled: false, capsman: { write_enabled: false, controllers: [], profiles: [] } };
     load();
