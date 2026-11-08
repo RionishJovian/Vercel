@@ -214,7 +214,11 @@ guest_wifi:
 # Owner review ledger only. No AP write adapter and no auto-apply.
 # Requires ap_radio_proposals migration with forced RLS before enabling.
 ap_optimization:
-  enabled: false
+  enabled: false # exposes only owner review; never authorizes AP writes
+  omada_inventory_enabled: false # independently gates TP-Link Open API inventory
+  omada_credential_key: "" # required independent AES-256-GCM key, never commit
+  omada_allowed_origins: [] # exact operator-approved HTTPS controller origins
+  omada_allowed_cidrs: [] # narrow controller IP networks, no default route
 
 vps:
   endpoint_host: ""
