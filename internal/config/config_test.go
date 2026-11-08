@@ -356,3 +356,16 @@ func TestLoadRejectsMissingOrUnknownEnvironment(t *testing.T) {
 		})
 	}
 }
+
+func TestBackupCaptureRequiresSeparateStrongPassword(t *testing.T) {
+	cfg := &Config{Environment: "development"}
+	cfg.Provisioner.BackupCapture = BackupCaptureConfig{Enabled: true, CredentialKey: validCredentialKey}
+	cfg.Provisioner.AllowedTargetCIDRs = []string{"10.77.0.0/24"}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "backup_capture.password") {
+		t.Fatalf("missing strong password must refuse startup: %v", err)
+	}
+	cfg.Provisioner.BackupCapture.Password = "A-separate-long-recovery-secret-2026"
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("valid capture-only config must not require the live applier: %v", err)
+	}
+}
