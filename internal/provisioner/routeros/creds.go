@@ -310,6 +310,11 @@ func (a *DeviceApplier) ArchiveSnapshot(ctx context.Context, businessID, peerID 
 	snap.OffDeviceExportSealed = sealedExport
 	snap.OffDeviceBackupSHA256 = hex.EncodeToString(backupHash[:])
 	snap.OffDeviceExportSHA256 = hex.EncodeToString(exportHash[:])
+	// Archive-only operations do not need the full plaintext WireGuard/config
+	// listing or route text in the DB. Those details live in the sealed export;
+	// targeted reversible values remain for the existing restore interface.
+	snap.WireGuardConfig = ""
+	snap.IPRoutes = nil
 	return snap, nil
 }
 
