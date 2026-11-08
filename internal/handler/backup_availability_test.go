@@ -21,4 +21,13 @@ func TestBackupButtonsMatchWhatTheRoutesWouldDo(t *testing.T) {
 	if !live.captureAvailable() || !live.restoreAvailable() {
 		t.Fatal("both routes would work")
 	}
+	captureOnly := &BackupHandler{}
+	captureOnly.EnableCapture(struct{ provisioner.Applier }{})
+	if !captureOnly.captureAvailable() || captureOnly.restoreAvailable() {
+		t.Fatal("capture-only must not grant live restore")
+	}
+	captureOnly.EnableLive(struct{ provisioner.Applier }{}, nil)
+	if !captureOnly.captureAvailable() || captureOnly.restoreAvailable() {
+		t.Fatal("missing OTP must fail closed even with full applier")
+	}
 }
