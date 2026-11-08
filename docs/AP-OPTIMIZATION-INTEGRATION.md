@@ -18,6 +18,14 @@ A controller administrator creates an app under **Global Settings → Platform I
 
 The independent policy core supports automatic and manual proposals **from fresh, verified provider measurements**. It rejects stale observations, illegal channels, expired proposals and unapproved changes. Its `ApplyApproved` contract is only for future adapters: wiring it requires tenant/owner authentication, durable one-time approval, revision fencing, and verified provider readback with rollback.
 
+## Owner review ledger (separately gated)
+
+The migration `db/migrations/20261108190000_ap_radio_owner_approval.sql` creates `ap_radio_proposals` with forced tenant RLS, an immutable reviewed proposal/digest, a five-minute expiry, owner decision identity, and a single-use `approved → consumed` state. The trigger forbids replay or changing a decided proposal into a new proposal.
+
+`ap_optimization.enabled: false` is the default. If an operator explicitly enables the review ledger **after** migrating the database, only an authenticated tenant OWNER can view the review queue and approve/reject a matching proposal hash and radio fingerprint. The Managed Devices page includes a bilingual review-only panel. Neither admins nor the platform developer may approve on behalf of an SME owner.
+
+There is deliberately no HTTP proposal-creation endpoint or AP Apply endpoint. The `RecordTrustedProposal` persistence function must be called by an independently verified model-specific AP observer; a browser must never supply a fake channel scan. `ConsumeOwnerApproval` atomically consumes an existing decision before any future provider write but is not connected to a vendor adapter yet. **Approving a proposal does not change any AP.**
+
 ## Next implementation gates
 1. Enroll controller and encrypted credentials per tenant, enforce host/IP egress allowlist, TLS trust and per-site scoping.
 2. Perform read-only inventory on a real controller. Compare API output to the controller web UI; no router or radio changes.
