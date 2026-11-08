@@ -33,7 +33,7 @@ func TestReadOnlyInventoryUsesDocumentedOpenAPI(t *testing.T) {
      r.URL.Query().Get("pageSize")!="100"||r.Header.Get("Authorization")!="AccessToken=AT-valid-token"{
     t.Errorf("unexpected inventory request: %s %s",r.Method,r.URL.String())
    }
-   fmt.Fprint(w,`{"errorCode":0,"result":{"data":[{"mac":"AA:BB:CC:DD:EE:01","name":"Lobby AP","model":"EAP650","firmwareVersion":"1.2.3","status":1}]}}`)
+   fmt.Fprint(w,`{"errorCode":0,"result":{"data":[{"mac":"AA:BB:CC:DD:EE:01","name":"Lobby AP","model":"EAP650","firmwareVersion":"1.2.3","status":1,"type":"ap"}]}}`)
   default: t.Errorf("unapproved endpoint used: %s",r.URL.Path);w.WriteHeader(404)
   }
  }))
@@ -41,10 +41,10 @@ func TestReadOnlyInventoryUsesDocumentedOpenAPI(t *testing.T) {
  c,err:=New(Settings{BaseURL:ts.URL,OmadaID:"controller",SiteID:"site",
   ClientID:"test-client",ClientSecret:"private-test-secret"},ts.Client())
  if err!=nil{t.Fatal(err)}
- inv,err:=c.ReadAPInventory(context.Background())
+ inv,err:=c.ReadDeviceInventory(context.Background())
  if err!=nil{t.Fatal(err)}
  if count.Load()!=2 {t.Fatalf("expected token plus one read, got %d",count.Load())}
- if inv.RadioOptimizationSupported ||len(inv.Devices)!=1 ||inv.Devices[0].MAC!="AA-BB-CC-DD-EE-01" {
+ if inv.RadioOptimizationSupported ||len(inv.Devices)!=1 ||inv.Devices[0].MAC!="AA-BB-CC-DD-EE-01"||inv.Devices[0].DeviceType!="ap" {
   t.Fatalf("inventory must be read-only with correct identity: %+v",inv)
  }
  if _,err=c.ReadAPRadios(context.Background(),"AA:BB:CC:DD:EE:01");err==nil{
@@ -71,7 +71,7 @@ func TestOmadaRefusesRedirectAndMalformedInventory(t *testing.T){
  caller.CheckRedirect=func(*http.Request,[]*http.Request)error{return http.ErrUseLastResponse}
  c,err:=New(Settings{BaseURL:ts.URL,OmadaID:"controller",SiteID:"site",ClientID:"id",ClientSecret:"secret"},caller)
  if err!=nil{t.Fatal(err)}
- if _,err=c.ReadAPInventory(context.Background());err==nil{
+ if _,err=c.ReadDeviceInventory(context.Background());err==nil{
   t.Fatal("redirected inventory must fail closed")
  }
 }
