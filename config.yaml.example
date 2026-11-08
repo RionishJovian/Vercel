@@ -209,6 +209,7 @@ media:
 guest_wifi:
   enabled: false
   voucher_access_enabled: false
+  vip_wifi_enabled: false # separate owner-only staff multi-device Wi-Fi, not regular vouchers
   bridge_scan_interval: 30s
 
 vps:
