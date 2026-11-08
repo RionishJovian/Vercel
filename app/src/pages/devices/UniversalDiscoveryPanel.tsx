@@ -3,6 +3,7 @@ import { api, isUnauthorized } from "../../lib/api";
 import { useI18n } from "../../i18n";
 import { Note } from "../../components/ui";
 import { errorText } from "../../lib/errors";
+import { discoveryEvidenceHealth } from "./discoveryEvidence";
 
 interface Capability { name: string; status: string; evidence?: string }
 interface DiscoveredDevice {
@@ -39,6 +40,7 @@ export function UniversalDiscoveryPanel({ gatewayId }: { gatewayId: string }) {
   const [error, setError] = useState("");
   const [loadedGateway, setLoadedGateway] = useState("");
   const active = loadedGateway === gatewayId ? data : null;
+  const evidence = active ? discoveryEvidenceHealth(active) : null;
   async function inspect() {
     if (busy) return;
     setBusy(true); setError(""); setData(null); setLoadedGateway(gatewayId);
@@ -64,6 +66,15 @@ export function UniversalDiscoveryPanel({ gatewayId }: { gatewayId: string }) {
     {error && <Note kind="warn">{error}</Note>}
     {active && <>
       <p className="soft small" role="status">{active.devices.length} {my ? "စက်များတွေ့ရှိ" : "MAC identities observed"} · {active.observed_at || (my ? "အချိန် မသိ" : "Observation time unknown")}</p>
+      {evidence?.noneReadable && <Note kind="warn">{my
+        ? "Gateway ၏ စာရင်းရင်းမြစ်အားလုံး ဖတ်မရပါ။ စက်သုညရှိသည်ဟု မဆိုလိုပါ။"
+        : "No gateway observation sources were readable. This does not mean the network has zero devices."}</Note>}
+      {evidence?.freshness === "stale" && <Note kind="warn">{my
+        ? "ဤစက်စာရင်း၏ အချက်အလက်သည် ၅ မိနစ်ထက် ကြာနေပါပြီ။ လက်ရှိအခြေအနေဟု မယူဆပါနှင့်။"
+        : "Gateway observations are over five minutes old. Do not treat these devices as a current live inventory."}</Note>}
+      {evidence?.freshness === "unknown" && <Note kind="warn">{my
+        ? "စာရင်းအချက်အလက်၏ အချိန်ကို အတည်မပြုနိုင်ပါ။"
+        : "Observation freshness cannot be verified."}</Note>}
       {(active.partial || active.truncated) && <Note kind="warn">{my
         ? "အချက်အလက်အချို့ ဖတ်မရသဖြင့် စာရင်း မပြည့်စုံနိုင်ပါ။"
         : "Partial discovery: one or more sources were unavailable or the bounded result was truncated."}</Note>}
@@ -71,13 +82,14 @@ export function UniversalDiscoveryPanel({ gatewayId }: { gatewayId: string }) {
         ? "ပိုင်ရှင်မှ နာမည်ပေးထားခြင်း၊ Vendor အမည်တွေ့ခြင်း သို့မဟုတ် Port မှတစ်ဆင့် တွေ့ခြင်းသည် စက်ကို အဝေးမှပြင်နိုင်ကြောင်း၊ အွန်လိုင်းရှိကြောင်း၊ ကြိုးတိုက်ရိုက်ချိတ်ထားကြောင်း အထောက်အထား မဟုတ်ပါ။"
         : "Vendor names and MAC/port sightings do not verify manageability, live reachability or a direct physical cable. Configuration capabilities remain unknown."}</Note>
       <p className="soft small">{active.sources.map(s => `${s.name}: ${s.available ? s.count : "unavailable"}`).join(" · ")}</p>
-      {!active.devices.length && <p className="soft small">{my ? "မြင်နိုင်သော စက် မရှိသေးပါ" : "No valid device MACs in the available tables."}</p>}
+      {!active.devices.length && !evidence?.noneReadable && <p className="soft small">{my ? "ဖတ်ရနိုင်သော မှတ်တမ်းများတွင် စက် MAC မတွေ့ပါ" : "No valid device MACs in the available tables; other devices may still exist."}</p>}
       {active.devices.map(d => <article className="stack" key={d.mac} style={{ borderTop: "1px solid var(--edge-soft)", paddingTop: 12 }}>
         <b>{d.name}</b>
         <p className="small num">{d.mac}{d.addresses.length ? " · " + d.addresses.join(", ") : ""}</p>
         <p className="soft small">{d.reported_vendor || (my ? "Brand မသိသေး" : "Vendor unknown")}
           {d.reported_model ? " · " + d.reported_model : ""}
           {" · "}{d.kind !== "unknown" ? d.kind + " (" + d.kind_evidence + ")" : (my ? "အမျိုးအစားမသိ" : "Type unknown")}</p>
+        <p className="soft small">{my ? "Vendor အထောက်အထား" : "Vendor evidence"}: {d.vendor_evidence || (my ? "အတည်မပြုနိုင်" : "unverified")} · {my ? "လက်ရှိအွန်လိုင်း အတည်ပြုမှု" : "Live connectivity verified"}: {d.online_verified ? (my ? "အတည်ပြုပြီး" : "yes") : (my ? "မအတည်ပြုရသေး" : "no")}</p>
         <p className="soft small">{my ? "အချက်အလက်ရင်းမြစ်" : "Sources"}: {d.sources.join(", ")}</p>
         {d.attachments.map(a => <p key={a.source + a.gateway_interface} className="soft small">
           {a.source}: {a.gateway_interface} · {my ? "တိုက်ရိုက်ချိတ်ဆက်မှု မအတည်ပြုနိုင်" : "physical hop unverified"}
