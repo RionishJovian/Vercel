@@ -34,6 +34,16 @@ var observationMenus = map[string]networkMenu{
 	"bridge_hosts":          {"/interface bridge host", []string{"mac-address", "on-interface", "bridge", "local"}},
 	"wifi_clients":          {"/interface wifi registration-table", []string{"mac-address", "interface", "signal"}},
 	"wifi_interfaces":       {"/interface wifi", []string{"name", "configuration.mode", "configuration.ssid", "disabled", "running"}},
+	// CAPsMAN v1 inventory. Read-only RouterOS menus: keep modern and legacy
+	// controller evidence separate. Missing package/menu remains unavailable,
+	// never "0 APs". Exclude security profiles and wireless passwords.
+	"capsman_modern_caps":   {"/interface wifi capsman remote-cap", []string{"identity", "address", "state", "radios"}},
+	"capsman_modern_radios": {"/interface wifi radio", []string{"radio-mac", "interface", "remote-cap", "band"}},
+	"capsman_modern_profiles": {"/interface wifi configuration", []string{"name", "ssid", "mode", "disabled"}},
+	"capsman_legacy_caps":   {"/caps-man remote-cap", []string{"identity", "address", "state", "radios"}},
+	"capsman_legacy_radios": {"/caps-man radio", []string{"radio-mac", "interface", "remote-cap-identity", "remote-cap-name"}},
+	"capsman_legacy_profiles": {"/caps-man configuration", []string{"name", "ssid", "mode"}},
+
 	"interfaces":            {"/interface", []string{"name", "type", "mac-address", "running", "disabled"}},
 	// Separate from interfaces, so a label that cannot be read never loses the port list.
 	"interface_labels": {"/interface", []string{"name", "comment"}},
@@ -42,7 +52,7 @@ var observationMenus = map[string]networkMenu{
 	"poe_ports":     {"/interface ethernet poe", []string{"name", "poe-out"}},
 }
 
-var observationOrder = []string{"hotspot_sessions", "hotspot_session_times", "hotspot_bindings", "discovery_leases", "arp", "neighbors", "bridge_hosts", "wifi_clients", "wifi_interfaces", "interfaces", "interface_labels", "device_blocks", "poe_ports"}
+var observationOrder = []string{"hotspot_sessions", "hotspot_session_times", "hotspot_bindings", "discovery_leases", "arp", "neighbors", "bridge_hosts", "wifi_clients", "wifi_interfaces", "capsman_modern_caps", "capsman_modern_radios", "capsman_modern_profiles", "capsman_legacy_caps", "capsman_legacy_radios", "capsman_legacy_profiles", "interfaces", "interface_labels", "device_blocks", "poe_ports"}
 
 func readObservations(ctx context.Context, r CommandRunner) (NetworkInventory, error) {
 	result := NetworkInventory{ObservedAt: time.Now().UTC().Format(time.RFC3339), Objects: map[string][]NetworkObject{}, Available: map[string]bool{}}
@@ -73,6 +83,7 @@ func readObservations(ctx context.Context, r CommandRunner) (NetworkInventory, e
 	if len(result.Available) != len(observationOrder) {
 		return NetworkInventory{}, fmt.Errorf("incomplete observation inventory")
 	}
+	result.CAPsMAN = CAPsMANInventory(result)
 	return result, nil
 }
 

@@ -7,6 +7,7 @@ import { Note } from "../../components/ui";
 import { Skeleton } from "../../components/Skeleton";
 import type { RouterRow } from ".";
 import { Capabilities } from "./Capabilities";
+import { CAPsMANInventoryPanel } from "./CAPsMANInventoryPanel";
 import { FirmwareUpgrade } from "./FirmwareUpgrade";
 import { firmwareText, healthLabel, healthValue, softwareText, type Firmware, type Health } from "./portInfo";
 
@@ -62,6 +63,7 @@ export function Detail({ id, router }: { id: string; router?: RouterRow }) {
           </section>
           {asArray<string>(snap.issues).length > 0 && <Note kind="warn">{asArray<string>(snap.issues).join(" · ")}</Note>}
           <Capabilities id={id} />
+          <CAPsMANInventoryPanel id={id} />
         </>
       )}
     </>
