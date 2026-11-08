@@ -207,7 +207,7 @@ func wireBackupCapture(cfg *config.Config, sugar *zap.SugaredLogger, db *databas
 		timeout = 30 * time.Second
 	}
 	snapshotter := routeros.NewDeviceApplier(policySource, timeout, nil,
-		cfg.Provisioner.Applier.Interface, 0, 0)
+		cfg.Provisioner.Applier.Interface, 0, 0).WithBackupPassword(c.Password)
 	backup.EnableCapture(snapshotter)
 	sugar.Info("router backup capture wired independently (on-router artifacts only; full live applier remains separately gated)")
 	return nil
