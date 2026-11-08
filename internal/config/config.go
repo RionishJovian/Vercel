@@ -251,6 +251,18 @@ type ProvisionerConfig struct {
 	// PostureCapture gates the READ-ONLY security-posture capture separately
 	// from Applier. See PostureCaptureConfig for why they are not one flag.
 	PostureCapture PostureCaptureConfig `mapstructure:"posture_capture"`
+	// BackupCapture separately gates on-router export+binary backup creation.
+	// It does NOT authorize network configuration apply or backup restore.
+	BackupCapture BackupCaptureConfig `mapstructure:"backup_capture"`
+}
+
+// BackupCaptureConfig enables explicit on-router backup artifact creation. This
+// mutates router storage but not its active network configuration. The files are
+// NOT copied off-router; additional off-device export is separate work.
+type BackupCaptureConfig struct {
+	Enabled bool `mapstructure:"enabled"`
+	CredentialKey string `mapstructure:"credential_key"`
+	Timeout time.Duration `mapstructure:"timeout"`
 }
 
 // PostureCaptureConfig configures fleet-wide RouterOS version + security-posture
@@ -399,7 +411,7 @@ func (cfg *Config) Validate() error {
 			problems = append(problems, "vps Hub lookup requires a valid HTTPS endpoint, key identifier and 32-byte hex signing key")
 		}
 	}
-	routerAccess := cfg.Provisioner.Applier.Enabled || cfg.Provisioner.PostureCapture.Enabled || cfg.Provisioner.InventoryEnabled
+	routerAccess := cfg.Provisioner.Applier.Enabled || cfg.Provisioner.PostureCapture.Enabled || cfg.Provisioner.BackupCapture.Enabled || cfg.Provisioner.InventoryEnabled
 	if routerAccess {
 		if len(cfg.Provisioner.AllowedTargetCIDRs) == 0 {
 			problems = append(problems, "provisioner.allowed_target_cidrs is required when router access is enabled")
@@ -425,6 +437,16 @@ func (cfg *Config) Validate() error {
 		}
 		if _, err := secretbox.New(cfg.Provisioner.Applier.CredentialKey); err != nil {
 			problems = append(problems, "provisioner.applier.credential_key must be a valid base64 or hex encoded 32-byte key")
+		}
+	}
+	if cfg.Provisioner.BackupCapture.Enabled {
+		key := strings.TrimSpace(cfg.Provisioner.BackupCapture.CredentialKey)
+		if key == "" { key = cfg.Provisioner.Applier.CredentialKey }
+		if _, err := secretbox.New(key); err != nil {
+			problems = append(problems, "provisioner.backup_capture.credential_key (or applier fallback) must be a valid base64 or hex encoded 32-byte key")
+		}
+		if cfg.Provisioner.BackupCapture.Timeout < 0 {
+			problems = append(problems, "provisioner.backup_capture.timeout must not be negative")
 		}
 	}
 	if cfg.Provisioner.PostureCapture.Enabled {
@@ -622,6 +644,11 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("provisioner.posture_capture.enabled", false)
 	v.SetDefault("provisioner.posture_capture.credential_key", "")
 	v.SetDefault("provisioner.posture_capture.timeout", "10s")
+	// Snapshot writes .rsc and .backup files on RouterOS, but no network changes.
+	// This independent capability is OFF until explicitly enabled.
+	v.SetDefault("provisioner.backup_capture.enabled", false)
+	v.SetDefault("provisioner.backup_capture.credential_key", "")
+	v.SetDefault("provisioner.backup_capture.timeout", "30s")
 	v.SetDefault("provisioner.applier.otp_digits", 6)
 	v.SetDefault("provisioner.applier.otp_step", "30s")
 	v.SetDefault("provisioner.applier.otp_skew", 1)
