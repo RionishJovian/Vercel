@@ -20,12 +20,14 @@ import (
 type observationFixture struct {
 	calls            int
 	business, device string
+	snapshot routeros.NetworkInventory
 }
 
 func (f *observationFixture) ReadObservations(_ context.Context, b, d string) (routeros.NetworkInventory, error) {
 	f.calls++
 	f.business = b
 	f.device = d
+	if f.snapshot.Available != nil {return f.snapshot, nil}
 	return routeros.NetworkInventory{WriteEnabled: true, Available: map[string]bool{"arp": true}, Objects: map[string][]routeros.NetworkObject{"arp": {}}}, nil
 }
 
@@ -174,6 +176,44 @@ func TestRouterObservationAuthenticatedContract(t *testing.T) {
 		if !result.Discovery.ReadsOnly || result.Discovery.PhysicalLinksVerified || !result.Discovery.Partial || len(result.Discovery.Devices) != 0 {
 			t.Fatalf("discovery returned guessed devices or links: %s", w.Body)
 		}
+	})
+
+	t.Run("mixed-brand discovery returns hints but no device management", func(t *testing.T) {
+		reader.snapshot = routeros.NetworkInventory{
+			ObservedAt:"2026-11-08T08:00:00Z",
+			Available:map[string]bool{"neighbors":true,"arp":true},
+			Objects:map[string][]routeros.NetworkObject{
+				"neighbors":{{Values:map[string]string{
+					"mac-address":"A0:10:20:30:40:50","address":"192.168.88.10",
+					"identity":"shop-ap","platform":"iKuai","board":"IK-X",
+					"interface":"ether2",
+				}}},
+				"arp":{{Values:map[string]string{"mac-address":"A0:10:20:30:40:50","address":"192.168.88.10"}}},
+			},
+		}
+		defer func(){reader.snapshot = routeros.NetworkInventory{}}()
+		w:=request("GET",device,"discovery","VIEWER","")
+		if w.Code!=200{t.Fatalf("discovery %d %s",w.Code,w.Body)}
+		var response struct{Discovery struct{
+			Devices []struct{
+				MAC string `json:"mac"`
+				ReportedVendor string `json:"reported_vendor"`
+				ReportedModel string `json:"reported_model"`
+				OnlineVerified bool `json:"online_verified"`
+				Capabilities []struct{Name,Status string} `json:"capabilities"`
+				Attachments []struct{DirectPhysicalLinkVerified bool `json:"direct_physical_link_verified"`} `json:"attachments"`
+			} `json:"devices"`
+		} `json:"discovery"`}
+		if err:=json.Unmarshal(w.Body.Bytes(),&response);err!=nil{t.Fatal(err)}
+		if len(response.Discovery.Devices)!=1{t.Fatalf("expected one merged MAC: %s",w.Body)}
+		found:=response.Discovery.Devices[0]
+		if found.MAC!="A0:10:20:30:40:50"||found.ReportedVendor!="iKuai"||found.ReportedModel!="IK-X"||found.OnlineVerified {
+			t.Fatalf("discovery incorrectly claimed capabilities: %+v",found)
+		}
+		for _,cap:=range found.Capabilities {
+			if cap.Name!="gateway_observation"&&cap.Status!="unknown"{t.Fatalf("unexpected write capability: %+v",cap)}
+		}
+		for _,link:=range found.Attachments{if link.DirectPhysicalLinkVerified{t.Fatal("invented physical hop")}}
 	})
 
 	t.Run("read connector scope and no write capability", func(t *testing.T) {
