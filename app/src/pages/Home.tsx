@@ -38,9 +38,15 @@ export function Home({ me, routerId }: { me: Me; routerId?: string | null }) {
 
   const rep = report.data;
   const up = num(fleet.data?.up), total = num(fleet.data?.total_peers);
+  // A peer without a confirmed fleet state must not be presented as offline.
+  const knownDown = (num(fleet.data?.offline) ?? 0) + (num(fleet.data?.stale) ?? 0);
+  const unknown = total === null || up === null ? 0 : Math.max(
+    num(fleet.data?.unknown) ?? 0, total - up - knownDown,
+  );
+  const hasUnknown = unknown > 0;
   const list = routers.data ? asArray<Router>(routers.data.routers) : null;
   const selected = list?.find(r => r.device_id === selectedId) ?? (list?.length === 1 ? list[0] : undefined);
-  const allUp = total !== null && total > 0 && up === total;
+  const allUp = total !== null && total > 0 && up === total && !hasUnknown;
 
   return (
     <>
@@ -77,11 +83,13 @@ export function Home({ me, routerId }: { me: Me; routerId?: string | null }) {
       <div className="home-grid">
         <section className="glass pad">
           <div className="row"><h2>{t("home.routers")}</h2>
-            {total === null ? null : <span className={"chip " + (allUp ? "ok" : "warn")}>{allUp ? t("home.allOnline") : t("home.someOffline")}</span>}
+            {total === null ? null : <span className={"chip " + (allUp ? "ok" : "warn")}>{allUp ? t("home.allOnline") : hasUnknown && knownDown === 0 ? t("fl.state.unknown") : t("home.someOffline")}</span>}
           </div>
           {fleet.isLoading ? <Skeleton h={64} /> : total === null ? <p className="note bad" role="status">{t("h.fleetFailed")}</p> : (
             <div className="leds" aria-label={`${up} / ${total}`}>
-              {Array.from({ length: Math.min(total, 12) }, (_, i) => <i key={i} className={i < (up ?? 0) ? "on" : "off"} />)}
+              {Array.from({ length: Math.min(total, 12) }, (_, i) =>
+                <i key={i} className={i < (up ?? 0) ? "on" : i < (up ?? 0) + knownDown ? "off" : "unknown"} />
+              )}
               <b className="num">{up} / {total}</b>
             </div>
           )}
