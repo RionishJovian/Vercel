@@ -166,7 +166,7 @@ func TestWireBackupCaptureIndependentOfLiveApply(t *testing.T) {
 	t.Run("capture works while applier disabled", func(t *testing.T) {
 		cfg := &config.Config{}
 		cfg.Provisioner.Applier.Enabled = false
-		cfg.Provisioner.BackupCapture = config.BackupCaptureConfig{Enabled: true, CredentialKey: key}
+		cfg.Provisioner.BackupCapture = config.BackupCaptureConfig{Enabled: true, CredentialKey: key, Password: password, ArchiveKey: archiveKey}
 		cfg.Provisioner.AllowedTargetCIDRs = []string{"10.77.0.0/24"}
 		backup := &handler.BackupHandler{}
 		if err := wireBackupCapture(cfg, sugar, &database.DB{}, backup); err != nil {
