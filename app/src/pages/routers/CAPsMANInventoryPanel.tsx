@@ -25,8 +25,8 @@ export interface SSIDProfile {
   broadcasting_verified?: boolean;
 }
 export interface CAPsMANView {
-  controllers?: ControllerRecord[];
-  profiles?: SSIDProfile[];
+  controllers: ControllerRecord[];
+  profiles: SSIDProfile[];
   write_enabled?: boolean;
 }
 interface ObservationResponse {
