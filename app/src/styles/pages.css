@@ -192,6 +192,20 @@
 @media (min-width: 900px) { .tasks { grid-template-columns: repeat(2, 1fr); } }
 
 /* Topology: device images joined by lines; dashed lines mean the attachment is only inferred. */
+.nt-view-toggle { justify-content: flex-start; gap: 8px; flex-wrap: wrap; }
+.nt-tree { display: grid; gap: 16px; max-width: 100%; }
+.nt-tree-root { display: flex; align-items: flex-start; justify-content: flex-start; padding-bottom: 8px; border-bottom: 1px solid var(--edge-soft); }
+.nt-tree-section { border-left: 2px solid var(--jade); padding: 0 0 0 18px; display: grid; gap: 12px; min-width: 0; }
+.nt-tree-section h3 { font-size: .95rem; margin: 0; }
+.nt-tree-group { border: 1px solid var(--edge-soft); border-radius: 12px; background: var(--glass-solid); padding: 10px 12px; }
+.nt-tree-group summary { cursor: pointer; font-weight: 650; overflow-wrap: anywhere; }
+.nt-tree-items { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 12px; padding: 12px 0; }
+.nt-tree-item { border: 1px solid var(--edge-soft); border-radius: 12px; max-width: 100%; }
+.nt-tree-item .nt-branch { padding-top: 0; width: 160px; }
+.nt-tree-item .nt-branch::before, .nt-tree-item .nt-branch::after { display: none; }
+.nt-tree-item .nt-link-label { margin-top: 8px; }
+@media (max-width: 600px) { .nt-tree-section { padding-left: 10px; } .nt-tree-items { gap: 6px; } .nt-tree-item .nt-branch { width: 135px; } .nt-tree-item .nt-device { width: 130px; } }
+
 .nt-layout { display: grid; gap: 14px; }
 .nt-stage { padding: 28px 12px; min-height: 420px; max-height: 80dvh; overflow: auto; }
 .nt-root { display: flex; justify-content: center; }
