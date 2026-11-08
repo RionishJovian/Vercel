@@ -7,8 +7,8 @@ import { BackLink, Note, PageHead, IconTile } from "../components/ui";
 import { Skeleton } from "../components/Skeleton";
 import { errorText } from "../lib/errors";
 
-interface Backup { id: string; label?: string; kind?: string; size_bytes?: number; created_at?: string }
-interface BackupRes { backups?: Backup[]; restore_available?: boolean; capture_available?: boolean }
+interface Backup { id: string; label?: string; kind?: string; size_bytes?: number; created_at?: string; archive_in_app_database?: boolean }
+interface BackupRes { backups?: Backup[]; restore_available?: boolean; capture_available?: boolean; capture_scope?: string }
 interface Change { timestamp?: string; user_role?: string; action?: string; reason?: string }
 
 export function Backups() {
@@ -45,9 +45,13 @@ export function Backups() {
         <label className="field"><span>{t("bk.device")}</span><select className="input" value={id} onChange={(e) => { setDev(e.target.value); setRestoring(null); setMsg(null); }}>{list.map((d) => <option key={d.device_id} value={d.device_id}>{d.hardware_name || d.device_id}</option>)}</select></label>
         <button className="btn" type="button" disabled={busy || bk.data?.capture_available !== true} onClick={() => void capture()}>{t("bk.capture")}</button>
         <p className="soft small" role="status">{bk.isLoading ? t("bk.checking") : bk.error ? t("bk.unconfirmed") : bk.data?.capture_available === true ? t("bk.available") : t("bk.unavailable")}</p>
-        {bk.data?.capture_available === true && <Note kind="warn">{lang === "my"
-          ? "Backup ကို Router ပေါ်တွင်သာ သိမ်းဆည်းထားပြီး အက်ပ်တွင် ပြန်လည်ရယူရန် metadata ကို မှတ်တမ်းတင်ထားပါသည်။ Router အပြင်ဘက်သို့ backup ဖိုင်များကို မကူးယူရသေးသဖြင့် အရေးပေါ်ပြန်လည်ရယူနိုင်သည့် off-device backup ဟု မယူဆပါနှင့်။"
-          : "Capture creates backup/export files on the router and saves rollback metadata here. Files have not been copied off-router; this is not an off-device disaster-recovery backup."}</Note>}
+        {bk.data?.capture_available === true && <Note kind="warn">{bk.data.capture_scope === "encrypted_artifacts_in_app_database"
+          ? (lang === "my"
+              ? "Router backup နှင့် export ဖိုင်ကို ကူးယူစစ်ဆေးပြီး အက်ပ် database ထဲတွင် encrypted သိမ်းဆည်းပါမည်။ Database ၏ off-server backup ကို သီးခြားအတည်ပြုရပါမည်။"
+              : "Capture downloads both RouterOS artifacts over pinned SSH and seals them in the application database. An independent off-server database backup and recovery drill must still be verified.")
+          : (lang === "my"
+              ? "Backup သည် Router ပေါ်တွင်သာ ရှိနေသေးပြီး အက်ပ်တွင် metadata ကိုသာ မှတ်တမ်းတင်ထားသည်။ Off-device disaster-recovery backup မဟုတ်ပါ။"
+              : "This mode saves router-side artifacts and database metadata only. It is not an off-device disaster-recovery backup.")}</Note>}
       </section>
       {msg && <Note kind={msg.bad ? "bad" : "ok"}>{msg.text}</Note>}
       <section className="stack"><h2>{t("bk.backups")}</h2>
@@ -55,6 +59,9 @@ export function Backups() {
           <div className="glass pad stack" key={b.id}>
             <div className="row"><div className="who"><IconTile name="save" /><b>{b.label || "—"}</b></div><span className="chip">{b.kind}</span></div>
             <p className="soft small num">{b.size_bytes} B · {b.created_at ? new Date(b.created_at).toLocaleString() : ""}</p>
+            <p className="soft small">{b.archive_in_app_database
+              ? (lang === "my" ? "Encrypted ဖိုင် ၂ ခုကို database ထဲတွင် သိမ်းဆည်းပြီး" : "Two encrypted artifacts stored in app database")
+              : (lang === "my" ? "Router ပေါ်ရှိ backup အညွှန်းသာ ရှိ" : "Router-side snapshot metadata only")}</p>
             {bk.data?.restore_available ? (
               restoring?.id === b.id ? (
                 <div className="note warn stack">
