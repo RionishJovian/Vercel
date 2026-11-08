@@ -45,6 +45,9 @@ export function Backups() {
         <label className="field"><span>{t("bk.device")}</span><select className="input" value={id} onChange={(e) => { setDev(e.target.value); setRestoring(null); setMsg(null); }}>{list.map((d) => <option key={d.device_id} value={d.device_id}>{d.hardware_name || d.device_id}</option>)}</select></label>
         <button className="btn" type="button" disabled={busy || bk.data?.capture_available !== true} onClick={() => void capture()}>{t("bk.capture")}</button>
         <p className="soft small" role="status">{bk.isLoading ? t("bk.checking") : bk.error ? t("bk.unconfirmed") : bk.data?.capture_available === true ? t("bk.available") : t("bk.unavailable")}</p>
+        {bk.data?.capture_available === true && <Note kind="warn">{t("bk.captureScope") === "bk.captureScope"
+          ? "Capture creates backup/export files on the router and saves rollback metadata here. These files have not been copied off-router; do not treat this as an off-device disaster-recovery backup."
+          : t("bk.captureScope")}</Note>}
       </section>
       {msg && <Note kind={msg.bad ? "bad" : "ok"}>{msg.text}</Note>}
       <section className="stack"><h2>{t("bk.backups")}</h2>
