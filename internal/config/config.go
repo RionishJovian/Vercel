@@ -39,6 +39,10 @@ type Config struct {
 // It defaults off and registers review-only routes after RLS checks pass.
 type APOptimizationConfig struct {
  Enabled bool `mapstructure:"enabled"`
+ OmadaInventoryEnabled bool `mapstructure:"omada_inventory_enabled"`
+ OmadaCredentialKey string `mapstructure:"omada_credential_key"`
+ OmadaAllowedOrigins []string `mapstructure:"omada_allowed_origins"`
+ OmadaAllowedCIDRs []string `mapstructure:"omada_allowed_cidrs"`
 }
 
 // Pilot integration is disabled until its migration and acceptance checks pass.
@@ -398,6 +402,17 @@ func (cfg *Config) Validate() error {
 	}
 
 	var problems []string
+	if cfg.APOptimization.OmadaInventoryEnabled {
+		if !cfg.APOptimization.Enabled {
+			problems = append(problems, "ap_optimization.omada_inventory_enabled requires ap_optimization.enabled")
+		}
+		if _, err := secretbox.New(cfg.APOptimization.OmadaCredentialKey); err != nil {
+			problems = append(problems, "ap_optimization.omada_credential_key must be a valid independent 32-byte key")
+		}
+		if len(cfg.APOptimization.OmadaAllowedOrigins)==0 || len(cfg.APOptimization.OmadaAllowedCIDRs)==0 {
+			problems = append(problems, "Omada inventory requires explicit controller origins and outbound management CIDRs")
+		}
+	}
 	if cfg.VPS.HubEnrollmentEnabled && !cfg.VPS.HubLookupEnabled {
 		problems = append(problems, "Hub enrollment requires Hub lookup configuration")
 	}
