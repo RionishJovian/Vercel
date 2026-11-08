@@ -69,6 +69,8 @@ type AIConfig struct {
 // supervisor re-scans for newly-enabled/disabled owner bots.
 type GuestWifiConfig struct {
 	VoucherAccessEnabled bool          `mapstructure:"voucher_access_enabled"`
+	// VIPWiFiEnabled gates separate owner-only, multi-device staff Wi-Fi codes.
+	VIPWiFiEnabled bool `mapstructure:"vip_wifi_enabled"`
 	Enabled              bool          `mapstructure:"enabled"`
 	BridgeScanInterval   time.Duration `mapstructure:"bridge_scan_interval"`
 	ReceiptDir           string        `mapstructure:"receipt_dir"`
