@@ -55,6 +55,7 @@ func TestOmadaEnrollmentDeniedWithoutOwnerAndBackend(t *testing.T){
 func TestOmadaSecretsNeverEchoedForMissingOwner(t *testing.T){
  h:=&OmadaControllerHandler{}
  r:=gin.New()
+ r.Use(func(c *gin.Context){ c.Set(auth.ContextKeyUserRole,"VIEWER"); c.Set(auth.ContextKeyBusinessID,"11111111-1111-4111-8111-111111111111") })
  r.POST("/omada",h.Create)
  w:=httptest.NewRecorder()
  req:=httptest.NewRequest(http.MethodPost,"/omada",strings.NewReader(
