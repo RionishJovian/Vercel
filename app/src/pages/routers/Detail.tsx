@@ -21,9 +21,9 @@ function uptime(sec: unknown) {
 }
 const Kv = ({ k, v }: { k: string; v: string }) => <div className="row small"><span className="soft">{k}</span><b className="num">{v}</b></div>;
 
-/** Read-only live health. Network writes stay held server-side until a physical router acceptance test has passed. */
+/** Telemetry is read-only; editing is available in existing reviewed, server-gated workflows. */
 export function Detail({ id, router }: { id: string; router?: RouterRow }) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const { data, error, isLoading, mutate } = useSWR<{ telemetry?: Telemetry }>(`/routers/${encodeURIComponent(id)}/telemetry`, fetcher, keepPolling(15000));
   const tele = data?.telemetry, snap = tele?.snapshot, r = snap?.resources ?? {};
   const words = { updateAvail: t("r.updateAvail"), noNewer: t("r.noNewer"), fwUpgrade: t("r.fwUpgrade"), full: t("r.full"), half: t("r.half") };
@@ -48,9 +48,19 @@ export function Detail({ id, router }: { id: string; router?: RouterRow }) {
             <Kv k={t("r.guests")} v={snap.hotspot_sessions == null ? "—" : String(snap.hotspot_sessions)} />
             <Kv k={t("r.leases")} v={snap.dhcp_bound_leases == null ? "—" : String(snap.dhcp_bound_leases)} />
           </section>
-          <a className="pill" href={"#/home?router=" + encodeURIComponent(id)}>{t("home.managePorts")}</a>
+          <section className="glass pad stack" aria-label={lang === "my" ? "Router ပြင်ဆင်မှုများ" : "Router configuration"}>
+            <h2>{lang === "my" ? "Router ပြင်ဆင်မှုများ" : "Router configuration"}</h2>
+            <p className="soft small">{lang === "my"
+              ? "ဤစာမျက်နှာရှိ အခြေအနေပြချက်များမှာ ဖတ်ရန်သာဖြစ်သည်။ Router ပြင်ဆင်မှုများကို အောက်ပါ လုပ်ငန်းစဉ်များမှ စစ်ဆေး၊ အတည်ပြုပြီးမှ အသုံးပြုနိုင်သည်။ ဆာဗာက ပိတ်ထားသော လုပ်ဆောင်ချက်များကို ဤစာမျက်နှာက မဖွင့်နိုင်ပါ။"
+              : "Health readings are read-only, not the entire router. Use the existing configuration workflows below: they require a reviewed change, owner confirmation and server-side permission. Disabled capabilities remain disabled."}</p>
+            <div className="scroll-x" aria-label={lang === "my" ? "ပြင်ဆင်မှု လင့်ခ်များ" : "Configuration workspaces"}>
+              <a className="pill" href={"#/home?router=" + encodeURIComponent(id)}>{t("home.managePorts")}</a>
+              <a className="pill" href={"#/network?router=" + encodeURIComponent(id)}>{t("title.network")}</a>
+              <a className="pill" href="#/topology">{t("tp.title")}</a>
+              <a className="pill" href="#/hub">{t("hub.title")}</a>
+            </div>
+          </section>
           {asArray<string>(snap.issues).length > 0 && <Note kind="warn">{asArray<string>(snap.issues).join(" · ")}</Note>}
-          <p className="soft small">{t("r.readOnly")}</p>
           <Capabilities id={id} />
         </>
       )}

@@ -32,6 +32,17 @@ type Config struct {
 	Billing     BillingConfig     `mapstructure:"billing"`
 	AI          AIConfig          `mapstructure:"ai"`
 	GuestWifi   GuestWifiConfig   `mapstructure:"guest_wifi"`
+	APOptimization APOptimizationConfig `mapstructure:"ap_optimization"`
+}
+
+// AP optimization approval ledger is independent from provider radio writes.
+// It defaults off and registers review-only routes after RLS checks pass.
+type APOptimizationConfig struct {
+ Enabled bool `mapstructure:"enabled"`
+ OmadaInventoryEnabled bool `mapstructure:"omada_inventory_enabled"`
+ OmadaCredentialKey string `mapstructure:"omada_credential_key"`
+ OmadaAllowedOrigins []string `mapstructure:"omada_allowed_origins"`
+ OmadaAllowedCIDRs []string `mapstructure:"omada_allowed_cidrs"`
 }
 
 // Pilot integration is disabled until its migration and acceptance checks pass.
@@ -69,6 +80,8 @@ type AIConfig struct {
 // supervisor re-scans for newly-enabled/disabled owner bots.
 type GuestWifiConfig struct {
 	VoucherAccessEnabled bool          `mapstructure:"voucher_access_enabled"`
+	// VIPWiFiEnabled gates separate owner-only, multi-device staff Wi-Fi codes.
+	VIPWiFiEnabled bool `mapstructure:"vip_wifi_enabled"`
 	Enabled              bool          `mapstructure:"enabled"`
 	BridgeScanInterval   time.Duration `mapstructure:"bridge_scan_interval"`
 	ReceiptDir           string        `mapstructure:"receipt_dir"`
@@ -251,6 +264,24 @@ type ProvisionerConfig struct {
 	// PostureCapture gates the READ-ONLY security-posture capture separately
 	// from Applier. See PostureCaptureConfig for why they are not one flag.
 	PostureCapture PostureCaptureConfig `mapstructure:"posture_capture"`
+	// BackupCapture separately gates on-router export+binary backup creation.
+	// It does NOT authorize network configuration apply or backup restore.
+	BackupCapture BackupCaptureConfig `mapstructure:"backup_capture"`
+}
+
+// BackupCaptureConfig enables explicit on-router backup artifact creation. This
+// mutates router storage but not its active network configuration. The files are
+// NOT copied off-router; additional off-device export is separate work.
+type BackupCaptureConfig struct {
+	Enabled bool `mapstructure:"enabled"`
+	CredentialKey string `mapstructure:"credential_key"`
+	// ArchiveKey separately encrypts the downloaded off-router artifacts before
+	// they enter the app database. Must not equal the SSH credentials key.
+	ArchiveKey string `mapstructure:"archive_key"`
+	// Password encrypts the RouterOS binary .backup file. Do not reuse an
+	// SME login credential; this is a separate operator-held recovery secret.
+	Password string `mapstructure:"password"`
+	Timeout time.Duration `mapstructure:"timeout"`
 }
 
 // PostureCaptureConfig configures fleet-wide RouterOS version + security-posture
@@ -371,6 +402,9 @@ const (
 // convenient local defaults, while production refuses to boot in a state that
 // can silently bypass tenant isolation or reuse repository-known secrets.
 func (cfg *Config) Validate() error {
+	if cfg.GuestWifi.VIPWiFiEnabled && !cfg.GuestWifi.VoucherAccessEnabled {
+		return fmt.Errorf("guest_wifi.vip_wifi_enabled requires the gated voucher access backend")
+	}
 	if cfg.Billing.SubscriptionOnly && cfg.Billing.IndividualPassesEnabled {
 		return fmt.Errorf("legacy business subscriptions and individual account passes cannot both be enabled")
 	}
@@ -391,6 +425,17 @@ func (cfg *Config) Validate() error {
 	}
 
 	var problems []string
+	if cfg.APOptimization.OmadaInventoryEnabled {
+		if !cfg.APOptimization.Enabled {
+			problems = append(problems, "ap_optimization.omada_inventory_enabled requires ap_optimization.enabled")
+		}
+		if _, err := secretbox.New(cfg.APOptimization.OmadaCredentialKey); err != nil {
+			problems = append(problems, "ap_optimization.omada_credential_key must be a valid independent 32-byte key")
+		}
+		if len(cfg.APOptimization.OmadaAllowedOrigins)==0 || len(cfg.APOptimization.OmadaAllowedCIDRs)==0 {
+			problems = append(problems, "Omada inventory requires explicit controller origins and outbound management CIDRs")
+		}
+	}
 	if cfg.VPS.HubEnrollmentEnabled && !cfg.VPS.HubLookupEnabled {
 		problems = append(problems, "Hub enrollment requires Hub lookup configuration")
 	}
@@ -399,7 +444,7 @@ func (cfg *Config) Validate() error {
 			problems = append(problems, "vps Hub lookup requires a valid HTTPS endpoint, key identifier and 32-byte hex signing key")
 		}
 	}
-	routerAccess := cfg.Provisioner.Applier.Enabled || cfg.Provisioner.PostureCapture.Enabled || cfg.Provisioner.InventoryEnabled
+	routerAccess := cfg.Provisioner.Applier.Enabled || cfg.Provisioner.PostureCapture.Enabled || cfg.Provisioner.BackupCapture.Enabled || cfg.Provisioner.InventoryEnabled
 	if routerAccess {
 		if len(cfg.Provisioner.AllowedTargetCIDRs) == 0 {
 			problems = append(problems, "provisioner.allowed_target_cidrs is required when router access is enabled")
@@ -425,6 +470,25 @@ func (cfg *Config) Validate() error {
 		}
 		if _, err := secretbox.New(cfg.Provisioner.Applier.CredentialKey); err != nil {
 			problems = append(problems, "provisioner.applier.credential_key must be a valid base64 or hex encoded 32-byte key")
+		}
+	}
+	if cfg.Provisioner.BackupCapture.Enabled {
+		if len(cfg.Provisioner.BackupCapture.Password) < 24 || len(cfg.Provisioner.BackupCapture.Password) > 256 || strings.ContainsAny(cfg.Provisioner.BackupCapture.Password, "\r\n") {
+			problems = append(problems, "provisioner.backup_capture.password must be a separate strong secret (24–256 characters, no newlines)")
+		}
+		key := strings.TrimSpace(cfg.Provisioner.BackupCapture.CredentialKey)
+		if key == "" { key = cfg.Provisioner.Applier.CredentialKey }
+		if _, err := secretbox.New(key); err != nil {
+			problems = append(problems, "provisioner.backup_capture.credential_key (or applier fallback) must be a valid base64 or hex encoded 32-byte key")
+		}
+		if _, err := secretbox.New(cfg.Provisioner.BackupCapture.ArchiveKey); err != nil {
+			problems = append(problems, "provisioner.backup_capture.archive_key must be a separate valid 32-byte encryption key")
+		}
+		if cfg.Provisioner.BackupCapture.ArchiveKey == key {
+			problems = append(problems, "provisioner.backup_capture.archive_key must differ from the per-device SSH credential key")
+		}
+		if cfg.Provisioner.BackupCapture.Timeout < 0 {
+			problems = append(problems, "provisioner.backup_capture.timeout must not be negative")
 		}
 	}
 	if cfg.Provisioner.PostureCapture.Enabled {
@@ -622,6 +686,13 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("provisioner.posture_capture.enabled", false)
 	v.SetDefault("provisioner.posture_capture.credential_key", "")
 	v.SetDefault("provisioner.posture_capture.timeout", "10s")
+	// Snapshot writes .rsc and .backup files on RouterOS, but no network changes.
+	// This independent capability is OFF until explicitly enabled.
+	v.SetDefault("provisioner.backup_capture.enabled", false)
+	v.SetDefault("provisioner.backup_capture.credential_key", "")
+	v.SetDefault("provisioner.backup_capture.archive_key", "")
+	v.SetDefault("provisioner.backup_capture.password", "")
+	v.SetDefault("provisioner.backup_capture.timeout", "30s")
 	v.SetDefault("provisioner.applier.otp_digits", 6)
 	v.SetDefault("provisioner.applier.otp_step", "30s")
 	v.SetDefault("provisioner.applier.otp_skew", 1)
