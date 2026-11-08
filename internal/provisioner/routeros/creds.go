@@ -2,6 +2,8 @@ package routeros
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -12,6 +14,7 @@ import (
 	"time"
 
 	"mega-magic/internal/provisioner"
+	"mega-magic/internal/secretbox"
 )
 
 // ErrNoTarget means the peer has no usable connection facts (no address, or no
@@ -224,6 +227,7 @@ type DeviceApplier struct {
 	rotatePort int
 	resetHold  time.Duration
 	backupPassword string
+	archiveBox *secretbox.Box
 	extras     extraStore
 }
 
@@ -253,6 +257,60 @@ func NewDeviceApplier(src TargetSource, timeout time.Duration, factory RunnerFac
 func (a *DeviceApplier) WithBackupPassword(password string) *DeviceApplier {
 	a.backupPassword = password
 	return a
+}
+
+// WithArchiveBox enables sealed off-router copies after SFTP download.
+// The key must be independent from the router login and backup passwords.
+func (a *DeviceApplier) WithArchiveBox(box *secretbox.Box) *DeviceApplier {
+	a.archiveBox = box
+	return a
+}
+
+// ArchiveSnapshot creates AES-encrypted .backup and an export on RouterOS,
+// retrieves both over pinned SSH/SFTP, verifies exact router-reported sizes,
+// and seals their payloads for storage in the app's tenant-scoped database.
+// It must never claim an off-server copy until DB offsite backup is confirmed.
+func (a *DeviceApplier) ArchiveSnapshot(ctx context.Context, businessID, peerID string) (provisioner.RollbackSnapshot, error) {
+	if a.archiveBox == nil || a.backupPassword == "" {
+		return provisioner.RollbackSnapshot{}, errors.New("routeros: encrypted archive not configured")
+	}
+	runner, err := runnerForDevice(ctx, a.src, a.factory, a.timeout, businessID, peerID)
+	if err != nil { return provisioner.RollbackSnapshot{}, err }
+	download, ok := runner.(interface {
+		DownloadFile(context.Context, string, int64) ([]byte, error)
+	})
+	if !ok { return provisioner.RollbackSnapshot{}, errors.New("routeros: file transfer unavailable on SSH connection") }
+	snap, err := NewApplier(runner, a.iface, 0, 0).WithBackupPassword(a.backupPassword).
+		Snapshot(ctx, businessID, peerID, nil)
+	if err != nil { return provisioner.RollbackSnapshot{}, err }
+	const maxBackup = int64(16 << 20)
+	const maxExport = int64(2 << 20)
+	if snap.BackupBytes < 1 || snap.BackupBytes > maxBackup || snap.ExportBytes < 1 || snap.ExportBytes > maxExport {
+		return provisioner.RollbackSnapshot{}, errors.New("routeros: backup artifacts outside bounded size policy")
+	}
+	// Add one byte to the requested cap to detect a file that grew between
+	// the router size read and transfer, then compare exactly below.
+	binaryData, err := download.DownloadFile(ctx, snap.BackupName+".backup", snap.BackupBytes+1)
+	if err != nil { return provisioner.RollbackSnapshot{}, fmt.Errorf("routeros: encrypted backup download failed: %w", err) }
+	if int64(len(binaryData)) != snap.BackupBytes {
+		return provisioner.RollbackSnapshot{}, errors.New("routeros: backup bytes changed during transfer")
+	}
+	exportData, err := download.DownloadFile(ctx, snap.ExportFile, snap.ExportBytes+1)
+	if err != nil { return provisioner.RollbackSnapshot{}, fmt.Errorf("routeros: config export download failed: %w", err) }
+	if int64(len(exportData)) != snap.ExportBytes {
+		return provisioner.RollbackSnapshot{}, errors.New("routeros: export bytes changed during transfer")
+	}
+	backupHash := sha256.Sum256(binaryData)
+	exportHash := sha256.Sum256(exportData)
+	sealedBackup, err := a.archiveBox.Seal(string(binaryData))
+	if err != nil { return provisioner.RollbackSnapshot{}, errors.New("routeros: encrypted artifact sealing failed") }
+	sealedExport, err := a.archiveBox.Seal(string(exportData))
+	if err != nil { return provisioner.RollbackSnapshot{}, errors.New("routeros: export artifact sealing failed") }
+	snap.OffDeviceBackupSealed = sealedBackup
+	snap.OffDeviceExportSealed = sealedExport
+	snap.OffDeviceBackupSHA256 = hex.EncodeToString(backupHash[:])
+	snap.OffDeviceExportSHA256 = hex.EncodeToString(exportHash[:])
+	return snap, nil
 }
 
 // WithControlConfig supplies the verification settings used by a bound
