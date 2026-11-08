@@ -50,6 +50,10 @@ func (r *quickConfigRunner) Run(_ context.Context, command string) (string, erro
 			delete(r.dnsGuards, proto)
 		}
 		return "", nil
+	case strings.HasPrefix(command, "/ip/firewall/filter set [find where comment=") ||
+		strings.HasPrefix(command, "/ip/firewall/filter move [find where comment="):
+		// Existing guard rule updated/moved in place; no remove-and-recreate gap.
+		return "", nil
 	case strings.HasPrefix(command, "/ip/firewall/filter add chain=input in-interface-list=WAN protocol="):
 		proto := strings.TrimPrefix(command, "/ip/firewall/filter add chain=input in-interface-list=WAN protocol=")
 		proto = proto[:strings.Index(proto, " ")]
@@ -124,6 +128,27 @@ func TestQuickConfigProtectsWANBeforeEnablingRemoteDNS(t *testing.T) {
 	}
 	if dnsAt < 0 || udpAt < 0 || tcpAt < 0 || udpAt >= dnsAt || tcpAt >= dnsAt {
 		t.Fatalf("remote DNS enabled without both first-position guards: %v", commands)
+	}
+}
+
+func TestQuickConfigReusesExistingDNSGuardsWithoutDeleting(t *testing.T) {
+	runner := &quickConfigRunner{
+		identity: "old-router", dns: "1.1.1.1",
+		allowRemote: true, dnsGuards: map[string]bool{"udp": true, "tcp": true},
+	}
+	_, err := quickConfigApplier(runner).ApplyQuickConfig(context.Background(), "biz-1", "dev-1", QuickConfig{
+		Identity: "new-router", DNSServers: []string{"9.9.9.9"}, AllowRemoteDNS: true,
+	})
+	if err != nil { t.Fatal(err) }
+	joined := strings.Join(runner.commands, "\n")
+	if strings.Contains(joined, "/ip/firewall/filter remove ") {
+		t.Fatal("updating the live resolver must not remove existing DNS guards")
+	}
+	for _, proto := range []string{"udp", "tcp"} {
+		if !strings.Contains(joined, "/ip/firewall/filter move [find where comment=") ||
+			!strings.Contains(joined, "protocol="+proto+"] destination=0") {
+			t.Fatalf("existing %s rule not moved before WAN accepts", proto)
+		}
 	}
 }
 
