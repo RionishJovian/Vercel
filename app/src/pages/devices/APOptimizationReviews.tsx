@@ -4,6 +4,7 @@ import { api, fetcher, isUnauthorized } from "../../lib/api";
 import { useI18n } from "../../i18n";
 import { Note } from "../../components/ui";
 import { errorText } from "../../lib/errors";
+import { OmadaEnrollment } from "./OmadaEnrollment";
 
 type APProposal = {
   device_id: string;
@@ -76,6 +77,7 @@ export function APOptimizationReviews() {
     {!enabled && !caps.isLoading && <Note kind="warn">{my
       ? "AP optimizer ကို ဆာဗာတွင် မဖွင့်ရသေးပါ။ အတည်ပြုနိုင်သည့် vendor API မရှိသေးသဖြင့် AP ကို ပြင်မည်မဟုတ်ပါ။"
       : "AP optimization is not enabled. No verified controller radio API or write adapter is connected; no changes can be sent to an AP."}</Note>}
+    {enabled && <OmadaEnrollment />}
     {enabled && !caps.data?.live_apply && <Note kind="warn">{my
       ? "အဆိုပြုချက်များကို စစ်ဆေးရန်သာ ဖွင့်ထားသည်။ AP radio ပြင်ဆင်မှုကို ပိတ်ထားဆဲဖြစ်သည်။"
       : "Review-only mode: live AP radio changes are still disabled."}</Note>}
