@@ -32,6 +32,12 @@ describe("Revenue", () => {
     for (const figure of ["70,000", "300,000", "910,000"]) expect(screen.getByText(figure)).toBeTruthy();
     expect(screen.getByText(/21,000/)).toBeTruthy();
   });
+  it("clearly labels voucher activation value as different from verified payments", async () => {
+    open("OWNER");
+    expect(await screen.findByText("Voucher activation value")).toBeTruthy();
+    expect(screen.getByText(/not verified cash received or bank settlement/)).toBeTruthy();
+  });
+
   it("says the figures are unavailable instead of showing zero", async () => {
     report = { status: 500, body: { error: "boom" } };
     open("OWNER");

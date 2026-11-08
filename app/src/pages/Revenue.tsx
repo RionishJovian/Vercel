@@ -16,7 +16,7 @@ const STATES = [
 ] as const;
 
 export function Revenue({ me }: { me: Me }) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const { data: r, error, isLoading } = useSWR<VoucherReport>("/voucher-report", fetcher);
   const todayShown = useCountUp(num(r?.activation_today));
   if (isLoading) return <Skeleton h={360} />;
@@ -30,7 +30,8 @@ export function Revenue({ me }: { me: Me }) {
       <PageHead title={t("rv.title")} help={t("rv.help")} />
 
       <section className="glass pad ledger" aria-labelledby="rv-used">
-        <h2 id="rv-used" className="mute small">{t("rv.used")}</h2>
+        <h2 id="rv-used" className="mute small">{lang === "my" ? "ဗောက်ချာ အသုံးပြုမှုတန်ဖိုး" : "Voucher activation value"}</h2>
+        <p className="soft small" role="note">{lang === "my" ? "ဤတန်ဖိုးသည် အသုံးပြုထားသော ဗောက်ချာများ၏ မှတ်တမ်းတန်ဖိုးဖြစ်ပြီး ငွေလက်ခံရရှိမှု အတည်ပြုချက် မဟုတ်ပါ။" : "Recorded voucher activation value, not verified cash received or bank settlement."}</p>
         <p className="num ledger-figure">{mmk(todayShown ?? 0)}<small>{t("c.mmk")}</small></p>
         <p className="mute small">{t("h.today")}</p>
         <div className="capsules">
@@ -59,7 +60,7 @@ export function Revenue({ me }: { me: Me }) {
               <b>{g.gateway_name || "—"}</b>
               <span className="soft small">{t("rv.available")} <b className="num">{mmk(num(g.available_count) ?? 0)}</b></span>
               <span className="soft small">{t("rv.activated")} <b className="num">{mmk(num(g.activated_count) ?? 0)}</b></span>
-              <span className="num">{mmk(num(g.activation_value) ?? 0)} {t("c.mmk")}</span>
+              <span className="num" title={lang === "my" ? "ငွေလက်ခံရရှိမှု မဟုတ်ပါ" : "Activation value, not verified payment"}>{mmk(num(g.activation_value) ?? 0)} {t("c.mmk")}</span>
             </div>
           ))}
         </section>
