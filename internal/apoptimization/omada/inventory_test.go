@@ -67,7 +67,9 @@ func TestOmadaRefusesRedirectAndMalformedInventory(t *testing.T){
   w.WriteHeader(http.StatusFound)
  }))
  defer ts.Close()
- c,err:=New(Settings{BaseURL:ts.URL,OmadaID:"controller",SiteID:"site",ClientID:"id",ClientSecret:"secret"},ts.Client())
+ caller:=ts.Client()
+ caller.CheckRedirect=func(*http.Request,[]*http.Request)error{return http.ErrUseLastResponse}
+ c,err:=New(Settings{BaseURL:ts.URL,OmadaID:"controller",SiteID:"site",ClientID:"id",ClientSecret:"secret"},caller)
  if err!=nil{t.Fatal(err)}
  if _,err=c.ReadAPInventory(context.Background());err==nil{
   t.Fatal("redirected inventory must fail closed")
