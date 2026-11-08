@@ -32,6 +32,13 @@ type Config struct {
 	Billing     BillingConfig     `mapstructure:"billing"`
 	AI          AIConfig          `mapstructure:"ai"`
 	GuestWifi   GuestWifiConfig   `mapstructure:"guest_wifi"`
+	APOptimization APOptimizationConfig `mapstructure:"ap_optimization"`
+}
+
+// AP optimization approval ledger is independent from provider radio writes.
+// It defaults off and registers review-only routes after RLS checks pass.
+type APOptimizationConfig struct {
+ Enabled bool `mapstructure:"enabled"`
 }
 
 // Pilot integration is disabled until its migration and acceptance checks pass.
