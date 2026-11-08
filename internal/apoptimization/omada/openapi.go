@@ -78,12 +78,22 @@ func New(settings Settings, caller Caller) (*Client, error) {
 		return nil, ErrUnconfigured
 	}
 	if caller == nil {
-		caller = &http.Client{
-			Timeout: 10 * time.Second,
-			CheckRedirect: func(*http.Request, []*http.Request) error {
-				return http.ErrUseLastResponse
-			},
+		// The default client cannot reach arbitrary hosts. Opt-in production
+		// callers must use RestrictedCaller with a server-side CIDR allowlist.
+		return nil, ErrUnconfigured
+	}
+	if supplied, ok := caller.(*http.Client); ok {
+		// Even an injected client must never forward an API token to a
+		// controller-supplied redirect target. Preserve its transport/TLS
+		// configuration while forcing no redirects.
+		copy := *supplied
+		copy.CheckRedirect = func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
 		}
+		if copy.Timeout <= 0 || copy.Timeout > 10*time.Second {
+			copy.Timeout = 10*time.Second
+		}
+		caller = &copy
 	}
 	return &Client{root: u, settings: settings, http: caller}, nil
 }
