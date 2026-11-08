@@ -43,6 +43,13 @@ func startLiveApplier(cfg *config.Config, client *messaging.Client, sugar *zap.S
 	if err := wirePostureCapture(cfg, sugar, monitor, db); err != nil {
 		return err
 	}
+	// Snapshot capture is an independent, default-off capability. It creates
+	// RouterOS export/backup FILES but never wires Apply/Restore/OTP or the
+	// recovery consumers. A valid target CIDR allowlist, encrypted per-device
+	// credential and pinned SSH host key remain mandatory.
+	if err := wireBackupCapture(cfg, sugar, db, backup); err != nil {
+		return err
+	}
 
 	appCfg := cfg.Provisioner.Applier
 	if !appCfg.Enabled {
@@ -168,6 +175,41 @@ func startLiveApplier(cfg *config.Config, client *messaging.Client, sugar *zap.S
 		sugar.Warn("Telegram approval bridge not configured (no bot messenger) — approval requests will time out and DENY")
 	}
 
+	return nil
+}
+
+// wireBackupCapture is separate from live router configuration changes. The
+// transport is injected through BackupSnapshotter, so no writer is made
+// available to the handler unless the live applier is explicitly enabled.
+func wireBackupCapture(cfg *config.Config, sugar *zap.SugaredLogger, db *database.DB, backup *handler.BackupHandler) error {
+	c := cfg.Provisioner.BackupCapture
+	if !c.Enabled {
+		return nil
+	}
+	if db == nil || backup == nil {
+		return errors.New("router backup capture: enabled but database or backup handler unavailable")
+	}
+	key := c.CredentialKey
+	if key == "" {
+		key = cfg.Provisioner.Applier.CredentialKey
+	}
+	box, err := secretbox.New(key)
+	if err != nil {
+		return fmt.Errorf("router backup capture: credential key: %w", err)
+	}
+	source := database.NewDeviceCredentialSource(db, box)
+	policySource, err := routeros.NewCIDRTargetSource(source, cfg.Provisioner.AllowedTargetCIDRs)
+	if err != nil {
+		return fmt.Errorf("router backup capture target policy: %w", err)
+	}
+	timeout := c.Timeout
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+	snapshotter := routeros.NewDeviceApplier(policySource, timeout, nil,
+		cfg.Provisioner.Applier.Interface, 0, 0)
+	backup.EnableCapture(snapshotter)
+	sugar.Info("router backup capture wired independently (on-router artifacts only; full live applier remains separately gated)")
 	return nil
 }
 
