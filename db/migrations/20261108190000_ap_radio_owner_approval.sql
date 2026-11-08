@@ -1,5 +1,11 @@
 -- AP optimization review ledger. This records owner approval only; it
 -- DOES NOT configure radios. No vendor writer is wired to these records.
+-- The disposable baseline's device ID is unique but its (device,tenant)
+-- pair is not a separately declared referenced key. Add it explicitly so
+-- the composite FK rejects cross-tenant AP proposal identities.
+CREATE UNIQUE INDEX IF NOT EXISTS ap_radio_devices_tenant_key
+  ON devices(device_id,business_id);
+
 CREATE TABLE IF NOT EXISTS ap_radio_proposals (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   business_id uuid NOT NULL REFERENCES businesses(business_id),
