@@ -2,6 +2,7 @@ package server
 
 import (
  "errors"
+ "strings"
 
  "github.com/gin-gonic/gin"
  "mega-magic/internal/auth"
@@ -57,7 +58,8 @@ func registerAPOptimizationRoutes(r *gin.Engine,cfg *config.Config,db *database.
   caller,err:=omada.RestrictedCaller(cfg.APOptimization.OmadaAllowedCIDRs)
   if err!=nil{return err}
   origins:=map[string]bool{}
-  for _,origin:=range cfg.APOptimization.OmadaAllowedOrigins {
+  for _,rawOrigin:=range cfg.APOptimization.OmadaAllowedOrigins {
+   origin:=strings.TrimSuffix(rawOrigin,"/")
    if origin=="" {return errors.New("Omada controller origin empty")}
    c,err:=omada.New(omada.Settings{BaseURL:origin,OmadaID:"controller",
     SiteID:"site",ClientID:"config-validation",ClientSecret:"config-validation"},
