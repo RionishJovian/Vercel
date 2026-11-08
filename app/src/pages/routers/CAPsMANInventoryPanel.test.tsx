@@ -37,7 +37,7 @@ describe("CAPsMAN evidence", () => {
   it("refuses inventory evidence that reports enabled writes", async () => {
     inventory = { write_enabled: true, wifi_write_enabled: false, capsman: { write_enabled: false, controllers: [], profiles: [] } };
     load();
-    expect(await screen.findByText(/Read-only CAPsMAN evidence is not available/)).toBeTruthy();
+    expect(await screen.findByText(/CAPsMAN observations are unavailable/)).toBeTruthy();
     expect(screen.queryByText("Configured SSID profiles")).toBeNull();
   });
   it("does not invent APs from empty available controller", async () => {
