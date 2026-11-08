@@ -201,6 +201,13 @@ func wireBackupCapture(cfg *config.Config, sugar *zap.SugaredLogger, db *databas
 	if err != nil {
 		return fmt.Errorf("router backup capture: credential key: %w", err)
 	}
+	if c.ArchiveKey == key {
+		return errors.New("router backup capture: archive key must be separate from device credential key")
+	}
+	archiveBox, err := secretbox.New(c.ArchiveKey)
+	if err != nil {
+		return fmt.Errorf("router backup capture: archive encryption key: %w", err)
+	}
 	source := database.NewDeviceCredentialSource(db, box)
 	policySource, err := routeros.NewCIDRTargetSource(source, cfg.Provisioner.AllowedTargetCIDRs)
 	if err != nil {
@@ -211,7 +218,8 @@ func wireBackupCapture(cfg *config.Config, sugar *zap.SugaredLogger, db *databas
 		timeout = 30 * time.Second
 	}
 	snapshotter := routeros.NewDeviceApplier(policySource, timeout, nil,
-		cfg.Provisioner.Applier.Interface, 0, 0).WithBackupPassword(c.Password)
+		cfg.Provisioner.Applier.Interface, 0, 0).
+		WithBackupPassword(c.Password).WithArchiveBox(archiveBox)
 	backup.EnableCapture(snapshotter)
 	sugar.Info("router backup capture wired independently (on-router artifacts only; full live applier remains separately gated)")
 	return nil
