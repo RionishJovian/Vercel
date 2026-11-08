@@ -2,8 +2,7 @@ package server
 
 import (
  "context"
- "database/sql"
- "encoding/json"
+  "encoding/json"
  "net/http/httptest"
  "os"
  "strings"
@@ -87,7 +86,7 @@ func TestOmadaControllerSecretSealedAndTenantScoped(t *testing.T){
  }
  // Inspect ciphertext through an explicitly tenant-bound transaction, never
  // with the owner DB pool's unscoped RLS bypass.
- tx,e:=db.BeginTx(context.Background(),&sql.TxOptions{ReadOnly:true})
+ tx,e:=db.BeginTx(context.Background(),nil)
  if e!=nil{t.Fatal(e)}
  defer tx.Rollback()
  var sealed string
