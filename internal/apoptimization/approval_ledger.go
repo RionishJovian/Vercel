@@ -30,7 +30,7 @@ func SealProposal(tenant string,p Proposal,now time.Time)([]byte,string,error){
   p.BeforeChannel<=0||p.AfterChannel<=0||
   p.BeforeChannel==p.AfterChannel&&p.BeforePowerDBm==p.AfterPowerDBm||
   p.CreatedAt.IsZero()||p.ExpiresAt.IsZero()||
-  p.CreatedAt.After(now.Add(time.Second))||now.Before(p.CreatedAt.Add(-time.Minute))||
+  p.CreatedAt.After(now.Add(time.Second))||now.After(p.CreatedAt.Add(time.Minute))||
   !p.ExpiresAt.After(p.CreatedAt)||p.ExpiresAt.Sub(p.CreatedAt)>5*time.Minute||
   !now.Before(p.ExpiresAt) {
   return nil,"",errors.New("AP proposal not trusted, fresh, or owner-reviewable")
@@ -84,11 +84,16 @@ func (l *Ledger) ConsumeOwnerApproval(ctx context.Context,tenant,proposalID stri
    Scan(&raw,&savedHash,&fingerprint,&expiry)
   if err==sql.ErrNoRows{return ErrUnapproved}
   if err!=nil{return err}
-  sum:=sha256.Sum256(raw)
+  if err=json.Unmarshal(raw,&p);err!=nil{return ErrStale}
+  // PostgreSQL jsonb reorders object keys. Re-marshal the known typed
+  // proposal to reproduce the trusted canonical Go JSON before comparing
+  // the proposal hash (never hash Postgres' textual JSONB representation).
+  canonical,err:=json.Marshal(p)
+  if err!=nil{return ErrStale}
+  sum:=sha256.Sum256(canonical)
   if hex.EncodeToString(sum[:])!=savedHash||!ledgerSHA.MatchString(fingerprint){
    return ErrStale
   }
-  if err=json.Unmarshal(raw,&p);err!=nil{return ErrStale}
   // TenantID is deliberately not serialized. Re-bind from the transaction's
   // tenant context; refuse any mismatching device/profile identity.
   p.TenantID=tenant
