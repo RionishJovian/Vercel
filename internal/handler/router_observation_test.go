@@ -115,7 +115,7 @@ func TestRouterObservationAuthenticatedContract(t *testing.T) {
 	})
 	t.Run("foreign targets refused before connector", func(t *testing.T) {
 		before := reader.calls
-		for _, action := range []string{"observations", "discovery-labels"} {
+		for _, action := range []string{"observations", "discovery", "discovery-labels"} {
 			if w := request("GET", other, action, "ADMIN", ""); w.Code != 404 {
 				t.Fatalf("foreign %s %d", action, w.Code)
 			}
@@ -156,6 +156,26 @@ func TestRouterObservationAuthenticatedContract(t *testing.T) {
 			}
 		}
 	})
+	t.Run("read-only discovery is tenant bound and does not grant device writes", func(t *testing.T) {
+		before := reader.calls
+		w := request("GET", device, "discovery", "VIEWER", "")
+		if w.Code != 200 || reader.calls != before+1 || reader.business != biz || reader.device != device {
+			t.Fatalf("expected authorized gateway reader, got %d %s", w.Code, w.Body)
+		}
+		var result struct {Discovery struct {
+			ReadsOnly bool `json:"reads_only"`
+			PhysicalLinksVerified bool `json:"physical_links_verified"`
+			Partial bool `json:"partial"`
+			Devices []struct{MAC string `json:"mac"`} `json:"devices"`
+		} `json:"discovery"`}
+		if e := json.Unmarshal(w.Body.Bytes(), &result); e != nil {
+			t.Fatal(e)
+		}
+		if !result.Discovery.ReadsOnly || result.Discovery.PhysicalLinksVerified || !result.Discovery.Partial || len(result.Discovery.Devices) != 0 {
+			t.Fatalf("discovery returned guessed devices or links: %s", w.Body)
+		}
+	})
+
 	t.Run("read connector scope and no write capability", func(t *testing.T) {
 		w := request("GET", device, "observations", "VIEWER", "")
 		if w.Code != 200 || reader.business != biz || reader.device != device {
