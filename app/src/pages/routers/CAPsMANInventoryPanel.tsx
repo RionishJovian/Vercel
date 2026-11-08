@@ -38,9 +38,26 @@ interface ObservationResponse {
   };
 }
 
+// A CAPsMAN CAP inventory is not authenticated proof that an AP accepts
+// writes. This local preview can only show blocked candidates until a trusted,
+// firmware-specific adapter supplies an SSID readback and write capability.
+export function previewSSIDImpact(view: CAPsMANView, proposedSSID: string) {
+  return view.controllers.flatMap((controller) => controller.inventory_available
+    ? (controller.caps ?? []).map((cap) => ({
+      family: controller.family,
+      identity: cap.identity || "Unknown CAP",
+      proposedSSID,
+      status: "blocked" as const,
+      reason: "No verified per-AP SSID readback, write and rollback capability",
+    }))
+    : []);
+}
+
 export function CAPsMANInventoryPanel({ id }: { id: string }) {
   const { lang } = useI18n();
   const my = lang === "my";
+  const [desiredSSID, setDesiredSSID] = useState("");
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [state, setState] = useState<
     { kind: "idle" | "loading" } |
     { kind: "error"; message: string } |
@@ -50,6 +67,7 @@ export function CAPsMANInventoryPanel({ id }: { id: string }) {
   async function inspect() {
     if (state.kind === "loading") return;
     setState({ kind: "loading" });
+    setPreviewOpen(false);
     try {
       const response = await api.get<ObservationResponse>(`/routers/${encodeURIComponent(id)}/observations`);
       const inv = response.inventory;
@@ -93,6 +111,32 @@ export function CAPsMANInventoryPanel({ id }: { id: string }) {
       {ready.view.profiles.map((p, i) => <p className="small" key={p.family + (p.name || i)}>
         <b>{p.name || "—"}</b> · {p.ssid || (my ? "SSID မသိ" : "SSID unknown")} · {p.family} · {my ? "ထုတ်လွှင့်မှု မအတည်ပြုနိုင်" : "Broadcast unverified"}
       </p>)}
+      <div className="stack" aria-label={my ? "SSID ပြောင်းလဲမှုအကြိုကြည့်ရန်" : "SSID change impact preview"}>
+        <h3>{my ? "SSID ပြောင်းလဲမှု အကြိုကြည့်ရန်" : "Preview a site-wide SSID change"}</h3>
+        <p className="soft small">{my
+          ? "ဤအကြိုကြည့်ရှုမှုသည် ဖတ်ရန်သာဖြစ်ပါသည်။ အတည်ပြုထားသော AP စီမံခန့်ခွဲခွင့်မရှိသေးသဖြင့် မည်သည့်စက်ကိုမျှ ပြင်မည်မဟုတ်ပါ။"
+          : "Read-only planning preview. CAPsMAN inventory alone cannot authorize a change, so all listed APs are blocked until verified device capabilities exist."}</p>
+        <label className="stack small">
+          <span>{my ? "Wi-Fi အမည်အသစ်" : "Proposed Wi-Fi name"}</span>
+          <input className="input" aria-label="Proposed Wi-Fi name" value={desiredSSID} maxLength={32}
+            onChange={(e) => { setDesiredSSID(e.target.value); setPreviewOpen(false); }} placeholder="Shop Guest" />
+        </label>
+        <button className="pill" type="button" onClick={() => setPreviewOpen(true)}
+          disabled={!desiredSSID || desiredSSID.trim() !== desiredSSID ||
+            new TextEncoder().encode(desiredSSID).length > 32 || /[\r\n\0]/.test(desiredSSID)}>
+          {my ? "သက်ရောက်မှုကို ကြည့်ရန်" : "Preview impact (no changes)"}
+        </button>
+        {previewOpen && <>
+          <p role="status" className="soft small">{my ? "ပြင်ဆင်နိုင်ကြောင်း အတည်ပြုထားသော AP: 0" : "APs verified eligible for change: 0"} · {my ? "ပြောင်းလဲမှုမရှိ" : "No configuration will be changed"}</p>
+          {previewSSIDImpact(ready.view, desiredSSID).map((ap, index) =>
+            <div className="note warn stack" key={ap.family + ap.identity + index}>
+              <b>{ap.identity} · {ap.family}</b>
+              <p className="small">{my ? "အဆိုပြု Wi-Fi အမည်" : "Proposed SSID"}: {ap.proposedSSID}</p>
+              <p className="soft small">{my ? "ပိတ်ထားသည် — AP အတွက် SSID ဖတ်ရှုခြင်း၊ ပြောင်းလဲခြင်းနှင့် ပြန်လည်ပြုပြင်ခြင်း အတည်ပြုချက်မရှိ" : "Blocked — per-AP SSID readback, write and rollback unverified"}</p>
+            </div>)}
+          {!previewSSIDImpact(ready.view, desiredSSID).length && <Note kind="warn">{my ? "အတည်ပြုထားသော CAP မရှိ သို့မဟုတ် စာရင်းဖတ်မရပါ" : "No readable CAP records to assess. Unknown APs may exist."}</Note>}
+        </>}
+      </div>
       <Note kind="warn">{my
         ? "ယခု စာရင်းဖတ်ရန်သာ ဖြစ်ပြီး SSID ပြောင်းခြင်းကို မဖွင့်ထားပါ။"
         : "Read-only evidence. SSID synchronization and AP configuration are not enabled."}</Note>
