@@ -57,8 +57,8 @@ func TestAPApprovalOwnerOnlyAndTenantSafe(t *testing.T){
  }
  id,err:=(&apoptimization.Ledger{DB:db}).RecordTrustedProposal(context.Background(),owner.BusinessID,proposal)
  if err!=nil{t.Fatal(err)}
- var savedHash string
- if err=db.QueryRow(`SELECT proposal_hash FROM ap_radio_proposals WHERE id=$1`,id).Scan(&savedHash);err!=nil{t.Fatal(err)}
+ _,savedHash,err:=apoptimization.SealProposal(owner.BusinessID,proposal,time.Now())
+ if err!=nil{t.Fatal(err)}
  cfg:=&config.Config{}
  cfg.APOptimization.Enabled=true
  r:=gin.New()
@@ -99,10 +99,9 @@ func TestAPApprovalOwnerOnlyAndTenantSafe(t *testing.T){
  if w:=request("POST",decisionPath,ownerToken,string(decision));w.Code!=409{
   t.Fatalf("replayed approval accepted: %d",w.Code)
  }
- var status string
- if err=db.QueryRow(`SELECT status FROM ap_radio_proposals WHERE id=$1`,id).Scan(&status);err!=nil||status!="approved"{
-  t.Fatalf("wrong DB state %q %v",status,err)
- }
+ // A successful, owner-bound HTTP response is not permission to bypass
+ // forced RLS with an unscoped SQL query. The one-use consumption below
+ // verifies approved state inside a tenant-pinned transaction.
  if _,err=(&apoptimization.Ledger{DB:db}).ConsumeOwnerApproval(context.Background(),foreign.BusinessID,id,time.Now());err==nil{
   t.Fatal("foreign tenant consumed owner approval")
  }
