@@ -82,6 +82,24 @@ func TestRouterObservationAuthenticatedContract(t *testing.T) {
 		return w
 	}
 	body := `{"mac":"02:00:00:00:00:01","name":"Reception","kind":"ap"}`
+	t.Run("SSID preview requires owner, tenant-scoped site and never invokes device on denial", func(t *testing.T) {
+		before:=reader.calls
+		payload:=`{"site_id":"00000000-0000-4000-8000-000000000001","revision":"v1","ssid":"Shop Guest"}`
+		for _,tc:=range []struct{role string;want int}{
+			{"",401},{"VIEWER",403},{"ADMIN",403},
+		}{
+			w:=request("POST",device,"ssid/preview",tc.role,payload)
+			if w.Code!=tc.want {t.Fatalf("%s status %d expected %d: %s",tc.role,w.Code,tc.want,w.Body)}
+		}
+		if w:=request("POST",other,"ssid/preview","OWNER",payload);w.Code!=404 {
+			t.Fatalf("foreign tenant preview: %d %s",w.Code,w.Body)
+		}
+		if w:=request("POST",device,"ssid/preview","OWNER",payload);w.Code!=409 {
+			t.Fatalf("missing site wrongly accepted: %d %s",w.Code,w.Body)
+		}
+		if reader.calls!=before {t.Fatal("denied SSID reviews must not touch router")}
+	})
+
 	t.Run("denied writes do not mutate", func(t *testing.T) {
 		for _, role := range []string{"", "VIEWER"} {
 			w := request("PUT", device, "discovery-labels", role, body)
