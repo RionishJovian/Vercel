@@ -103,6 +103,45 @@ func TestApplyQuickConfigBacksUpWritesAndVerifies(t *testing.T) {
 	}
 }
 
+func TestQuickConfigProtectsWANBeforeEnablingRemoteDNS(t *testing.T) {
+	runner := &quickConfigRunner{identity: "old-router", dns: "1.1.1.1"}
+	_, err := quickConfigApplier(runner).ApplyQuickConfig(context.Background(), "biz-1", "dev-1", QuickConfig{
+		Identity: "new-router", DNSServers: []string{"1.1.1.1"}, AllowRemoteDNS: true,
+	})
+	if err != nil { t.Fatal(err) }
+	commands := runner.commands
+	dnsAt, udpAt, tcpAt := -1, -1, -1
+	for i, command := range commands {
+		if strings.Contains(command, "/ip dns set ") && strings.Contains(command, "allow-remote-requests=yes") { dnsAt = i }
+		if strings.Contains(command, "/ip/firewall/filter add ") && strings.Contains(command, "protocol=udp") {
+			udpAt = i
+			if !strings.Contains(command, "place-before=0") { t.Fatal("UDP guard not ahead of existing accepts") }
+		}
+		if strings.Contains(command, "/ip/firewall/filter add ") && strings.Contains(command, "protocol=tcp") {
+			tcpAt = i
+			if !strings.Contains(command, "place-before=0") { t.Fatal("TCP guard not ahead of existing accepts") }
+		}
+	}
+	if dnsAt < 0 || udpAt < 0 || tcpAt < 0 || udpAt >= dnsAt || tcpAt >= dnsAt {
+		t.Fatalf("remote DNS enabled without both first-position guards: %v", commands)
+	}
+}
+
+func TestQuickConfigRefusesRemoteDNSWhenFirewallGuardFails(t *testing.T) {
+	state := &quickConfigRunner{identity: "old-router", dns: "1.1.1.1"}
+	runner := commandRunnerFunc(func(ctx context.Context, command string) (string, error) {
+		if strings.Contains(command, "/ip/firewall/filter add ") { return "", errors.New("firewall rejected guard") }
+		return state.Run(ctx, command)
+	})
+	result, err := quickConfigApplier(runner).ApplyQuickConfig(context.Background(), "biz-1", "dev-1", QuickConfig{
+		Identity: "new-router", DNSServers: []string{"9.9.9.9"}, AllowRemoteDNS: true,
+	})
+	if err == nil { t.Fatal("firewall failure must stop configuration") }
+	if state.allowRemote || state.identity != "old-router" || state.dns != "1.1.1.1" || result.Verified {
+		t.Fatalf("unsafe partial enable after firewall failure: result=%+v state=%+v", result, state)
+	}
+}
+
 func TestApplyQuickConfigSkipsDNSGuardWhenRemoteDisabled(t *testing.T) {
 	runner := &quickConfigRunner{identity: "old-router", dns: "1.1.1.1"}
 	applier := quickConfigApplier(runner)
