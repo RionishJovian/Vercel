@@ -211,6 +211,11 @@ guest_wifi:
   voucher_access_enabled: false
   bridge_scan_interval: 30s
 
+# Owner review ledger only. No AP write adapter and no auto-apply.
+# Requires ap_radio_proposals migration with forced RLS before enabling.
+ap_optimization:
+  enabled: false
+
 vps:
   endpoint_host: ""
   # Magic Hub enrollment. These MUST be present here, not only as VPS_HUB_*
