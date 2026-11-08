@@ -4,6 +4,7 @@ import { useI18n } from "../../i18n";
 import { Note } from "../../components/ui";
 import { errorText } from "../../lib/errors";
 import { AP_CAPABILITY_NAMES, apCapabilityEvidence } from "./apCapabilityEvidence";
+import { vendorIntegrationHint } from "./vendorIntegrationHint";
 
 interface Capability { name: string; status: string; evidence?: string }
 interface DiscoveredDevice {
@@ -79,6 +80,12 @@ export function UniversalDiscoveryPanel({ gatewayId }: { gatewayId: string }) {
         <p className="soft small">{d.reported_vendor || (my ? "Brand မသိသေး" : "Vendor unknown")}
           {d.reported_model ? " · " + d.reported_model : ""}
           {" · "}{d.kind !== "unknown" ? d.kind + " (" + d.kind_evidence + ")" : (my ? "အမျိုးအစားမသိ" : "Type unknown")}</p>
+        <p className="soft small">
+          {my ? "ထုတ်လုပ်သူ API အခြေအနေ" : "Vendor integration"}: {vendorIntegrationHint(d.reported_vendor).label} · {vendorIntegrationHint(d.reported_vendor).inventory === "enrollment_required"
+            ? (my ? "Omada controller ကို သီးခြားချိတ်ဆက်မှ စာရင်းဖတ်နိုင်သည်" : "Read-only inventory requires separately enrolled Omada controller")
+            : (my ? "တိုက်ရိုက်စီမံရန် adapter မချိတ်ဆက်ရသေး" : "No verified vendor controller adapter connected")}
+          {" · "}{my ? "ရေးသားပြင်ဆင်ခွင့် မအတည်ပြုရသေး" : "Configuration writes unverified"}
+        </p>
         <p className="soft small">{my ? "အချက်အလက်ရင်းမြစ်" : "Sources"}: {d.sources.join(", ")}</p>
         {d.attachments.map(a => <p key={a.source + a.gateway_interface} className="soft small">
           {a.source}: {a.gateway_interface} · {my ? "တိုက်ရိုက်ချိတ်ဆက်မှု မအတည်ပြုနိုင်" : "physical hop unverified"}
