@@ -223,6 +223,7 @@ type DeviceApplier struct {
 	tDown      time.Duration
 	rotatePort int
 	resetHold  time.Duration
+	backupPassword string
 	extras     extraStore
 }
 
@@ -247,6 +248,13 @@ func NewDeviceApplier(src TargetSource, timeout time.Duration, factory RunnerFac
 	}
 }
 
+// WithBackupPassword configures only the encrypted snapshot path. It does
+// not change the device's own password or grant write authorization.
+func (a *DeviceApplier) WithBackupPassword(password string) *DeviceApplier {
+	a.backupPassword = password
+	return a
+}
+
 // WithControlConfig supplies the verification settings used by a bound
 // snapshot/apply/verify/rollback operation.
 func (a *DeviceApplier) WithControlConfig(pingTarget string, tDown time.Duration) *DeviceApplier {
@@ -263,7 +271,7 @@ func (a *DeviceApplier) applierFor(ctx context.Context, businessID, peerID strin
 	if err != nil {
 		return nil, err
 	}
-	return NewApplier(runner, a.iface, a.rotatePort, a.resetHold), nil
+	return NewApplier(runner, a.iface, a.rotatePort, a.resetHold).WithBackupPassword(a.backupPassword), nil
 }
 
 func (a *DeviceApplier) Snapshot(ctx context.Context, businessID, peerID string, changes []provisioner.Change) (provisioner.RollbackSnapshot, error) {
@@ -303,7 +311,7 @@ func (a *DeviceApplier) BindOperation(ctx context.Context, businessID, peerID st
 	return &boundDeviceOperation{
 		businessID: businessID,
 		peerID:     peerID,
-		applier:    NewApplier(runner, a.iface, a.rotatePort, a.resetHold),
+		applier:    NewApplier(runner, a.iface, a.rotatePort, a.resetHold).WithBackupPassword(a.backupPassword),
 		prober:     NewProber(runner, a.iface, a.pingTarget, a.tDown),
 	}, nil
 }
