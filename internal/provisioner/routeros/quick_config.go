@@ -169,17 +169,26 @@ func guardRemoteDNS(ctx context.Context, runner CommandRunner, remote bool) erro
 	const guardComment = "mm-guard-drop-remote-dns"
 	for _, protocol := range []string{"udp", "tcp"} {
 		selector := "where comment=" + routerOSQuoted(guardComment) + " and protocol=" + protocol
-		if _, err := runner.Run(ctx, "/ip/firewall/filter remove [find "+selector+"]"); err != nil {
-			return fmt.Errorf("clear remote DNS guard: %w", err)
+		count, err := networkCount(ctx, runner, "/ip/firewall/filter print count-only "+selector)
+		if err != nil || count > 1 {
+			return fmt.Errorf("remote DNS guard inventory ambiguous for %s", protocol)
 		}
-		// RouterOS filter rules are first-match. Appending a drop after an
-		// existing broad accept is ineffective; insert ahead of static rules.
+		// Reuse an existing rule: deleting it first would expose a router
+		// already serving DNS until the replacement is installed.
 		command := "/ip/firewall/filter add chain=input in-interface-list=WAN protocol=" + protocol +
 			" dst-port=53 action=drop comment=" + routerOSQuoted(guardComment) + " place-before=0"
+		if count == 1 {
+			command = "/ip/firewall/filter set [find " + selector + "] chain=input in-interface-list=WAN dst-port=53 action=drop disabled=no"
+		}
 		if _, err := runner.Run(ctx, command); err != nil {
 			return fmt.Errorf("remote DNS guard failed for %s; router may be an open resolver", protocol)
 		}
-		count, err := networkCount(ctx, runner, "/ip/firewall/filter print count-only "+selector)
+		if count == 1 {
+			if _, err := runner.Run(ctx, "/ip/firewall/filter move [find "+selector+"] destination=0"); err != nil {
+				return fmt.Errorf("remote DNS guard priority failed for %s", protocol)
+			}
+		}
+		count, err = networkCount(ctx, runner, "/ip/firewall/filter print count-only "+selector)
 		if err != nil || count != 1 {
 			return fmt.Errorf("remote DNS guard not verified for %s", protocol)
 		}
