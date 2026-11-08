@@ -175,6 +175,7 @@ provisioner:
     enabled: false
     credential_key: ""  # optional fallback to applier.credential_key
     password: ""        # REQUIRED strong secret for AES-SHA256 encrypted .backup (inject securely)
+    archive_key: ""     # REQUIRED separate 32-byte AES-GCM key for downloaded artifacts
     timeout: 30s
   applier:
     enabled: false
