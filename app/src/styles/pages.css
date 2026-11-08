@@ -46,7 +46,7 @@
 .leds i { width: 14px; height: 14px; border-radius: 50%; border: 1px solid var(--edge); }
 .leds i.on { background: var(--ok); border-color: var(--ok); box-shadow: 0 0 10px var(--ok); }
 .leds i.off { background: color-mix(in srgb, var(--bad) 55%, transparent); border-color: var(--bad); }
-.leds i.unknown { background: transparent; border-color: var(--ink-muted); border-style: dashed; }
+.leds i.unknown { background: transparent; border-color: var(--ink-mute); border-style: dashed; }
 .leds b { margin-left: auto; font-size: 1.2rem; }
 .stock-figure { font-size: 2.6rem; font-weight: 700; line-height: 1.1; margin: 10px 0 4px; }
 
