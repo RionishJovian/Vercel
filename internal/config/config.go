@@ -262,6 +262,9 @@ type ProvisionerConfig struct {
 type BackupCaptureConfig struct {
 	Enabled bool `mapstructure:"enabled"`
 	CredentialKey string `mapstructure:"credential_key"`
+	// ArchiveKey separately encrypts the downloaded off-router artifacts before
+	// they enter the app database. Must not equal the SSH credentials key.
+	ArchiveKey string `mapstructure:"archive_key"`
 	// Password encrypts the RouterOS binary .backup file. Do not reuse an
 	// SME login credential; this is a separate operator-held recovery secret.
 	Password string `mapstructure:"password"`
@@ -450,6 +453,12 @@ func (cfg *Config) Validate() error {
 		if key == "" { key = cfg.Provisioner.Applier.CredentialKey }
 		if _, err := secretbox.New(key); err != nil {
 			problems = append(problems, "provisioner.backup_capture.credential_key (or applier fallback) must be a valid base64 or hex encoded 32-byte key")
+		}
+		if _, err := secretbox.New(cfg.Provisioner.BackupCapture.ArchiveKey); err != nil {
+			problems = append(problems, "provisioner.backup_capture.archive_key must be a separate valid 32-byte encryption key")
+		}
+		if cfg.Provisioner.BackupCapture.ArchiveKey == key {
+			problems = append(problems, "provisioner.backup_capture.archive_key must differ from the per-device SSH credential key")
 		}
 		if cfg.Provisioner.BackupCapture.Timeout < 0 {
 			problems = append(problems, "provisioner.backup_capture.timeout must not be negative")
@@ -654,6 +663,7 @@ func setDefaults(v *viper.Viper) {
 	// This independent capability is OFF until explicitly enabled.
 	v.SetDefault("provisioner.backup_capture.enabled", false)
 	v.SetDefault("provisioner.backup_capture.credential_key", "")
+	v.SetDefault("provisioner.backup_capture.archive_key", "")
 	v.SetDefault("provisioner.backup_capture.password", "")
 	v.SetDefault("provisioner.backup_capture.timeout", "30s")
 	v.SetDefault("provisioner.applier.otp_digits", 6)
