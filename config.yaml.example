@@ -167,6 +167,14 @@ provisioner:
   # Use the WireGuard management subnet(s), never 0.0.0.0/0 or ::/0.
   allowed_target_cidrs:
     - "10.77.0.0/24"
+  # OFF by default: creates .rsc and .backup files ON ROUTER and stores
+  # rollback metadata in DB. Does not transfer files off-device, and cannot
+  # apply/restore router settings. Requires encrypted device SSH credentials,
+  # pinned host key and the target CIDR allowlist above.
+  backup_capture:
+    enabled: false
+    credential_key: ""  # optional fallback to applier.credential_key
+    timeout: 30s
   applier:
     enabled: false
     credential_key: ""       # base64/hex 32-byte key; inject via env/config
