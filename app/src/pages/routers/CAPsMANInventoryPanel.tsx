@@ -38,26 +38,89 @@ interface ObservationResponse {
   };
 }
 
-// A CAPsMAN CAP inventory is not authenticated proof that an AP accepts
-// writes. This local preview can only show blocked candidates until a trusted,
-// firmware-specific adapter supplies an SSID readback and write capability.
-export function previewSSIDImpact(view: CAPsMANView, proposedSSID: string) {
-  return view.controllers.flatMap((controller) => controller.inventory_available
-    ? (controller.caps ?? []).map((cap) => ({
-      family: controller.family,
-      identity: cap.identity || "Unknown CAP",
-      proposedSSID,
-      status: "blocked" as const,
-      reason: "No verified per-AP SSID readback, write and rollback capability",
-    }))
-    : []);
+interface SSIDReviewResponse {
+  gateway_id: string;
+  apply_available: boolean;
+  observed_at?: string;
+  preview?: {
+    site_id: string;
+    ssid: string;
+    revision: string;
+    review_hash: string;
+    write_enabled: boolean;
+    eligible_count: number;
+    blocked_count: number;
+    impacts: Array<{ device_id: string; status: string; reason: string; target_ssid: string }>;
+  };
 }
 
-export function CAPsMANInventoryPanel({ id }: { id: string }) {
+export function SSIDServerPreview({ id, siteId, canReview }: { id: string; siteId?: string | null; canReview: boolean }) {
   const { lang } = useI18n();
   const my = lang === "my";
-  const [desiredSSID, setDesiredSSID] = useState("");
-  const [previewOpen, setPreviewOpen] = useState(false);
+  const [ssid, setSSID] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [failure, setFailure] = useState("");
+  const [result, setResult] = useState<SSIDReviewResponse | null>(null);
+  // A UTF-8 SSID is limited to 32 bytes, not 32 characters.
+  const valid = ssid.length > 0 && ssid.trim() === ssid &&
+    new TextEncoder().encode(ssid).length <= 32 && !/[\r\n\0]/.test(ssid);
+  async function preview() {
+    if (!valid || !siteId || !canReview || busy) return;
+    setBusy(true); setFailure(""); setResult(null);
+    try {
+      // Ephemeral request identifier; not a persisted site revision or apply token.
+      const revision = "read-only-" + Date.now().toString(36);
+      const response = await api.post<SSIDReviewResponse>(`/routers/${encodeURIComponent(id)}/ssid/preview`, {
+        site_id: siteId, revision, ssid,
+      });
+      const p = response.preview;
+      if (response.gateway_id !== id || response.apply_available !== false ||
+          !p || p.site_id !== siteId || p.ssid !== ssid ||
+          p.write_enabled !== false || !Array.isArray(p.impacts) ||
+          p.impacts.some(item => item.status !== "blocked") ||
+          p.eligible_count !== 0 || p.blocked_count !== p.impacts.length) {
+        throw new Error("Server preview safety contract rejected");
+      }
+      setResult(response);
+    } catch (e) {
+      if (isUnauthorized(e)) throw e;
+      setFailure(errorText(e, my ? "SSID အကြိုကြည့်ရှုမှု မရနိုင်ပါ" : "Server SSID preview unavailable"));
+    } finally { setBusy(false); }
+  }
+  return <div className="stack" aria-label={my ? "SSID ပြောင်းလဲမှု အကြိုကြည့်ရန်" : "SSID change impact preview"}>
+    <h3>{my ? "SSID ပြောင်းလဲမှု အကြိုကြည့်ရန်" : "Preview a site-wide SSID change"}</h3>
+    <p className="soft small">{my
+      ? "ပိုင်ရှင်အတွက် အကြိုကြည့်ရှုမှုသာ ဖြစ်သည်။ AP များကို ပြောင်းလဲမည်မဟုတ်ပါ။"
+      : "Owner-only server review. CAPsMAN sightings do not prove AP manageability; no changes can be applied."}</p>
+    {!siteId && <Note kind="warn">{my ? "ဤ Gateway ကို Site နှင့် ချိတ်ဆက်ရန် လိုအပ်သည်။" : "Assign this gateway to a site before reviewing an SSID change."}</Note>}
+    {!canReview && <Note kind="warn">{my ? "SSID ပြောင်းလဲမှုကို ပိုင်ရှင်သာ ကြည့်ရှုနိုင်သည်။" : "SSID change review requires owner permission."}</Note>}
+    <label className="stack small">
+      <span>{my ? "Wi-Fi အမည်အသစ်" : "Proposed Wi-Fi name"}</span>
+      <input className="input" aria-label="Proposed Wi-Fi name" maxLength={32} value={ssid}
+        onChange={e => { setSSID(e.target.value); setResult(null); setFailure(""); }} placeholder="Shop Guest" />
+    </label>
+    <button className="pill" type="button" onClick={() => void preview()}
+      disabled={!valid || !siteId || !canReview || busy}>
+      {busy ? (my ? "စစ်ဆေးနေသည်…" : "Checking…") : (my ? "ဆာဗာတွင် ကြိုတင်စစ်ဆေးရန်" : "Review impact on server (no changes)")}
+    </button>
+    {failure && <Note kind="warn">{failure}</Note>}
+    {result?.preview && <>
+      <p className="soft small" role="status">{my ? "ပြောင်းလဲနိုင်ကြောင်း အတည်ပြုထားသော AP" : "APs eligible for change"}: 0 · {my ? "ပိတ်ထားသော AP" : "Blocked APs"}: {result.preview.blocked_count}</p>
+      <p className="soft small">{my ? "လေ့လာချိန်" : "Observed at"}: {result.observed_at || "—"} · {my ? "အကြိုကြည့်ရှုမှု ID" : "Review ID"}: {result.preview.review_hash.slice(0, 12)}</p>
+      {result.preview.impacts.map((impact, i) => <div className="note warn stack" key={impact.device_id + i}>
+        <b>{impact.device_id}</b>
+        <p className="small">{my ? "အဆိုပြု SSID" : "Proposed SSID"}: {impact.target_ssid}</p>
+        <p className="soft small">{my ? "ပိတ်ထားသည် — စီမံခန့်ခွဲခွင့် မအတည်ပြုရသေးပါ" : "Blocked — unverified management capability"}</p>
+      </div>)}
+      {!result.preview.impacts.length && <Note kind="warn">{my ? "CAP မှတ်တမ်း မရှိပါ သို့မဟုတ် ဖတ်မရပါ" : "No assessable CAP records; this does not mean the site has no APs."}</Note>}
+      <Note kind="warn">{my ? "ဖတ်ရန်သာ ဖြစ်ပြီး SSID ပြောင်းလဲမှုများကို ပိတ်ထားသည်။" : "Read-only review. SSID changes remain disabled."}</Note>
+    </>}
+  </div>;
+}
+
+export function CAPsMANInventoryPanel({ id, siteId, canReview }: { id: string; siteId?: string | null; canReview: boolean }) {
+  const { lang } = useI18n();
+  const my = lang === "my";
   const [state, setState] = useState<
     { kind: "idle" | "loading" } |
     { kind: "error"; message: string } |
@@ -67,7 +130,6 @@ export function CAPsMANInventoryPanel({ id }: { id: string }) {
   async function inspect() {
     if (state.kind === "loading") return;
     setState({ kind: "loading" });
-    setPreviewOpen(false);
     try {
       const response = await api.get<ObservationResponse>(`/routers/${encodeURIComponent(id)}/observations`);
       const inv = response.inventory;
@@ -111,32 +173,7 @@ export function CAPsMANInventoryPanel({ id }: { id: string }) {
       {ready.view.profiles.map((p, i) => <p className="small" key={p.family + (p.name || i)}>
         <b>{p.name || "—"}</b> · {p.ssid || (my ? "SSID မသိ" : "SSID unknown")} · {p.family} · {my ? "ထုတ်လွှင့်မှု မအတည်ပြုနိုင်" : "Broadcast unverified"}
       </p>)}
-      <div className="stack" aria-label={my ? "SSID ပြောင်းလဲမှုအကြိုကြည့်ရန်" : "SSID change impact preview"}>
-        <h3>{my ? "SSID ပြောင်းလဲမှု အကြိုကြည့်ရန်" : "Preview a site-wide SSID change"}</h3>
-        <p className="soft small">{my
-          ? "ဤအကြိုကြည့်ရှုမှုသည် ဖတ်ရန်သာဖြစ်ပါသည်။ အတည်ပြုထားသော AP စီမံခန့်ခွဲခွင့်မရှိသေးသဖြင့် မည်သည့်စက်ကိုမျှ ပြင်မည်မဟုတ်ပါ။"
-          : "Read-only planning preview. CAPsMAN inventory alone cannot authorize a change, so all listed APs are blocked until verified device capabilities exist."}</p>
-        <label className="stack small">
-          <span>{my ? "Wi-Fi အမည်အသစ်" : "Proposed Wi-Fi name"}</span>
-          <input className="input" aria-label="Proposed Wi-Fi name" value={desiredSSID} maxLength={32}
-            onChange={(e) => { setDesiredSSID(e.target.value); setPreviewOpen(false); }} placeholder="Shop Guest" />
-        </label>
-        <button className="pill" type="button" onClick={() => setPreviewOpen(true)}
-          disabled={!desiredSSID || desiredSSID.trim() !== desiredSSID ||
-            new TextEncoder().encode(desiredSSID).length > 32 || /[\r\n\0]/.test(desiredSSID)}>
-          {my ? "သက်ရောက်မှုကို ကြည့်ရန်" : "Preview impact (no changes)"}
-        </button>
-        {previewOpen && <>
-          <p role="status" className="soft small">{my ? "ပြင်ဆင်နိုင်ကြောင်း အတည်ပြုထားသော AP: 0" : "APs verified eligible for change: 0"} · {my ? "ပြောင်းလဲမှုမရှိ" : "No configuration will be changed"}</p>
-          {previewSSIDImpact(ready.view, desiredSSID).map((ap, index) =>
-            <div className="note warn stack" key={ap.family + ap.identity + index}>
-              <b>{ap.identity} · {ap.family}</b>
-              <p className="small">{my ? "အဆိုပြု Wi-Fi အမည်" : "Proposed SSID"}: {ap.proposedSSID}</p>
-              <p className="soft small">{my ? "ပိတ်ထားသည် — AP အတွက် SSID ဖတ်ရှုခြင်း၊ ပြောင်းလဲခြင်းနှင့် ပြန်လည်ပြုပြင်ခြင်း အတည်ပြုချက်မရှိ" : "Blocked — per-AP SSID readback, write and rollback unverified"}</p>
-            </div>)}
-          {!previewSSIDImpact(ready.view, desiredSSID).length && <Note kind="warn">{my ? "အတည်ပြုထားသော CAP မရှိ သို့မဟုတ် စာရင်းဖတ်မရပါ" : "No readable CAP records to assess. Unknown APs may exist."}</Note>}
-        </>}
-      </div>
+      <SSIDServerPreview key={id} id={id} siteId={siteId} canReview={canReview} />
       <Note kind="warn">{my
         ? "ယခု စာရင်းဖတ်ရန်သာ ဖြစ်ပြီး SSID ပြောင်းခြင်းကို မဖွင့်ထားပါ။"
         : "Read-only evidence. SSID synchronization and AP configuration are not enabled."}</Note>
