@@ -12,7 +12,6 @@ import (
 	"io"
 	"strings"
 
-	"golang.org/x/crypto/ssh"
 )
 
 const (
@@ -161,4 +160,3 @@ var _ interface {
 	DownloadFile(context.Context, string, int64) ([]byte, error)
 } = (*SSHTransport)(nil)
 
-var _ = ssh.FingerprintSHA256 // keep SSH protocol dependency explicit
