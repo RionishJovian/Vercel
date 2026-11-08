@@ -144,25 +144,9 @@ func checkEnvelope(payload []byte) (json.RawMessage, error) {
 	return envelope.Result, nil
 }
 
-// ReadAPRadios makes only three requests: token and GET radio status/config
-// from the exact explicitly configured controller/site/AP. No mutations.
-func (c *Client) ReadAPRadios(ctx context.Context, mac string) (RadioRead, error) {
-	if c == nil || c.root == nil || !apMAC.MatchString(mac) {
-		return RadioRead{}, ErrUnconfigured
-	}
-	token, err := c.postToken(ctx)
-	if err != nil { return RadioRead{}, err }
-	id := strings.ToUpper(strings.ReplaceAll(mac, ":", "-"))
-	path := fmt.Sprintf("/openapi/v1/%s/sites/%s/aps/%s", c.settings.OmadaID, c.settings.SiteID, id)
-	var results [2]json.RawMessage
-	for i, suffix := range []string{"/radios", "/radio-config"} {
-		endpoint := c.root.ResolveReference(&url.URL{Path: path + suffix})
-		blob, err := c.request(ctx, http.MethodGet, endpoint, nil, token)
-		if err != nil { return RadioRead{}, err }
-		results[i], err = checkEnvelope(blob)
-		if err != nil { return RadioRead{}, err }
-	}
-	return RadioRead{Source: "tp-link-omada-openapi-v1-read-only", ControllerID: c.settings.OmadaID,
-		SiteID: c.settings.SiteID, APMAC: id, ObservedAt: time.Now().UTC(),
-		Status: results[0], Config: results[1], Writable: false}, nil
+// ReadAPRadios fails closed: this Open API route and payload have not been
+// verified for a supported controller version. Never infer optimization
+// readiness from a device list or guess unsupported radio endpoints.
+func (c *Client) ReadAPRadios(_ context.Context, _ string) (RadioRead, error) {
+	return RadioRead{}, ErrUnavailable
 }
