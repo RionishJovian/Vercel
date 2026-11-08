@@ -33,7 +33,7 @@ func registerAPOptimizationRoutes(r *gin.Engine,cfg *config.Config,db *database.
    AND has_table_privilege('authenticated',c.oid,'UPDATE')
  )`).Scan(&ready)
  if err!=nil||!ready{return errors.New("AP proposal forced-RLS migration/role grants are not ready")}
- h:=&handler.APOptimizationHandler{DB:db}
+ h:=&handler.APOptimizationHandler{DB:db, OmadaInventoryEnabled:cfg.APOptimization.OmadaInventoryEnabled}
  group:=r.Group("/api/v1/ap-optimization",auth.CookieOrigin(),
   auth.Middleware(svc),auth.RequireActiveTenant(db),auth.RequireMinRole(model.RoleOwner))
  group.GET("/capabilities",h.Capabilities)
