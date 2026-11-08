@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -27,11 +28,19 @@ type BackupSnapshotter interface {
 	Snapshot(ctx context.Context, businessID, peerID string, changes []provisioner.Change) (provisioner.RollbackSnapshot, error)
 }
 
+// BackupArchiver makes encrypted off-router copies of BOTH router artifacts.
+// A successful capture includes their sealed bytes and SHA256 digests in the
+// tenant-scoped DB record. The app never serves the ciphertext to a browser.
+type BackupArchiver interface {
+	ArchiveSnapshot(ctx context.Context, businessID, peerID string) (provisioner.RollbackSnapshot, error)
+}
+
 type BackupHandler struct {
 	db      *database.DB
 	devices *database.DeviceRepository
 
-	capture BackupSnapshotter        // nil => capture fails closed (503)
+	capture BackupSnapshotter        // legacy live applier snapshot (on-router only)
+	archiver BackupArchiver         // independently enabled, encrypted off-router capture
 	applier provisioner.Applier       // nil => restore fails closed (503)
 	otp     *provisioner.TOTPVerifier // nil/empty-secret => restore high-risk DENIED
 }
@@ -43,17 +52,17 @@ func NewBackupHandler(db *database.DB, devices *database.DeviceRepository) *Back
 // EnableCapture attaches ONLY the Snapshot interface. It does not provide an
 // Apply or Restore handle, even when the underlying transport supports them.
 // Operator configuration must explicitly permit on-router snapshot artifacts.
-func (h *BackupHandler) EnableCapture(capture BackupSnapshotter) { h.capture = capture }
+func (h *BackupHandler) EnableCapture(archiver BackupArchiver) { h.archiver = archiver }
 
 // EnableLive is the existing full-applier/OTP path. It continues to authorize
 // both capture and restore only when the server wires that path explicitly.
 func (h *BackupHandler) EnableLive(applier provisioner.Applier, otp *provisioner.TOTPVerifier) {
 	h.applier = applier
 	h.otp = otp
-	h.capture = applier
+	if h.archiver == nil { h.capture = applier }
 }
 
-func (h *BackupHandler) captureAvailable() bool { return h.capture != nil }
+func (h *BackupHandler) captureAvailable() bool { return h.capture != nil || h.archiver != nil }
 func (h *BackupHandler) restoreAvailable() bool { return h.applier != nil && h.otp != nil && h.otp.Configured() }
 
 // Non-sensitive capability probes for server-wiring regression tests.
@@ -82,23 +91,33 @@ func (h *BackupHandler) ListBackups(c *gin.Context) {
 	// Metadata only (never ship the config blob in a list).
 	backups := make([]gin.H, 0, len(rows))
 	for _, b := range rows {
+		var archive struct {
+			BackupHash string `json:"off_device_backup_sha256"`
+			ExportHash string `json:"off_device_export_sha256"`
+		}
+		_ = json.Unmarshal([]byte(b.Content), &archive)
+		verifiedArchive := len(archive.BackupHash) == 64 && len(archive.ExportHash) == 64
 		backups = append(backups, gin.H{
 			"id":         b.ID,
 			"label":      b.Label,
 			"kind":       b.Kind,
 			"size_bytes": b.SizeBytes,
 			"created_at": b.CreatedAt,
+			"archive_in_app_database": verifiedArchive,
 		})
 	}
 	// The console enables its buttons from these, so they say what these routes would really do.
-	c.JSON(http.StatusOK, gin.H{"backups": backups, "count": len(backups), "capture_available": h.captureAvailable(), "restore_available": h.restoreAvailable(), "capture_scope": "router_artifacts_and_database_metadata"})
+	c.JSON(http.StatusOK, gin.H{"backups": backups, "count": len(backups), "capture_available": h.captureAvailable(), "restore_available": h.restoreAvailable(), "capture_scope": func() string {
+		if h.archiver != nil { return "encrypted_artifacts_in_app_database" }
+		return "router_artifacts_and_database_metadata"
+	}()})
 }
 
 // CreateBackup: POST /api/v1/devices/:id/backups  (capture a fresh snapshot)
 func (h *BackupHandler) CreateBackup(c *gin.Context) {
 	businessID := auth.GetBusinessID(c)
 	deviceID := c.Param("id")
-	if h.capture == nil {
+	if !h.captureAvailable() {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "router backup capture is disabled; enable provisioner.backup_capture.enabled with pinned per-device SSH access (restore stays separate)"})
 		return
 	}
@@ -130,9 +149,19 @@ func (h *BackupHandler) CreateBackup(c *gin.Context) {
 		return
 	}
 
-	// Capture uses only the limited Snapshot interface. The implementation
-	// writes artifacts on-router, so it is not a read-only RouterOS operation.
-	snap, err := h.capture.Snapshot(c.Request.Context(), businessID, deviceID, nil)
+	// Prefer the independent encrypted off-device archive when enabled.
+	// The old full live applier remains a metadata-only fallback.
+	var snap provisioner.RollbackSnapshot
+	var err error
+	if h.archiver != nil {
+		snap, err = h.archiver.ArchiveSnapshot(c.Request.Context(), businessID, deviceID)
+		if err == nil && (snap.OffDeviceBackupSealed == "" || snap.OffDeviceExportSealed == "" ||
+			snap.OffDeviceBackupSHA256 == "" || snap.OffDeviceExportSHA256 == "") {
+			err = errors.New("off-device archive verification incomplete")
+		}
+	} else {
+		snap, err = h.capture.Snapshot(c.Request.Context(), businessID, deviceID, nil)
+	}
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": "backup capture failed: " + err.Error()})
 		return
@@ -163,6 +192,7 @@ func (h *BackupHandler) CreateBackup(c *gin.Context) {
 		"kind":       created.Kind,
 		"size_bytes": created.SizeBytes,
 		"created_at": created.CreatedAt,
+		"archive_in_app_database": snap.OffDeviceBackupSealed != "" && snap.OffDeviceExportSealed != "",
 	})
 }
 
