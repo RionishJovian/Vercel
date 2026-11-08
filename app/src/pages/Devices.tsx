@@ -7,6 +7,7 @@ import { BackLink, Note, PageHead } from "../components/ui";
 import { Skeleton } from "../components/Skeleton";
 import type { RouterRow } from "./routers";
 import { errorText } from "../lib/errors";
+import { UniversalDiscoveryPanel } from "./devices/UniversalDiscoveryPanel";
 
 interface Inv { available?: Record<string, boolean>; objects?: Record<string, Array<{ values?: Record<string, string> }>> }
 interface Label { mac: string; name: string; kind: string }
@@ -96,6 +97,7 @@ export function Devices({ me }: { me: Me }) {
       {gateways.length > 1 && <label className="field"><span>{t("net.working")}</span><select className="input" value={selected?.device_id ?? ""} onChange={(e) => { setId(e.target.value); try { sessionStorage.setItem("mm_selected_router", e.target.value); } catch { /* ignore */ } }}><option value="">{t("net.chooseRouter")}</option>{gateways.map((g) => <option key={g.device_id} value={g.device_id}>{g.hardware_name}</option>)}</select></label>}
       {!gateways.length ? <Note>{t("net.noRouter")} <a className="link" href="#/hub">{t("hub.title")}</a></Note> : !selected ? <Note>{t("net.pickOnce")}</Note> : (
         <>
+          <UniversalDiscoveryPanel gatewayId={selected.device_id} />
           <button className="pill" type="button" disabled={state.kind === "loading"} onClick={() => void read(selected.device_id)}>{t("gu.refresh")}</button>
           {state.kind === "loading" && <Skeleton h={160} />}
           {state.kind === "error" && <Note kind="warn">{state.msg} {t("dv.nothingChanged")}</Note>}
