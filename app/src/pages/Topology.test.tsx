@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { SWRConfig } from "swr";
 import { I18nProvider } from "../i18n";
 
@@ -34,6 +34,24 @@ describe("Topology router status", () => {
     screen.getByText("Last contact"); screen.getByText("Checked");
     expect(screen.queryByText("Management reachable")).toBeNull();
   });
+  it("offers both Map and Tree views and persists the chosen view", async () => {
+    sessionStorage.removeItem("mm_topology_view");
+    fleet = { data: { peers: [{ device_id: "d1", state: "up", source: "hub_tunnel" }] } };
+    const rendered = open();
+    const map = await screen.findByRole("button", { name: "Map" });
+    const tree = screen.getByRole("button", { name: "Tree" });
+    expect(map.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(tree);
+    expect(tree.getAttribute("aria-pressed")).toBe("true");
+    expect(map.getAttribute("aria-pressed")).toBe("false");
+    expect(screen.getByText(/Unknown attachments are never invented/)).toBeTruthy();
+    expect(sessionStorage.getItem("mm_topology_view")).toBe("tree");
+    rendered.unmount();
+    open();
+    expect((await screen.findByRole("button", { name: "Tree" })).getAttribute("aria-pressed")).toBe("true");
+    sessionStorage.removeItem("mm_topology_view");
+  });
+
   it("does not call a router Online just because a read worked", async () => {
     fleet = { data: { peers: [{ device_id: "d1", state: "unknown", source: "none" }] } };
     open();
