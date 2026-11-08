@@ -1,7 +1,6 @@
 -- Staff-only multi-device Wi-Fi codes. Deliberately separate from
 -- guest_voucher_grants and ordinary one-device vouchers; no existing row
 -- is migrated or modified.
-BEGIN;
 CREATE TABLE IF NOT EXISTS vip_wifi_codes (
  id uuid NOT NULL DEFAULT uuid_generate_v4(),
  business_id uuid NOT NULL REFERENCES businesses(business_id),
@@ -45,4 +44,3 @@ CREATE POLICY vip_wifi_codes_tenant ON vip_wifi_codes FOR ALL TO authenticated
  USING(business_id=NULLIF(current_setting('app.current_business_id',true),'')::uuid)
  WITH CHECK(business_id=NULLIF(current_setting('app.current_business_id',true),'')::uuid);
 GRANT SELECT,INSERT,UPDATE ON vip_wifi_codes TO authenticated;
-COMMIT;
