@@ -60,8 +60,8 @@ describe("CAPsMAN evidence", () => {
     expect(calls.length).toBe(2);
     expect(calls[1].url).toContain("/routers/" + ID + "/ssid/preview");
     expect(calls[1].method).toBe("POST");
-    expect(calls[1].body.site_id).toBe("site-a");
-    expect(calls[1].body.ssid).toBe("Magic Guest");
+    expect(calls[1].body?.site_id).toBe("site-a");
+    expect(calls[1].body?.ssid).toBe("Magic Guest");
     expect(screen.queryByRole("button", { name: /apply|approve|save/i })).toBeNull();
   });
   it("prevents a viewer or an unassigned gateway from requesting a preview", async () => {
