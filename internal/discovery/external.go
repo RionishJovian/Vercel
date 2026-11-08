@@ -45,8 +45,8 @@ func MergeVerifiedInventory(snapshot Snapshot, report ExternalReport, now time.T
 		len(report.Source)<=len("controller:") {
 		return snapshot,errors.New("discovery: unsupported controller provenance")
 	}
-	idx:=make(map[string]int,len(snapshot.Devices))
-	for i,d:=range snapshot.Devices {idx[d.MAC]=i}
+	// Validate the entire batch BEFORE mutating the result. Failed later
+	// entries must not leave partially trusted data in a shared snapshot.
 	seen:=map[string]bool{}
 	for _,ext:=range report.Devices {
 		mac:=normalizeMAC(ext.MAC)
@@ -54,6 +54,19 @@ func MergeVerifiedInventory(snapshot Snapshot, report ExternalReport, now time.T
 			return snapshot,errors.New("discovery: invalid or duplicate controller MAC")
 		}
 		seen[mac]=true
+	}
+	// Copy the input slice and its nested collections: a caller may retain an
+	// earlier immutable gateway-only observation while another merges sources.
+	snapshot.Devices=append([]Device(nil),snapshot.Devices...)
+	for i:=range snapshot.Devices {
+		d:=&snapshot.Devices[i]
+		d.Sources=append([]string(nil),d.Sources...)
+		d.Capabilities=append([]Capability(nil),d.Capabilities...)
+	}
+	idx:=make(map[string]int,len(snapshot.Devices))
+	for i,d:=range snapshot.Devices {idx[d.MAC]=i}
+	for _,ext:=range report.Devices {
+		mac:=normalizeMAC(ext.MAC)
 		if i,found:=idx[mac];found {
 			d:=&snapshot.Devices[i]
 			if !containsSource(d.Sources,report.Source) {
@@ -65,9 +78,13 @@ func MergeVerifiedInventory(snapshot Snapshot, report ExternalReport, now time.T
 				if d.ReportedVendor!="" {d.VendorEvidence="authenticated_controller_inventory"}
 			}
 			if d.ReportedModel=="" {d.ReportedModel=sanitize(ext.ReportedModel,120)}
-			d.Capabilities=append(d.Capabilities,Capability{
+			already:=false
+			for _,cap:=range d.Capabilities {
+				if cap.Name=="controller_inventory" && cap.Evidence==report.Source {already=true;break}
+			}
+			if !already {d.Capabilities=append(d.Capabilities,Capability{
 				Name:"controller_inventory",Status:"observed",Evidence:report.Source,
-			})
+			})}
 			// Controller inventory presence is not proof of live ping, radio
 			// write entitlement, client association or a physical parent.
 			continue
