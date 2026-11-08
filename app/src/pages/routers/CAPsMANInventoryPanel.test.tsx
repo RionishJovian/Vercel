@@ -15,7 +15,7 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 function load() {
-  render(<I18nProvider><CAPsMANInventoryPanel id={ID} /></I18nProvider>);
+  render(<I18nProvider><CAPsMANInventoryPanel id={ID} siteId="site-a" canReview /></I18nProvider>);
   fireEvent.click(screen.getByRole("button", { name: "Read Wi-Fi inventory" }));
 }
 describe("CAPsMAN evidence", () => {
@@ -34,28 +34,54 @@ describe("CAPsMAN evidence", () => {
     expect(screen.getByText(/AP count unknown/)).toBeTruthy();
     expect(screen.getByText(/SSID synchronization and AP configuration are not enabled/)).toBeTruthy();
   });
-  it("previews proposed SSID but blocks every AP without authenticated write evidence", async () => {
-    inventory = { observed_at: "2026-11-08T10:00:00Z", write_enabled: false, wifi_write_enabled: false,
-      capsman: { write_enabled: false, controllers: [
-        { family: "modern", inventory_available: true, radio_inventory_available: true,
-          caps: [{ identity: "lobby-cap", state: "running", state_known: true, online_verified: false, ssid_verified: false }] },
-      ], profiles: [{ family: "modern", name: "guest", ssid: "Existing Guest", broadcasting_verified: false }] } };
-    load();
+  it("calls the owner-only site-scoped server preview without applying anything", async () => {
+    const calls: Array<{ url: string; method: string; body?: any }> = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: string, options?: RequestInit) => {
+      calls.push({ url, method: options?.method ?? "GET", body: options?.body ? JSON.parse(String(options.body)) : undefined });
+      if (String(url).endsWith("/observations")) return new Response(JSON.stringify({ inventory: {
+        write_enabled: false, wifi_write_enabled: false, capsman: {
+          write_enabled: false, controllers: [{ family: "modern", inventory_available: true,
+            radio_inventory_available: true, caps: [{ identity: "lobby-cap" }] }],
+          profiles: [] } } }), { status: 200, headers: { "content-type": "application/json" } });
+      return new Response(JSON.stringify({ gateway_id: ID, apply_available: false, preview: {
+        site_id: "site-a", ssid: "Magic Guest", revision: "read-only-revision",
+        review_hash: "f".repeat(64), write_enabled: false, eligible_count: 0, blocked_count: 1,
+        impacts: [{ device_id: "modern:cap-1", status: "blocked", reason: "unverified",
+          target_ssid: "Magic Guest" }],
+      } }), { status: 200, headers: { "content-type": "application/json" } });
+    }));
+    render(<I18nProvider><CAPsMANInventoryPanel id={ID} siteId="site-a" canReview /></I18nProvider>);
+    fireEvent.click(screen.getByRole("button", { name: "Read Wi-Fi inventory" }));
     expect(await screen.findByText("lobby-cap")).toBeTruthy();
     fireEvent.change(screen.getByRole("textbox", { name: "Proposed Wi-Fi name" }), { target: { value: "Magic Guest" } });
-    fireEvent.click(screen.getByRole("button", { name: "Preview impact (no changes)" }));
-    expect(screen.getByText(/APs verified eligible for change: 0/)).toBeTruthy();
-    expect(screen.getByText(/Blocked — per-AP SSID readback, write and rollback unverified/)).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /apply|save|approve/i })).toBeNull();
-    expect(vi.mocked(fetch).mock.calls.length).toBe(1);
+    fireEvent.click(screen.getByRole("button", { name: "Review impact on server (no changes)" }));
+    expect(await screen.findByText(/APs eligible for change: 0/)).toBeTruthy();
+    expect(screen.getByText(/Blocked — unverified management capability/)).toBeTruthy();
+    expect(calls.length).toBe(2);
+    expect(calls[1].url).toContain("/routers/" + ID + "/ssid/preview");
+    expect(calls[1].method).toBe("POST");
+    expect(calls[1].body.site_id).toBe("site-a");
+    expect(calls[1].body.ssid).toBe("Magic Guest");
+    expect(screen.queryByRole("button", { name: /apply|approve|save/i })).toBeNull();
   });
-  it("disables invalid oversized UTF-8 proposed SSID", async () => {
+  it("prevents a viewer or an unassigned gateway from requesting a preview", async () => {
     inventory = { write_enabled: false, wifi_write_enabled: false, capsman: {
       write_enabled: false, controllers: [], profiles: [] } };
-    load();
+    render(<I18nProvider><CAPsMANInventoryPanel id={ID} canReview={false} /></I18nProvider>);
+    fireEvent.click(screen.getByRole("button", { name: "Read Wi-Fi inventory" }));
+    await screen.findByText(/No readable profile records/);
+    fireEvent.change(screen.getByRole("textbox", { name: "Proposed Wi-Fi name" }), { target: { value: "Magic Guest" } });
+    expect((screen.getByRole("button", { name: "Review impact on server (no changes)" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(vi.mocked(fetch).mock.calls.length).toBe(1);
+  });
+  it("disables invalid oversized UTF-8 proposed SSIDs", async () => {
+    inventory = { write_enabled: false, wifi_write_enabled: false, capsman: {
+      write_enabled: false, controllers: [], profiles: [] } };
+    render(<I18nProvider><CAPsMANInventoryPanel id={ID} siteId="site-a" canReview /></I18nProvider>);
+    fireEvent.click(screen.getByRole("button", { name: "Read Wi-Fi inventory" }));
     await screen.findByText(/No readable profile records/);
     fireEvent.change(screen.getByRole("textbox", { name: "Proposed Wi-Fi name" }), { target: { value: "မြန်မာအမည်ရှည်ရှည်" } });
-    expect((screen.getByRole("button", { name: "Preview impact (no changes)" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Review impact on server (no changes)" }) as HTMLButtonElement).disabled).toBe(true);
   });
   it("refuses inventory evidence that reports enabled writes", async () => {
     inventory = { write_enabled: true, wifi_write_enabled: false, capsman: { write_enabled: false, controllers: [], profiles: [] } };
