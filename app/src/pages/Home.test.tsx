@@ -60,11 +60,28 @@ describe("Home", () => {
   });
 
   it("shows how many routers are online, and warns when some are not", async () => {
-    fleet = { isLoading: false, data: { total_peers: 3, up: 1 } };
+    fleet = { isLoading: false, data: { total_peers: 3, up: 1, offline: 2 } };
     open();
     expect(await screen.findByText("1 / 3")).toBeTruthy();
     expect(document.querySelector(".chip.warn")).not.toBeNull();
     expect(document.querySelector(".chip.ok")).toBeNull();
+  });
+
+  it("marks unobserved routers unknown instead of falsely marking them offline", async () => {
+    fleet = { isLoading: false, data: { total_peers: 2, up: 1, offline: 0, stale: 0, unknown: 1 } };
+    open();
+    expect(await screen.findByText("1 / 2")).toBeTruthy();
+    expect(screen.getByText("Unknown")).toBeTruthy();
+    expect(document.querySelectorAll(".leds .unknown").length).toBe(1);
+    expect(document.querySelectorAll(".leds .off").length).toBe(0);
+  });
+
+  it("treats missing peer classifications as unknown, not confirmed offline", async () => {
+    fleet = { isLoading: false, data: { total_peers: 3, up: 1 } };
+    open();
+    expect(await screen.findByText("1 / 3")).toBeTruthy();
+    expect(document.querySelectorAll(".leds .unknown").length).toBe(2);
+    expect(document.querySelectorAll(".leds .off").length).toBe(0);
   });
 
   it("reports a failed fleet read rather than an empty fleet", () => {
