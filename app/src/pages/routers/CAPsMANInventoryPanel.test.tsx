@@ -35,7 +35,7 @@ describe("CAPsMAN evidence", () => {
     expect(screen.getByText(/SSID synchronization and AP configuration are not enabled/)).toBeTruthy();
   });
   it("calls the owner-only site-scoped server preview without applying anything", async () => {
-    const calls: Array<{ url: string; method: string; body?: any }> = [];
+    const calls: Array<{ url: string; method: string; body?: { site_id?: string; ssid?: string } }> = [];
     vi.stubGlobal("fetch", vi.fn(async (url: string, options?: RequestInit) => {
       calls.push({ url, method: options?.method ?? "GET", body: options?.body ? JSON.parse(String(options.body)) : undefined });
       if (String(url).endsWith("/observations")) return new Response(JSON.stringify({ inventory: {
