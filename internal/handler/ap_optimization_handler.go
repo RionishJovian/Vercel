@@ -18,7 +18,7 @@ import (
 var apProposalID = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 var apReviewHash = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
-type APOptimizationHandler struct { DB *database.DB }
+type APOptimizationHandler struct { DB *database.DB; OmadaInventoryEnabled bool }
 type APReviewRow struct {
  ID string `json:"id"`
  DeviceID string `json:"device_id"`
@@ -47,7 +47,7 @@ func (h *APOptimizationHandler) Capabilities(c *gin.Context) {
  c.Header("Cache-Control","no-store")
  _,ok:=apOwnerOnly(c);if !ok{return}
  c.JSON(http.StatusOK,gin.H{
-  "read_only_inventory":true,
+  "read_only_inventory":h!=nil && h.OmadaInventoryEnabled,
   "proposal_review":h!=nil && h.DB!=nil,
   "automatic_proposals":false,
   "manual_proposals":false,
