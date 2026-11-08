@@ -18,7 +18,8 @@ CREATE TABLE IF NOT EXISTS ap_radio_proposals (
   FOREIGN KEY(device_id,business_id) REFERENCES devices(device_id,business_id),
   CHECK(expires_at > created_at AND expires_at <= created_at + interval '5 minutes'),
   CHECK (
-    (status='pending' AND decided_by IS NULL AND decided_at IS NULL)\n    OR (status='expired' AND ((decided_by IS NULL AND decided_at IS NULL) OR (decided_by IS NOT NULL AND decided_at IS NOT NULL)))
+    (status='pending' AND decided_by IS NULL AND decided_at IS NULL)
+    OR (status='expired' AND ((decided_by IS NULL AND decided_at IS NULL) OR (decided_by IS NOT NULL AND decided_at IS NOT NULL)))
     OR (status IN ('approved','rejected','consumed') AND decided_by IS NOT NULL AND decided_at IS NOT NULL)
   ),
   CHECK ((status='consumed')=(consumed_at IS NOT NULL))
