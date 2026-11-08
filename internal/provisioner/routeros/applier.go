@@ -83,6 +83,7 @@ func (a *Applier) Snapshot(ctx context.Context, _, peerID string, changes []prov
 	if _, err := a.run.Run(ctx, backupCmd); err != nil {
 		return provisioner.RollbackSnapshot{}, fmt.Errorf("routeros: snapshot backup command failed")
 	}
+	var backupBytes, exportBytes int64
 	if a.backupPassword != "" {
 		// Never record "backup created" unless both on-router artifacts are
 		// observed and non-empty. This does not attest off-router durability.
@@ -94,6 +95,11 @@ func (a *Applier) Snapshot(ctx context.Context, _, peerID string, changes []prov
 			size, err := strconv.ParseInt(strings.TrimSpace(sizeText), 10, 64)
 			if err != nil || size < 1 {
 				return provisioner.RollbackSnapshot{}, fmt.Errorf("routeros: backup artifact missing or empty")
+			}
+			if strings.HasSuffix(filename, ".backup") {
+				backupBytes = size
+			} else {
+				exportBytes = size
 			}
 		}
 	}
@@ -134,6 +140,8 @@ func (a *Applier) Snapshot(ctx context.Context, _, peerID string, changes []prov
 		Protecting:           changes,
 		ExportFile:           name + ".rsc",
 		BackupName:           name,
+		BackupBytes:         backupBytes,
+		ExportBytes:         exportBytes,
 		WGListenPort:         atoiOr(ifaceKV["listen-port"], 0),
 		WGPeerKeepalive:      peerKV["persistent-keepalive"],
 		WGPeerAllowedAddress: peerKV["allowed-address"],
