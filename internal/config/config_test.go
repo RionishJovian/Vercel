@@ -143,7 +143,7 @@ func TestValidateProductionRejectsUnsafeDefaults(t *testing.T) {
 	if err == nil {
 		t.Fatal("unsafe production defaults must be rejected")
 	}
-	for _, want := range []string{"database.rls_enforce", "database.password", "security.jwt_secret", "security.aes_gcm_key"} {
+	for _, want := range []string{"database.rls_enforce", "database.password", "security.jwt_secret", "security.aes_gcm_key", "provisioner.applier.credential_key"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("validation error %q does not mention %s", err, want)
 		}
@@ -161,9 +161,43 @@ func TestValidateProductionAcceptsHardenedConfig(t *testing.T) {
 			JWTSecret: "unique-jwt-secret-at-least-32-bytes-long",
 			AESGCMKey: "unique-aes-key-at-least-32-bytes-long",
 		},
+		Provisioner: ProvisionerConfig{Applier: ApplierConfig{CredentialKey: validCredentialKey}},
 	}
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("hardened production config rejected: %v", err)
+	}
+}
+
+// Secret encryption is necessary even for production sites that never
+// enable RouterOS writes: bot tokens and webhook signing keys also use it.
+func TestValidateProductionRequiresSecretEncryptionKeyWithoutRouterWrites(t *testing.T) {
+	cfg := &Config{
+		Environment: "production",
+		Database: DatabaseConfig{
+			Password: "unique-database-password-2026",
+			RLSEnforce: true,
+		},
+		Security: SecurityConfig{
+			JWTSecret: "unique-jwt-secret-at-least-32-bytes-long",
+			AESGCMKey: "unique-aes-key-at-least-32-bytes-long",
+		},
+	}
+	for _, key := range []string{"", "too-short"} {
+		cfg.Provisioner.Applier.CredentialKey = key
+		err := cfg.Validate()
+		if err == nil || !strings.Contains(err.Error(), "provisioner.applier.credential_key") {
+			t.Fatalf("production must reject missing or invalid integration-secrets key (len=%d): %v", len(key), err)
+		}
+	}
+	cfg.Provisioner.Applier.CredentialKey = validCredentialKey
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("production with valid key and router writes off rejected: %v", err)
+	}
+	// Local development continues to accept no integration-secrets key.
+	cfg.Environment = "development"
+	cfg.Provisioner.Applier.CredentialKey = ""
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("local development should accept missing key: %v", err)
 	}
 }
 
@@ -175,6 +209,7 @@ func TestValidateProductionRejectsIgnoredSSHHostKey(t *testing.T) {
 			JWTSecret: "unique-jwt-secret-at-least-32-bytes-long",
 			AESGCMKey: "unique-aes-key-at-least-32-bytes-long",
 		},
+		Provisioner: ProvisionerConfig{Applier: ApplierConfig{CredentialKey: validCredentialKey}},
 	}
 	cfg.Provisioner.Applier.InsecureIgnoreHostKey = true
 	err := cfg.Validate()

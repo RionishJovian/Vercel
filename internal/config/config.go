@@ -502,6 +502,12 @@ func (cfg *Config) Validate() error {
 	}
 
 	if env == "production" || env == "prod" {
+		// Router credentials, Telegram bot tokens and webhook signing secrets
+		// share this sealed-field key. It is required even when router writes
+		// are disabled, otherwise new integration secrets are stored plaintext.
+		if _, err := secretbox.New(cfg.Provisioner.Applier.CredentialKey); err != nil {
+			problems = append(problems, "provisioner.applier.credential_key must be a valid 32-byte encryption key in production (including bot and webhook secrets)")
+		}
 		if cfg.Provisioner.Applier.InsecureIgnoreHostKey {
 			problems = append(problems, "provisioner.applier.insecure_ignore_host_key must be false in production")
 		}
