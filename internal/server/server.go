@@ -990,29 +990,32 @@ func healthCheck(c *gin.Context) {
 	})
 }
 
+// readinessResult requires each critical dependency, rather than reporting a
+// healthy service on partial or stale state. Never reveal internal errors here.
+func readinessResult(dbReady, redisReady, natsReady bool) (int, gin.H) {
+	checks := gin.H{"database": "unavailable", "redis": "unavailable", "nats": "unavailable"}
+	if dbReady {
+		checks["database"] = "ok"
+	}
+	if redisReady {
+		checks["redis"] = "ok"
+	}
+	if natsReady {
+		checks["nats"] = "ok"
+	}
+	if dbReady && redisReady && natsReady {
+		return http.StatusOK, gin.H{"status": "ready", "checks": checks}
+	}
+	return http.StatusServiceUnavailable, gin.H{"status": "not_ready", "checks": checks}
+}
+
 func readinessCheck(s *Server) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		dbOK := "ok"
-		redisOK := "ok"
-		natsOK := "ok"
-
-		health := s.db.Ping()
-		if health != nil {
-			dbOK = fmt.Sprintf("error: %v", health)
-		}
-
-		if s.cache != nil && !s.cache.IsConnected() {
-			redisOK = "disconnected"
-		}
-
-		c.JSON(http.StatusOK, gin.H{
-			"status": "ready",
-			"checks": gin.H{
-				"database": dbOK,
-				"redis":    redisOK,
-				"nats":     natsOK,
-			},
-		})
+		dbReady := s != nil && s.db != nil && s.db.Ping() == nil
+		redisReady := s != nil && s.cache != nil && s.cache.IsConnected()
+		natsReady := s != nil && s.messaging != nil && s.messaging.IsConnected()
+		status, body := readinessResult(dbReady, redisReady, natsReady)
+		c.JSON(status, body)
 	}
 }
 
@@ -1115,23 +1118,21 @@ func registerGeoTopologyRoute(r gin.IRoutes, topologyMap gin.HandlerFunc) {
 func loggerMiddleware(log *zap.SugaredLogger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
-		path := c.Request.URL.Path
-		query := c.Request.URL.RawQuery
-
 		c.Next()
 
-		latency := time.Since(start)
-		status := c.Writer.Status()
-		clientIP := c.ClientIP()
-		method := c.Request.Method
-
+		// Log only the registered route template. Path parameters can contain
+		// voucher codes, tokens or customer identifiers; raw queries can contain
+		// credentials. Never log either value, including for unmatched routes.
+		path := c.FullPath()
+		if path == "" {
+			path = "[unmatched]"
+		}
 		log.Infow("HTTP request",
-			"method", method,
+			"method", c.Request.Method,
 			"path", path,
-			"query", query,
-			"status", status,
-			"latency_ms", latency.Milliseconds(),
-			"client_ip", clientIP,
+			"status", c.Writer.Status(),
+			"latency_ms", time.Since(start).Milliseconds(),
+			"client_ip", c.ClientIP(),
 			"user_agent", c.Request.UserAgent(),
 		)
 	}
