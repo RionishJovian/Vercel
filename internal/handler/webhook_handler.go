@@ -18,6 +18,25 @@ type WebhookHandler struct {
 	webhookRepo *database.WebhookRepository
 }
 
+// Webhook secrets are needed for server-side signing, not ordinary API reads.
+// Return the endpoint metadata and a presence flag without echoing credentials.
+type webhookPublicResponse struct {
+	*model.WebhookEndpoint
+	HasSecret bool `json:"has_secret"`
+}
+
+func publicWebhook(ep *model.WebhookEndpoint) webhookPublicResponse {
+	if ep == nil {
+		return webhookPublicResponse{}
+	}
+	safe := *ep
+	safe.Secret = nil
+	return webhookPublicResponse{
+		WebhookEndpoint: &safe,
+		HasSecret: ep.Secret != nil && *ep.Secret != "",
+	}
+}
+
 func NewWebhookHandler(db *database.DB, repo *database.WebhookRepository) *WebhookHandler {
 	return &WebhookHandler{db: db, webhookRepo: repo}
 }
@@ -63,7 +82,11 @@ func (h *WebhookHandler) List(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"webhooks": endpoints, "count": len(endpoints)})
+	redacted := make([]webhookPublicResponse, 0, len(endpoints))
+	for _, endpoint := range endpoints {
+		redacted = append(redacted, publicWebhook(endpoint))
+	}
+	c.JSON(http.StatusOK, gin.H{"webhooks": redacted, "count": len(redacted)})
 }
 
 // Create registers a new webhook endpoint for the tenant.
@@ -122,7 +145,7 @@ func (h *WebhookHandler) Create(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
 		return
 	}
-	c.JSON(http.StatusCreated, gin.H{"webhook": created})
+	c.JSON(http.StatusCreated, gin.H{"webhook": publicWebhook(created)})
 }
 
 type UpdateWebhookRequest struct {
@@ -190,7 +213,7 @@ func (h *WebhookHandler) Update(c *gin.Context) {
 		respondErr(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"webhook": updated})
+	c.JSON(http.StatusOK, gin.H{"webhook": publicWebhook(updated)})
 }
 
 // Delete removes a webhook endpoint.
