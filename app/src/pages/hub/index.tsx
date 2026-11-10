@@ -96,7 +96,7 @@ function Card({ r, state, canEdit, cap, openId, setOpen, onChanged }: { r: GW; s
   );
 }
 
-function AddGateway({ sites, onDone }: { sites: Array<{ site_id: string; name: string }>; onDone: (id: string) => void }) {
+export function AddGateway({ sites, onDone }: { sites: Array<{ site_id: string; name: string }>; onDone: (id: string) => void }) {
   const { t } = useI18n();
   const [msg, setMsg] = useState(""), [busy, setBusy] = useState(false);
   async function add(e: FormEvent<HTMLFormElement>) {
