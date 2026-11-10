@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -79,6 +80,15 @@ func (h *VoucherHandler) CreateVoucher(c *gin.Context) {
 	businessID := auth.GetBusinessID(c)
 	if businessID == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	// Internet Access Vouchers must be issued through the gateway-bound batch
+	// endpoint, which installs and verifies the code on RouterOS before the
+	// owner is shown a printable, ready-to-use code. Never silently create an
+	// unusable HotSpot code through the legacy generic voucher endpoint.
+	if strings.EqualFold(strings.TrimSpace(req.PlanKey), "guest-internet") {
+		c.JSON(http.StatusConflict, gin.H{"error": "Internet Access Vouchers require verified gateway installation; use /api/v1/guest-vouchers"})
 		return
 	}
 
