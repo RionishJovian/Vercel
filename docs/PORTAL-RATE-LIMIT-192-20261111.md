@@ -34,3 +34,11 @@ These tests are application behavior evidence, not physical-router or capacity c
 5. After an approved rollout, re-read active Caddy config and container peers and repeat sanitized client-IP and normal-customer tests. If trust fails, do not broaden CIDRs; restore the reviewed config/image. Router settings remain outside this release.
 
 References: [issue #192](https://github.com/RionishJovian/Vercel/issues/192), [Caddy forwarding-header behavior](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy#headers), [Caddy strict proxy trust](https://caddyserver.com/docs/caddyfile/options#trusted-proxies), [Gin proxy configuration](https://gin-gonic.com/en/docs/server-config/trusted-proxies/).
+
+## Follow-up disposable real-proxy acceptance — 2026-11-11
+
+`TestRealCaddySharedNATAcceptance` passed with the race detector using official SHA-512-verified Caddy **2.11.7 edge** and **2.10.2 web** binaries, matching the observed VPS versions. Both proxies and the Go fixture bound only to loopback; no production/customer/router endpoint was contacted.
+
+Proved through the actual two-proxy HTTP chain: distinct IPv4/IPv6 source readback; spoofed XFF/X-Real-IP refusal; 60 server-issued rate sessions sharing one IPv4 source with 20 requests each; a single session reaching 429 with Retry-After while another remains usable; web restart; API restart with signed-session recognition preserved and process-local counters reset. The fixture explicitly replays Secure cookies over local HTTP: **HTTPS browser/captive-browser cookie acceptance remains NOT RUN**, as do real HotSpot/RouterBOARD checks. Loopback peers model controlled hops; production stable Docker addressing is still a separate release prerequisite.
+
+Initial fixture failures were caused by hostname-specific loopback Caddy sites not matching the preserved IPv6 Host; the web fixture now matches production's host-independent listener and both listeners remain restricted to loopback. No application fix was needed. The opt-in test skips unless `MM_CADDY_EDGE_BIN` and `MM_CADDY_WEB_BIN` point to verified local binaries; it never downloads or installs binaries automatically.
