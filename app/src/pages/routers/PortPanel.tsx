@@ -25,17 +25,19 @@ export function PortPanelView({ panel, ports, words, measuring, settings }: { pa
   const active = picked ? label(picked) : null;
   return (
     <div className="port-panel-wrap stack">
-      <div className={"port-panel" + (panel.height > panel.width ? " portrait" : "")} style={{ aspectRatio: `${panel.width} / ${panel.height}` }}>
-        <img src={import.meta.env.BASE_URL + panel.image} alt={panel.alt} width={panel.width} height={panel.height} loading="lazy" />
-        {panel.ports.map((spot) => {
-          const l = label(spot.name);
-          return (
-            <button key={spot.name} type="button" className={"port-dot " + l.tone + (l.attention ? " flag" : "") + (picked === spot.name ? " on" : "")}
-              style={{ left: spot.x + "%", top: spot.y + "%", width: panel.size + "%" }}
-              aria-pressed={picked === spot.name} aria-label={`${spot.name}: ${l.status}${l.line ? ", " + l.line : ""}${l.attention ? ", " + t("ch.attention") : ""}`}
-              onClick={() => setPicked(picked === spot.name ? "" : spot.name)} />
-          );
-        })}
+      <div className="port-panel-scroll">
+        <div className={"port-panel" + (panel.height > panel.width ? " portrait" : "")} style={{ aspectRatio: `${panel.width} / ${panel.height}`, minWidth: panel.minWidth }}>
+          <img src={import.meta.env.BASE_URL + panel.image} alt={panel.alt} width={panel.width} height={panel.height} loading="lazy" />
+          {panel.ports.map((spot) => {
+            const l = label(spot.name);
+            return (
+              <button key={spot.name} type="button" className={"port-dot " + l.tone + (l.attention ? " flag" : "") + (picked === spot.name ? " on" : "")}
+                style={{ left: spot.x + "%", top: spot.y + "%", width: panel.size + "%" }}
+                aria-pressed={picked === spot.name} aria-label={`${spot.name}: ${l.status}${l.line ? ", " + l.line : ""}${l.attention ? ", " + t("ch.attention") : ""}`}
+                onClick={() => setPicked(picked === spot.name ? "" : spot.name)} />
+            );
+          })}
+        </div>
       </div>
       <p className="soft small" role="status">
         {active ? <><b>{picked}</b> <span className={"chip " + (active.tone === "up" ? "ok" : active.tone === "off" ? "bad" : "warn")}>{active.status}</span>{active.line ? <span className="num"> {active.line}</span> : null}</> : t("pp.hint")}
