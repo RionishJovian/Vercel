@@ -101,3 +101,7 @@ The owner asked for server-wide router read/write/edit/delete on 2026-11-06. The
 - `/Users/aces/AGENTS.md` (workspace file outside this repo) still names the Hostinger host and `ssh mikromagic-hostinger`; it is out of date and not changed here.
 - Dependabot PRs 91, 92, 93 (Vite, `@vitejs/plugin-react`, TypeScript 7) fail `npm ci` on peer-dependency conflicts; PR 87 (Go modules) needs a rebase onto the `ENVIRONMENT` binding fix. PR 45 says it needs a router test before deploy. Each now deploys on merge.
 - Lint and tests for `app/` run in CI; the Go binary is tied to a commit only through the image label.
+
+## Stabilization release constraint — 2026-11-11 (owner decision)
+
+PRs #191, #193, #194, #195, #196 and the targeted #192 fix (#197) remain review work. Do not merge to `main`, deploy production or apply VPS proxy changes without a separate release review and owner approval. Main auto-deploys. Preserve Internet Access Voucher/customer/RouterOS state and security gates. Use `docs/STABILIZATION-REVIEW-20261111.md` for commits/checks/blockers and `docs/ROUTERBOARD-ACCEPTANCE-RECORD-20261111.md` for physical acceptance; no hardware PASS without actual device evidence.
