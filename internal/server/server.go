@@ -535,7 +535,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		sugar:           sugar,
 		gin:             r,
 		http: &http.Server{
-			Addr:           fmt.Sprintf(":%d", cfg.Server.Port),
+			Addr:           httpListenAddress(cfg.Server),
 			Handler:        withWebFigHost(webFigProxy, r),
 			ReadTimeout:    cfg.Server.ReadTimeout,
 			WriteTimeout:   cfg.Server.WriteTimeout,

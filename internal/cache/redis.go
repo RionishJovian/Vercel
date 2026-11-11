@@ -19,14 +19,16 @@ type Client struct {
 func New(cfg config.RedisConfig) (*Client, error) {
 	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
 	rdb := redis.NewClient(&redis.Options{
-		Addr:         addr,
-		Password:     cfg.Password,
-		DB:           cfg.DB,
-		DialTimeout:  cfg.DialTimeout,
-		ReadTimeout:  cfg.ReadTimeout,
-		WriteTimeout: cfg.WriteTimeout,
-		PoolSize:     cfg.PoolSize,
-		MinIdleConns: cfg.MinIdleConns,
+		// Apply request contexts to actual socket I/O, including readiness.
+		ContextTimeoutEnabled: true,
+		Addr:                  addr,
+		Password:              cfg.Password,
+		DB:                    cfg.DB,
+		DialTimeout:           cfg.DialTimeout,
+		ReadTimeout:           cfg.ReadTimeout,
+		WriteTimeout:          cfg.WriteTimeout,
+		PoolSize:              cfg.PoolSize,
+		MinIdleConns:          cfg.MinIdleConns,
 	})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
