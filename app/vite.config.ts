@@ -21,6 +21,6 @@ export default defineConfig({
   // Pre-bundling would move MapLibre away from its worker file, and would pull in the WebAssembly above.
   optimizeDeps: { exclude: ["satellite.js", "maplibre-gl"] },
   build: { outDir: "dist", sourcemap: false, target: "es2022", assetsInlineLimit: 2048, chunkSizeWarningLimit: 1200 /* the map library is one lazy chunk, loaded only on Sites */ },
-  server: { proxy: { "/api": "http://localhost:8080" } },
+  server: { proxy: { "/api": { target: "http://127.0.0.1:8080", changeOrigin: false } } },
   test: { environment: "jsdom", globals: true },
 });
