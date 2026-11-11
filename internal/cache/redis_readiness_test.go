@@ -24,8 +24,10 @@ func TestReadinessBoundsUnresponsiveRedisSocket(t *testing.T) {
 	stop := make(chan struct{})
 	var hang atomic.Bool
 	var workers sync.WaitGroup
-	defer func() { close(stop); ln.Close(); workers.Wait() }()
+	acceptDone := make(chan struct{})
+	defer func() { close(stop); ln.Close(); <-acceptDone; workers.Wait() }()
 	go func() {
+		defer close(acceptDone)
 		for {
 			conn, err := ln.Accept()
 			if err != nil {
