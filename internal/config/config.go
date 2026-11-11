@@ -120,6 +120,8 @@ type PlanConfig struct {
 }
 
 type ServerConfig struct {
+	// Exact controlled proxy peers only; Docker CIDRs and hostnames are refused.
+	TrustedProxyIPs []string `mapstructure:"trusted_proxy_ips"`
 	Host            string        `mapstructure:"host"`
 	Port            int           `mapstructure:"port"`
 	GRPCPort        int           `mapstructure:"grpc_port"`
@@ -402,6 +404,11 @@ const (
 // convenient local defaults, while production refuses to boot in a state that
 // can silently bypass tenant isolation or reuse repository-known secrets.
 func (cfg *Config) Validate() error {
+	for _, peer := range cfg.Server.TrustedProxyIPs {
+		if _, err := netip.ParseAddr(peer); err != nil {
+			return fmt.Errorf("server.trusted_proxy_ips requires exact proxy IP addresses")
+		}
+	}
 	if cfg.GuestWifi.VIPWiFiEnabled && !cfg.GuestWifi.VoucherAccessEnabled {
 		return fmt.Errorf("guest_wifi.vip_wifi_enabled requires the gated voucher access backend")
 	}
@@ -502,6 +509,11 @@ func (cfg *Config) Validate() error {
 	}
 
 	if env == "production" || env == "prod" {
+		// Telegram tokens and webhook signing secrets are encrypted with the
+		// RouterOS credential key even when live router writes are disabled.
+		if _, err := secretbox.New(cfg.Provisioner.Applier.CredentialKey); err != nil {
+			problems = append(problems, "provisioner.applier.credential_key must be a valid 32-byte encryption key in production")
+		}
 		if cfg.Provisioner.Applier.InsecureIgnoreHostKey {
 			problems = append(problems, "provisioner.applier.insecure_ignore_host_key must be false in production")
 		}
@@ -552,6 +564,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("media.connector_enabled", false)
 	v.SetDefault("media.paid_access_enabled", false)
 	v.SetDefault("server.host", "0.0.0.0")
+	v.SetDefault("server.trusted_proxy_ips", []string{"127.0.0.1", "::1"})
 	v.SetDefault("server.port", 8080)
 	v.SetDefault("server.grpc_port", 9090)
 	v.SetDefault("server.read_timeout", "30s")

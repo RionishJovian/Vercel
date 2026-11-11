@@ -35,6 +35,22 @@ type CreateWebhookRequest struct {
 	Enabled    *bool    `json:"enabled"`
 }
 
+// A webhook signing secret is write-only over the owner API. Internal notifier
+// paths still receive the decrypted secret through the repository.
+type publicWebhook struct {
+	*model.WebhookEndpoint
+	HasSecret bool `json:"has_secret"`
+}
+
+func redactWebhook(ep *model.WebhookEndpoint) publicWebhook {
+	safe := *ep
+	safe.Secret = nil
+	return publicWebhook{
+		WebhookEndpoint: &safe,
+		HasSecret:       ep.Secret != nil && *ep.Secret != "",
+	}
+}
+
 var validWebhookEvents = map[string]bool{
 	"incident.opened":   true,
 	"incident.resolved": true,
@@ -63,7 +79,11 @@ func (h *WebhookHandler) List(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"webhooks": endpoints, "count": len(endpoints)})
+	safe := make([]publicWebhook, 0, len(endpoints))
+	for _, ep := range endpoints {
+		safe = append(safe, redactWebhook(ep))
+	}
+	c.JSON(http.StatusOK, gin.H{"webhooks": safe, "count": len(endpoints)})
 }
 
 // Create registers a new webhook endpoint for the tenant.
@@ -122,7 +142,7 @@ func (h *WebhookHandler) Create(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
 		return
 	}
-	c.JSON(http.StatusCreated, gin.H{"webhook": created})
+	c.JSON(http.StatusCreated, gin.H{"webhook": redactWebhook(created)})
 }
 
 type UpdateWebhookRequest struct {
@@ -190,7 +210,7 @@ func (h *WebhookHandler) Update(c *gin.Context) {
 		respondErr(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"webhook": updated})
+	c.JSON(http.StatusOK, gin.H{"webhook": redactWebhook(updated)})
 }
 
 // Delete removes a webhook endpoint.

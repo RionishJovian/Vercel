@@ -43,7 +43,10 @@ func (c *Client) Close() error {
 }
 
 func (c *Client) IsConnected() bool {
-	return c.rdb.Ping(context.Background()).Err() == nil
+	// Readiness must never wait indefinitely for an unavailable cache.
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	return c.rdb.Ping(ctx).Err() == nil
 }
 
 // Key builds a namespaced key: mm:{business_id}:{suffix}

@@ -161,9 +161,36 @@ func TestValidateProductionAcceptsHardenedConfig(t *testing.T) {
 			JWTSecret: "unique-jwt-secret-at-least-32-bytes-long",
 			AESGCMKey: "unique-aes-key-at-least-32-bytes-long",
 		},
+		Provisioner: ProvisionerConfig{Applier: ApplierConfig{CredentialKey: validCredentialKey}},
 	}
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("hardened production config rejected: %v", err)
+	}
+}
+
+func TestProductionRequiresIntegrationSecretEncryptionEvenWithoutRouterWrites(t *testing.T) {
+	cfg := &Config{
+		Environment: "production",
+		Database: DatabaseConfig{
+			Password:   "unique-database-password-2026",
+			RLSEnforce: true,
+		},
+		Security: SecurityConfig{
+			JWTSecret: "unique-jwt-secret-at-least-32-bytes-long",
+			AESGCMKey: "unique-aes-key-at-least-32-bytes-long",
+		},
+	}
+	// Live RouterOS writes are disabled, but tokens and webhooks still require
+	// encryption at rest in production.
+	for _, key := range []string{"", "too-short"} {
+		cfg.Provisioner.Applier.CredentialKey = key
+		if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "provisioner.applier.credential_key") {
+			t.Fatalf("invalid integration encryption key %q was accepted: %v", key, err)
+		}
+	}
+	cfg.Provisioner.Applier.CredentialKey = validCredentialKey
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("valid encryption key with router writes off was rejected: %v", err)
 	}
 }
 
@@ -369,4 +396,15 @@ func TestBackupCaptureRequiresSeparateStrongPassword(t *testing.T) {
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("valid capture-only config must not require the live applier: %v", err)
 	}
+}
+
+func TestLoadExactTrustedProxyPeers(t *testing.T) {
+ path:=filepath.Join(t.TempDir(),"config.yaml")
+ if err:=os.WriteFile(path,[]byte("environment: development\n"),0600);err!=nil{t.Fatal(err)}
+ t.Setenv("ENVIRONMENT","development")
+ t.Setenv("SERVER_TRUSTED_PROXY_IPS","172.18.0.5,172.18.0.1")
+ cfg,err:=Load(path);if err!=nil{t.Fatal(err)}
+ if len(cfg.Server.TrustedProxyIPs)!=2||cfg.Server.TrustedProxyIPs[0]!="172.18.0.5"{t.Fatalf("exact peer env not bound: %v",cfg.Server.TrustedProxyIPs)}
+ t.Setenv("SERVER_TRUSTED_PROXY_IPS","172.18.0.0/16")
+ if _,err:=Load(path);err==nil||!strings.Contains(err.Error(),"trusted_proxy_ips"){t.Fatalf("broad proxy trust accepted: %v",err)}
 }

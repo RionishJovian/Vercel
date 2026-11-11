@@ -154,7 +154,7 @@ func registerGuestVoucherEndpoints(r *gin.Engine, service *auth.Service, db *dat
 		c.Header("Cache-Control", "no-store")
 		c.JSON(200, gin.H{"enabled": true, "validity_starts": "first_use", "batch_recovery_enabled": true, "batch_id_required": true, "reseller_assignment_enabled": true, "max_batch_size": handler.GuestVoucherIssueBatchLimit})
 	})
-	public := r.Group("/api/v1/portal", auth.CookieOrigin(), auth.BoundedPortalRateLimit(), boundedPortalBody())
+	public := r.Group("/api/v1/portal", auth.CookieOrigin(), boundedPortalBody())
 	public.POST("/:deviceId/guest-voucher", h.Redeem)
 	// Mutating MAC transfer remains absent until uncertain completion and restart
 	// reconciliation are implemented. Read-only resume is a separate capability.
