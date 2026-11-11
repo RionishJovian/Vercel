@@ -37,6 +37,8 @@ func registerMediaPublishingRoutes(r *gin.Engine, service *auth.Service, db *dat
 		}
 		c.JSON(200, gin.H{"publication": gin.H{"available": ready, "reason": reason}, "connector": gin.H{"available": cfg.Media.ConnectorEnabled}, "paid_access": gin.H{"available": false, "reason": "local_playback_acceptance_pending"}})
 	})
-	r.GET("/api/v1/media-guest/:id", auth.BoundedAuthRateLimit(), publishing.Public)
+	// Budgeted by the global auth.PublicRequestLimits (per browser + aggregate); the
+	// old IP-only limiter here re-grouped guests behind one NAT (issue 192).
+	r.GET("/api/v1/media-guest/:id", publishing.Public)
 	return nil
 }

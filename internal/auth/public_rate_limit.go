@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"net/http"
+	"net/netip"
 	"strconv"
 	"strings"
 	"sync"
@@ -40,14 +41,23 @@ func publicRequestLimits(secret string, now func() time.Time) gin.HandlerFunc {
 	_, _ = mac.Write([]byte("mega-magic:public-rate-session:v1"))
 	key := mac.Sum(nil)
 	var mu sync.Mutex
-	entries := map[string]publicRateBucket{}
+	// Source budgets and per-browser sessions live in separate bounded tables so
+	// a flood of cookie-less requests (each mints a session) cannot evict or
+	// refuse the aggregate source budget of legitimate visitors.
+	ips := map[string]publicRateBucket{}
+	sessions := map[string]publicRateBucket{}
 	var nextPrune time.Time
-	take := func(id string, limit int, t time.Time) (bool, int) {
-		b, known := entries[id]
+	// take returns (allowed, retrySeconds, tableFull). tableFull means a NEW key
+	// could not be tracked; callers decide whether that is fatal.
+	take := func(table map[string]publicRateBucket, id string, limit int, t time.Time) (bool, int, bool) {
+		b, known := table[id]
 		if !t.Before(b.until) {
 			b = publicRateBucket{until: t.Add(time.Minute)}
 		}
-		if b.count >= limit || (!known && len(entries) >= publicRateCapacity) {
+		if !known && len(table) >= publicRateCapacity {
+			return false, 1, true
+		}
+		if b.count >= limit {
 			seconds := int((b.until.Sub(t) + time.Second - 1) / time.Second)
 			if seconds > 60 {
 				seconds = 60
@@ -55,11 +65,11 @@ func publicRequestLimits(secret string, now func() time.Time) gin.HandlerFunc {
 			if seconds < 1 {
 				seconds = 1
 			}
-			return false, seconds
+			return false, seconds, false
 		}
 		b.count++
-		entries[id] = b
-		return true, 0
+		table[id] = b
+		return true, 0, false
 	}
 	return func(c *gin.Context) {
 		path := c.Request.URL.Path
@@ -95,18 +105,26 @@ func publicRequestLimits(secret string, now func() time.Time) gin.HandlerFunc {
 		valid := cookies == 1 && validPublicRateToken(key, token, t)
 		mu.Lock()
 		if !t.Before(nextPrune) {
-			for id, b := range entries {
-				if !t.Before(b.until) {
-					delete(entries, id)
+			for _, table := range []map[string]publicRateBucket{ips, sessions} {
+				for id, b := range table {
+					if !t.Before(b.until) {
+						delete(table, id)
+					}
 				}
 			}
 			nextPrune = t.Add(time.Minute)
 		}
-		allowed, retry := take("ip:"+scope+":"+c.ClientIP(), limit, t)
+		allowed, retry, _ := take(ips, "ip:"+scope+":"+sourceKey(c.ClientIP()), limit, t)
 		// An absent/invalid cookie never selects an arbitrary client-supplied bucket.
 		// Issuance and every rejected/accepted request still consume aggregate budget.
 		if allowed && valid {
-			allowed, retry = take("session:"+scope+":"+token, 30, t)
+			var full bool
+			allowed, retry, full = take(sessions, "session:"+scope+":"+token, 30, t)
+			if full {
+				// Session table saturated: degrade to the aggregate source budget
+				// already charged above instead of refusing a legitimate browser.
+				allowed = true
+			}
 		}
 		mu.Unlock()
 		c.Header("Cache-Control", "no-store")
@@ -127,11 +145,17 @@ func publicRequestLimits(secret string, now func() time.Time) gin.HandlerFunc {
 			token = payload + "." + base64.RawURLEncoding.EncodeToString(h.Sum(nil))
 			// Count the bootstrap request in this browser's own allocation too.
 			mu.Lock()
-			allowed, retry = take("session:"+scope+":"+token, 30, t)
+			allowed, retry, full := take(sessions, "session:"+scope+":"+token, 30, t)
 			mu.Unlock()
-			if !allowed {
+			if !allowed && !full {
 				c.Header("Retry-After", strconv.Itoa(retry))
 				c.AbortWithStatusJSON(429, gin.H{"error": "too many requests; try again shortly"})
+				return
+			}
+			if full {
+				// Cannot track another browser right now: serve without issuing a
+				// cookie. The aggregate source budget still applies.
+				c.Next()
 				return
 			}
 			http.SetCookie(c.Writer, &http.Cookie{Name: publicRateCookie, Value: token, Path: "/api/v1/", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: int(publicRateLifetime / time.Second)})
@@ -163,4 +187,20 @@ func validPublicRateToken(key []byte, token string, now time.Time) bool {
 	h := hmac.New(sha256.New, key)
 	_, _ = h.Write([]byte(parts[0] + "." + parts[1]))
 	return hmac.Equal(sig, h.Sum(nil))
+}
+
+// sourceKey groups IPv6 clients by /64 (one customer LAN) so rotating addresses
+// inside a prefix cannot mint unlimited independent source budgets.
+func sourceKey(ip string) string {
+	addr, err := netip.ParseAddr(ip)
+	if err != nil {
+		return ip
+	}
+	addr = addr.Unmap()
+	if addr.Is6() {
+		if p, err := addr.Prefix(64); err == nil {
+			return p.String()
+		}
+	}
+	return addr.String()
 }

@@ -200,7 +200,7 @@ func TestPublicRateStateIsBoundedAndRecoversAfterWindow(t *testing.T) {
 	r.Use(publicRequestLimits(rateTestSecret, func() time.Time { return now }))
 	r.GET("/api/v1/portal/a/config", func(c *gin.Context) { c.Status(204) })
 	blocked := false
-	for i := 0; i < publicRateCapacity; i++ {
+	for i := 0; i <= publicRateCapacity; i++ {
 		q := httptest.NewRequest("GET", "/api/v1/portal/a/config", nil)
 		q.RemoteAddr = fmt.Sprintf("198.18.%d.%d:1234", i/256, i%256)
 		w := httptest.NewRecorder()
@@ -219,5 +219,42 @@ func TestPublicRateStateIsBoundedAndRecoversAfterWindow(t *testing.T) {
 	now = now.Add(time.Minute)
 	if w := rateRequest(r, "/api/v1/portal/a/config", nil); w.Code != 204 {
 		t.Fatal("expired state was not reclaimed")
+	}
+}
+
+func TestCookielessFloodFromFewSourcesCannotLockOutNewVisitors(t *testing.T) {
+	now := time.Unix(1800000000, 0)
+	r := gin.New()
+	_ = r.SetTrustedProxies(nil)
+	r.Use(publicRequestLimits(rateTestSecret, func() time.Time { return now }))
+	r.GET("/api/v1/portal/a/config", func(c *gin.Context) { c.Status(204) })
+	// Three sources at their 6000/min aggregate cap mint more sessions than the
+	// session table holds.
+	for src := 1; src <= 3; src++ {
+		for i := 0; i < 6000; i++ {
+			q := httptest.NewRequest("GET", "/api/v1/portal/a/config", nil)
+			q.RemoteAddr = fmt.Sprintf("198.51.100.%d:1234", src)
+			r.ServeHTTP(httptest.NewRecorder(), q)
+		}
+	}
+	// A brand-new legitimate visitor must still be served (aggregate budget only).
+	q := httptest.NewRequest("GET", "/api/v1/portal/a/config", nil)
+	q.RemoteAddr = "203.0.113.200:1234"
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, q)
+	if w.Code != 204 {
+		t.Fatalf("new visitor refused while session table saturated: %d", w.Code)
+	}
+}
+
+func TestIPv6AddressesInOneSlash64ShareASourceBudget(t *testing.T) {
+	if sourceKey("2001:db8:1:2::1") != sourceKey("2001:db8:1:2:ffff::9") {
+		t.Fatal("addresses in one /64 must share a source key")
+	}
+	if sourceKey("2001:db8:1:2::1") == sourceKey("2001:db8:1:3::1") {
+		t.Fatal("different /64 prefixes must not share a source key")
+	}
+	if sourceKey("::ffff:192.0.2.5") != "192.0.2.5" || sourceKey("192.0.2.5") != "192.0.2.5" {
+		t.Fatal("IPv4 (and IPv4-mapped) sources must keep their address")
 	}
 }
