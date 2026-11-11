@@ -6,23 +6,24 @@
   "scripts": {
     "dev": "npm --prefix app run dev",
     "build": "node scripts/prepare-vercel-build.mjs",
-    "preview": "vite preview --outDir vercel-public --host 127.0.0.1",
+    "preview": "vite preview --config deploy/vite-preview.config.mjs --outDir vercel-public --host 127.0.0.1",
     "test:sites": "node --test tests/sites-worker.test.mjs",
     "test:critical-ui": "node --experimental-vm-modules --test scripts/test-*-ui.mjs scripts/test-network-layout.mjs",
-    "test:api": "python3 -m unittest discover -s tests -p 'test_*.py' -v",
+    "test:api": "go test ./internal/...",
     "build:sites": "vite build && node scripts/prepare-sites-build.mjs",
     "test:vercel": "node --test deploy/vercel/proxy.test.js",
     "test:deployment": "node --test scripts/test-deployment-config.mjs scripts/test-hub-reconcile.mjs",
     "dev:sites": "vite",
-    "preview:sites": "vite preview"
+    "preview:sites": "vite preview",
+    "test:api:legacy": "python3 -m unittest discover -s tests -p 'test_*.py' -v"
   },
   "dependencies": {
     "@phosphor-icons/react": "^2.1.10",
+    "@vercel/functions": "3.10.5",
     "@vitejs/plugin-react": "5.0.4",
     "react": "19.3.1",
     "react-dom": "19.3.1",
-    "vite": "6.4.4",
-    "@vercel/functions": "3.10.5"
+    "vite": "6.4.6"
   },
   "devDependencies": {
     "jsdom": "^30.1.3"

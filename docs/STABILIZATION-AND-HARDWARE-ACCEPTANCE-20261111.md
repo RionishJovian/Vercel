@@ -27,7 +27,8 @@ For every item use **PASS / FAIL / NOT RUN / BLOCKED**, exact software SHA, depl
 
 ## Local developer commands
 - `npm --prefix app ci` then `npm run dev` starts the **current React console**, available under `/v2/`. Its dev proxy preserves the browser Host and expects the separately started Go API at `http://127.0.0.1:8080` with a safe local database/config. It does **not** start production containers or RouterOS.
-- `npm run build` generates `vercel-public/`; `npm run preview` previews that static build. API-dependent flows still require an appropriate backend. It is not a signed-in or physical-router acceptance test.
+- `npm run build` generates `vercel-public/`; `npm run preview` previews that static build. The dedicated preview config forwards `/api` to the separately started local Go API on `127.0.0.1:8080` while preserving the browser Host; API-dependent flows still require that safe backend. It is not a signed-in or physical-router acceptance test.
+- `npm run test:api` runs the current Go API suite; select an explicitly disposable `MM_TEST_DB_URL` for database coverage. `test:api:legacy` retains the historical Python command.
 - `npm run dev:sites` and `npm run preview:sites` explicitly select the historical Sites/Vite prototype, not the currently deployed console. Existing historical code is preserved for forensic and rollback context rather than deleted prematurely.
 - An actual VPS release continues to come only from the protected GitHub `main` release workflow after separate human review.
 
