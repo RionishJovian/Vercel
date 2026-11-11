@@ -76,6 +76,13 @@ PY
  sleep 2
 done
 test "$ready" = true
+# Prove the binary itself reports the source revision selected for this rollout.
+curl -fsS http://127.0.0.1:18080/api/v1/version -o "$backup/version.json"
+python3 - "$backup/version.json" "$release_sha" <<'PY'
+import json,sys
+x=json.load(open(sys.argv[1]))
+assert x.get('commit')==sys.argv[2], 'API runtime commit does not match release'
+PY
 for service in api web;do
  image=$api_image;test "$service" != web || image=$web_image
  expected_id=$(docker image inspect --format '{{.Id}}' "$image")
