@@ -9,7 +9,7 @@ import (
 )
 
 func TestWebhookSigningSecretNeverAppearsInAPIResponse(t *testing.T) {
-	const secret = "test-webhook-signing-secret-MUST-NOT-LEAK"
+	secret := "test-webhook-signing-secret-MUST-NOT-LEAK"
 	ep := &model.WebhookEndpoint{
 		ID:         "endpoint-1",
 		BusinessID: "business-1",
