@@ -379,11 +379,12 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		}
 	}
 	r := gin.New()
-	if err := r.SetTrustedProxies([]string{"127.0.0.1", "::1"}); err != nil {
+	if err := configureProxyTrust(r, cfg.Server.TrustedProxyIPs); err != nil {
 		return nil, err
 	}
 	r.Use(gin.Recovery())
 	r.Use(loggerMiddleware(sugar))
+	r.Use(auth.PublicRequestLimits(cfg.Security.JWTSecret))
 
 	// Keystone: RLS enforcement is OFF by default. When on, protected requests run
 	// on a restricted tenant connection bound to `authenticated`.
@@ -589,7 +590,7 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 			DeviceIndex: database.NewDeviceRepository(db),
 			Ready:       mediaCatalogueReady,
 		}
-		portalPublic := tv1.Group("/portal", auth.BoundedPortalRateLimit(), boundedPortalBody())
+		portalPublic := tv1.Group("/portal", boundedPortalBody())
 		{
 			portalPublic.GET("/:deviceId/config", portalHandler.PublicConfig)
 			portalPublic.POST("/:deviceId/redeem", portalHandler.PublicRedeem)
@@ -607,7 +608,7 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 			portalPublic.POST("/guest-purchase/:requestId/receipt", guestWifiHandler.PublicAttachReceipt)
 		}
 
-		authGroup := tv1.Group("/auth", auth.CookieOrigin(), auth.BoundedAuthRateLimit())
+		authGroup := tv1.Group("/auth", auth.CookieOrigin())
 		{
 			authGroup.POST("/register", authHandler.Register)
 			authGroup.POST("/login", authHandler.Login)
