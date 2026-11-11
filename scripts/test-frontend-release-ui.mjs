@@ -20,8 +20,8 @@ test('complete set of static pages passes the contract',()=>{
 });
 
 test('release build requires the HotSpot customer media page',()=>{
- const root=fixture();try{rmSync(path.join(root,'media.html'));assert.throws(()=>assertProductionFrontend(root),/Missing production web file.*media\\.html/);}finally{rmSync(root,{recursive:true,force:true});}
+ const root=fixture();try{rmSync(path.join(root,'media.html'));assert.throws(()=>assertProductionFrontend(root),/Missing production web file.*media\.html/);}finally{rmSync(root,{recursive:true,force:true});}
 });
 test('release build checks versioned media asset references',()=>{
- const root=fixture();try{writeFileSync(path.join(root,'media.html'),'<script src="/assets/js/missing-media.js?v=3"></script>');assert.throws(()=>assertProductionFrontend(root),/Missing referenced frontend asset in media\\.html/);}finally{rmSync(root,{recursive:true,force:true});}
+ const root=fixture();try{writeFileSync(path.join(root,'media.html'),'<script src="/assets/js/missing-media.js?v=3"></script>');assert.throws(()=>assertProductionFrontend(root),/Missing referenced frontend asset in media\.html/);}finally{rmSync(root,{recursive:true,force:true});}
 });
