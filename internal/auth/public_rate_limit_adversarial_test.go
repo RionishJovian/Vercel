@@ -151,3 +151,88 @@ func TestSaturatedTablesStillServeKnownSourcesAndRecover(t *testing.T) {
 		t.Fatalf("no recovery after window: %d cookies=%d", w.Code, len(w.Result().Cookies()))
 	}
 }
+
+// Owner console routes share the public portal URL prefix but must not spend the
+// anonymous guest budget, while keeping their own authentication.
+func ownerScopeEngine(now *time.Time) *gin.Engine {
+	r := gin.New()
+	_ = r.SetTrustedProxies(nil)
+	r.Use(publicRequestLimits(rateTestSecret, func() time.Time { return *now }))
+	requireToken := func(c *gin.Context) { // stands in for auth.Middleware on the protected group
+		if c.GetHeader("Authorization") != "Bearer owner" {
+			c.AbortWithStatusJSON(401, gin.H{"error": "unauthorized"})
+			return
+		}
+		c.Next()
+	}
+	owner := r.Group("/api/v1/portal", requireToken)
+	owner.GET("/config", func(c *gin.Context) { c.Status(204) })
+	owner.PUT("/config", func(c *gin.Context) { c.Status(204) })
+	owner.POST("/router-preview", func(c *gin.Context) { c.Status(204) })
+	r.GET("/api/v1/portal/:deviceId/config", func(c *gin.Context) { c.Status(204) })
+	return r
+}
+
+func ownerRequest(r *gin.Engine, method, path string, authed bool, cookies ...*http.Cookie) *httptest.ResponseRecorder {
+	q := httptest.NewRequest(method, path, nil)
+	q.RemoteAddr = "192.0.2.10:1"
+	if authed {
+		q.Header.Set("Authorization", "Bearer owner")
+	}
+	for _, c := range cookies {
+		q.AddCookie(c)
+	}
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, q)
+	return w
+}
+
+func TestOwnerPortalRoutesDoNotSpendTheGuestBudgetOrIssueCookies(t *testing.T) {
+	now := time.Unix(1800000000, 0)
+	r := ownerScopeEngine(&now)
+	guest := rateCookie(t, ownerRequest(r, "GET", "/api/v1/portal/device-1/config", false))
+	for i := 0; i < 100; i++ {
+		for _, route := range [][2]string{{"GET", "/api/v1/portal/config"}, {"PUT", "/api/v1/portal/config"}, {"POST", "/api/v1/portal/router-preview"}} {
+			w := ownerRequest(r, route[0], route[1], true, guest)
+			if w.Code != 204 {
+				t.Fatalf("owner %s %s request %d: %d", route[0], route[1], i, w.Code)
+			}
+			if len(w.Result().Cookies()) != 0 {
+				t.Fatalf("owner route issued a guest rate cookie")
+			}
+		}
+	}
+	// The guest browser's own budget (29 more after the bootstrap request) is untouched.
+	for i := 0; i < 29; i++ {
+		if w := ownerRequest(r, "GET", "/api/v1/portal/device-1/config", false, guest); w.Code != 204 {
+			t.Fatalf("guest request %d after owner activity: %d", i, w.Code)
+		}
+	}
+	if w := ownerRequest(r, "GET", "/api/v1/portal/device-1/config", false, guest); w.Code != 429 {
+		t.Fatalf("guest budget no longer enforced: %d", w.Code)
+	}
+}
+
+func TestOwnerPortalRoutesKeepTheirAuthentication(t *testing.T) {
+	now := time.Unix(1800000000, 0)
+	r := ownerScopeEngine(&now)
+	for _, route := range [][2]string{{"GET", "/api/v1/portal/config"}, {"PUT", "/api/v1/portal/config"}, {"POST", "/api/v1/portal/router-preview"}} {
+		if w := ownerRequest(r, route[0], route[1], false); w.Code != 401 {
+			t.Fatalf("unauthenticated %s %s reached the handler: %d", route[0], route[1], w.Code)
+		}
+	}
+}
+
+func TestUnanonymousRoutesAnd404sCannotDrainOrMintGuestState(t *testing.T) {
+	now := time.Unix(1800000000, 0)
+	r := ownerScopeEngine(&now)
+	for i := 0; i < 7000; i++ { // well past the 6,000/min guest aggregate
+		w := ownerRequest(r, "GET", fmt.Sprintf("/api/v1/portal/unknown/%d/nothing", i), false)
+		if w.Code != 404 || len(w.Result().Cookies()) != 0 {
+			t.Fatalf("404 request %d: %d cookies=%d", i, w.Code, len(w.Result().Cookies()))
+		}
+	}
+	if w := ownerRequest(r, "GET", "/api/v1/portal/device-1/config", false); w.Code != 204 {
+		t.Fatalf("a flood of 404s spent the guest aggregate budget: %d", w.Code)
+	}
+}

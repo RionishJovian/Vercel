@@ -19,6 +19,16 @@ const publicRateCookie = "__Secure-mm_rate"
 const publicRateLifetime = time.Hour
 const publicRateCapacity = 16384
 
+// ownerPortalRoutes live under the public portal prefix but belong to the
+// authenticated owner console. They must not consume the anonymous guest budget
+// (an owner editing branding would otherwise throttle that site's guests, and an
+// anonymous caller could spend the budget through them). Authentication and role
+// checks stay on the route group, so excluding them here removes no authorization.
+var ownerPortalRoutes = map[string]bool{
+	"/api/v1/portal/config":         true,
+	"/api/v1/portal/router-preview": true,
+}
+
 type publicRateBucket struct {
 	count int
 	until time.Time
@@ -72,7 +82,14 @@ func publicRequestLimits(secret string, now func() time.Time) gin.HandlerFunc {
 		return true, 0, false
 	}
 	return func(c *gin.Context) {
-		path := c.Request.URL.Path
+		// Decide by the matched ROUTE TEMPLATE, never the raw URL, so path tricks
+		// cannot change the scope. An unmatched request is a plain 404 that does no
+		// work; it must not mint rate sessions or spend a guest's budget.
+		path := c.FullPath()
+		if path == "" || ownerPortalRoutes[path] {
+			c.Next()
+			return
+		}
 		scope := ""
 		limit := 6000 // Aggregate requests/minute/source; allows 60 guests x 30 requests.
 		switch {
