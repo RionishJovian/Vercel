@@ -6,8 +6,8 @@
 
 | Required fact | Current value |
 |---|---|
-| Operator, owner approval and maintenance window | NOT SUPPLIED |
-| Owned test gateway, model/board identity and RouterOS version | NOT VERIFIED this run |
+| Operator, owner approval and maintenance window | Owner confirmed hAP ax² available now, no paying customers; exact write/rollback scope still requires preflight |
+| Owned test gateway, model/board identity and RouterOS version | Owner selected hAP ax²; board identity and RouterOS version not yet read |
 | Software full SHA; API image digest; served assets; migration revision | Select reviewed release after separate approval |
 | Business/site/router binding and pinned management identity | NOT VERIFIED |
 | Cabling, management uplink, AP model/firmware and guest SSID | NOT VERIFIED |
@@ -53,3 +53,9 @@ Copy only for a row actually executed:
 - Failure/blocker reason and next safe action.
 
 Keep secrets, voucher codes, MACs, full guest IPs, receipts and private keys out of committed evidence. Store sensitive raw diagnostics only in the approved private location; link a redacted summary. [Existing trial](HARDWARE-TRIAL-RESULTS-20261106.md), [backup/controls procedure](DEVICE-CONTROLS-TRIAL-20261105.md), [guest actions](GUEST-ACTIONS-TRIAL-20261105.md), [#192 evidence](https://github.com/RionishJovian/Vercel/pull/197).
+
+## Follow-up access preflight — 2026-11-11
+
+Owner confirmed the hAP ax² is available now and is not serving paying customers. Physical acceptance has not started: this Mac routes the saved `192.168.88.1` management address through `192.168.100.1` on en0; SSH port 22 timed out, ARP had no direct entry, and WinBox's saved connection did not establish. The pending WinBox connection was cancelled. No password was exposed or changed, and no Mac VPN/Wi-Fi/network or RouterOS setting changed. RB01 is **BLOCKED on a verified management path**, not a hardware FAIL or PASS. Owner was asked to connect the Mac to the current management LAN or identify a changed management IP. Earlier ether4/ether5 management notes remain unverified today.
+
+The separate real-Caddy shared-NAT fixture passed on PR #197 commit `986adf4`; it covers two controlled loopback proxy hops and web/API restarts, not the real HotSpot/client or physical-network portion of RB13.
