@@ -1000,12 +1000,12 @@ type readinessProbes struct {
 
 func readinessCheck(s *Server) gin.HandlerFunc {
 	return readinessCheckWithProbes(readinessProbes{
-		database: func() error {
+		database: boundedDatabaseProbe(func(ctx context.Context) error {
 			if s.db == nil {
 				return errors.New("database unavailable")
 			}
-			return s.db.Ping()
-		},
+			return s.db.PingContext(ctx)
+		}),
 		redis: func() bool {
 			return s.cache != nil && s.cache.IsConnected()
 		},
