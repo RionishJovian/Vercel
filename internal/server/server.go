@@ -109,6 +109,10 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 			sugar.Infow("Integration secrets sealed", "telegram_bot_tokens", bots, "webhook_secrets", hooks)
 		}
 	} else {
+		if cfg.Environment == "production" || cfg.Environment == "prod" {
+			_ = db.Close()
+			return nil, errors.New("production integration-secret encryption key is required")
+		}
 		sugar.Warn("No credential key configured: Telegram bot tokens and webhook secrets are stored in plaintext")
 	}
 
