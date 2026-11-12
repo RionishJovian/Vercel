@@ -26,7 +26,7 @@ import (
 // The prompt's page names must be the ones people actually see in the console.
 func TestMagicDudePagesMatchTheApp(t *testing.T) {
 	var labels strings.Builder
-	for _, f := range []string{"dict.json", "extra.ts", "broadband.ts", "hubConnection.ts", "tables.ts"} {
+	for _, f := range []string{"dict.json", "extra.ts", "broadband.ts", "hubConnection.ts", "tables.ts", "workspaces.ts"} {
 		b, err := os.ReadFile("../../app/src/i18n/" + f)
 		if err != nil {
 			t.Fatal(err)
@@ -40,7 +40,7 @@ func TestMagicDudePagesMatchTheApp(t *testing.T) {
 		}
 		return string(b)
 	}
-	more, shell, jellyfin := source("pages/More.tsx"), source("components/Shell.tsx"), source("pages/Jellyfin.tsx")
+	more, nav, jellyfin := source("pages/More.tsx"), source("lib/nav.ts"), source("pages/Jellyfin.tsx")
 	check := func(pages []magicDudePage, shownIn func(key string) bool) {
 		for _, p := range pages {
 			pattern := `"` + regexp.QuoteMeta(p.Key) + `":\s*"` + regexp.QuoteMeta(p.Label) + `"`
@@ -56,7 +56,9 @@ func TestMagicDudePagesMatchTheApp(t *testing.T) {
 	check(magicDudeMore, inMore)
 	check(magicDudeStaff, inMore)
 	check(magicDudeDeveloper, inMore)
-	check(magicDudeTabs, func(key string) bool { return strings.Contains(shell, `"`+strings.TrimPrefix(key, "tab.")+`"`) })
+	// Main tabs are the bottom-bar entries in lib/nav.ts.
+	tabs := nav[strings.Index(nav, "export const TABS"):strings.Index(nav, "const TAB_OF")]
+	check(magicDudeTabs, func(key string) bool { return strings.Contains(tabs, `label: "`+key+`"`) })
 	check(magicDudeJellyfin, func(key string) bool { return strings.Contains(jellyfin, `"`+strings.TrimPrefix(key, "j.ws.")+`"`) })
 }
 
