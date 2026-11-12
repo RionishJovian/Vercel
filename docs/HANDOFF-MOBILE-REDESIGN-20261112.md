@@ -118,15 +118,29 @@ Production build (`vite build`, served by `vite preview`) against the local API,
   - `ghcr.io/rionishjovian/vercel/mega-magic-web@sha256:5586bfd1ce4552ee2975280e4c798bb4a916a2f0c2d76f7a91d0e878b2732d94`
 - That deploy reported its own rollback copy at `/root/mm-rollout-backups/ci-e014fb3dc3c09d429dd356caae67143001ed4ec6-20261108T175512Z` (not inspected: this session has no SSH access to the VPS).
 
-### Rollback tag
-- **Not created on GitHub.** The session's git proxy refuses every push except the session branch; the tag exists only in this container. Owner command (from any clone):
-  `git tag -a pre-mobile-redesign-20261112 e014fb3dc3c09d429dd356caae67143001ed4ec6 -m "Last release before the MegaMagic mobile redesign"` then `git push origin pre-mobile-redesign-20261112`, and check with `git ls-remote --tags origin pre-mobile-redesign-20261112`.
+### Rollback ref
+- Remote branch `rollback/pre-mobile-redesign-20261112` points at `e014fb3dc3c09d429dd356caae67143001ed4ec6` (created 2026-11-12 through the GitHub API with the owner's approval, verified with `git ls-remote origin refs/heads/rollback/pre-mobile-redesign-20261112`). It replaces the planned tag: this session's git proxy refuses tag pushes. Do not move or delete this branch; it can be converted to a tag later with `git tag -a pre-mobile-redesign-20261112 origin/rollback/pre-mobile-redesign-20261112` and `git push origin pre-mobile-redesign-20261112`.
 
 ### If the merge deploys and must be undone
-1. Fast, on the server: the release-candidate deploy writes `/root/mm-rollout-backups/ci-<new sha>-<time>/` containing the compose file that points at the `e014fb3` images, the config, the previous API binary, `previous-image-ids` and a database dump. Copy that `compose.yaml` back to `/opt/mega-magic-go-restored-20261018T100554Z/deploy/compose.go-restore.yaml` (and `restore-bin` to `restore-bin/mega-magic`), then run `docker compose -f deploy/compose.go-restore.yaml up -d --no-deps --no-build --pull never api web` in that directory. The `e014fb3` images are still on the host and in GHCR.
-2. Source: revert the merge commit on `main` through a PR. Every push to `main` redeploys, so this also rebuilds and releases the previous code.
-3. Automatic: if the new release fails `/ready` or the header checks, the deploy script restores the previous API and web itself.
-- No database migrations are included; the database needs no rollback.
+Previous release images (run 617; pullable from GHCR by digest and by tag `e014fb3dc3c09d429dd356caae67143001ed4ec6`, linux/amd64):
+- API `ghcr.io/rionishjovian/vercel/mega-magic-api@sha256:31baa43e5c27442c3290f5fac2c64e3a99c1f90841d9bd80b7eb04903be3d81e`
+- Web `ghcr.io/rionishjovian/vercel/mega-magic-web@sha256:5586bfd1ce4552ee2975280e4c798bb4a916a2f0c2d76f7a91d0e878b2732d94`
+
+1. **Automatic:** if the new release fails `/ready` or the security-header check, `deploy/deploy-vps.sh` restores the previous compose file, API binary and edge headers and restarts `api` and `web` by itself.
+2. **Fast manual restore on the VPS** (`ssh root@207.148.76.172` with the owner's key). The release-candidate deploy prints `rollback retained at /root/mm-rollout-backups/ci-<new sha>-<UTC time>`; use that directory as `B`:
+   ```bash
+   B=/root/mm-rollout-backups/ci-<new sha>-<UTC time>
+   APP=/opt/mega-magic-go-restored-20261018T100554Z
+   cp -p "$B/compose.yaml" "$APP/deploy/compose.go-restore.yaml"
+   cp -p "$B/restore-bin" "$APP/restore-bin/mega-magic"
+   test -f "$B/edge-security-headers.caddy" && cp -p "$B/edge-security-headers.caddy" /etc/caddy/security-headers.caddy && systemctl reload caddy
+   cd "$APP" && docker compose -f deploy/compose.go-restore.yaml up -d --no-deps --no-build --pull never api web
+   docker inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' mega-magic-go-restored-api-1 mega-magic-go-restored-web-1   # expect e014fb3…
+   curl -fsS https://megamagic.tech/api/v1/ready
+   ```
+   If the images are no longer on the host, `docker pull` the two digests above first.
+3. **Source rollback (redeploys through CI):** revert the merge commit on `main` in a pull request; every push to `main` that passes `validate` is built and deployed. Or reset a branch from `rollback/pre-mobile-redesign-20261112` and merge it — never force-push `main` (AGENTS.md §1).
+- No database migrations are included; the database needs no rollback (the deploy's `database.dump` is in the same backup directory if ever needed).
 
 ## Next concrete action
-The owner reviews the mobile preview and PR #199, pushes the rollback tag (command above), and decides whether to merge. After merging, confirm the deployed API image label `org.opencontainers.image.revision` equals the merge commit. Then run gaps 1 and 5 on the hAP ax2 and a phone, and record the results in `docs/HARDWARE-TRIAL-RESULTS-*`. Arrange the screen-reader pass and the Burmese review.
+The owner reviews the mobile preview and PR #199, approves the release. After merging, confirm the deployed API image label `org.opencontainers.image.revision` equals the merge commit. Then run gaps 1 and 5 on the hAP ax2 and a phone, and record the results in `docs/HARDWARE-TRIAL-RESULTS-*`. Arrange the screen-reader pass and the Burmese review.
