@@ -65,3 +65,9 @@ vercel-public/
 
 # Sites prototype build output
 /dist/
+
+# graphify knowledge graph (local, rebuilt by git hooks)
+graphify-out/
+
+# Per-machine Claude Code settings (graphify hooks use local paths)
+.claude/settings.local.json
