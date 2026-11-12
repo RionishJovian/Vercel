@@ -27,12 +27,11 @@ export function Network({ me, sub, params }: { me: Me; sub: string; params?: URL
   const [broadbandBusy, setBroadbandBusy] = useState(false);
   useEffect(() => { if (!linkedRouter && gateways.length && !gateways.some((g) => g.device_id === id)) setId(gateways.length === 1 ? gateways[0].device_id : ""); }, [gateways, id, linkedRouter]);
   const pickRouter = (v: string) => { setId(v); try { if (v) sessionStorage.setItem(KEY, v); } catch { /* ignore */ } };
-  const back = <BackLink href="#/router">{t("title.router")}</BackLink>;
-  if (isLoading) return <>{back}<Skeleton h={300} /></>;
-
   const isNew = sub === "new";
   const ws = (!sub || sub === "wan") && params?.get("task") === "pppoe_client" ? "pppoe" : !sub ? "wan" : (workspaces as readonly string[]).includes(sub) ? (sub as Workspace) : null;
   const pppoe = ws === "pppoe";
+  const back = pppoe && params?.get("task") !== "pppoe_client" ? <BackLink href="#/isp">{t("nav.isp")}</BackLink> : <BackLink href="#/net">{t("nav.network")}</BackLink>;
+  if (isLoading) return <>{back}<Skeleton h={300} /></>;
   const router = gateways.find((g) => g.device_id === id);
   const needsChoice = gateways.length > 1 || (!!linkedRouter && gateways.length > 0 && !router);
   // Why the forms are locked, when they are. They are always shown either way.

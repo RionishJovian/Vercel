@@ -43,8 +43,7 @@ export function NetworkHub({ routerId }: { me: Me; routerId?: string | null }) {
             {list.map((r) => { const p = peers.get(r.device_id); return (
               <a key={r.device_id} className="linkrow" href={"#/router/" + encodeURIComponent(r.device_id)}>
                 <IconTile name="router" tone={peerTone(p?.state) === "idle" ? "" : peerTone(p?.state)} />
-                <span className="linkrow-text"><b>{r.hardware_name || r.device_id}</b><span className="soft small">{r.deployment_layer === "MAIN_GATEWAY" ? t("nh.gateway") : t("nh.device")} · <Ago at={p?.checked_at ?? p?.last_contact_at ?? r.last_seen_at} prefix={t("ws.checked")} /></span></span>
-                <StatePill tone={peerTone(p?.state)}>{t(peerKey(p?.state))}</StatePill>
+                <span className="linkrow-text"><b>{r.hardware_name || r.device_id}</b><span className="soft small">{r.deployment_layer === "MAIN_GATEWAY" ? t("nh.gateway") : t("nh.device")} · <Ago at={p?.checked_at ?? p?.last_contact_at ?? r.last_seen_at} prefix={t("ws.checked")} /></span><span><StatePill tone={peerTone(p?.state)}>{t(peerKey(p?.state))}</StatePill></span></span>
               </a>
             ); })}
           </div>
