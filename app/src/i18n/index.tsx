@@ -4,12 +4,13 @@ import extra from "./extra";
 import broadband from "./broadband";
 import hubConnection from "./hubConnection";
 import tables from "./tables";
+import workspaces from "./workspaces";
 import { networkMy } from "./networkLabels";
 
 export type Lang = "my" | "en";
 const dict: Record<Lang, Record<string, string>> = {
-  en: { ...(base as { en: Record<string, string> }).en, ...extra.en, ...broadband.en, ...hubConnection.en, ...tables.en },
-  my: { ...(base as { my: Record<string, string> }).my, ...extra.my, ...broadband.my, ...hubConnection.my, ...tables.my },
+  en: { ...(base as { en: Record<string, string> }).en, ...extra.en, ...broadband.en, ...hubConnection.en, ...tables.en, ...workspaces.en },
+  my: { ...(base as { my: Record<string, string> }).my, ...extra.my, ...broadband.my, ...hubConnection.my, ...tables.my, ...workspaces.my },
 };
 const KEY = "mm2_lang";
 const initial = (): Lang => { try { const s = localStorage.getItem(KEY); if (s === "en" || s === "my") return s; } catch { /* storage blocked */ } return "my"; };

@@ -31,19 +31,18 @@ const paths = {
   globe: "M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM4 12h16M12 4c2.5 2.3 2.5 13.7 0 16M12 4c-2.5 2.3-2.5 13.7 0 16",
   user: "M12 11.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM5 19.5c0-3.4 3-5.5 7-5.5s7 2.1 7 5.5",
   book: "M5 5.5A1.5 1.5 0 0 1 6.5 4H19v14H6.5A1.5 1.5 0 0 0 5 19.5zM5 19.5A1.5 1.5 0 0 0 6.5 21H19M9 8h6",
+  wifi: "M4 9.5a11.5 11.5 0 0 1 16 0M7 12.6a7.2 7.2 0 0 1 10 0M9.8 15.6a3 3 0 0 1 4.4 0M12 18.6h.01",
+  isp: "M12 4v4M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 16v4M4 12h4M16 12h4M6.3 6.3l2.4 2.4M15.3 15.3l2.4 2.4",
+  activity: "M3.5 19.5h17M6 16V12M10 16V8M14 16v-6M18 16V5",
+  rocket: "M14.5 4.5c3 0 5 2 5 5-1.7 3.4-4.6 6-8 7.5l-3.5-3.5C9.5 10.1 12 6.2 14.5 4.5zM8 13l-3 .5L4.5 11l3.5-1.5M11 16l-.5 3 2.5.5 1.5-3.5M15 9h.01",
+  check: "M5 12.5l4.2 4.2L19 7",
+  cash: "M3.5 7h17v10h-17zM12 14.2a2.2 2.2 0 1 0 0-4.4 2.2 2.2 0 0 0 0 4.4zM6.5 10v4M17.5 10v4",
+  gear: "M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM12 3.5v2.2M12 18.3v2.2M3.5 12h2.2M18.3 12h2.2M6 6l1.6 1.6M16.4 16.4 18 18M6 18l1.6-1.6M16.4 7.6 18 6",
+  chevron: "M9 5l7 7-7 7",
+  approve: "M5 5.5h14v13H5zM8.5 12l2.4 2.4 4.6-4.8",
   grid: "M4.5 4.5h6v6h-6zM13.5 4.5h6v6h-6zM4.5 13.5h6v6h-6zM13.5 13.5h6v6h-6z",
 } as const;
 export type IconName = keyof typeof paths;
 export function Icon({ name, ...rest }: { name: IconName } & SVGProps<SVGSVGElement>) {
   return <svg viewBox="0 0 24 24" aria-hidden="true" {...rest}><path d={paths[name]} /></svg>;
-}
-
-/** The brand wand: a slim stick with a four-point spark. The spark colour carries router health. */
-export function Wand({ state }: { state: "ok" | "warn" | "bad" | "idle" }) {
-  return (
-    <svg className="wand" data-state={state} viewBox="0 0 32 32" aria-hidden="true">
-      <line className="stick" x1="6" y1="27" x2="19" y2="14" />
-      <path className="tip" d="M23 3 24.7 9.3 31 11l-6.3 1.7L23 19l-1.7-6.3L15 11l6.3-1.7z" />
-    </svg>
-  );
 }

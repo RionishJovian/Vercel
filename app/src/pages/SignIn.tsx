@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { api, ApiError } from "../lib/api";
-import { LogoStage } from "../components/LogoStage";
+import { BrandMark, Wordmark } from "../components/Brand";
 import { Toggles } from "../components/Shell";
 import { useI18n } from "../i18n";
 
@@ -19,8 +19,7 @@ export function SignIn({ notice, onDone }: { notice?: string; onDone: () => void
     <div className="signin">
       <div className="signin-tools"><Toggles /></div>
       <form className="glass signin-card" onSubmit={submit}>
-        <LogoStage size={150} />
-        <h1>Mega Magic</h1>
+        <div className="signin-brand"><BrandMark size={72} /><h1><Wordmark /></h1><p className="soft">{t("s.tagline")}</p></div>
         <label className="field"><span>{t("s.email")}</span><input className="input" name="email" type="email" autoComplete="username" required /></label>
         <label className="field"><span>{t("s.password")}</span><input className="input" name="password" type="password" autoComplete="current-password" required /></label>
         {error ? <p className="note bad" role="alert">{error}</p> : null}

@@ -55,7 +55,7 @@ export function Detail({ id, router, canReview }: { id: string; router?: RouterR
               ? "ဤစာမျက်နှာရှိ အခြေအနေပြချက်များမှာ ဖတ်ရန်သာဖြစ်သည်။ Router ပြင်ဆင်မှုများကို အောက်ပါ လုပ်ငန်းစဉ်များမှ စစ်ဆေး၊ အတည်ပြုပြီးမှ အသုံးပြုနိုင်သည်။ ဆာဗာက ပိတ်ထားသော လုပ်ဆောင်ချက်များကို ဤစာမျက်နှာက မဖွင့်နိုင်ပါ။"
               : "Health readings are read-only, not the entire router. Use the existing configuration workflows below: they require a reviewed change, owner confirmation and server-side permission. Disabled capabilities remain disabled."}</p>
             <div className="scroll-x" aria-label={lang === "my" ? "ပြင်ဆင်မှု လင့်ခ်များ" : "Configuration workspaces"}>
-              <a className="pill" href={"#/home?router=" + encodeURIComponent(id)}>{t("home.managePorts")}</a>
+              <a className="pill" href={"#/net?router=" + encodeURIComponent(id)}>{t("home.managePorts")}</a>
               <a className="pill" href={"#/network?router=" + encodeURIComponent(id)}>{t("title.network")}</a>
               <a className="pill" href="#/topology">{t("tp.title")}</a>
               <a className="pill" href="#/hub">{t("hub.title")}</a>

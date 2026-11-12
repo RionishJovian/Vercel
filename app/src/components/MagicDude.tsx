@@ -48,8 +48,8 @@ export function MagicDude() {
 
   return (
     <>
-      <button type="button" className="md-fab" aria-expanded={open} aria-controls="md-panel" onClick={() => setOpen(o => !o)}>
-        <img src="/v2/magic-dude.png" alt="" width={28} height={28} /><span>Magic Dude</span>
+      <button type="button" className="md-fab" aria-expanded={open} aria-controls="md-panel" aria-label="Magic Dude" title="Magic Dude" onClick={() => setOpen(o => !o)}>
+        <img src="/v2/magic-dude.png" alt="" width={30} height={30} /><span className="md-fab-label">Magic Dude</span>
       </button>
       {open && (
         <section id="md-panel" className="md-panel glass" role="dialog" aria-label="Magic Dude">
