@@ -82,7 +82,7 @@ export function Topology({ me }: { me: Me }) {
     setGraph(project(device)); setSelected(device.device_id); setPendingAt(""); void read(device);
   }, [device?.device_id, read]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const back = <BackLink href="#/more">{t("tab.more")}</BackLink>;
+  const back = <BackLink href="/app/more">{t("tab.more")}</BackLink>;
   if (topo.isLoading) return <>{back}<Skeleton h={360} /></>;
   if (topo.error) return <>{back}<Note kind="bad">{t("c.loadFailed")}</Note></>;
   const q = query.trim().toLowerCase();
@@ -127,7 +127,7 @@ export function Topology({ me }: { me: Me }) {
       </div>
       {pendingNote && !pendingAt && <Note>{pendingNote}</Note>}
       {device && !!pendingAt && <PendingPanel routerId={device.device_id} revertAt={pendingAt} onDone={(message) => { setPendingAt(""); setPendingNote(message); reload(); }} />}
-      {!gateways.length ? <Note>{t("tp.noGateway")} <a className="link" href="#/hub">{t("hub.title")}</a></Note> : !graph ? <Note>{t("tp.pick")}</Note> : (
+      {!gateways.length ? <Note>{t("tp.noGateway")} <a className="link" href="/app/hub">{t("hub.title")}</a></Note> : !graph ? <Note>{t("tp.pick")}</Note> : (
         <div className="nt-layout">
           <section className="glass nt-stage" aria-label={t("tp.title")} aria-busy={reading}>
             {view === "map" ? <>
@@ -154,8 +154,8 @@ export function Topology({ me }: { me: Me }) {
           </section>
           <aside className="glass pad stack nt-inspector" aria-live="polite">
             {sel ? (<><h2>{sel.name}</h2><p className="soft small">{sel.id === graph.root.id ? rootLabel : sel.state}</p><dl className="facts">{facts.filter(([, v]) => v).map(([k, v]) => <div key={k} style={{ display: "contents" }}><dt>{k}</dt><dd>{v}</dd></div>)}</dl>
-              {sel.record && <p className="small">{t("dc.record")}: <a className="link" href="#/managed-devices">{sel.record.hardware_name || t("hub.unnamed")}</a></p>}
-              {sel.id === graph.root.id && <a className="btn quiet" href="#/hub">{t("tp.routerSettings")}</a>}
+              {sel.record && <p className="small">{t("dc.record")}: <a className="link" href="/app/managed-devices">{sel.record.hardware_name || t("hub.unnamed")}</a></p>}
+              {sel.id === graph.root.id && <a className="btn quiet" href="/app/hub">{t("tp.routerSettings")}</a>}
               {canEdit && ctx && (sel.id === graph.root.id ? <RouterPorts ports={graph.ports} ctx={ctx} /> : <DeviceControls key={sel.id} node={sel} ports={graph.ports} ctx={ctx} />)}</>) : <p className="soft small">{t("tp.select")}</p>}
           </aside>
         </div>

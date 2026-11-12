@@ -12,9 +12,9 @@ const mapLibreWorker = () => ({
   },
 });
 
-// The app is served under /v2/ until it replaces the old frontend.
+// The console is served at /app/ (old /v2/ links are redirected there by the web server).
 export default defineConfig({
-  base: "/v2/",
+  base: "/app/",
   plugins: [react(), mapLibreWorker()],
   // satellite.js also ships optional WebAssembly builds that use top-level await and Node modules. Only its plain JavaScript SGP4 is used here.
   resolve: { alias: [{ find: /^#wasm-(single|multi)-thread$/, replacement: fileURLToPath(new URL("./src/lib/noWasm.ts", import.meta.url)) }] },

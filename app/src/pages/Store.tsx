@@ -101,7 +101,7 @@ export function Store({ me }: { me: Me }) {
   const { t } = useI18n();
   const sub = useSWR<Pass & { mode?: string }>("/subscription", fetcher, { shouldRetryOnError: false });
   const own = useSWR<Pass & { scope?: string; authority?: string }>(sub.data && sub.data.mode !== "individual_pass" && sub.data.mode !== "subscription_only" ? "/me/app-pass" : null, fetcher, { shouldRetryOnError: false });
-  const back = <BackLink href="#/more">{t("tab.more")}</BackLink>;
+  const back = <BackLink href="/app/more">{t("tab.more")}</BackLink>;
   if (sub.isLoading) return <>{back}<Skeleton h={300} /></>;
   if (sub.error || !sub.data) return <>{back}<Note kind="bad">{t("st.compat")}</Note></>;
   const mode = sub.data.mode;

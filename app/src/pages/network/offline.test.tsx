@@ -32,7 +32,7 @@ describe("network pages without a usable router", () => {
     const { container } = wrap(<SWRConfig value={{ provider: () => new Map(), shouldRetryOnError: false }}><Network me={{ user: { user_role: "OWNER" } } as never} sub="" /></SWRConfig>);
     await screen.findByText(/No router is connected to this account/);
     expect(container.querySelector("fieldset.nolock")).toBeTruthy();
-    expect(container.querySelector('a[href="#/network/new"]')).toBeTruthy();
+    expect(container.querySelector('a[href="/app/network/new"]')).toBeTruthy();
   });
   it("shows the settings while the router read is still pending, with changes locked", async () => {
     vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));

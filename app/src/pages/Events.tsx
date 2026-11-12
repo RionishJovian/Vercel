@@ -21,7 +21,7 @@ export function Events() {
   if (f.severity) qs.set("severity", f.severity); if (f.program) qs.set("program", f.program); if (f.q) qs.set("q", f.q);
   qs.set("limit", String(PAGE)); qs.set("offset", String(offset));
   const { data, error, isLoading } = useSWR<Res>("/syslog-events?" + qs.toString(), fetcher, { keepPreviousData: true });
-  const back = <BackLink href="#/more">{t("tab.more")}</BackLink>;
+  const back = <BackLink href="/app/more">{t("tab.more")}</BackLink>;
   const events = asArray<Ev>(data?.events);
   const total = data?.total ?? 0, from = total ? offset + 1 : 0, to = offset + events.length;
   const apply = () => { setOffset(0); setF(draft); };

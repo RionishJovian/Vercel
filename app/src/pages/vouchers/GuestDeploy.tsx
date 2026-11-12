@@ -67,12 +67,12 @@ export function GuestDeploy() {
   return (
     <section className="glass pad stack">
       <SectionHead title={t("gd2.title")} help={t("gd2.lead") + " " + t("gd2.internetOnly")} />
-      {!gateways.length && !routers.isLoading ? <Note>{t("gd2.noGateway")} <a className="link" href="#/hub">{t("hub.title")}</a></Note> : (
+      {!gateways.length && !routers.isLoading ? <Note>{t("gd2.noGateway")} <a className="link" href="/app/hub">{t("hub.title")}</a></Note> : (
         <>
           {gateways.length > 1 && <label className="field"><span>{t("v.f.gateway")}</span><select className="input" value={gw?.device_id ?? ""} disabled={busy} onChange={(e) => { setId(e.target.value); try { sessionStorage.setItem("mm_selected_router", e.target.value); } catch { /* ignore */ } }}><option value="">{t("net.chooseRouter")}</option>{gateways.map((g) => <option key={g.device_id} value={g.device_id}>{g.hardware_name || g.device_id}</option>)}</select></label>}
           <label className="field"><span>{t("gd2.profile")}</span><select className="input" value={profile} disabled={busy || !profiles?.length} onChange={(e) => { setProfile(e.target.value); setPlan(null); setStatus(""); }}><option value="">{profiles === null ? t("gd2.selectGateway") : t("gd2.selectProfile")}</option>{(profiles ?? []).map((p) => <option key={p} value={p}>{p}</option>)}</select></label>
           {gw && profiles?.length === 0 && <div className="row">
-            <a className="pill" href={"#/network/new?router=" + encodeURIComponent(gw.device_id)}>{t("nw.title")}</a>
+            <a className="pill" href={"/app/network/new?router=" + encodeURIComponent(gw.device_id)}>{t("nw.title")}</a>
             <button className="pill" type="button" disabled={busy} onClick={() => setAttempt(n => n + 1)}>{t("c.retry")}</button>
           </div>}
           {!configReady && !saved.isLoading && <Note kind="warn">{t("c.loadFailed")}</Note>}

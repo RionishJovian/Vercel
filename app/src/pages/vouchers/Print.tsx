@@ -87,7 +87,7 @@ export function Print() {
     <div className="stack">
       <div className="pl-head">
         <div><h2>{t("pl.title")}</h2><p className="soft small">{t("pl.lead")}</p></div>
-        <a className="pill" href="#/vouchers">{t("pl.back")}</a>
+        <a className="pill" href="/app/vouchers">{t("pl.back")}</a>
       </div>
       {res.isLoading ? <Skeleton h={420} /> : res.error || !res.data ? (
         <div className="stack"><Note kind="bad">{t("c.loadFailed")}</Note><button className="pill" type="button" onClick={() => void res.mutate()}>{t("pl.reload")}</button></div>

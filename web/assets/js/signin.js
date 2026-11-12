@@ -7,12 +7,13 @@
   var title = document.getElementById("title");
   var swap = document.getElementById("swap");
 
-  /* Return path: only a console page (the part after /v2/#), with route characters only. The URL is always built as the
-     fixed "/v2/#" plus that route, so a crafted value cannot change the site, the path or the scheme. */
+  /* Return path: a console page such as /app/vouchers/create?x=1 (or an older /v2/#/vouchers/create link).
+     Only route characters are accepted, and the URL is always built as the fixed "/app/#/" plus that route; the console
+     turns it into /app/<route>. A crafted value therefore cannot change the site, the path or the scheme. */
   function nextUrl() {
     var raw = new URLSearchParams(location.search).get("next") || "";
-    var m = /^\/v2\/(?:#(\/[A-Za-z0-9\/_\-]*(?:\?[A-Za-z0-9=&_\-.]*)?))?$/.exec(raw);
-    return m && m[1] ? "/v2/#" + m[1] : "/v2/";
+    var m = /^\/(?:app\/|v2\/#\/)([a-z][a-z0-9\-]*(?:\/[A-Za-z0-9_\-]+)?(?:\?[A-Za-z0-9=&_\-.%]*)?)$/.exec(raw);
+    return m ? "/app/#/" + m[1] : "/app/home";
   }
 
   function say(kind, text, focus) {

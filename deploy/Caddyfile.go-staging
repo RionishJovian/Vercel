@@ -2,16 +2,30 @@ import security-headers.caddy
 
 :80 {
     import mm_security_headers
-    @html path / /*.html
-    header @html Cache-Control "no-cache"
+    # Pages and the console's index revalidate; fingerprinted assets do not need to.
+    @nocache not path /assets/* /app/assets/*
+    header @nocache Cache-Control "no-cache"
     encode gzip
     root * /srv
-    # Old bookmarks to the retired console land on the React app at /v2/.
+
+    # Clean public URLs. Old .html links and bookmarks redirect with their query string kept.
+    @signinOld path /signin.html
+    redir @signinOld /signin{?query} 301
+    @pricingOld path /pricing.html
+    redir @pricingOld /pricing{?query} 301
+    rewrite /signin /signin.html
+    rewrite /pricing /pricing.html
+
+    # The console lives at /app/<page>. Older console URLs move there: /v2/ (and /v2/#/page bookmarks — the
+    # browser keeps the #… across the redirect and the console turns it into /app/page), /v2/<file>, and /app.html.
+    @v2root path /v2 /v2/ /v2/index.html
+    redir @v2root /app/{?query} 301
+    @v2rest path_regexp v2rest ^/v2/(.+)$
+    redir @v2rest /app/{re.v2rest.1}{?query} 301
     @oldapp path /app.html
-    redir @oldapp /v2/ 302
-    # Serve the React app's index for the directory URL instead of the landing fallback.
-    @v2root path /v2 /v2/
-    rewrite @v2root /v2/index.html
+    redir @oldapp /app/home{?query} 302
+    redir /app /app/ 301
+
     handle /api/* {
         reverse_proxy api:8080
     }
@@ -20,6 +34,15 @@ import security-headers.caddy
     }
     handle /ready {
         reverse_proxy api:8080
+    }
+    # Hashed console files are served as they are, or 404 (never the page), so a stale chunk fails plainly.
+    handle /app/assets/* {
+        file_server
+    }
+    # Console pages: a real file when there is one, otherwise the app's index for every page path.
+    handle /app/* {
+        try_files {path} /app/index.html
+        file_server
     }
     handle {
         try_files {path} {path}/index.html /index.html

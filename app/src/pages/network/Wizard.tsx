@@ -78,7 +78,7 @@ export function Wizard({ router, canEdit, reason }: { router?: RouterRow; canEdi
       {offline && (
         <div className="stack">
           <Note kind="bad">{offline}</Note>
-          <div className="row" style={{ justifyContent: "flex-start" }}><a className="pill on" href="#/hub">{t("hub.title")}</a>{router && load.k === "error" && <button className="pill" type="button" onClick={() => setRetry((n) => n + 1)}>{t("net.refresh")}</button>}</div>
+          <div className="row" style={{ justifyContent: "flex-start" }}><a className="pill on" href="/app/hub">{t("hub.title")}</a>{router && load.k === "error" && <button className="pill" type="button" onClick={() => setRetry((n) => n + 1)}>{t("net.refresh")}</button>}</div>
         </div>
       )}
       <fieldset className="glass pad stack fs" disabled={applying || !!offline}>

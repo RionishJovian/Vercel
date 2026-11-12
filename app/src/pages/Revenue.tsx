@@ -26,7 +26,7 @@ export function Revenue({ me }: { me: Me }) {
   const gateways = asArray<NonNullable<VoucherReport["gateways"]>[number]>(r.gateways);
   return (
     <>
-      <a className="backlink" href="#/home"><Icon name="back" />{t("rv.back")}</a>
+      <a className="backlink" href="/app/home"><Icon name="back" />{t("rv.back")}</a>
       <PageHead title={t("rv.title")} help={t("rv.help")} />
 
       <section className="glass pad ledger" aria-labelledby="rv-used">

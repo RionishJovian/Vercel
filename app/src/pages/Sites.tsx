@@ -59,7 +59,7 @@ export function Sites({ me }: { me: Me }) {
   const [selected, setSelected] = useState(() => { try { return localStorage.getItem(SELECTED) ?? ""; } catch { return ""; } });
   const [err, setErr] = useState("");
   const [confirmDel, setConfirmDel] = useState("");
-  const back = <BackLink href="#/more">{t("tab.more")}</BackLink>;
+  const back = <BackLink href="/app/more">{t("tab.more")}</BackLink>;
   if (sitesRes.isLoading) return <>{back}<Skeleton h={300} /></>;
   if (sitesRes.error) return <>{back}<Note kind="bad">{t("c.loadFailed")}</Note></>;
   const sites = asArray<Site>(sitesRes.data?.sites), conns = asArray<Conn>(connRes.data?.connections);
@@ -115,7 +115,7 @@ export function Sites({ me }: { me: Me }) {
         <section className="glass pad stack" aria-label={t("site.ready")}>
           <h2>{t("site.ready")}: {sel.name}</h2>
           <ul className="legend">{checks.map(([ok, key]) => <li key={key}><i className={ok ? "s-available" : "s-expired"} /><span>{t(key)}</span><b className={ok ? "tone-ok" : "mute"}>{ok ? t("site.ok") : t("site.missing")}</b></li>)}</ul>
-          <a className="btn quiet" href="#/hub">{t("hub.title")}</a>
+          <a className="btn quiet" href="/app/hub">{t("hub.title")}</a>
         </section>
       )}
     </>

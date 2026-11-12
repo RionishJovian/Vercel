@@ -42,7 +42,7 @@ export function ProfilePage() {
   const [msg, setMsg] = useState<Record<string, { bad?: boolean; text: string }>>({});
   const [bump, setBump] = useState(0);
   const say = (k: string, text: string, bad = false) => setMsg((m) => ({ ...m, [k]: { text, bad } }));
-  const back = <BackLink href="#/more">{t("tab.more")}</BackLink>;
+  const back = <BackLink href="/app/more">{t("tab.more")}</BackLink>;
   if (prof.isLoading) return <>{back}<Skeleton h={300} /></>;
   if (prof.error || !prof.data) return <>{back}<Note kind="bad">{t("c.loadFailed")}</Note></>;
   const p = prof.data, T = tg.data ?? {};

@@ -29,7 +29,7 @@ export function usePaged<T>(path: string, initial: Filters, limit = 50) {
 
 export function Page({ title, lead, children }: { title: string; lead?: string; children: ReactNode }) {
   const { t } = useI18n();
-  return <><BackLink href="#/more">{t("tab.more")}</BackLink><PageHead title={title} help={lead} />{children}</>;
+  return <><BackLink href="/app/more">{t("tab.more")}</BackLink><PageHead title={title} help={lead} />{children}</>;
 }
 
 export function FilterBar({ children, onApply, onReset }: { children: ReactNode; onApply: () => void; onReset: () => void }) {

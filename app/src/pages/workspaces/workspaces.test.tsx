@@ -28,7 +28,7 @@ describe("Quick setup", () => {
     expect(await screen.findByText("0 of 5 checked steps done")).toBeTruthy();
     expect(within(step("Create your site")).getByText("To do")).toBeTruthy();
     expect(within(step("Connect Magic Hub")).getByText("Waiting")).toBeTruthy();
-    expect(within(step("Create your site")).getByRole("link", { name: "Open Sites" }).getAttribute("href")).toBe("#/sites");
+    expect(within(step("Create your site")).getByRole("link", { name: "Open Sites" }).getAttribute("href")).toBe("/app/sites");
   });
 
   it("never ticks steps the cloud cannot observe", async () => {

@@ -46,7 +46,7 @@ describe("network page titles", () => {
   it("New network setup keeps the section pills, with its own lit", async () => {
     const { container } = network("new");
     await screen.findByRole("heading", { level: 1, name: "New network setup" });
-    expect(container.querySelector('a[href="#/network/new"]')?.getAttribute("aria-current")).toBe("page");
-    expect(container.querySelector('a[href="#/network/wan"]')).toBeTruthy();
+    expect(container.querySelector('a[href="/app/network/new"]')?.getAttribute("aria-current")).toBe("page");
+    expect(container.querySelector('a[href="/app/network/wan"]')).toBeTruthy();
   });
 });

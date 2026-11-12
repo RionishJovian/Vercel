@@ -73,7 +73,7 @@ export function Broadband({ routerId, routerName, canEdit, onBusyChange }: { rou
   {canEdit && (plansUnavailable || plansLoaded && !plans.length) && <Note kind="warn">
    <p>{t(managementRequired ? "bb.connectFirst" : plansUnavailable ? "bb.plansFailed" : "bb.noPlans")}</p>
    <div className="row" style={{ justifyContent: "flex-start", flexWrap: "wrap" }}>
-    {managementRequired && <a className="pill" href="#/hub">{t("hub.connect")}</a>}
+    {managementRequired && <a className="pill" href="/app/hub">{t("hub.connect")}</a>}
     <button className="pill" type="button" disabled={busy || inventoryChecking} onClick={() => void recheckPlans()}>{t("bb.recheck")}</button>
    </div>
   </Note>}

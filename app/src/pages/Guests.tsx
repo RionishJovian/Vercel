@@ -93,7 +93,7 @@ export function Guests({ me }: { me: Me }) {
   useEffect(() => { if (routers.data) void reload(); }, [routers.data, reload]);
   useVisibleInterval(() => { if (!reading && !busy && !refreshing.current) { refreshing.current = true; void reload(true).finally(() => { refreshing.current = false; }); } }, GUESTS_REFRESH_MS, !!routers.data);
 
-  if (routers.isLoading) return <><BackLink href="#/more">{t("tab.more")}</BackLink><Skeleton h={300} /></>;
+  if (routers.isLoading) return <><BackLink href="/app/more">{t("tab.more")}</BackLink><Skeleton h={300} /></>;
   const siteIds = [...new Set(gateways.map((g) => g.site_id || "unassigned"))];
   const scoped = sources.filter((s) => (!site || (s.gateway.site_id || "unassigned") === site) && (!device || s.gateway.device_id === device));
   const available = scoped.filter((s): s is Readable => s.ok);
@@ -170,7 +170,7 @@ export function Guests({ me }: { me: Me }) {
 
   return (
     <>
-      <BackLink href="#/more">{t("tab.more")}</BackLink>
+      <BackLink href="/app/more">{t("tab.more")}</BackLink>
       <PageHead title={t("gu.title")} help={t("gu.lead")} />
       <div className="glass pad stack">
         {gateways.length > 1 ? (

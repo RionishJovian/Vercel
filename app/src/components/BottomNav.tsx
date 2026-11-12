@@ -15,7 +15,7 @@ export function BottomNav({ active }: { active: Tab }) {
     <nav className="bnav" aria-label={t("nav.main")} style={{ ["--bnav-count" as string]: TABS.length, ["--bnav-i" as string]: Math.max(0, index) }}>
       {index >= 0 ? <span className="bnav-bubble" aria-hidden="true" /> : null}
       {TABS.map((x) => (
-        <a key={x.key} className="bnav-tab" href={"#/" + x.key} aria-current={x.key === active ? "page" : undefined}>
+        <a key={x.key} className="bnav-tab" href={"/app/" + x.key} aria-current={x.key === active ? "page" : undefined}>
           <span className="bnav-ico"><Icon name={x.icon} /></span>
           <span className="bnav-label">{t(x.label)}</span>
         </a>

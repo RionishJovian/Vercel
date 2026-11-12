@@ -27,9 +27,9 @@ export function Routers({ sub, params, me }: { sub: string; params: URLSearchPar
   if (error) return <Note kind="bad">{t("c.loadFailed")}</Note>;
   const list = asArray<RouterRow>(data?.routers);
   const onMap = sub === "map";
-  if (sub && !onMap) return <><BackLink href="#/router">{t("r.ws.list")}</BackLink><Detail id={sub} router={list.find((d) => d.device_id === sub)} canReview={["OWNER", "DEVELOPER"].includes(me.user?.user_role ?? "")} /></>;
+  if (sub && !onMap) return <><BackLink href="/app/router">{t("r.ws.list")}</BackLink><Detail id={sub} router={list.find((d) => d.device_id === sub)} canReview={["OWNER", "DEVELOPER"].includes(me.user?.user_role ?? "")} /></>;
 
-  const tabs = <WorkspaceTabs items={[{ href: "#/router", label: t("r.ws.list"), current: !onMap }, { href: "#/router/map", label: t("r.ws.map"), current: onMap }, { href: "#/network", label: t("title.network"), current: false }]} />;
+  const tabs = <WorkspaceTabs items={[{ href: "/app/router", label: t("r.ws.list"), current: !onMap }, { href: "/app/router/map", label: t("r.ws.map"), current: onMap }, { href: "/app/network", label: t("title.network"), current: false }]} />;
   if (onMap) {
     const gateways = list.filter((d) => d.deployment_layer === "MAIN_GATEWAY");
     return <><h1>{t("r.mapTitle")}</h1>{tabs}{gateways.length ? <NetworkMap gateways={gateways} selected={params.get("id")} hub={hub} /> : <Note kind="warn">{t("v.noGateway")}</Note>}</>;
@@ -41,7 +41,7 @@ export function Routers({ sub, params, me }: { sub: string; params: URLSearchPar
       {!list.length && <Note>{t("r.empty")}</Note>}
       <div className="router-grid">
         {list.map((d) => (
-          <a className="glass pad router-card" key={d.device_id} href={"#/router/" + encodeURIComponent(d.device_id)}>
+          <a className="glass pad router-card" key={d.device_id} href={"/app/router/" + encodeURIComponent(d.device_id)}>
             <div className={"rc-pic" + (hub[d.device_id]?.state === "up" ? " on" : "")}><img src={deviceImage(d)} alt="" width={64} height={64} loading="lazy" /><i className="rc-led" aria-hidden="true" /></div>
             <div className="rc-body">
               <div className="row"><h2>{d.hardware_name || d.device_id}</h2><HubChip status={hub[d.device_id]} /></div>
@@ -55,9 +55,9 @@ export function Routers({ sub, params, me }: { sub: string; params: URLSearchPar
         ))}
       </div>
       <section className="glass pad stack"><SectionHead title={t("r.tools")} help={t("r.toolsHelp")} /><div className="scroll-x">
-        <a className="pill" href="#/hub">{t("hub.title")}</a>
-        {list.some((d) => d.deployment_layer !== "MAIN_GATEWAY") && <a className="pill" href="#/managed-devices">{t("dm.title")}</a>}
-        <a className="pill" href="#/topology">{t("tp.title")}</a>
+        <a className="pill" href="/app/hub">{t("hub.title")}</a>
+        {list.some((d) => d.deployment_layer !== "MAIN_GATEWAY") && <a className="pill" href="/app/managed-devices">{t("dm.title")}</a>}
+        <a className="pill" href="/app/topology">{t("tp.title")}</a>
       </div></section>
     </>
   );

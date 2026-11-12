@@ -28,7 +28,7 @@ describe("Voucher print layouts", () => {
     open();
     await screen.findByLabelText("Business name");
     expect(screen.getByText(/do not change the guest portal or the RouterOS Hotspot/)).toBeTruthy();
-    expect((screen.getByRole("link", { name: "Back to vouchers" }) as HTMLAnchorElement).getAttribute("href")).toBe("#/vouchers");
+    expect((screen.getByRole("link", { name: "Back to vouchers" }) as HTMLAnchorElement).getAttribute("href")).toBe("/app/vouchers");
   });
 
   it("updates the preview as the form changes", async () => {

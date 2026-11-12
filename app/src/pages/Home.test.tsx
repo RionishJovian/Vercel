@@ -122,6 +122,6 @@ describe("Home", () => {
     incidents = { incidents: [{ id: "i1", severity: "critical", subject_label: "Gate", detail: "Router stopped reporting", opened_at: new Date().toISOString() }] };
     open();
     expect(await screen.findByText("Router stopped reporting")).toBeTruthy();
-    expect(screen.getByRole("link", { name: /All alerts/ }).getAttribute("href")).toBe("#/incidents");
+    expect(screen.getByRole("link", { name: /All alerts/ }).getAttribute("href")).toBe("/app/incidents");
   });
 });

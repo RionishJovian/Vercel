@@ -145,8 +145,8 @@ export function DeviceControls({ node, ports, ctx }: { node: TNode; ports: PortI
         {node.upstream ? <p className="soft small">{t("dc.upstream")}</p> : mac && (
           <>
             <div className="row" style={{ justifyContent: "flex-start", flexWrap: "wrap" }}>
-              <a className="pill" href={"#/network/existing?" + reserve.toString()}>{t("dc.reserve")}</a>
-              {node.ip && <a className="pill" href={"#/network/existing?" + limit.toString()}>{t("dc.limit")}</a>}
+              <a className="pill" href={"/app/network/existing?" + reserve.toString()}>{t("dc.reserve")}</a>
+              {node.ip && <a className="pill" href={"/app/network/existing?" + limit.toString()}>{t("dc.limit")}</a>}
             </div>
             {(hotspot ? ctx.guestLocked : ctx.locked) && <Note>{t("dc.locked")}</Note>}
             {node.session && <GuestAction ctx={ctx} path="disconnect" body={{ id: node.session.id, mac: node.session.mac, address: node.session.address, user: node.session.user }} label={t("dc.guest")} confirm={`${t("dc.guestConfirm")} ${node.session.user}`} done={t("dc.guestDone")} danger />}

@@ -7,8 +7,8 @@ RUN npm run build
 
 FROM caddy:2.10-alpine
 COPY web /srv
-# The React app is the console, served at /v2/.
-COPY --from=app /app/dist /srv/v2
+# The React app is the console, served at /app/ (old /v2/ URLs redirect there; see the Caddyfile).
+COPY --from=app /app/dist /srv/app
 COPY deploy/Caddyfile.go-staging /etc/caddy/Caddyfile
 COPY deploy/security-headers.caddy /etc/caddy/security-headers.caddy
 HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=10 CMD wget --quiet --tries=1 --spider http://127.0.0.1/ || exit 1

@@ -3,11 +3,12 @@ import { api, ApiError } from "../lib/api";
 import { BrandMark, Wordmark } from "../components/Brand";
 import { Toggles } from "../components/Shell";
 import { useI18n } from "../i18n";
+import { hashToPath } from "../lib/route";
 
 /**
- * The console's own sign-in, shown in place when a signed-out person opens any /v2/ page.
- * Because it renders where they were, the page they asked for (the hash route) is kept and opens after sign-in.
- * Matches the public /signin.html: same fields, autofill hints, show-password and Caps Lock help.
+ * The console's own sign-in, shown in place when a signed-out person opens any /app/ page.
+ * Because it renders where they were, the page they asked for is kept and opens after sign-in.
+ * Matches the public /signin page: same fields, autofill hints, show-password and Caps Lock help.
  */
 export function SignIn({ notice, onDone }: { notice?: string; onDone: () => void }) {
   const { t } = useI18n();
@@ -29,7 +30,7 @@ export function SignIn({ notice, onDone }: { notice?: string; onDone: () => void
   }
   const capsCheck = (e: KeyboardEvent<HTMLInputElement>) => setCaps(e.getModifierState?.("CapsLock") ?? false);
   // Keep the requested console page so creating an account comes back to it.
-  const next = encodeURIComponent("/v2/" + location.hash);
+  const next = encodeURIComponent(/^#\//.test(location.hash) ? hashToPath(location.hash) : location.pathname + location.search);
   return (
     <div className="signin">
       <div className="signin-tools"><Toggles /></div>
@@ -51,7 +52,7 @@ export function SignIn({ notice, onDone }: { notice?: string; onDone: () => void
         </div>
         {error ? <p className="note bad" role="alert">{error}</p> : null}
         <button className="btn" type="submit" disabled={busy} aria-busy={busy || undefined}>{busy ? <><span className="spin" aria-hidden="true" />{t("s.working")}</> : t("s.submit")}</button>
-        <p className="signin-create"><a className="link" href={`/signin.html?register=1&next=${next}`}>{t("s.create")}</a></p>
+        <p className="signin-create"><a className="link" href={`/signin?register=1&next=${next}`}>{t("s.create")}</a></p>
         <p className="small soft signin-help">{t("s.forgot")} <a className="link" href="https://t.me/nish2769" target="_blank" rel="noopener noreferrer">Telegram</a></p>
       </form>
     </div>
