@@ -4,7 +4,7 @@ import { fetcher } from "../../lib/api";
 import { asArray, type Me } from "../../lib/types";
 import { useI18n } from "../../i18n";
 import { Ago, IconTile, LinkRow, Metric, Recovery, StatePill } from "../../components/ui";
-import { Skeleton } from "../../components/Skeleton";
+import { Bar, Loading, SkList, SkRows } from "../../components/Skeleton";
 import { HomePorts } from "../routers/HomePorts";
 import { stateOf, type Conn, type Site } from "../../lib/siteState";
 import { incidentTone, useFleetSummary, useIncidents, useRouters } from "./data";
@@ -36,7 +36,7 @@ export function NetworkHub({ routerId }: { me: Me; routerId?: string | null }) {
       </header>
       <section className="glass pad stack" aria-labelledby="nh-routers">
         <div className="row"><h2 id="nh-routers">{t("nh.routers")}</h2><a className="link small" href="#/hub">{t("hub.title")}</a></div>
-        {routers.isLoading ? <Skeleton h={80} /> : routers.error ? <Recovery title={t("nh.routersUnavailable")} onRetry={() => void routers.mutate()} /> : !list?.length ? (
+        {routers.isLoading ? <Loading><SkRows n={1} pill /></Loading> : routers.error ? <Recovery title={t("nh.routersUnavailable")} onRetry={() => void routers.mutate()} /> : !list?.length ? (
           <Recovery title={t("nh.noRouters")} detail={t("nh.noRoutersHelp")} action={{ href: "#/setup", label: t("su.continue") }} />
         ) : (
           <div className="linklist">
@@ -50,6 +50,7 @@ export function NetworkHub({ routerId }: { me: Me; routerId?: string | null }) {
         )}
         <p className="soft small">{t("nh.evidenceNote")}</p>
       </section>
+      {routers.isLoading && <Loading><section className="glass pad stack"><Bar w="25%" size="1.15rem" lh={1.15} /><div className="skeleton" style={{ height: 180 }} /></section></Loading>}
       {list && list.length > 0 && (
         <section className="glass pad stack" aria-labelledby="nh-ports">
           <h2 id="nh-ports">{t("r.ports")}</h2>
@@ -75,7 +76,7 @@ export function NetworkHub({ routerId }: { me: Me; routerId?: string | null }) {
       </section>
       <section className="stack" aria-label={t("home.map")}>
         <h2 className="group-title">{t("home.map")}</h2>
-        <Suspense fallback={<Skeleton h={280} />}>
+        <Suspense fallback={<Loading><div className="site-map skeleton" /></Loading>}>
           <SiteMap home sites={sites} states={Object.fromEntries(sites.map((s) => [s.site_id, stateOf(s, connList)]))} selected={site} onSelect={(id) => setSite(id === site ? "" : id)} />
         </Suspense>
       </section>
@@ -108,7 +109,7 @@ export function Activity() {
       </section>
       <section className="glass pad stack" aria-labelledby="ac-alerts">
         <div className="row"><h2 id="ac-alerts">{t("nav.alerts")}</h2><a className="link small" href="#/incidents">{t("hm.open")}</a></div>
-        {incidents.isLoading ? <Skeleton h={80} /> : incidents.error ? <Recovery title={t("ac.alertsUnavailable")} onRetry={() => void incidents.mutate()} /> : open.length === 0 ? (
+        {incidents.isLoading ? <Loading><SkRows n={1} /></Loading> : incidents.error ? <Recovery title={t("ac.alertsUnavailable")} onRetry={() => void incidents.mutate()} /> : open.length === 0 ? (
           <p className="note ok small" role="status">{t("ac.noAlerts")}</p>
         ) : (
           <div className="linklist">
@@ -125,7 +126,7 @@ export function Activity() {
       </section>
       <section className="glass pad stack" aria-labelledby="ac-events">
         <div className="row"><h2 id="ac-events">{t("ac.events")}</h2><a className="link small" href="#/events">{t("hm.open")}</a></div>
-        {events.isLoading ? <Skeleton h={80} /> : events.error ? <p className="note warn small">{t("ac.eventsUnavailable")}</p> : evs.length === 0 ? <p className="soft small">{t("ac.noEvents")}</p> : (
+        {events.isLoading ? <Loading><SkList n={3} /></Loading> : events.error ? <p className="note warn small">{t("ac.eventsUnavailable")}</p> : evs.length === 0 ? <p className="soft small">{t("ac.noEvents")}</p> : (
           <ul className="list-table">
             {evs.map((e, i) => <li key={i} className="sub-row"><span className="small" style={{ overflowWrap: "anywhere" }}>{e.message}</span><span className="chip">{e.severity || "info"}</span><span className="meta"><span>{e.program || t("ac.router")}</span><Ago at={e.received_at} /></span></li>)}
           </ul>
@@ -173,7 +174,7 @@ export function Approvals() {
       </section>
       <section className="glass pad stack" aria-labelledby="ap-recent">
         <div className="row"><h2 id="ap-recent">{t("cfg.recent")}</h2>{first ? <span className="soft small">{first.hardware_name || first.device_id}</span> : null}</div>
-        {!first ? <p className="soft small">{t("nh.noRoutersHelp")}</p> : changes.isLoading ? <Skeleton h={80} /> : changes.error ? <p className="note warn small">{t("cfg.recentUnavailable")}</p> : list.length === 0 ? <p className="soft small">{t("cfg.noChanges")}</p> : (
+        {!first ? <p className="soft small">{t("nh.noRoutersHelp")}</p> : changes.isLoading ? <Loading><SkList n={3} /></Loading> : changes.error ? <p className="note warn small">{t("cfg.recentUnavailable")}</p> : list.length === 0 ? <p className="soft small">{t("cfg.noChanges")}</p> : (
           <ul className="list-table">
             {list.map((c, i) => <li key={i} className="sub-row"><b>{c.action || t("cfg.change")}</b><span className="chip">{c.user_role || "—"}</span><span className="meta">{c.reason ? <span>{c.reason}</span> : null}<Ago at={c.timestamp} /></span></li>)}
           </ul>

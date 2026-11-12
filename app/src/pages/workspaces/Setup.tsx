@@ -5,7 +5,7 @@ import { connectionIsFresh, type Conn, type Site } from "../../lib/siteState";
 import { useI18n } from "../../i18n";
 import { Icon } from "../../components/icons";
 import { Ago, StatePill, type Tone } from "../../components/ui";
-import { Skeleton } from "../../components/Skeleton";
+import { Bar, Loading, SkSteps } from "../../components/Skeleton";
 import { useFleetSummary, useRouters, useVoucherReport } from "./data";
 
 type StepState = "done" | "todo" | "manual" | "blocked";
@@ -62,7 +62,7 @@ export function Setup() {
         <h1>{t("su.title")}</h1>
         <p className="ws-lead">{t("su.lead")}</p>
       </header>
-      {p.loading ? <Skeleton h={360} /> : (
+      {p.loading ? <Loading className="sk-page"><div className="glass pad stack"><Bar w="45%" /><span className="progress" /><div className="dude-tip"><span className="skeleton" style={{ width: 40, height: 40, borderRadius: "50%", flex: "none" }} /><span style={{ flex: 1 }}><Bar w="95%" size=".875rem" /><Bar w="90%" size=".875rem" /><Bar w="60%" size=".875rem" /></span></div></div><SkSteps n={7} /></Loading> : (
         <>
           <section className="glass pad stack">
             <div className="row"><b>{p.complete ? t("su.ready") : t("su.progress").replace("{done}", String(p.done)).replace("{total}", String(p.total))}</b>{p.complete ? <StatePill tone="ok">{t("su.siteReady")}</StatePill> : null}</div>

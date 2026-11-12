@@ -485,3 +485,19 @@ details.adv summary { cursor: pointer; min-height: 36px; display: flex; align-it
 .setup-card { color: inherit; border-color: color-mix(in srgb, var(--jade) 40%, transparent); }
 .setup-card:hover { border-color: var(--jade); }
 .svc-card h2 .icontile { width: 34px; height: 34px; }
+
+/* ── Layout-matched skeletons (2026-11-12) ───────────────────────────────── */
+.sk-region, .sk-region > .sk-shapes { display: block; min-width: 0; }
+.sk-page > .sk-shapes { display: flex; flex-direction: column; gap: 16px; }
+.sk-line { display: block; padding: .22em 0; flex: none; height: var(--sk-h); }
+:lang(my) .sk-line { height: calc(var(--sk-h) * var(--sk-tall)); }
+.sk-line > .skeleton { display: block; height: 100%; border-radius: 6px; }
+.sk-chip { width: 84px; border: 0; }
+.sk-btn { flex: 1 1 auto; min-width: 120px; border: 0; box-shadow: none; }
+.icontile.skeleton, .step-n.skeleton { border: 0; }
+.sk-cardhead { display: flex; align-items: center; gap: 10px; min-height: 34px; }
+.sk-cardhead .icontile { width: 34px; height: 34px; }
+.sk-cardhead .sk-line { flex: 1; }
+.sk-only-wide { display: none; }
+@media (min-width: 960px) { .sk-only-wide { display: block; } }
+.progress:empty { display: block; }

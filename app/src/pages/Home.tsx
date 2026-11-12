@@ -5,7 +5,7 @@ import { asArray, mmk, num, type Me } from "../lib/types";
 import { useI18n } from "../i18n";
 import { Ago, IconTile, Metric, Recovery, Segmented, StatePill } from "../components/ui";
 import { Icon } from "../components/icons";
-import { Skeleton } from "../components/Skeleton";
+import { Bar, Loading, SkMetrics } from "../components/Skeleton";
 import type { Site } from "../lib/siteState";
 import { incidentTone, useBroadbandReport, useFleetSummary, useIncidents, usePppoe, useRouters, useVoucherReport } from "./workspaces/data";
 import { useSetupProgress } from "./workspaces/Setup";
@@ -40,7 +40,9 @@ export function Home({ me, routerId }: { me: Me; routerId?: string | null }) {
         </div>
       </header>
 
-      {!setup.loading && !setup.complete && (
+      {setup.loading ? (
+        <Loading><div className="glass pad stack setup-card"><div className="row"><Bar w="55%" /><Bar w="12%" size=".875rem" /></div><span className="progress" /><Bar w="50%" size=".875rem" /></div></Loading>
+      ) : !setup.complete && (
         <a className="glass pad stack setup-card" href="#/setup">
           <div className="row"><b>{t("su.homeTitle")}</b><span className="soft small num">{setup.done}/{setup.total}</span></div>
           <div className="progress" role="progressbar" aria-valuemin={0} aria-valuemax={setup.total} aria-valuenow={setup.done} aria-label={t("su.title")}><i style={{ width: `${(setup.done / Math.max(1, setup.total)) * 100}%` }} /></div>
@@ -96,7 +98,7 @@ function HotspotCard() {
   return (
     <section className="glass pad svc-card" aria-labelledby="hm-hotspot">
       <header><h2 id="hm-hotspot"><IconTile name="wifi" />{t("nav.hotspot")}</h2><a className="link small" href="#/hotspot">{t("hm.open")}</a></header>
-      {report.isLoading ? <Skeleton h={120} /> : report.error ? (
+      {report.isLoading ? <Loading><SkMetrics n={4} /></Loading> : report.error ? (
         <Recovery title={t("hm.vouchersUnavailable")} detail={t("hm.vouchersUnavailableHelp")} onRetry={() => void report.mutate()} />
       ) : (
         <div className="metrics">
@@ -125,7 +127,7 @@ function PppoeCard({ gateways }: { gateways: ReturnType<typeof useRouters>["gate
       <header><h2 id="hm-pppoe"><IconTile name="isp" />{t("nav.isp")}</h2><a className="link small" href="#/isp">{t("hm.open")}</a></header>
       {noRouter ? (
         <Recovery title={t("isp.noGateway")} detail={t("isp.noGatewayHelp")} action={{ href: "#/setup", label: t("su.continue") }} />
-      ) : gateways === null || pppoe.isLoading ? <Skeleton h={120} /> : pppoe.error ? (
+      ) : gateways === null || pppoe.isLoading ? <Loading><SkMetrics n={4} /></Loading> : pppoe.error ? (
         <Recovery title={t("isp.unavailable")} onRetry={() => void pppoe.mutate()} />
       ) : (
         <>
@@ -152,7 +154,7 @@ function NetworkStrip() {
   const h = useFleetSummary();
   const sites = useSWR<{ sites?: Site[] }>("/sites", fetcher, { shouldRetryOnError: false });
   const siteCount = sites.data ? asArray<Site>(sites.data.sites).length : null;
-  if (h.fleet.isLoading) return <Skeleton h={64} />;
+  if (h.fleet.isLoading) return <Loading><SkMetrics n={4} cols="four" sub={false} /></Loading>;
   return (
     <div className="metrics four">
       <Metric label={t("nw.sites")} value={siteCount} />

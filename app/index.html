@@ -8,9 +8,25 @@
   <meta name="robots" content="noindex">
   <link rel="icon" type="image/png" sizes="64x64" href="/assets/images/mikromagic-favicon-green-v2-64.png?v=20260930-3">
   <script src="/theme-init.js"></script>
+  <style>
+    /* Painted before the app bundle arrives on slow connections; React replaces it. Same frame as the app shell. */
+    html, body { margin: 0; background: #f7f3e8; }
+    html[data-theme="night"], html[data-theme="night"] body { background: #04130e; }
+    .boot { min-height: 100dvh; padding: 0 16px; }
+    .boot-top { height: 64px; display: flex; align-items: center; gap: 10px; }
+    .boot-mark { width: 32px; height: 32px; border-radius: 10px; background: linear-gradient(135deg, #0e8a63, #053d2c); }
+    .boot-bar { height: 14px; border-radius: 7px; background: rgba(13, 52, 38, .09); }
+    html[data-theme="night"] .boot-bar, html[data-theme="night"] .boot-card { background: rgba(217, 247, 234, .07); }
+    .boot-card { height: 180px; border-radius: 20px; margin-top: 16px; background: rgba(13, 52, 38, .05); }
+    .boot-tabs { position: fixed; left: 0; right: 0; bottom: 0; height: 68px; border-top: 1px solid rgba(13, 52, 38, .11); }
+    /* System font on purpose: a web font here would compete with the app bundle for bandwidth. */
+    .boot, .boot-sr { font-family: system-ui, sans-serif; }
+    .boot-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+    @media (min-width: 900px) { .boot { padding-left: 280px; } .boot-tabs { display: none; } }
+  </style>
 </head>
 <body>
-  <div id="root"></div>
+  <div id="root"><div class="boot" role="status" aria-busy="true"><span class="boot-sr">Loading MegaMagic · MegaMagic ဖွင့်နေသည်</span><div class="boot-top" aria-hidden="true"><span class="boot-mark"></span><span class="boot-bar" style="width:110px"></span></div><div aria-hidden="true"><div class="boot-bar" style="width:45%;height:28px;margin-top:8px"></div><div class="boot-card"></div><div class="boot-card"></div></div><div class="boot-tabs" aria-hidden="true"></div></div></div>
   <noscript>MegaMagic needs JavaScript.</noscript>
   <script type="module" src="/src/main.tsx"></script>
 </body>

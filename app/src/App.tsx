@@ -44,7 +44,7 @@ const Customers = lazy(() => import("./pages/workspaces/Services").then(m => ({ 
 const NetworkHub = lazy(() => import("./pages/workspaces/Operations").then(m => ({ default: m.NetworkHub })));
 const Activity = lazy(() => import("./pages/workspaces/Operations").then(m => ({ default: m.Activity })));
 const Approvals = lazy(() => import("./pages/workspaces/Operations").then(m => ({ default: m.Approvals })));
-import { Skeleton } from "./components/Skeleton";
+import { PageSkeleton } from "./components/Skeleton";
 
 const PAGE_TITLES: Record<string, string> = {
   home: "title.home", router: "title.router", vouchers: "title.vouchers", jellyfin: "title.jellyfin", more: "title.more", revenue: "title.revenue", store: "title.store",
@@ -54,6 +54,9 @@ const PAGE_TITLES: Record<string, string> = {
   setup: "su.title", hotspot: "hs.title", isp: "isp.title", customers: "cu.title", net: "nav.network", activity: "ac.title", approvals: "cfg.title",
 };
 const titleKey = (name: string, sub: string) => (name === "router" && sub === "map" ? "r.mapTitle" : PAGE_TITLES[name]);
+
+/** The loading layout that matches each screen, so content replaces it without jumping. */
+const skeletonFor = (name: string) => (name === "home" ? "home" : name === "setup" ? "steps" : ["hotspot", "isp", "customers", "net", "activity", "approvals"].includes(name) ? "hub" : "page");
 
 type Auth = { state: "loading" } | { state: "out"; notice?: string } | { state: "in"; me: Me };
 
@@ -71,7 +74,7 @@ export function App() {
   const pageTitle = key ? t(key) : "";
   useEffect(() => { document.title = pageTitle ? pageTitle + " · MegaMagic" : "MegaMagic"; }, [pageTitle]);
 
-  if (auth.state === "loading") return <div className="shell"><Skeleton h={240} /></div>;
+  if (auth.state === "loading") return <Shell route={route.name}><PageSkeleton variant={skeletonFor(route.name)} /></Shell>;
   if (auth.state === "out") return <SignIn notice={auth.notice} onDone={() => { void mutate(() => true, undefined, { revalidate: false }); void boot(); }} />;
 
   const { me } = auth;
@@ -119,5 +122,5 @@ export function App() {
     case "home": page = <Home key={route.params.get("router")} me={me} routerId={route.params.get("router")} />; break;
     default: location.replace("#/home"); page = null;
   }
-  return <Shell route={route.name} business={me.business?.company_name}><PageBoundary key={route.name + "/" + route.sub}><Suspense fallback={<Skeleton h={240} />}>{page}</Suspense></PageBoundary></Shell>;
+  return <Shell route={route.name} business={me.business?.company_name}><PageBoundary key={route.name + "/" + route.sub}><Suspense fallback={<PageSkeleton variant={skeletonFor(route.name)} />}>{page}</Suspense></PageBoundary></Shell>;
 }

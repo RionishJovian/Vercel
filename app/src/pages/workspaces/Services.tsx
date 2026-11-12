@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { asArray, mmk, num, type Me } from "../../lib/types";
 import { useI18n } from "../../i18n";
 import { Ago, IconTile, LinkRow, Metric, Recovery, Segmented, StatePill } from "../../components/ui";
-import { Skeleton } from "../../components/Skeleton";
+import { Loading, SkList, SkMetrics } from "../../components/Skeleton";
 import { bytes, duration, subscriberState, useBroadbandReport, useFleetSummary, usePppoe, useRouters, useVoucherReport } from "./data";
 
 const STAFF = ["OWNER", "ADMIN", "DEVELOPER"];
@@ -36,7 +36,7 @@ export function Hotspot() {
       </section>
       <section className="glass pad stack" aria-labelledby="hs-usage">
         <h2 id="hs-usage">{t("hs.usage")}</h2>
-        {report.isLoading ? <Skeleton h={100} /> : report.error ? <Recovery title={t("hm.vouchersUnavailable")} onRetry={() => void report.mutate()} /> : (
+        {report.isLoading ? <Loading><SkMetrics n={4} cols="four" sub={false} /></Loading> : report.error ? <Recovery title={t("hm.vouchersUnavailable")} onRetry={() => void report.mutate()} /> : (
           <div className="metrics four">
             <Metric label={t("hm.available")} value={rep ? mmk(rep.available_count) : null} />
             <Metric label={t("hs.started7")} value={rep && num(rep.activation_last7) !== null ? mmk(rep.activation_last7) : null} />
@@ -78,7 +78,7 @@ export function Isp({ me }: { me: Me }) {
         <div className="row"><h2 id="isp-overview">{t("isp.overview")}</h2>{s?.newestObservation ? <Ago at={s.newestObservation} prefix={t("ws.reported")} /> : null}</div>
         {routers.gateways && routers.gateways.length === 0 ? (
           <Recovery title={t("isp.noGateway")} detail={t("isp.noGatewayHelp")} action={{ href: "#/setup", label: t("su.continue") }} />
-        ) : pppoe.isLoading || routers.isLoading ? <Skeleton h={120} /> : pppoe.error ? <Recovery title={t("isp.unavailable")} onRetry={() => void pppoe.mutate()} /> : (
+        ) : pppoe.isLoading || routers.isLoading ? <Loading><SkMetrics n={4} cols="four" /></Loading> : pppoe.error ? <Recovery title={t("isp.unavailable")} onRetry={() => void pppoe.mutate()} /> : (
           <>
             <div className="metrics four">
               <Metric label={t("isp.subscribers")} value={s ? mmk(s.total) : null} />
@@ -93,7 +93,7 @@ export function Isp({ me }: { me: Me }) {
       </section>
       <section className="glass pad stack" aria-labelledby="isp-pay">
         <h2 id="isp-pay">{t("isp.payments")}</h2>
-        {report.isLoading ? <Skeleton h={80} /> : report.error ? <p className="note warn small">{t("isp.paymentsUnavailable")}</p> : (
+        {report.isLoading ? <Loading><SkMetrics n={3} cols="three" /></Loading> : report.error ? <p className="note warn small">{t("isp.paymentsUnavailable")}</p> : (
           <div className="metrics three">
             <Metric label={t("isp.paidToday")} value={report.data ? `${mmk(report.data.today_mmk)} ${t("c.mmk")}` : null} />
             <Metric label={t("isp.paidTotal")} value={report.data ? `${mmk(report.data.amount_mmk)} ${t("c.mmk")}` : null} sub={`${report.data?.payment_count ?? 0} ${t("isp.records")}`} />
@@ -152,7 +152,7 @@ export function Customers({ params }: { params: URLSearchParams }) {
         <section className="glass pad stack" aria-labelledby="cu-hs">
           <div className="row"><h2 id="cu-hs">{t("cu.hotspotUsers")}</h2><span className="chip">{t("cu.hotspot")}</span></div>
           <p className="soft small">{t("cu.hotspotHelp")}</p>
-          {report.data ? <div className="metrics"><Metric label={t("cu.activeCodes")} value={mmk(report.data.activated_count)} sub={t("cu.activeCodesHint")} /><Metric label={t("hm.startedToday")} value={mmk(report.data.activation_today)} /></div> : report.isLoading ? <Skeleton h={80} /> : null}
+          {report.data ? <div className="metrics"><Metric label={t("cu.activeCodes")} value={mmk(report.data.activated_count)} sub={t("cu.activeCodesHint")} /><Metric label={t("hm.startedToday")} value={mmk(report.data.activation_today)} /></div> : report.isLoading ? <Loading><SkMetrics n={2} /></Loading> : null}
           <div className="actions-row"><a className="btn small" href="#/guests">{t("cu.openSessions")}</a><a className="btn small quiet" href="#/vouchers">{t("cu.findCode")}</a></div>
         </section>
       )}
@@ -165,7 +165,7 @@ export function Customers({ params }: { params: URLSearchParams }) {
               <option value="all">{t("cu.f.all")}</option><option value="connected">{t("isp.connected")}</option><option value="suspended">{t("isp.suspended")}</option><option value="expired">{t("isp.expired")}</option>
             </select>
           </div>
-          {routers.gateways?.length === 0 ? <p className="soft small">{t("isp.noGatewayHelp")}</p> : pppoe.isLoading || !routers.gateways ? <Skeleton h={120} /> : pppoe.error ? <Recovery title={t("isp.unavailable")} onRetry={() => void pppoe.mutate()} /> : rows.length === 0 ? (
+          {routers.gateways?.length === 0 ? <p className="soft small">{t("isp.noGatewayHelp")}</p> : pppoe.isLoading || !routers.gateways ? <Loading><SkList n={3} /></Loading> : pppoe.error ? <Recovery title={t("isp.unavailable")} onRetry={() => void pppoe.mutate()} /> : rows.length === 0 ? (
             <p className="soft small" role="status">{pppoe.data?.total ? t("cu.noMatch") : t("cu.noSubs")}</p>
           ) : (
             <ul className="list-table" aria-label={t("cu.subscribers")}>
