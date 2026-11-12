@@ -22,11 +22,11 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); location.hash = ""; document
 describe("page titles", () => {
   it("names the page in the browser tab", async () => {
     open("#/backups");
-    await waitFor(() => expect(document.title).toBe("Backups · Mega Magic"));
+    await waitFor(() => expect(document.title).toBe("Backups · MegaMagic"));
   });
   it("names the network map in the browser tab and on the page", async () => {
     open("#/router/map");
-    await waitFor(() => expect(document.title).toBe("Network map · Mega Magic"));
+    await waitFor(() => expect(document.title).toBe("Network map · MegaMagic"));
     await screen.findByRole("heading", { level: 1, name: "Network map" });
   });
   it("calls the More tab More", async () => {

@@ -96,7 +96,10 @@ function TaskForm({ kind, inv, defaults, routerId, routerName, locked, setLocked
   const [consent, setConsent] = useState(false), [status, setStatus] = useState("");
   const [applied, setApplied] = useState(false), [removing, setRemoving] = useState(false);
   const stamp = useRef(0);
-  useEffect(() => { setValues(start(selected)); setReview(null); setConsent(false); setStatus(""); setApplied(false); setRemoving(false); stamp.current++; }, [kind, recordId, selected, defaults]); // eslint-disable-line react-hooks/exhaustive-deps -- start() depends only on these
+  // Reset only when the task, the chosen record or the default values actually change. Comparing by content keeps a
+  // re-read of the same inventory (new objects, same data) from wiping what the owner has typed or the result shown.
+  const defaultsKey = JSON.stringify(defaults);
+  useEffect(() => { setValues(start(selected)); setReview(null); setConsent(false); setStatus(""); setApplied(false); setRemoving(false); stamp.current++; }, [kind, recordId, selected?.id, defaultsKey]); // eslint-disable-line react-hooks/exhaustive-deps -- start() depends only on these
 
   const portTypes = kind === "vlan" ? ["ether", "bridge", "bond"] : kind === "ip_address" ? ["ether", "bridge", "bond", "vlan"] : ["ether", "bridge", "vlan", "bond", "pppoe-out"];
   const eligible = (inv.interfaces ?? []).filter((i) => portTypes.includes(i.type));

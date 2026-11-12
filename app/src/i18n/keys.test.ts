@@ -5,19 +5,26 @@ import extra from "./extra";
 import broadband from "./broadband";
 import hubConnection from "./hubConnection";
 import tables from "./tables";
+import workspaces from "./workspaces";
 
 // Every t("key") used in the app must exist in both languages; otherwise the raw key shows on screen.
 function sources(dir: string): string[] {
   return readdirSync(dir).flatMap((f) => { const p = join(dir, f); return statSync(p).isDirectory() ? sources(p) : /\.tsx?$/.test(f) && !f.endsWith(".test.ts") ? [p] : []; });
 }
-const en = new Set([...Object.keys(base.en), ...Object.keys(extra.en), ...Object.keys(broadband.en), ...Object.keys(hubConnection.en), ...Object.keys(tables.en)]);
-const my = new Set([...Object.keys(base.my), ...Object.keys(extra.my), ...Object.keys(broadband.my), ...Object.keys(hubConnection.my), ...Object.keys(tables.my)]);
+const en = new Set([...Object.keys(base.en), ...Object.keys(extra.en), ...Object.keys(broadband.en), ...Object.keys(hubConnection.en), ...Object.keys(tables.en), ...Object.keys(workspaces.en)]);
+const my = new Set([...Object.keys(base.my), ...Object.keys(extra.my), ...Object.keys(broadband.my), ...Object.keys(hubConnection.my), ...Object.keys(tables.my), ...Object.keys(workspaces.my)]);
 
 describe("i18n keys", () => {
   // A key reused with a different meaning silently renames an older screen's label.
   it("never override an existing label with different text", () => {
     const clashes = Object.keys(extra.en).filter((k) => (base.en as Record<string, string>)[k] !== undefined && (base.en as Record<string, string>)[k] !== (extra.en as Record<string, string>)[k]);
     expect(clashes).toEqual([]);
+    const all: Record<string, string> = { ...base.en, ...extra.en, ...broadband.en, ...hubConnection.en, ...tables.en };
+    expect(Object.keys(workspaces.en).filter((k) => all[k] !== undefined && all[k] !== (workspaces.en as Record<string, string>)[k])).toEqual([]);
+  });
+  it("has every redesign string in both languages", () => {
+    expect(Object.keys(workspaces.en).filter((k) => !(k in workspaces.my))).toEqual([]);
+    expect(Object.keys(workspaces.my).filter((k) => !(k in workspaces.en))).toEqual([]);
   });
   const used = new Set<string>();
   for (const f of sources(join(__dirname, ".."))) {

@@ -1,50 +1,77 @@
 import { type ReactNode } from "react";
 import { useFleet } from "../lib/useFleet";
-import { Icon, Wand, type IconName } from "./icons";
+import { Icon } from "./icons";
 import { useI18n } from "../i18n";
 import { MagicDude } from "./MagicDude";
 import { useTheme } from "../lib/theme";
+import { BrandMark, Wordmark } from "./Brand";
+import { RAIL, TABS, tabFor } from "../lib/nav";
 
-const TABS: Array<[string, IconName]> = [["home", "home"], ["router", "router"], ["vouchers", "ticket"], ["jellyfin", "play"], ["more", "dots"]];
-
+/** Fleet health in four honest states. "idle" means no evidence, never "offline". */
 export function useHealth(): "ok" | "warn" | "bad" | "idle" {
   const { data, error } = useFleet();
-  if (error) return "bad";
-  const s = data?.overall_state;
+  if (error) return "idle";
+  if (!data?.total_peers) return "idle";
+  const s = data.overall_state;
   return s === "up" ? "ok" : s === "stale" ? "warn" : s === "offline" ? "bad" : "idle";
 }
 
-function Toggles() {
-  const { lang, setLang, t } = useI18n();
+function ThemeToggle() {
+  const { t } = useI18n();
   const { theme, setTheme } = useTheme();
   return (
-    <div className="tools">
-      <button type="button" className="iconbtn" aria-label={`${t("app.theme")}: ${theme === "day" ? t("app.day") : t("app.night")}`} onClick={() => setTheme(theme === "day" ? "night" : "day")}>
-        <Icon name={theme === "day" ? "sun" : "moon"} />
-      </button>
-      <div className="seg" role="group" aria-label={t("c.language")}>
-        <button type="button" aria-pressed={lang === "my"} onClick={() => setLang("my")}>မြန်မာ</button>
-        <button type="button" aria-pressed={lang === "en"} onClick={() => setLang("en")}>EN</button>
-      </div>
+    <button type="button" className="iconbtn" aria-label={`${t("app.theme")}: ${theme === "day" ? t("app.day") : t("app.night")}`} onClick={() => setTheme(theme === "day" ? "night" : "day")}>
+      <Icon name={theme === "day" ? "sun" : "moon"} />
+    </button>
+  );
+}
+
+function LangSwitch() {
+  const { lang, setLang, t } = useI18n();
+  return (
+    <div className="seg" role="group" aria-label={t("c.language")}>
+      <button type="button" aria-pressed={lang === "my"} onClick={() => setLang("my")}>မြန်မာ</button>
+      <button type="button" aria-pressed={lang === "en"} onClick={() => setLang("en")}>EN</button>
     </div>
   );
 }
 
-export function Shell({ active, children }: { active: string; children: ReactNode }) {
+/** Theme and language together, used by sign-in and settings. */
+function Toggles() {
+  return <div className="tools"><ThemeToggle /><LangSwitch /></div>;
+}
+
+export function Shell({ route, business, children }: { route: string; business?: string; children: ReactNode }) {
   const { t } = useI18n();
-  const health = useHealth();
+  const tab = tabFor(route);
   return (
     <div className="shell">
+      <a className="skip" href="#view" onClick={(e) => { e.preventDefault(); document.getElementById("view")?.focus(); }}>{t("nav.skip")}</a>
+      <aside className="rail" aria-label={t("nav.main")}>
+        <a className="rail-brand" href="#/home" aria-label="MegaMagic"><BrandMark size={36} /><span><Wordmark />{business ? <small>{business}</small> : null}</span></a>
+        <nav className="rail-nav">
+          {RAIL.map((g) => (
+            <div className="rail-group" key={g.label}>
+              <p className="rail-label">{t(g.label)}</p>
+              {g.items.map((i) => (
+                <a key={i.href} href={i.href} className="rail-item" aria-current={i.routes.includes(route) ? "page" : undefined}>
+                  <Icon name={i.icon} /><span>{t(i.label)}</span>
+                </a>
+              ))}
+            </div>
+          ))}
+        </nav>
+        <div className="rail-foot"><ThemeToggle /><LangSwitch /></div>
+      </aside>
       <header className="topbar">
-        <div className="brand"><Wand state={health} /><span>Mega Magic</span></div>
-        <Toggles />
+        <a className="brand" href="#/home" aria-label="MegaMagic"><BrandMark size={32} /><Wordmark /></a>
+        <div className="tools"><MagicDude /><span className="only-phone"><LangSwitch /></span></div>
       </header>
-      <main className="view" id="view">{children}</main>
-      <MagicDude />
-      <nav className="tabbar" aria-label="Main">
-        {TABS.map(([key, icon]) => (
-          <a key={key} className="tab" href={"#/" + key} aria-current={key === active ? "page" : undefined}>
-            <Icon name={icon} />{t("tab." + key)}
+      <main className="view" id="view" tabIndex={-1}>{children}</main>
+      <nav className="tabbar" aria-label={t("nav.main")}>
+        {TABS.map((x) => (
+          <a key={x.key} className="tab" href={"#/" + x.key} aria-current={x.key === tab ? "page" : undefined}>
+            <span className="tab-ico"><Icon name={x.icon} /></span><span className="tab-label">{t(x.label)}</span>
           </a>
         ))}
       </nav>
@@ -52,4 +79,4 @@ export function Shell({ active, children }: { active: string; children: ReactNod
   );
 }
 
-export { Toggles };
+export { Toggles, ThemeToggle, LangSwitch };

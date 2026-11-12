@@ -13,9 +13,11 @@ type magicDudePage struct{ Key, Label string }
 // These mirror the console's own labels; TestMagicDudePagesMatchTheApp fails when
 // the app renames or removes one.
 var (
-	magicDudeTabs     = []magicDudePage{{"tab.home", "Home"}, {"tab.router", "Router"}, {"tab.vouchers", "Vouchers"}, {"tab.jellyfin", "Jellyfin"}, {"tab.more", "More"}}
+	magicDudeTabs     = []magicDudePage{{"nav.home", "Home"}, {"nav.network", "Network"}, {"nav.vouchers", "Vouchers"}, {"nav.activity", "Activity"}, {"nav.more", "More"}}
 	magicDudeJellyfin = []magicDudePage{{"j.ws.dash", "Dashboard"}, {"j.ws.vouchers", "Media vouchers"}, {"j.ws.guest", "Media guest page"}}
 	magicDudeMore     = []magicDudePage{
+		{"nav.setup", "Quick setup"}, {"nav.hotspot", "Hotspot"}, {"nav.isp", "PPPoE ISP"}, {"nav.customers", "Customers"},
+		{"nav.approvals", "Changes & approvals"}, {"title.jellyfin", "Jellyfin"},
 		{"title.revenue", "Revenue"}, {"title.store", "Store"}, {"title.sites", "Sites"}, {"hub.title", "Magic Hub"},
 		{"title.network", "Internet setup"}, {"tp.title", "Topology"}, {"dv.title", "Devices"}, {"dm.title", "Managed devices"},
 		{"gu.title", "Guests"}, {"fl.title", "Fleet health"}, {"inc.title", "Incidents"}, {"sec.title", "Security"},
@@ -38,7 +40,7 @@ func magicDudeSystemPrompt(role model.UserRole, snapshot string) string {
 	var guide strings.Builder
 	guide.WriteString("Available app navigation (exact labels):\n" +
 		"Main tabs: " + magicDudeLabels(magicDudeTabs) + ".\n" +
-		"Jellyfin tab sections: " + magicDudeLabels(magicDudeJellyfin) + ". Libraries are shown on Dashboard; guests' libraries are chosen on Media guest page; new libraries are added in Jellyfin on the media computer.\n" +
+		"Jellyfin (under More) sections: " + magicDudeLabels(magicDudeJellyfin) + ". Libraries are shown on Dashboard; guests' libraries are chosen on Media guest page; new libraries are added in Jellyfin on the media computer.\n" +
 		"Vouchers tab also holds the Internet guest page. Connect a router with More > Magic Hub.\n" +
 		"Pages under More: " + magicDudeLabels(magicDudeMore) + ".\n")
 	if magicDudeIncluded(role) {
@@ -116,7 +118,7 @@ func magicDudeNavigationAnswer(role model.UserRole, question string) string {
 		if !magicDudeIncluded(role) {
 			return "Jellyfin library ကို Owner နဲ့ Admin တွေ စီမံနိုင်ပါတယ်။ သင့်လုပ်ငန်းရဲ့ Admin ကို မေးပေးပါနော်။"
 		}
-		return "Library အသစ်ကို သင့်မီဒီယာစက်ပေါ်က Jellyfin မှာ ထည့်ပါ။ ပြီးရင် Jellyfin → Dashboard မှာ Scan libraries ကို နှိပ်ပါ။ 🙂"
+		return "Library အသစ်ကို သင့်မီဒီယာစက်ပေါ်က Jellyfin မှာ ထည့်ပါ။ ပြီးရင် More → Jellyfin → Dashboard မှာ Scan libraries ကို နှိပ်ပါ။ 🙂"
 	}
 	if words["gateway"] || words["gateways"] || words["hub"] {
 		return "More → Magic Hub ကို ဖွင့်ပါ။ Connect Magic Hub ကို နှိပ်ပြီး script ကို WinBox Terminal မှာ paste လုပ်ပါ။"
