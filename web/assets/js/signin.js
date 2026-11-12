@@ -7,11 +7,12 @@
   var title = document.getElementById("title");
   var swap = document.getElementById("swap");
 
-  /* Return path: only pages inside the console (/v2/…) on this site; anything else falls back to the console home. */
+  /* Return path: only a console page (the part after /v2/#), with route characters only. The URL is always built as the
+     fixed "/v2/#" plus that route, so a crafted value cannot change the site, the path or the scheme. */
   function nextUrl() {
     var raw = new URLSearchParams(location.search).get("next") || "";
-    if (/^\/v2\/[^\\\s]*$/.test(raw) && raw.indexOf("//") === -1) return raw;
-    return "/v2/";
+    var m = /^\/v2\/(?:#(\/[A-Za-z0-9\/_\-]*(?:\?[A-Za-z0-9=&_\-.]*)?))?$/.exec(raw);
+    return m && m[1] ? "/v2/#" + m[1] : "/v2/";
   }
 
   function say(kind, text, focus) {
