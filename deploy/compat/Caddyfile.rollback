@@ -1,0 +1,39 @@
+import security-headers.caddy
+
+:80 {
+    import mm_security_headers
+    header Cache-Control "no-cache"
+    encode gzip
+    root * /srv
+    rewrite /signin /signin.html
+    rewrite /pricing /pricing.html
+    redir /app /app/ 302
+    @oldapp path /app.html
+    redir @oldapp /app/home 302
+    @v2root path /v2 /v2/
+    rewrite @v2root /v2/index.html
+    handle /api/* {
+        reverse_proxy api:8080
+    }
+    handle /health {
+        reverse_proxy api:8080
+    }
+    handle /ready {
+        reverse_proxy api:8080
+    }
+    handle /app/assets/* {
+        uri strip_prefix /app
+        root * /srv/v2
+        file_server
+    }
+    handle /app/* {
+        uri strip_prefix /app
+        root * /srv/v2
+        try_files {path} /index.html
+        file_server
+    }
+    handle {
+        try_files {path} {path}/index.html /index.html
+        file_server
+    }
+}

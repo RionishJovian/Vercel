@@ -97,6 +97,8 @@ The owner asked for server-wide router read/write/edit/delete on 2026-11-06. The
 
 ## 7. Open items and known drift (as of 2026-11-06)
 
+- **2026-11-12 PR #201 continuation:** retain the exact 66 public console assets from `5931ed0` at `/v2/assets/*` during the clean-URL migration. Both builds verify the pinned archive and SHA-256 manifest. No automatic chunk-error reloads; map failures stay inline and explicit Reload confirms after editing. The optional rollback web layer serves new `/app/*` links in place to avoid cached-redirect loops. See `docs/HANDOFF-PUBLIC-PAGES-URLS-20261112.md` for evidence and the still-pending browser transition test. Claude's screenshot showed unpushed work; sync the branch before resuming that working tree. This checkpoint does not authorize a merge or deployment.
+
 - WebFig Cloud Access has never signed in to a real router. AGENTS section 4 (2026-10-22) bars embedded third-party dashboards and separate logins; the owner has not yet recorded whether WebFig, in its own tab with the router's own login, is an accepted exception.
 - Real-router results and open bugs: `docs/HARDWARE-TRIAL-RESULTS-20261106.md`. The owner's hAP ax2 is no longer at factory settings.
 

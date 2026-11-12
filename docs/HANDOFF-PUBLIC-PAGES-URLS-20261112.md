@@ -23,7 +23,8 @@ The Network tab is `/app/net`. `/app/network` stays the existing Internet setup 
 | `/signin.html?…` | `/signin?…` | 301 |
 | `/pricing.html?…` | `/pricing?…` | 301 |
 | `/v2`, `/v2/`, `/v2/index.html` | `/app/` (query kept) | 301 |
-| `/v2/<file>` | `/app/<file>` | 301 |
+| `/v2/<page>` (except `assets/`) | `/app/<page>` | 301 |
+| `/v2/assets/<hash>` | retained previous-release file | 200; absent files 404 |
 | `/app.html?…` | `/app/home?…` | 302 (as before, new target) |
 | `/app` | `/app/` | 301 |
 | `/v2/#/vouchers` bookmark | `/app/vouchers` | browsers keep `#…` across the 301; the console then rewrites `/app/#/vouchers` to `/app/vouchers` with `history.replaceState` (no extra Back step) |
@@ -41,11 +42,12 @@ In the console, links are now real paths (`href="/app/net"`). A plain click navi
 - **Server redirects stay on the site.** For example, `/v2//evil.example` goes to `/app/evil.example` on the same host. Path traversal such as `/v2/..%2F..%2Fetc%2Fpasswd` shows the landing page.
 
 ## Deploy impact
-- After the merge deploys, the web image serves the console from `/srv/app`, and `/v2/assets/*` no longer exists. A console tab left open from before the release keeps working until it lazy-loads a page chunk. That chunk now returns 404, so the person reloads and lands on `/app/…`. Page HTML is `no-cache`.
+- The new console is served from `/srv/app`. All 66 previous-release JS/CSS/font files remain at their original `/v2/assets/*` URLs. Each file was compared byte-for-byte with production at `5931ed0`; Docker and Vercel builds verify the archive and individual SHA-256 manifest before installing it. The old entry HTML is not retained, so new visits migrate to `/app/…`. Page HTML is `no-cache`.
+- The app never reloads automatically on a chunk failure. A failed lazy map stays inside its own boundary, preserving an adjacent form. The explicit Reload button asks for confirmation after input/change events. Only an edited boolean is retained, never field values. Ordinary application errors still reach the page boundary.
 - No API, database, environment or write-gate change. `MM_BROADBAND_WRITES_ENABLED` stays off.
 - Old links shared in Telegram or saved as bookmarks keep working through the redirects above. The Go API generates no `/v2/` or `.html` links (checked with grep).
 
-## Test evidence (this session, local, phone width 390 px)
+## Earlier test evidence (Claude, before the takeover)
 The production Caddyfile was run with Caddy v2.10.2: `caddy validate` passed. It served a `/srv` tree built exactly as `Dockerfile.web.prod` builds it, against the local Go API, Postgres, NATS and Redis. A Playwright flow ran 63 checks, and 62 passed:
 - **Direct visits and refresh:**
   - Direct visit and refresh of `/`, `/signin` and `/pricing`, with no horizontal overflow.
@@ -77,9 +79,35 @@ Screenshots: `docs/design/public-pages/` (`app-deeplink-signin-390.png`, `app-ne
 
 ## Rollback
 - **Before merging:** create `rollback/pre-public-pages-20261112` at `5931ed0` (needs owner approval, as for the earlier rollback branches). Also record the running web and API image digests.
-- **Fast path:** redeploy the previous web image. The API is unchanged, so only the web container needs it.
+- **Original-image fast path:** redeploy the previous web image. The API is unchanged, so only the web container needs it. This restores `/v2/`, but the original image alone cannot serve new `/app/*` links.
+- **Clean-link-compatible rollback:** `Dockerfile.web.rollback` layers only the route bridge and compatibility Caddyfile onto the recorded previous web image. Build with its full verified digest, not a floating tag:
+
+  ```sh
+  : "${PREVIOUS_WEB_IMAGE:?Set the recorded previous web image including @sha256 digest}"
+  docker build -f Dockerfile.web.rollback --build-arg PREVIOUS_WEB_IMAGE="$PREVIOUS_WEB_IMAGE" -t megamagic-web-rollback:5931ed0 .
+  ```
+
+  Use the normal reviewed web-container replacement procedure with this image; do not change the API, database or write gates. `/app/activity?x=1` is served in place by the old console; the external route bridge adds `#/activity?x=1` for its hash router. Serving in place avoids a loop through a cached permanent `/v2/` → `/app/` redirect. `/signin` and `/pricing` also work. This optional rollback image has not been built or deployed in this environment (Docker is unavailable); its server rules have passed the local Caddy HTTP check.
 - **Source path:** revert the squash commit on `main` in a pull request (deploys through CI). Never force-push `main`.
-- **After a rollback:** `/app/...` links shared since the release would fall through to the landing page, while `/v2/#/...` links work again.
+- Verify a shared `/app/activity` link, refresh, sign-in return, `/v2/#/activity`, `/signin`, `/pricing` and `/ready` after rollback. The browser route bridge still requires the browser transition check below before release approval.
+
+## Takeover checkpoint (2026-11-12)
+
+Claude's screenshot shows unpushed edits. Those files were unavailable here and were not changed. This continuation was reconstructed from published PR head `212f717` in an isolated checkout. Before Claude resumes, stop its auto-continue and sync the published branch; do not blindly resume its stale working tree or overwrite either copy.
+
+Checks run on this continuation:
+- App: 406/406 tests, lint and production build pass.
+- Root: production frontend build, deployment tests 18/18, Vercel tests 8/8 and legacy-asset tests 3/3 pass. Critical UI: 24/25 pass; the existing media-publishing test cannot launch Chrome in this sandbox.
+- Caddy 2.10.2: candidate configuration validates. The HTTP transition fixture verifies all 66 old assets by SHA-256 at their original URLs, absent assets return 404, removing the compatibility snapshot produces the expected 404, old page redirects retain the query, and rollback clean paths return the bridged old HTML without a server redirect.
+- Browser transition remains **unverified**: local Chromium is blocked by the sandbox, and the shared browser cannot connect to this local preview. No signed-in production checks or hardware checks were made. Earlier Claude browser evidence above does not cover this new recovery work.
+
+Reproduce the transition check in an environment with Chromium, Playwright and Caddy. Build `app/` at both the previous release `5931ed0` and this candidate, then run the candidate root build:
+
+```sh
+CADDY_BIN=/absolute/path/to/caddy PREVIOUS_ROOT=/absolute/path/to/5931ed0-checkout node scripts/check-console-transition.mjs
+```
+
+`TRANSITION_HTTP_ONLY=1` runs the server-only checks and must not be reported as browser acceptance. The full test uses a disposable read-only API fixture. It keeps an old tab open while switching releases, opens a previously unloaded map chunk, checks unsaved input and document preservation, simulates a missing future map chunk, cancels Reload, and checks a clean link after rollback. Run it successfully before calling this release ready. Keep PR #201 draft until review and fresh CI are complete; no merge or deploy was performed during this takeover.
 
 ## Next concrete action
 1. The owner reviews the preview and PR #201.

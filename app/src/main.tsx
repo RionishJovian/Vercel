@@ -13,6 +13,9 @@ import { App } from "./App";
 import { I18nProvider } from "./i18n";
 import { ThemeProvider } from "./lib/theme";
 import { PageBoundary } from "./components/PageBoundary";
+import { startEditTracking } from "./lib/staleBuild";
+
+startEditTracking();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

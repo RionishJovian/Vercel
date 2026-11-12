@@ -1,4 +1,5 @@
 import { lazy, Suspense, useState } from "react";
+import { PageBoundary } from "../../components/PageBoundary";
 import useSWR from "swr";
 import { fetcher } from "../../lib/api";
 import { asArray, type Me } from "../../lib/types";
@@ -76,9 +77,9 @@ export function NetworkHub({ routerId }: { me: Me; routerId?: string | null }) {
       </section>
       <section className="stack" aria-label={t("home.map")}>
         <h2 className="group-title">{t("home.map")}</h2>
-        <Suspense fallback={<Loading><div className="site-map skeleton" /></Loading>}>
+        <PageBoundary inline><Suspense fallback={<Loading><div className="site-map skeleton" /></Loading>}>
           <SiteMap home sites={sites} states={Object.fromEntries(sites.map((s) => [s.site_id, stateOf(s, connList)]))} selected={site} onSelect={(id) => setSite(id === site ? "" : id)} />
-        </Suspense>
+        </Suspense></PageBoundary>
       </section>
     </>
   );

@@ -20,7 +20,10 @@ import security-headers.caddy
     # browser keeps the #… across the redirect and the console turns it into /app/page), /v2/<file>, and /app.html.
     @v2root path /v2 /v2/ /v2/index.html
     redir @v2root /app/{?query} 301
-    @v2rest path_regexp v2rest ^/v2/(.+)$
+    @v2rest {
+        path_regexp v2rest ^/v2/(.+)$
+        not path /v2/assets/*
+    }
     redir @v2rest /app/{re.v2rest.1}{?query} 301
     @oldapp path /app.html
     redir @oldapp /app/home{?query} 302
@@ -35,7 +38,11 @@ import security-headers.caddy
     handle /ready {
         reverse_proxy api:8080
     }
-    # Hashed console files are served as they are, or 404 (never the page), so a stale chunk fails plainly.
+    # Old open tabs retain the exact previous release's chunks at their original URLs.
+    handle /v2/assets/* {
+        file_server
+    }
+    # Missing console files are 404 (never the page HTML).
     handle /app/assets/* {
         file_server
     }

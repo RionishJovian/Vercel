@@ -38,8 +38,8 @@
       "permanent": true
     },
     {
-      "source": "/v2/:path+",
-      "destination": "/app/:path+",
+      "source": "/v2/:path((?!assets/).+)",
+      "destination": "/app/:path",
       "permanent": true
     },
     {
