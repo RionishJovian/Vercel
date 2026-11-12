@@ -5,15 +5,16 @@ Owner authorization (Notion, 2026-11-12): design and development are approved. *
 
 ## Release candidate
 - Branch: `claude/dazzling-feynman-chu5tf` (the cloud session's assigned branch; the brief named `redesign/mobile-ui`, which this session may not push). This cloud container has no Mac checkout, so no worktree was created next to `/Users/aces/GitHub/Mega-Magic`.
-- PR (draft): https://github.com/RionishJovian/Vercel/pull/199 — the final commit is the PR head; see the PR for its CI.
+- PR (draft): https://github.com/RionishJovian/Vercel/pull/199 — the final commit is the PR head. CI (validate, CodeQL, Go and JS/TS analysis) passed on `0d7b54a`, the last code commit; later commits change documentation only.
 - Base: `main` at `e014fb3`. **Merging the PR deploys to production** (AGENTS.md §3).
 - Mobile preview (Vercel, branch alias): https://mega-magic-git-claude-dazzling-feynman-chu5tf-magic-2c1b.vercel.app/v2/ — its `/api/v1` is proxied to production (`vercel.json`), so signing in there uses a real production account.
 
 ### What this release ships
 1. **Frontend (`app/`, `/v2/`)** — the redesign below.
 2. **Go 1.26.11 API rebuild.** `go.mod` toolchain and the `Dockerfile.prod` build image (`golang:1.26.11-alpine`, pinned by multi-platform index digest `sha256:ae52b5bc…79b0bb`) move from 1.26.10. CI's govulncheck reports GO-2026-6859 in `net/http@go1.26.10`, fixed in 1.26.11. The API code is unchanged apart from the Magic Dude navigation guide (below), but **the production API binary and image are rebuilt**, so a merge replaces the running API container as well as the web container. The earlier 1.26.10 digest no longer matched either current 1.26.10 digest, which suggests the tag was republished after the original pin.
-3. **Magic Dude navigation guide** (`internal/handler/magic_dude_prompt.go`) names the new tabs and screens, so the assistant does not direct owners to removed tabs.
-4. No database migrations. No write-gate changes: **PPPoE (broadband) writes stay disabled** (`MM_BROADBAND_WRITES_ENABLED` off) until their separate operational acceptance; the ISP screens only read, and say when writes are locked.
+3. **Network form fix** (`app/src/pages/network/NetworkEditor.tsx`): a re-read of the same router inventory no longer wipes values the owner has typed into a network task form, or the result just shown. CI caught it once as `network/addresses.test.tsx` losing a VLAN name; it did not reproduce locally (4 full-suite and 24 parallel single-file runs), so the fix removes the identity-based reset that matches the symptom. It passed CI on the next run.
+4. **Magic Dude navigation guide** (`internal/handler/magic_dude_prompt.go`) names the new tabs and screens, so the assistant does not direct owners to removed tabs.
+5. No database migrations. No write-gate changes: **PPPoE (broadband) writes stay disabled** (`MM_BROADBAND_WRITES_ENABLED` off) until their separate operational acceptance; the ISP screens only read, and say when writes are locked.
 
 ## What changed in the frontend
 | Area | Files |
