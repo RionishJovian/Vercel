@@ -18,7 +18,8 @@
     .boot-bar { height: 14px; border-radius: 7px; background: rgba(13, 52, 38, .09); }
     html[data-theme="night"] .boot-bar, html[data-theme="night"] .boot-card { background: rgba(217, 247, 234, .07); }
     .boot-card { height: 180px; border-radius: 20px; margin-top: 16px; background: rgba(13, 52, 38, .05); }
-    .boot-tabs { position: fixed; left: 0; right: 0; bottom: 0; height: 68px; border-top: 1px solid rgba(13, 52, 38, .11); }
+    .boot-tabs { position: fixed; left: 16px; right: 16px; bottom: calc(10px + env(safe-area-inset-bottom)); max-width: 460px; margin: 0 auto; height: 66px; border-radius: 999px; border: 1px solid rgba(13, 52, 38, .11); background: rgba(255, 253, 248, .9); }
+    html[data-theme="night"] .boot-tabs { border-color: rgba(217, 247, 234, .11); background: rgba(14, 42, 32, .9); }
     /* System font on purpose: a web font here would compete with the app bundle for bandwidth. */
     .boot, .boot-sr { font-family: system-ui, sans-serif; }
     .boot-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

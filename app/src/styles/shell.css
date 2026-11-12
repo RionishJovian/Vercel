@@ -1,6 +1,6 @@
 /* App frame. Phone first: a compact top bar and a five-destination bottom bar that sits in the thumb zone.
    From 900px the bottom bar is replaced by a grouped left rail. */
-.shell { min-height: 100dvh; padding: 0 var(--gutter) calc(var(--tabbar-h) + 24px + env(safe-area-inset-bottom)); overflow-x: clip; }
+.shell { min-height: 100dvh; padding: 0 var(--gutter) calc(var(--tabbar-h) + 34px + env(safe-area-inset-bottom)); overflow-x: clip; }
 .skip { position: absolute; left: 12px; top: -60px; z-index: 100; padding: 10px 16px; border-radius: var(--r-control); background: var(--jade); color: var(--on-jade); font-weight: 700; }
 .skip:focus { top: 12px; }
 .view:focus { outline: none; }
@@ -32,24 +32,6 @@
 @keyframes bm-twinkle { 0%, 100% { transform: scale(1); opacity: 1; } 40% { transform: scale(.55) rotate(25deg); opacity: .55; } 70% { transform: scale(1.15); opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .brandmark .bm-star { animation: none !important; } }
 
-/* Bottom bar (phone, tablet portrait) */
-.tabbar {
-  position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
-  display: grid; grid-template-columns: repeat(5, 1fr); align-items: stretch;
-  height: calc(var(--tabbar-h) + env(safe-area-inset-bottom)); padding: 6px 6px env(safe-area-inset-bottom);
-  background: color-mix(in srgb, var(--glass-solid) 94%, transparent); border-top: 1px solid var(--edge-soft);
-  -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
-}
-.tab { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-width: 0; border-radius: 14px; color: var(--ink-mute); -webkit-tap-highlight-color: transparent; }
-.tab-ico { display: grid; place-items: center; width: 56px; height: 30px; border-radius: 999px; transition: background var(--t-base) var(--ease-out), transform var(--t-fast); }
-.tab svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-.tab-label { font-size: .72rem; font-weight: 650; line-height: 1.2; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-:lang(my) .tab-label { font-size: .68rem; line-height: 1.4; }
-.tab[aria-current="page"] { color: var(--ink); }
-.tab[aria-current="page"] .tab-ico { background: var(--jade-soft); color: var(--jade); }
-:root[data-theme="day"] .tab[aria-current="page"] .tab-ico { color: var(--emerald-700); }
-.tab:active .tab-ico { transform: scale(.94); }
-
 /* Left rail (desktop) */
 .rail { display: none; }
 .rail-brand { display: flex; align-items: center; gap: 12px; padding: 4px 10px 18px; }
@@ -67,7 +49,7 @@
 
 @media (min-width: 900px) {
   .shell { padding: 0 32px 40px calc(var(--rail-w) + 32px); }
-  .tabbar, .only-phone { display: none; }
+  .only-phone { display: none; }
   .rail {
     display: flex; flex-direction: column; position: fixed; inset: 0 auto 0 0; width: var(--rail-w); z-index: 25;
     padding: calc(16px + env(safe-area-inset-top)) 12px 16px; background: var(--glass-solid); border-right: 1px solid var(--edge-soft);

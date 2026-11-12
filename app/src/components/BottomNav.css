@@ -1,0 +1,68 @@
+/* Bottom navigation only. Every selector starts with .bnav so nothing here reaches other components.
+   A floating capsule; the selected tab sits in a filled mint bubble that glides between tabs. */
+.bnav {
+  --bnav-pad: 6px;
+  --bnav-h: 66px;
+  position: fixed; z-index: 30;
+  left: 50%; transform: translateX(-50%);
+  bottom: calc(10px + env(safe-area-inset-bottom));
+  width: min(calc(100% - 2 * var(--gutter, 16px)), 460px);
+  height: var(--bnav-h);
+  padding: var(--bnav-pad);
+  display: grid; grid-template-columns: repeat(var(--bnav-count, 5), minmax(0, 1fr)); align-items: stretch;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--glass-solid) 88%, transparent);
+  border: 1px solid var(--edge-soft);
+  -webkit-backdrop-filter: blur(18px) saturate(150%); backdrop-filter: blur(18px) saturate(150%);
+  box-shadow:
+    inset 0 1px 0 var(--shine),
+    0 1px 2px rgba(5, 46, 34, .08),
+    0 14px 34px -14px rgba(5, 46, 34, .38);
+}
+:root[data-theme="night"] .bnav { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .07), 0 16px 36px -14px rgba(0, 0, 0, .75); }
+
+/* The selected bubble: one element that slides, so the change reads as one smooth motion. */
+.bnav-bubble {
+  position: absolute; z-index: 0;
+  top: var(--bnav-pad); bottom: var(--bnav-pad); left: var(--bnav-pad);
+  width: calc((100% - 2 * var(--bnav-pad)) / var(--bnav-count, 5));
+  transform: translateX(calc(var(--bnav-i, 0) * 100%));
+  border-radius: 999px;
+  background: linear-gradient(180deg, #c9f7e4 0%, #8ff0c8 55%, #6fe3b4 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .7), inset 0 -1px 0 rgba(11, 122, 88, .18), 0 8px 18px -10px rgba(11, 122, 88, .55);
+  transition: transform 340ms cubic-bezier(.22, 1, .36, 1);
+}
+:root[data-theme="night"] .bnav-bubble {
+  background: linear-gradient(180deg, #9af2cf 0%, #6fe3b4 55%, #45cf9c 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .45), 0 8px 20px -10px rgba(111, 227, 180, .55);
+}
+
+.bnav-tab {
+  position: relative; z-index: 1;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  min-width: 0; min-height: 54px; border-radius: 999px;
+  color: var(--ink-mute); text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: color 200ms ease;
+}
+.bnav-ico { display: grid; place-items: center; width: 24px; height: 24px; transition: transform 160ms ease; }
+.bnav-ico svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.bnav-label { font-size: .7rem; font-weight: 650; line-height: 1.2; max-width: 100%; padding: 0 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:lang(my) .bnav-label { font-size: .66rem; line-height: 1.4; }
+
+.bnav-tab[aria-current="page"] { color: #053d2c; }
+.bnav-tab[aria-current="page"] .bnav-ico svg { stroke-width: 2; }
+:root[data-theme="night"] .bnav-tab[aria-current="page"] { color: #042218; }
+.bnav-tab:not([aria-current="page"]):hover { color: var(--ink); }
+.bnav-tab:active .bnav-ico { transform: scale(.92); }
+.bnav-tab:focus-visible { outline: 3px solid var(--jade); outline-offset: -3px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .bnav-bubble, .bnav-tab, .bnav-ico { transition: none; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .bnav { background: var(--glass-solid); -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+@media (min-width: 900px) {
+  .bnav { display: none; }
+}
