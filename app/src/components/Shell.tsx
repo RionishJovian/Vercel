@@ -5,7 +5,8 @@ import { useI18n } from "../i18n";
 import { MagicDude } from "./MagicDude";
 import { useTheme } from "../lib/theme";
 import { BrandMark, Wordmark } from "./Brand";
-import { RAIL, TABS, tabFor } from "../lib/nav";
+import { RAIL, tabFor } from "../lib/nav";
+import { BottomNav } from "./BottomNav";
 
 /** Fleet health in four honest states. "idle" means no evidence, never "offline". */
 export function useHealth(): "ok" | "warn" | "bad" | "idle" {
@@ -68,13 +69,7 @@ export function Shell({ route, business, children }: { route: string; business?:
         <div className="tools"><MagicDude /><span className="only-phone"><LangSwitch /></span></div>
       </header>
       <main className="view" id="view" tabIndex={-1}>{children}</main>
-      <nav className="tabbar" aria-label={t("nav.main")}>
-        {TABS.map((x) => (
-          <a key={x.key} className="tab" href={"#/" + x.key} aria-current={x.key === tab ? "page" : undefined}>
-            <span className="tab-ico"><Icon name={x.icon} /></span><span className="tab-label">{t(x.label)}</span>
-          </a>
-        ))}
-      </nav>
+      <BottomNav active={tab} />
     </div>
   );
 }
