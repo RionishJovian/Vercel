@@ -249,9 +249,11 @@ func buildQuickConnect(deviceID string, peer Peer, privateKey string, startOver 
 	w := func(format string, args ...any) { fmt.Fprintf(&b, format, args...) }
 	// In start-over mode a difference is tolerated only for a resource that
 	// carries this gateway's exact marker; it is removed during APPLY.
+	// Each such check runs only after the resource's marker was verified, so in
+	// start-over mode the difference is this gateway's own earlier state.
 	differs := func(stop string) string {
 		if startOver {
-			return `:if ($mmOwned != true) do={ :error "` + stop + `" }`
+			return `# this gateway's own earlier state; replaced in APPLY`
 		}
 		return `:error "` + stop + `"`
 	}
@@ -271,7 +273,6 @@ func buildQuickConnect(deviceID string, peer Peer, privateKey string, startOver 
 	}
 	w(`
 # PREFLIGHT: inspect all existing Magic Hub identities and destinations before any writes.
-:local mmOwned true
 :foreach mmItem in=[/interface/wireguard find where name~"^mmh-"] do={
   :local mmName [/interface/wireguard get $mmItem name]
   :local mmComment [/interface/wireguard get $mmItem comment]

@@ -37,4 +37,21 @@ assert.equal(enrollCreateOnly(unverified.deps).status,503);assert.equal(unverifi
 const restarted=fixture();assert.equal(enrollCreateOnly(restarted.deps).status,200);
 restarted.verified=false;restarted.deps.sync=()=>{restarted.verified=true};
 assert.equal(enrollCreateOnly(restarted.deps).status,200);assert.equal(restarted.writes,2);assert.equal(restarted.peers.length,1);
-console.log('Create-only Hub enrollment passed: retries, crash recovery, key/port conflicts, cross-tenant key reuse, disabled peers, corrupt store, signature scope and read-back failure. No live network or peers used.');
+// Paid additional gateways: two routers of ONE tenant get separate peers and
+// addresses; re-enrolling or conflicting on router B never changes router A.
+{
+  let store=[]; const addr=peers=>'10.77.0.'+(2+peers.filter(p=>p.state!=='removed').length)+'/32';
+  const enroll=(routerId,routerPublicKey)=>enrollCreateOnly({auth:{tenantId:'tenant',routerId,requestedBy:'owner',scope:'peers:create'},routerId,
+    body:{tenantId:'tenant',routerId,routerPublicKey,managementRestPort:443},load:()=>structuredClone(store),save:peers=>{store=structuredClone(peers)},
+    allocate:addr,sync:()=>{},verify:()=>true,uuid:()=> 'peer-'+routerId,now:()=> '2026-11-13T00:00:00Z'});
+  const keyA=Buffer.alloc(32,3).toString('base64'), keyB=Buffer.alloc(32,4).toString('base64');
+  assert.equal(enroll('gateway-a',keyA).status,200);
+  const a=structuredClone(store[0]);
+  assert.equal(enroll('gateway-b',keyB).status,200);
+  assert.equal(store.length,2);assert.notEqual(store[1].tunnelAddress,a.tunnelAddress);
+  assert.equal(enroll('gateway-b',keyB).status,200); // retry of B: no new allocation
+  assert.equal(enroll('gateway-b',keyA).status,409); // B cannot take A's key
+  assert.equal(enroll('gateway-b',otherKey).status,409); // B key change needs an explicit removal first
+  assert.equal(store.length,2);assert.deepEqual(store[0],a);
+}
+console.log('Create-only Hub enrollment passed: retries, crash recovery, key/port conflicts, cross-tenant key reuse, disabled peers, corrupt store, signature scope, read-back failure and two gateways in one tenant. No live network or peers used.');

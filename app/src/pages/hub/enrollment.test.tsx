@@ -4,7 +4,7 @@ import { I18nProvider } from "../../i18n";
 import { Enrollment } from "./Enrollment";
 
 const ID = "6f69dede-53d9-478a-bc68-9911e878d440";
-const SETUP = "{\n:put \"probe\"\n}\n";
+const SETUP = "{\n:put \"check\"\n# APPLY: tunnel\n:put \"probe\"\n}\n";
 const PASTE = "\n" + SETUP;
 let calls: Array<{ method: string; url: string; body?: Record<string, unknown> }>;
 let liveAnswer: { status: number; body: unknown }, enrollAnswer: { status: number; body: unknown };
@@ -67,7 +67,9 @@ describe("one-paste connection", () => {
     const { value } = screen.getByRole<HTMLTextAreaElement>("textbox", { name: "Connection script" });
     expect(value).toMatch(/^\n\{\n/);
     expect(value).toContain(`:local mmUplink "${uplink === "ethernet" ? "ether1" : uplink}"`);
+    // Network writes come after every Magic Hub check and before the first Magic Hub write.
     expect(value.indexOf("add-default-route=yes")).toBeLessThan(value.indexOf(':put "probe"'));
+    expect(value.indexOf(':put "check"')).toBeLessThan(value.indexOf("/ip dhcp-client set"));
     expect(value.includes("security.passphrase=")).toBe(uplink !== "ethernet");
     expect(calls[0].body).toEqual({ management_rest_port: 443, confirm_enrollment: true });
   });

@@ -180,3 +180,97 @@ func TestDisconnectScriptRejectsUnsafeManagementUser(t *testing.T) {
 		t.Error("management user name must be stable per business and router")
 	}
 }
+
+func TestStartOverRemovesOnlyThisGatewaysMarkedTunnel(t *testing.T) {
+	privateKey, publicKey, err := GenerateRouterKeypair()
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := scriptFixture()
+	p.RouterPublicKey = publicKey
+	script, err := BuildStartOverScript("gateway", p, privateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	name, marker, _ := scriptNames("gateway")
+	apply := strings.Index(script, "\n# APPLY:")
+	if apply < 0 {
+		t.Fatal("missing preflight/apply boundary")
+	}
+	// Every removal is scoped to this gateway's exact marker.
+	for _, line := range strings.Split(script, "\n") {
+		if strings.Contains(line, " remove [") && !strings.Contains(line, `comment="`+marker+`"`) {
+			t.Fatalf("unscoped removal: %s", line)
+		}
+	}
+	for _, want := range []string{
+		`/interface/wireguard/peers remove [find where interface="` + name + `" and comment="` + marker + `"]`,
+		`/interface/wireguard set $mmIface private-key="` + privateKey + `"`,
+	} {
+		if at := strings.Index(script, want); at < apply {
+			t.Fatalf("missing or before APPLY: %s", want)
+		}
+	}
+	// Foreign or ambiguous things still stop it before the first write; a key from an
+	// earlier attempt of THIS gateway does not.
+	for _, guard := range []string{"interface belongs to another setup", "a peer on the Magic Hub interface belongs to another setup", "an address on the Magic Hub interface belongs to another setup", "tunnel address already assigned elsewhere", "older Magic Hub tunnel found", "older Magic Hub route found", "Hub destination route belongs to another setup"} {
+		if at := strings.Index(script, guard); at < 0 || at > apply {
+			t.Fatalf("guard %q missing or after the first write", guard)
+		}
+	}
+	if strings.Contains(script[:apply], `do={ :error "STOP: this router holds a key from an earlier setup`) {
+		t.Fatal("start over must not stop on this gateway's own earlier key")
+	}
+	if strings.Contains(script, "/interface/wireguard remove") || strings.Contains(script, "/user") {
+		t.Fatal("start over must not delete the interface or touch users")
+	}
+	// The default paste keeps refusing the earlier key and never removes anything.
+	quick, _ := BuildQuickConnectScript("gateway", p, privateKey)
+	if strings.Contains(quick, " remove [") || !strings.Contains(quick, "choose Start over; nothing changed") {
+		t.Fatal("default paste became destructive or lost the recovery hint")
+	}
+}
+
+func TestResumeUsesTheRoutersOwnKeyAndStopsBeforeWriting(t *testing.T) {
+	p := scriptFixture()
+	script, err := BuildResumeScript("gateway", p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(script, "private-key") {
+		t.Fatal("resume must never carry a private key")
+	}
+	apply := strings.Index(script, "\n# APPLY:")
+	for _, guard := range []string{"does not hold the key from the earlier setup", "holds a different Magic Hub key"} {
+		if at := strings.Index(script, guard); at < 0 || at > apply {
+			t.Fatalf("guard %q missing or after the first write", guard)
+		}
+	}
+	if strings.Contains(script, " remove [") {
+		t.Fatal("resume removed something")
+	}
+}
+
+func TestTwoGatewaysInOneTenantHaveSeparateIdentities(t *testing.T) {
+	ifaceA, markerA, _ := scriptNames("11111111-1111-4111-8111-111111111111")
+	ifaceB, markerB, _ := scriptNames("22222222-2222-4222-8222-222222222222")
+	userA := ManagementUserName("tenant", "11111111-1111-4111-8111-111111111111")
+	userB := ManagementUserName("tenant", "22222222-2222-4222-8222-222222222222")
+	if ifaceA == ifaceB || markerA == markerB || userA == userB {
+		t.Fatal("gateways of one tenant share router identities")
+	}
+	privB, pubB, _ := GenerateRouterKeypair()
+	p := scriptFixture()
+	p.RouterID, p.RouterPublicKey = "22222222-2222-4222-8222-222222222222", pubB
+	script, err := BuildStartOverScript(p.RouterID, p, privB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(script, ifaceA) || strings.Contains(script, markerA) || strings.Contains(script, userA) {
+		t.Fatal("gateway B's recovery touches gateway A's identity")
+	}
+	disconnect, err := BuildDisconnectScript(p.RouterID, p, userB)
+	if err != nil || strings.Contains(disconnect, markerA) || strings.Contains(disconnect, userA) {
+		t.Fatal("gateway B's disconnect touches gateway A")
+	}
+}

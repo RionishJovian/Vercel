@@ -173,6 +173,9 @@ func (h *VPSHandler) QuickEnrollGateway(c *gin.Context) {
 	var body struct {
 		Port    int  `json:"management_rest_port"`
 		Confirm bool `json:"confirm_enrollment"`
+		// StartOver is the owner's explicit choice to replace this gateway's own
+		// earlier tunnel (and, if needed, its Hub allocation). Never implied.
+		StartOver bool `json:"start_over"`
 	}
 	if c.ShouldBindJSON(&body) != nil || !body.Confirm || body.Port < 1 || body.Port > 65535 {
 		c.JSON(400, gin.H{"error": "confirm one-paste enrollment with a management port"})
@@ -207,6 +210,7 @@ func (h *VPSHandler) QuickEnrollGateway(c *gin.Context) {
 			return
 		}
 	}
+	recovery := ""
 	if peer.PeerID != "" {
 		if peer.TenantID != biz || peer.RouterID != device.DeviceID {
 			c.JSON(502, gin.H{"error": "Magic Hub identity mismatch"})
@@ -217,25 +221,35 @@ func (h *VPSHandler) QuickEnrollGateway(c *gin.Context) {
 			c.JSON(503, gin.H{"error": "Pending installation could not be read safely; enrollment preserved"})
 			return
 		}
-		if key.public != "" && key.public == peer.RouterPublicKey {
+		switch {
+		case key.public != "" && key.public == peer.RouterPublicKey && body.StartOver:
+			// The app still holds this allocation's key; the router has an older
+			// tunnel of this gateway. Replace only that, keep the Hub allocation.
+			script, err = hub.BuildStartOverScript(device.DeviceID, peer, key.private)
+			recovery = "start_over"
+		case key.public != "" && key.public == peer.RouterPublicKey:
 			script, err = hub.BuildQuickConnectScript(device.DeviceID, peer, key.private)
-			if err != nil {
-				c.JSON(502, gin.H{"error": "Hub allocation lacks safe script configuration"})
-				return
-			}
-		} else {
-			// This router never finished connecting (the preflight above refuses one with a
-			// saved connection) and its setup key is gone. Give it a fresh allocation: the
-			// new script corrects whatever an earlier paste left on the router.
-			if h.enrollmentRemover == nil || h.automaticPreflight == nil {
+		case !body.StartOver:
+			// The setup key is gone (expired or never saved) but the Hub allocation
+			// is kept. A router that already holds that key continues with it; one
+			// that does not stops before any change and the owner can choose Start over.
+			script, err = hub.BuildResumeScript(device.DeviceID, peer)
+			recovery = "resume"
+		default:
+			// Explicit Start over: only now is the old allocation replaced.
+			if h.enrollmentRemover == nil {
 				c.JSON(409, gin.H{"error": "existing router key cannot be recovered; enrollment preserved", "code": "hub_router_key_unavailable"})
 				return
 			}
 			if err = h.enrollmentRemover.RemovePeer(c.Request.Context(), identity, peer.PeerID); err != nil {
-				c.JSON(503, gin.H{"error": "Hub could not replace the old allocation; try again"})
+				c.JSON(503, gin.H{"error": "Hub could not replace the old allocation; nothing changed. Try again"})
 				return
 			}
 			peer = hub.Peer{}
+		}
+		if peer.PeerID != "" && err != nil {
+			c.JSON(502, gin.H{"error": "Hub allocation lacks safe script configuration"})
+			return
 		}
 	}
 	if peer.PeerID == "" {
@@ -249,7 +263,12 @@ func (h *VPSHandler) QuickEnrollGateway(c *gin.Context) {
 			c.JSON(502, gin.H{"error": "enrollment not confirmed; retry the one-paste action"})
 			return
 		}
-		script, err = hub.BuildQuickConnectScript(device.DeviceID, peer, key.private)
+		if body.StartOver {
+			script, err = hub.BuildStartOverScript(device.DeviceID, peer, key.private)
+			recovery = "start_over"
+		} else {
+			script, err = hub.BuildQuickConnectScript(device.DeviceID, peer, key.private)
+		}
 		if err != nil {
 			c.JSON(502, gin.H{"error": "Hub allocation lacks safe script configuration"})
 			return
@@ -267,5 +286,5 @@ func (h *VPSHandler) QuickEnrollGateway(c *gin.Context) {
 	c.JSON(200, gin.H{"peer_id": peer.PeerID, "device_id": device.DeviceID, "tunnel_address": peer.TunnelAddress,
 		"hub_public_key": peer.HubPublicKey, "endpoint": peer.Endpoint, "allowed_ips": peer.AllowedIPs,
 		"router_script": script, "state": "hub_peer_enrolled", "lan_reachability_verified": false,
-		"router_configuration_required": true, "one_paste": true, "automatic_management": true})
+		"router_configuration_required": true, "one_paste": true, "automatic_management": true, "recovery": recovery})
 }
