@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type KeyboardEvent } from "react";
+import { useLayoutEffect, useState, type FormEvent, type KeyboardEvent } from "react";
 import { api, ApiError } from "../lib/api";
 import { BrandMark, Wordmark } from "../components/Brand";
 import { Toggles } from "../components/Shell";
@@ -12,6 +12,10 @@ import { hashToPath } from "../lib/route";
  */
 export function SignIn({ notice, onDone }: { notice?: string; onDone: () => void }) {
   const { t } = useI18n();
+  const credentialQuery = Array.from(new URLSearchParams(window.location.search).keys()).some((key) => /^(email|password)$/i.test(key));
+  useLayoutEffect(() => {
+    if (credentialQuery) window.history.replaceState({}, "", window.location.pathname);
+  }, [credentialQuery]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(notice ?? "");
   const [show, setShow] = useState(false);
@@ -30,11 +34,11 @@ export function SignIn({ notice, onDone }: { notice?: string; onDone: () => void
   }
   const capsCheck = (e: KeyboardEvent<HTMLInputElement>) => setCaps(e.getModifierState?.("CapsLock") ?? false);
   // Keep the requested console page so creating an account comes back to it.
-  const next = encodeURIComponent(/^#\//.test(location.hash) ? hashToPath(location.hash) : location.pathname + location.search);
+  const next = encodeURIComponent(credentialQuery ? location.pathname : /^#\//.test(location.hash) ? hashToPath(location.hash) : location.pathname + location.search);
   return (
     <div className="signin">
       <div className="signin-tools"><Toggles /></div>
-      <form className="glass signin-card" onSubmit={submit} noValidate={false}>
+      <form method="post" className="glass signin-card" onSubmit={submit} noValidate={false}>
         <div className="signin-brand"><BrandMark size={40} /><h1><Wordmark /></h1><p className="soft">{t("s.tagline")}</p></div>
         {/* The current page is a label; the other side links to the account form, so nothing relies on an underlined text link. */}
         <div className="signin-seg" role="group" aria-label={t("s.submit") + " / " + t("s.create")}><span aria-current="true">{t("s.submit")}</span><a href={`/signin?register=1&next=${next}`}>{t("s.create")}</a></div>
