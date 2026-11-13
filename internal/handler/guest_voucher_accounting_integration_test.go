@@ -241,6 +241,7 @@ func TestGuestVoucherAccountingGatewayFailureDoesNotStarveHealthyGateway(t *test
 	db := harness_testdb(t)
 	biz, firstDevice := loginFixture(t, db)
 	firstID := accountingSeedGrants(t, db, biz, firstDevice, 1)[0]
+	allowGateways(db, biz, 1)
 	var secondDevice string
 	if err := db.QueryRow(`INSERT INTO devices(business_id,hardware_name,deployment_layer)
  VALUES ($1,'Second accounting gateway','MAIN_GATEWAY') RETURNING device_id::text`, biz).Scan(&secondDevice); err != nil {
