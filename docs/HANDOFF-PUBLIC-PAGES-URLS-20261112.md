@@ -99,7 +99,7 @@ Checks run on this continuation:
 - App: 406/406 tests, lint and production build pass.
 - Root: production frontend build, deployment tests 18/18, Vercel tests 8/8 and legacy-asset tests 3/3 pass. Critical UI: 24/25 pass; the existing media-publishing test cannot launch Chrome in this sandbox.
 - Caddy 2.10.2: candidate configuration validates. The HTTP transition fixture verifies all 66 old assets by SHA-256 at their original URLs, absent assets return 404, removing the compatibility snapshot produces the expected 404, old page redirects retain the query, and rollback clean paths return the bridged old HTML without a server redirect.
-- Browser transition remains **unverified**: local Chromium is blocked by the sandbox, and the shared browser cannot connect to this local preview. No signed-in production checks or hardware checks were made. Earlier Claude browser evidence above does not cover this new recovery work.
+- *(Superseded by the browser acceptance below.)* Browser transition was **unverified** here: local Chromium is blocked by the sandbox, and the shared browser cannot connect to this local preview. No signed-in production checks or hardware checks were made. Earlier Claude browser evidence above does not cover this new recovery work.
 
 Reproduce the transition check in an environment with Chromium, Playwright and Caddy. Build `app/` at both the previous release `5931ed0` and this candidate, then run the candidate root build:
 
@@ -109,9 +109,42 @@ CADDY_BIN=/absolute/path/to/caddy PREVIOUS_ROOT=/absolute/path/to/5931ed0-checko
 
 `TRANSITION_HTTP_ONLY=1` runs the server-only checks and must not be reported as browser acceptance. The full test uses a disposable read-only API fixture. It keeps an old tab open while switching releases, opens a previously unloaded map chunk, checks unsaved input and document preservation, simulates a missing future map chunk, cancels Reload, and checks a clean link after rollback. Run it successfully before calling this release ready. Keep PR #201 draft until review and fresh CI are complete; no merge or deploy was performed during this takeover.
 
+## Browser transition acceptance (Claude, 2026-11-13, on `257d5c3` plus the two fixes in the next commit)
+Environment: Chromium (Playwright), Caddy v2.10.2 running the candidate `deploy/Caddyfile.go-staging`, the previous release rebuilt from `5931ed0` (its 66 files byte-identical to production), and phone width 390 px.
+
+- **`scripts/check-console-transition.mjs` (full browser mode, read-only fixture API): 5/5 passed.**
+  - An old tab opens the never-loaded map chunk after the upgrade, and both the typed input and the document survive.
+  - Kept files return 200; absent files return 404.
+  - The negative control fails as expected.
+  - A missing new map chunk stays inline, and cancelling Reload keeps the typed input.
+  - After rollback, the clean `/app/activity` link opens without a redirect loop.
+- **End-to-end flow with the real local Go API and a real sign-in: 16/16 passed.**
+  - **Previous release, old tab:**
+    - A tab opened on `5931ed0` at `/v2/`, signed in, and left Vouchers unopened.
+    - The server then switched to the candidate.
+    - Vouchers opened from the bottom navigation, loading `index-DW6rR2Ih.js`, `DenseTable-*.js/.css` and `errors-*.js` from `/v2/assets/`, with no errors and no reload.
+    - Reloading that tab lands on `/app/vouchers`.
+  - **Negative control:** the same steps against the candidate without `/v2/assets` fail with 404s.
+  - **Clean-page redirects:** all still in place (`/v2/`, `/v2/<file>`, `signin.html`, `pricing.html`, `/app.html`).
+  - **Candidate tab when a later release replaces its files** (a rebuilt "next" release, with 40 hashed names changed):
+    - Nothing reloads by itself, the tab bar keeps working, and a plain message with a Reload button appears.
+    - The confirmed Reload opens `/app/vouchers` on the new release.
+  - **Unsaved input:**
+    - A new site's name is typed, then the map's file turns out to be missing after the release.
+    - The map fails inline, and the form and the value stay. Nothing reloads.
+    - Reload asks first ("Reloading may discard your unsaved changes"), and cancelling keeps the value.
+- **Found and fixed in the next commit:**
+  - Kept `/v2/assets/*` files were sent with `Cache-Control: no-cache`. They are now cached like `/app/assets/*`.
+  - CodeQL "information exposure through a stack trace" in the test fixture: it now logs the error and returns a fixed message.
+- **Noted, not changed (fails safe):** the edit flag is one boolean kept until a full reload. Typing into the console's in-place sign-in therefore makes a later Reload ask for confirmation even with no form on screen. That is an extra question, never lost input.
+- **Suites on the same tree:**
+  - App: tsc, lint and 406/406 tests.
+  - Root: build, deployment 18/18, Vercel 8/8, critical UI 25/25 (the media-publishing test runs here).
+- **Rollback branch:** `rollback/pre-public-pages-20261112` was created at exactly `5931ed011342ec1f9fa94f84024df42c371c9a0a`. Before creating it, I confirmed that no branch or tag of that name existed, and pushed with a lease that only succeeds if the name is absent. `main` has since moved to `2fe42e6` (PR #202), which changes only `CLAUDE.md` and `.gitignore`, so the application code is identical to `5931ed0`.
+
 ## Next concrete action
 1. The owner reviews the preview and PR #201.
-2. On approval, create the rollback branch, merge, and follow the deploy.
+2. On approval, merge and follow the deploy (the rollback branch already exists, see above).
 3. Verify the following on `megamagic.tech`:
    - `/`, `/signin`, `/pricing` and `/app/home`;
    - the `/v2/#/…` and `.html` redirects;

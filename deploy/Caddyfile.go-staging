@@ -3,7 +3,7 @@ import security-headers.caddy
 :80 {
     import mm_security_headers
     # Pages and the console's index revalidate; fingerprinted assets do not need to.
-    @nocache not path /assets/* /app/assets/*
+    @nocache not path /assets/* /app/assets/* /v2/assets/*
     header @nocache Cache-Control "no-cache"
     encode gzip
     root * /srv

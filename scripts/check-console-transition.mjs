@@ -31,7 +31,8 @@ let switchStage;
 const fixture = createServer(async (req, res) => {
   if (req.method === 'POST' && req.url.startsWith('/__teststage?') && switchStage) {
     try { await switchStage(new URL(req.url, 'http://fixture').searchParams.get('stage')); res.writeHead(200); res.end('switched'); }
-    catch (error) { res.writeHead(500); res.end(String(error)); }
+    // Keep error details on this console, not in the HTTP response.
+    catch (error) { console.error(error); res.writeHead(500); res.end('stage switch failed'); }
     return;
   }
   if (req.method !== 'GET') { res.writeHead(405); res.end('No writes in this test'); return; }
