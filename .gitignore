@@ -21,6 +21,8 @@ mm-*
 # deploy.sh's rollback binary (~22 MB) — a build artifact, never source.
 /server.prev
 /server.*
+# /server.* is for Go binaries; it once silently hid a root server.py source file.
+!/server.py
 
 # Cross-agent handoff notes (written by other agents, untrusted content)
 .peer-*.md

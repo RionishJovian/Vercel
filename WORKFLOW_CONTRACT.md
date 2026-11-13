@@ -1,5 +1,8 @@
 # Mega Magic — Workflow / Capability Contract
 
+> **Historical snapshot of 2026-10-23.** Readiness marks below predate the 2026-11 releases and the write gates in
+> `AGENTS.md` section 5. Use `AGENTS.md` and `STATUS.md` for current state.
+
 **Generated from live audit (commit 8b50ebb) + reconciled source**
 **Date: 2026-10-23**
 
