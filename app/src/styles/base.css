@@ -6,7 +6,7 @@ body {
 }
 /* Burmese stacks tall: give it more air than Latin. */
 :lang(my) body, :lang(my) { line-height: 1.75; }
-:lang(my) h1, :lang(my) h2, :lang(my) h3 { line-height: 1.5; letter-spacing: 0; }
+:lang(my) h1, :lang(my) h2, :lang(my) h3 { line-height: 1.6; letter-spacing: 0; }
 
 /* One calm field behind everything: a faint sky light from the top edge, no objects or photography. */
 body::before {

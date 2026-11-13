@@ -50,7 +50,7 @@ function AccountCard({ a, onChanged }: { a: Acc; onChanged: () => void }) {
         <dt>{t("pa.pass")}</dt><dd>{t("pa.k." + (["monthly", "annual", "trial", "spark", "none"].includes(p.kind ?? "") ? p.kind : "none"))} · {t("ap.s." + (p.state ?? "unknown"))}</dd>
         <dt>{t("ap.activation")}</dt><dd className="num">{when(p.activated_at)}</dd><dt>{t("ap.expiry")}</dt><dd className="num">{when(p.expires_at)}</dd>
         {p.transition_expires_at && <><dt>{t("ap.transitionEnds")}</dt><dd className="num">{when(p.transition_expires_at)}</dd></>}
-        <dt>{t("pa.routers")}</dt><dd className="num">{n(l.router_count)} / {cap(l.router_limit)}</dd><dt>{t("pa.sites")}</dt><dd className="num">{n(l.site_count)} / {cap(l.site_limit)}</dd>
+        <dt>{t("pa.routers")}</dt><dd><Num>{n(l.router_count)}</Num> / <span className={sub.capacity_exempt ? undefined : "num"}>{cap(l.router_limit)}</span></dd><dt>{t("pa.sites")}</dt><dd><Num>{n(l.site_count)}</Num> / <span className={sub.capacity_exempt ? undefined : "num"}>{cap(l.site_limit)}</span></dd>
         <dt>{t("pa.authLogin")}</dt><dd>{isDev ? t("pa.al.exempt") : a.operator_workspace ? t("pa.al.operator") : a.authorized_login === true ? t("pa.al.this") : a.primary_login_id ? t("pa.al.other") : t("pa.al.review")}</dd>
       </dl>
       {!p.activated_at && <p className="soft small">{t("pa.noPass")}</p>}

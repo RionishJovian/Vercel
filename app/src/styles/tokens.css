@@ -52,7 +52,8 @@
   --on-jade: #ffffff;
   --focus-ring: rgba(3, 105, 161, .16);
   --ok: #047857;
-  --ok-soft: rgba(4, 120, 87, .10);
+  /* Keep emerald text above 4.5:1 even when the tint sits on a recessed panel. */
+  --ok-soft: rgba(4, 120, 87, .05);
   --warn: #92400e;
   --warn-soft: rgba(146, 64, 14, .09);
   --bad: #b91c1c;

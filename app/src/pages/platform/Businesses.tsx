@@ -27,7 +27,7 @@ function Row({ b, self, onChanged }: { b: Biz; self: boolean; onChanged: () => v
         <div className="note stack"><input className="input" type="password" autoComplete="new-password" minLength={10} value={pw} onChange={(e) => setPw(e.target.value)} aria-label={t("pb.newPw")} placeholder={t("pb.newPw")} />
           <button className="pill danger" type="button" disabled={busy || pw.length < 10} onClick={() => void run(async () => { await api.post(`/platform/businesses/${encodeURIComponent(b.business_id)}/reset-owner-password`, { new_password: pw }); setPw(null); }, t("pb.pwReset"))}>{t("pb.resetPw")}</button></div>
       )}
-      {st && <dl className="spec"><dt>{t("pb.owner")}</dt><dd>{st.owner_email}</dd><dt>{t("pb.devices")}</dt><dd className="num">{st.device_count} / {st.device_quota_limit}</dd><dt>{t("pb.incidents")}</dt><dd className="num">{st.open_incidents}</dd><dt>{t("pb.extra")}</dt><dd className="num">{st.purchased_extra_slots}</dd><dt>AI</dt><dd>{st.ai_token_balance}</dd></dl>}
+      {st && <dl className="spec"><dt>{t("pb.owner")}</dt><dd>{st.owner_email}</dd><dt>{t("pb.devices")}</dt><dd className="num">{st.device_count} / {st.device_quota_limit}</dd><dt>{t("pb.incidents")}</dt><dd className="num">{st.open_incidents}</dd><dt>{t("pb.extra")}</dt><dd className="num">{st.purchased_extra_slots}</dd><dt>AI</dt><dd className="num">{st.ai_token_balance}</dd></dl>}
       {msg && <p className="soft small" role="status">{msg}</p>}
     </article>
   );

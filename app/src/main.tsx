@@ -1,4 +1,3 @@
-import "@fontsource-variable/bricolage-grotesque";
 import "@fontsource-variable/instrument-sans";
 import "@fontsource-variable/jetbrains-mono";
 import "@fontsource/noto-sans-myanmar/400.css";

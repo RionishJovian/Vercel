@@ -42,12 +42,12 @@ function NewAddon({ onDone }: { onDone: () => void }) {
   return (
     <form className="glass pad stack" onSubmit={add}>
       <h2>{t("pf.new")}</h2>
-      <Field label={t("pf.key")}><input className="input" name="key" maxLength={40} pattern="[a-z0-9_]{3,40}" required /></Field>
+      <Field label={t("pf.key")}><input className="input mono" name="key" maxLength={40} pattern="[a-z0-9_]{3,40}" required /></Field>
       <Field label={t("pf.nameEn")}><input className="input" name="en" maxLength={120} required /></Field>
       <Field label={t("pf.nameMy")}><input className="input" name="my" maxLength={120} required /></Field>
       <Field label={t("pf.descEn")}><input className="input" name="den" maxLength={600} /></Field>
       <Field label={t("pf.descMy")}><input className="input" name="dmy" maxLength={600} /></Field>
-      <Field label={t("pf.price")}><input className="input" name="price" type="number" min={0} step={1} inputMode="numeric" required /></Field>
+      <Field label={t("pf.price")}><input className="input num" name="price" type="number" min={0} step={1} inputMode="numeric" required /></Field>
       <div className="two">
         <Field label={t("pf.kind")}><select className="input" name="kind">{["router_slot", "server", "feature"].map((k) => <option key={k} value={k}>{t("st.kind." + k)}</option>)}</select></Field>
         <Field label={t("pf.period")}><select className="input" name="period">{["one_time", "monthly", "annual"].map((p) => <option key={p} value={p}>{t("st.period." + p)}</option>)}</select></Field>
@@ -72,7 +72,7 @@ export function Addons({ me }: { me: Me }) {
     <>
       <section className="glass pad stack"><h2>{t("pf.pending")}</h2>{pending.length ? pending.map((r) => <Pending key={r.id} r={r} onDone={refresh} />) : <p className="soft small">{t("pf.none")}</p>}</section>
       <section className="glass pad stack"><h2>{t("pf.catalog")}</h2>
-        {addons.map((a) => <div className="row small" key={a.id}><span>{a.name_en} <span className="soft">{a.addon_key}</span></span><span className={"chip " + (a.active ? "ok" : "")}>{a.active ? t("pf.active") : t("pf.hidden")} {mmk(a.price_mmk)}</span></div>)}
+        {addons.map((a) => <div className="row small" key={a.id}><span>{a.name_en} <span className="soft mono">{a.addon_key}</span></span><span className={"chip " + (a.active ? "ok" : "")}>{a.active ? t("pf.active") : t("pf.hidden")} <span className="num">{mmk(a.price_mmk)}</span></span></div>)}
       </section>
       <NewAddon onDone={refresh} />
     </>

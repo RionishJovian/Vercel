@@ -85,7 +85,7 @@
 .gp-layout { display: grid; gap: 18px; }
 .phone { width: min(100%, 330px); margin: 0 auto; padding: 6px; border-radius: var(--r-panel); border: 1px solid var(--edge-soft); background: var(--surface-sunken); box-shadow: var(--shadow); }
 .gp-frame[hidden] { display: none; }
-.gp-frame { display: block; width: 100%; height: 560px; border: 0; border-radius: var(--r-row); background: #0b0e14; }
+.gp-frame { display: block; width: 100%; height: 560px; border: 0; border-radius: var(--r-row); background: var(--surface-sunken); }
 .input.colour { padding: 6px; }
 @media (min-width: 900px) { .gp-layout { grid-template-columns: 380px 1fr; align-items: start; } .gp-preview { position: sticky; top: 76px; } }
 
