@@ -34,10 +34,10 @@ export function Revenue({ me }: { me: Me }) {
         <p className="soft small" role="note">{lang === "my" ? "ဤတန်ဖိုးသည် အသုံးပြုထားသော ဗောက်ချာများ၏ မှတ်တမ်းတန်ဖိုးဖြစ်ပြီး ငွေလက်ခံရရှိမှု အတည်ပြုချက် မဟုတ်ပါ။" : "Recorded voucher activation value, not verified cash received or bank settlement."}</p>
         <p className="num ledger-figure">{mmk(todayShown ?? 0)}<small>{t("c.mmk")}</small></p>
         <p className="mute small">{t("h.today")}</p>
-        <div className="capsules">
-          <div className="capsule"><span className="mute small">{t("h.last7")}</span><b className="num">{mmk(num(r.activation_last7) ?? 0)}</b></div>
-          <div className="capsule"><span className="mute small">{t("h.last30")}</span><b className="num">{mmk(num(r.activation_last30) ?? 0)}</b></div>
-          <div className="capsule"><span className="mute small">{t("rv.all")}</span><b className="num">{mmk(num(r.activation_value) ?? 0)}</b></div>
+        <div className="strip">
+          <div><span className="mute small">{t("h.last7")}</span><b className="num">{mmk(num(r.activation_last7) ?? 0)}</b></div>
+          <div><span className="mute small">{t("h.last30")}</span><b className="num">{mmk(num(r.activation_last30) ?? 0)}</b></div>
+          <div><span className="mute small">{t("rv.all")}</span><b className="num">{mmk(num(r.activation_value) ?? 0)}</b></div>
         </div>
         {(num(r.activation_time_unknown_count) ?? 0) > 0 ? <p className="note warn">{r.activation_time_unknown_count} {t("rv.unknown")}</p> : null}
       </section>

@@ -1,17 +1,21 @@
-/* MegaMagic design tokens — emerald, mint and ivory (owner direction 2026-11-12).
-   Day is a warm ivory work surface with emerald actions; Night is a deep emerald field with mint actions.
-   Every page uses these names, so the whole console follows one system.
-   Spacing steps: 4 · 8 · 12 · 16 · 24 · 32. Radii step with importance: panel 20 > row 14 > control 12 > chip pill. */
+/* MegaMagic design tokens: Deep Slate and Sky Cyan with a Day twin (owner direction 2026-11-13, AGENTS.md section 4).
+   One layered system for the whole console and the same values as the sign-in screen and the public pages.
+   Night: canvas #0B0E14, raised surface #121620, recessed input #0E121A. Day: canvas #F8FAFC, white cards, slate hairlines.
+   The names below are unchanged (--jade is the accent, --glass-solid the raised surface) so every page follows without edits.
+   Contrast pairs are checked in docs and by scripts/test-public-pages-ui.mjs: text 4.5:1, control edges 3:1.
+   Spacing steps: 4 · 8 · 12 · 16 · 24 · 32. Radii step with importance: panel 12 > row 8 = control 8 > chip pill. */
 :root {
-  --font-display: "Bricolage Grotesque Variable", "Noto Sans Myanmar", system-ui, sans-serif;
+  --font-display: "Instrument Sans Variable", "Noto Sans Myanmar", system-ui, sans-serif;
   --font-body: "Instrument Sans Variable", "Noto Sans Myanmar", system-ui, sans-serif;
+  /* Data only: money, counts, IPs, WireGuard /32 addresses, router models, masked voucher hints. */
+  --mono: "JetBrains Mono Variable", "Noto Sans Myanmar", ui-monospace, SFMono-Regular, Menlo, monospace;
 
   --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 24px; --s-6: 32px;
 
-  --r-instrument: 24px;
-  --r-panel: 20px;
-  --r-row: 14px;
-  --r-control: 12px;
+  --r-instrument: 12px;
+  --r-panel: 12px;
+  --r-row: 8px;
+  --r-control: 8px;
 
   --ease-out: cubic-bezier(.22, 1, .36, 1);
   --t-fast: 120ms;
@@ -21,90 +25,80 @@
   --rail-w: 248px;
   --gutter: 16px;
   --content-max: 1080px;
-
-  /* Brand constants (theme-independent) */
-  --emerald-900: #052e22;
-  --emerald-700: #0a5c43;
-  --emerald-600: #0b7a58;
-  --emerald-500: #10a374;
-  --mint-300: #8ff0c8;
-  --mint-100: #d9f7ea;
-  --ivory-50: #fdfbf5;
-  --ivory-100: #f7f3e8;
-  --ivory-200: #ece6d6;
-  --star: #f4d27a;
 }
 
 :root[data-theme="day"] {
   color-scheme: light;
-  --bg-0: #f7f3e8;
-  --bg-1: #f2eee1;
-  --bg-2: #e6f1e9;
-  --glow: rgba(16, 163, 116, .10);
+  --bg-0: #f8fafc;
+  --bg-1: #f8fafc;
+  --bg-2: #eef3f8;
+  --glow: rgba(56, 189, 248, .12);
 
-  --ink: #0d241c;
-  --ink-soft: #33493f;
-  --ink-mute: #5a6e65;
+  --ink: #0f172a;
+  --ink-soft: #475569;
+  --ink-mute: #5b6b80;
 
-  --glass: rgba(255, 253, 247, .86);
-  --glass-strong: #fffdf8;
-  --glass-solid: #fffdf8;
-  --surface-sunken: #f1ede2;
-  --edge: rgba(13, 52, 38, .20);
-  --edge-soft: rgba(13, 52, 38, .11);
-  --shine: rgba(255, 255, 255, .9);
+  --glass: rgba(255, 255, 255, .86);
+  --glass-strong: #ffffff;
+  --glass-solid: #ffffff;
+  --surface-sunken: #f1f5f9;
+  --edge: #64748b;
+  --edge-soft: #e2e8f0;
+  --shine: transparent;
 
-  --jade: #0b7a58;
-  --jade-deep: #075c42;
-  --jade-soft: #d9f2e5;
-  --on-jade: #fdfbf5;
-  --ok: #0b7a58;
-  --ok-soft: #dcf3e7;
-  --warn: #8a5300;
-  --warn-soft: #fbefd5;
-  --bad: #b3261e;
-  --bad-soft: #fbe3df;
-  --info: #1f5f8b;
-  --idle: #5a6e65;
-  --idle-soft: #ebe8de;
-  --shadow: 0 1px 2px rgba(13, 52, 38, .06), 0 12px 32px -18px rgba(13, 52, 38, .28);
-  --shadow-lift: 0 2px 4px rgba(13, 52, 38, .08), 0 22px 44px -22px rgba(13, 52, 38, .36);
+  --jade: #0369a1;
+  --jade-deep: #075985;
+  --jade-soft: rgba(3, 105, 161, .08);
+  --on-jade: #ffffff;
+  --focus-ring: rgba(3, 105, 161, .16);
+  --ok: #047857;
+  --ok-soft: rgba(4, 120, 87, .10);
+  --warn: #92400e;
+  --warn-soft: rgba(146, 64, 14, .09);
+  --bad: #b91c1c;
+  --bad-soft: rgba(185, 28, 28, .08);
+  --info: #0369a1;
+  --idle: #5b6b80;
+  --idle-soft: #eef2f6;
+  --shadow: 0 1px 3px rgba(15, 23, 42, .06), 0 8px 24px -8px rgba(15, 23, 42, .08);
+  --shadow-lift: 0 2px 6px rgba(15, 23, 42, .08), 0 18px 36px -14px rgba(15, 23, 42, .16);
 }
 
 :root[data-theme="night"] {
   color-scheme: dark;
-  --bg-0: #04130e;
-  --bg-1: #071d16;
-  --bg-2: #0b2a20;
-  --glow: rgba(143, 240, 200, .08);
+  --bg-0: #0b0e14;
+  --bg-1: #0b0e14;
+  --bg-2: #121620;
+  --glow: rgba(56, 189, 248, .09);
 
-  --ink: #f3f0e6;
-  --ink-soft: #c3d1c9;
-  --ink-mute: #93a89e;
+  --ink: #f8fafc;
+  --ink-soft: #94a3b8;
+  --ink-mute: #7b8ba3;
 
-  --glass: rgba(16, 44, 34, .78);
-  --glass-strong: #133629;
-  --glass-solid: #0e2a20;
-  --surface-sunken: #08211a;
-  --edge: rgba(217, 247, 234, .22);
-  --edge-soft: rgba(217, 247, 234, .11);
-  --shine: rgba(255, 255, 255, .08);
+  --glass: rgba(18, 22, 32, .82);
+  --glass-strong: #171c28;
+  --glass-solid: #121620;
+  --surface-sunken: #0e121a;
+  --edge: #64748b;
+  --edge-soft: rgba(255, 255, 255, .09);
+  --shine: rgba(255, 255, 255, .06);
 
-  --jade: #6fe3b4;
-  --jade-deep: #3cc492;
-  --jade-soft: rgba(111, 227, 180, .14);
-  --on-jade: #042218;
-  --ok: #6fe3b4;
-  --ok-soft: rgba(111, 227, 180, .14);
-  --warn: #f2c45a;
-  --warn-soft: rgba(242, 196, 90, .14);
-  --bad: #ff9a92;
-  --bad-soft: rgba(255, 154, 146, .14);
-  --info: #8cc8f0;
-  --idle: #93a89e;
-  --idle-soft: rgba(195, 209, 201, .10);
-  --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 16px 36px -20px rgba(0, 0, 0, .7);
-  --shadow-lift: 0 2px 6px rgba(0, 0, 0, .35), 0 26px 50px -24px rgba(0, 0, 0, .8);
+  --jade: #38bdf8;
+  --jade-deep: #0ea5e9;
+  --jade-soft: rgba(56, 189, 248, .12);
+  --on-jade: #06131f;
+  --focus-ring: rgba(56, 189, 248, .18);
+  --ok: #10b981;
+  --ok-soft: rgba(16, 185, 129, .13);
+  --warn: #fbbf24;
+  --warn-soft: rgba(251, 191, 36, .12);
+  --bad: #f87171;
+  --bad-soft: rgba(248, 113, 113, .12);
+  --info: #38bdf8;
+  --idle: #94a3b8;
+  --idle-soft: rgba(148, 163, 184, .10);
+  --shadow: 0 20px 40px -15px rgba(0, 0, 0, .6);
+  --shadow-lift: 0 2px 6px rgba(0, 0, 0, .4), 0 26px 50px -20px rgba(0, 0, 0, .75);
 }
 
 @media (prefers-reduced-transparency: reduce) {
