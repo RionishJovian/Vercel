@@ -131,14 +131,16 @@ func setupHarness(base string) {
 		}
 	}
 	// Migrations after the baseline live in db/migrations (see docs/MIGRATIONS.md).
-	newer, err := os.ReadFile("../../db/migrations/20261102120000_guest_plan_speed.sql")
-	if err != nil {
-		harnessFatal = fmt.Errorf("read migration guest_plan_speed: %w", err)
-		return
-	}
-	if _, err := db.Exec(string(newer)); err != nil {
-		harnessFatal = fmt.Errorf("load migration guest_plan_speed into %s: %w", harnessName, err)
-		return
+	for _, name := range []string{"20261102120000_guest_plan_speed.sql", "20261114090000_voucher_code_protection.sql"} {
+		newer, err := os.ReadFile("../../db/migrations/" + name)
+		if err != nil {
+			harnessFatal = fmt.Errorf("read migration %s: %w", name, err)
+			return
+		}
+		if _, err := db.Exec(string(newer)); err != nil {
+			harnessFatal = fmt.Errorf("load migration %s into %s: %w", name, harnessName, err)
+			return
+		}
 	}
 }
 
