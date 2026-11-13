@@ -124,5 +124,5 @@ export function App() {
     case "home": page = <Home key={route.params.get("router")} me={me} routerId={route.params.get("router")} />; break;
     default: queueMicrotask(() => navigate(APP_BASE + "home", true)); page = null;
   }
-  return <Shell route={route.name} business={me.business?.company_name}><PageBoundary key={route.name + "/" + route.sub}><Suspense fallback={<PageSkeleton variant={skeletonFor(route.name)} />}>{page}</Suspense></PageBoundary></Shell>;
+  return <Shell route={route.name} business={me.business?.company_name}><PageBoundary key={route.name + "/" + route.sub}><Suspense fallback={<PageSkeleton variant={skeletonFor(route.name)} />}><div className="workspace-grid route-workspace" data-page={route.name} data-sub={route.sub}>{page}</div></Suspense></PageBoundary></Shell>;
 }

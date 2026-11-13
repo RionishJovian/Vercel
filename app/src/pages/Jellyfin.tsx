@@ -45,7 +45,7 @@ function Live() {
   }, []);
   useEffect(() => { void load(); }, [load]);
   return (
-    <section className="glass pad stack">
+    <section className="glass pad stack workspace-main">
       <h2>{t("j.status")}</h2>
       {state.kind === "loading" && <p className="soft">{t("j.checking")}</p>}
       {state.kind === "err" && <><Note kind="warn">{t("j.noAnswer")}</Note><button className="pill" type="button" onClick={() => void load()}>{t("c.retry")}</button></>}
@@ -97,9 +97,11 @@ function Dashboard() {
     } catch { setPairErr(true); }
   }
   return (
-    <>
-      <section className="glass pad stack">
+    <div className="workspace-grid">
+      <section className="glass pad workspace-summary">
         <div className="link-hero"><span className={"medal" + (linked ? " on" : "")}><Icon name="play" /></span><div className="stack" style={{ gap: 6 }}><h2>{t("j.link")}</h2><span className={"chip " + (linked ? "ok" : "warn")}>{linked ? t("j.linked") : t("j.notLinked")}</span></div></div>
+      </section>
+      <section className="glass pad stack workspace-rail">
         {linked ? (<>
           <Ledger><Kv k={t("j.server")} data={false} v={c?.server_name ?? "—"} /><Kv k={t("j.lastSeen")} v={c?.last_seen_at ? new Date(c.last_seen_at).toLocaleString() : "—"} /></Ledger>
           <button className="pill danger" type="button" onClick={async () => { if (!window.confirm(t("j.unlinkConfirm"))) return; try { await api.del("/media/connection"); } catch { /* shown on refresh */ } void mutate(); }}>{t("j.unlink")}</button>
@@ -111,8 +113,8 @@ function Dashboard() {
           <p className="soft small">{t("j.pairExpiry")}</p>
         </>)}
       </section>
-      {linked ? <Live /> : <section className="glass pad stack"><h2>{t("j.status")}</h2><p className="soft">{t("j.needLink")}</p></section>}
-    </>
+      {linked ? <Live /> : <section className="glass pad stack workspace-main"><h2>{t("j.status")}</h2><p className="soft">{t("j.needLink")}</p></section>}
+    </div>
   );
 }
 

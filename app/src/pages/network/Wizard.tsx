@@ -74,7 +74,7 @@ export function Wizard({ router, canEdit, reason }: { router?: RouterRow; canEdi
   }
 
   return (
-    <form key={load.k} ref={form} className="stack nwform" onSubmit={preview} onInput={invalidate} onChange={invalidate}>
+    <form key={load.k} ref={form} className="workspace-grid nwform" onSubmit={preview} onInput={invalidate} onChange={invalidate}>
       {offline && (
         <div className="stack">
           <Note kind="bad">{offline}</Note>

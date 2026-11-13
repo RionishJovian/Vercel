@@ -23,14 +23,18 @@ export function AIUsage() {
       {p.data && (<>
         <section className="glass pad stack"><p className="num"><b>{tok(s.events)}</b> {t("dev.ai.calls")} · <b>{tok(s.total_tokens)}</b> {t("dev.ai.tokens")} ({tok(s.prompt_tokens)} {t("dev.ai.prompt")} + {tok(s.completion_tokens)} {t("dev.ai.completion")}){Number(s.cached_events) > 0 ? ` · ${tok(s.cached_events)} ${t("dev.ai.cached")}` : ""}</p></section>
         {Number(s.mismatched_events) > 0 && <Note kind="warn">{tok(s.mismatched_events)} {t("dev.ai.mismatch")}</Note>}
+        <div className="workspace-rail workspace-stack">
         <div className="two"><Groups title={t("dev.ai.byFeature")} list={asArray<Group>(s.by_feature)} /><Groups title={t("dev.ai.byModel")} list={asArray<Group>(s.by_model)} /></div>
         <FilterBar onApply={p.apply} onReset={p.reset}>
           <div className="two"><Select label={t("dev.ai.feature")} value={p.draft.feature} onChange={(v) => p.setDraft("feature", v)} all={t("dev.ai.allFeatures")} options={opts(s.by_feature)} /><Select label={t("dev.ai.model")} value={p.draft.model} onChange={(v) => p.setDraft("model", v)} all={t("dev.ai.allModels")} options={opts(s.by_model)} /></div>
         </FilterBar>
+        </div>
+        <div className="workspace-main workspace-stack">
         {!evs.length ? <Note>{t("dev.ai.none")}</Note> : <div className="stack">{evs.map((e, i) => (
           <div className="rowitem" key={i}><div className="stack" style={{ gap: 2 }}><b className="small">{e.feature}</b><span className="soft small">{e.model} · {when(e.created_at)}</span></div><span className="num small">{tok(e.prompt_tokens)} + {tok(e.completion_tokens)} = {tok(e.total_tokens)}{e.token_mismatch ? " ≠" : ""}</span></div>
         ))}</div>}
         <Pager offset={p.offset} shown={evs.length} total={p.data.total ?? 0} hasMore={p.data.has_more} onNewer={p.newer} onOlder={p.older} filtered={p.filtered} unit={t("dev.ai.unit")} />
+        </div>
       </>)}
     </Page>
   );

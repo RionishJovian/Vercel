@@ -297,14 +297,14 @@ export function NetworkEditor({ workspace, router, canEdit, reason, prefill }: {
         ))}
       </div>}
       {workspace === "pppoe" && !offline && <PppSessions inv={inv} />}
-      <section className="stack" aria-live="polite" ref={formTop} style={{ scrollMarginTop: 80 }}>
+      <section className="workspace-grid" aria-live="polite" ref={formTop} style={{ scrollMarginTop: 80 }}>
         {kinds.length > 1 && <SectionHead level={3} title={tn(s.title)} help={tn(descriptions[task])} />}
-        {!offline && <CurrentSettings inv={inv} kind={task} />}
+        {!offline && <div className="workspace-main"><CurrentSettings inv={inv} kind={task} /></div>}
         {blocked ? <Note>{blocked}</Note> : (
           <>
             {writeHold && <Note kind="warn">{writeHold}</Note>}
             {!writeHold && (task === "ip_address" || task === "vlan" || task === "remove_network" || task === "edit_network" || task === "move_network") && inv.address_preview_only === true && <Note kind="warn">{t("net.addressPreview")}</Note>}
-            <fieldset className="nolock" disabled={offline || !!writeHold || waiting}>
+            <fieldset className="nolock workspace-rail" disabled={offline || !!writeHold || waiting}>
               <TaskForm key={task + (offline ? "-unavailable" : "-ready")} onApplied={() => void refreshQuietly()} kind={task} inv={inv} defaults={defaults} routerId={routerId} routerName={router?.hardware_name ?? ""} locked={locked || offline || !!writeHold || waiting} setLocked={setLocked} onPending={(at) => { setPendingNote(""); setPendingAt(at); }} prefill={prefill} />
             </fieldset>
           </>

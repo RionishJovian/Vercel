@@ -41,7 +41,7 @@ export function Renewals() {
     <>
       <p className="soft small">{t("pr.lead")}</p>
       <button className="pill" type="button" onClick={() => void mutate()}>{t("pr.refresh")}</button>
-      {!list.length ? <Note>{t("pr.none")}</Note> : <div className="stack">{list.map((r) => <Item key={r.id} r={r} onDone={() => void mutate()} />)}</div>}
+      {!list.length ? <Note>{t("pr.none")}</Note> : <div className="workspace-cards">{list.map((r) => <Item key={r.id} r={r} onDone={() => void mutate()} />)}</div>}
     </>
   );
 }

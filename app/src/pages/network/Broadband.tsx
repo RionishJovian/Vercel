@@ -62,7 +62,7 @@ export function Broadband({ routerId, routerName, canEdit, onBusyChange }: { rou
   void act("/accounts", { operation_id: crypto.randomUUID(), username: String(f.get("username")), password: String(f.get("password")), profile: String(f.get("profile")), period_days: days, amount_mmk: amount }).then((applied) => { if (applied && form.isConnected) form.reset(); });
  }
  const locked = busy || !!error || !canEdit || data?.write_enabled !== true;
- return <section className="glass pad stack" aria-label={t("bb.title")}>
+ return <section className="glass pad workspace-grid" aria-label={t("bb.title")}>
   <div className="row" style={{ flexWrap: "wrap" }}><h2>{t("bb.title")}</h2><b>{routerName}</b><button className="pill" type="button" disabled={busy || !!error || !data || !canEdit} onClick={() => void act("/sync", {}, true)}>{t("bb.sync")}</button></div>
   {error && <Note kind="warn">
    <p>{t("bb.loadFailed")}</p>
@@ -83,6 +83,7 @@ export function Broadband({ routerId, routerName, canEdit, onBusyChange }: { rou
    <div className="capsule"><dt>{t("bb.sessionsSeen")}</dt><dd>{data.accounts.filter(a => a.session).length}</dd></div>
    <div className="capsule"><dt>{t("bb.suspendedCount")}</dt><dd>{data.accounts.filter(a => a.observation?.suspended === true).length}</dd></div>
   </dl>}
+  <div className="workspace-main workspace-stack">
   {data && !data.accounts.length && <p>{t("bb.empty")}</p>}
   {data?.accounts.map((a) => {
    const s = a.observation, now = Date.now() / 1000;
@@ -97,7 +98,8 @@ export function Broadband({ routerId, routerName, canEdit, onBusyChange }: { rou
     </div>)}
    </article>;
   })}
-  {canEdit && <>
+  </div>
+  {canEdit && <div className="workspace-rail workspace-stack">
    {!data?.write_enabled && data && <Note>{t("bb.locked")}</Note>}
    <div className="row">
     <label className="field"><span>{t("bb.days")}</span><input className="input" type="number" min="1" max="366" value={days} disabled={busy || !!error} onChange={(e) => setDays(Number(e.target.value))} /></label>
@@ -111,6 +113,6 @@ export function Broadband({ routerId, routerName, canEdit, onBusyChange }: { rou
      <p className="soft small">{t("bb.review")}</p><button className="btn">{t("bb.install")}</button>
     </fieldset>
    </form></details>
-  </>}
+  </div>}
  </section>;
 }

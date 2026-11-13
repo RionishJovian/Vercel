@@ -151,8 +151,8 @@ export function Hub({ me }: { me: Me }) {
     <>
       {back}<PageHead title={t("hub.title")} help={t("hub.lead")} />
       {!gateways.length && <Note>{t("hub.none")}</Note>}
-      <div className="router-grid">{gateways.map((r) => <Card key={r.device_id} r={r} state={states.get(r.device_id) ?? "unknown"} canEdit={canEdit} cap={capability} openId={openId} setOpen={setOpen} onChanged={refresh} />)}</div>
-      {canEdit && <AddGateway sites={sites} onDone={(id) => { refresh(); if (id) setOpen(id); }} />}
+      <div className="router-grid workspace-main">{gateways.map((r) => <Card key={r.device_id} r={r} state={states.get(r.device_id) ?? "unknown"} canEdit={canEdit} cap={capability} openId={openId} setOpen={setOpen} onChanged={refresh} />)}</div>
+      {canEdit && <div className="workspace-rail"><AddGateway sites={sites} onDone={(id) => { refresh(); if (id) setOpen(id); }} /></div>}
     </>
   );
 }

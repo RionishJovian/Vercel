@@ -28,7 +28,7 @@ export function Events() {
   return (
     <>
       {back}<PageHead title={t("ev.title")} help={t("ev.lead")} />
-      <form className="glass pad stack" onSubmit={(e) => { e.preventDefault(); apply(); }}>
+      <form className="glass pad stack workspace-rail" onSubmit={(e) => { e.preventDefault(); apply(); }}>
         <div className="two">
           <label className="field"><span>{t("ev.severity")}</span><select className="input" value={draft.severity} onChange={(e) => setDraft({ ...draft, severity: e.target.value })}><option value="">{t("ev.allSeverities")}</option>{asArray<string>(data?.severities).map((s) => <option key={s}>{s}</option>)}</select></label>
           <label className="field"><span>{t("ev.program")}</span><select className="input" value={draft.program} onChange={(e) => setDraft({ ...draft, program: e.target.value })}><option value="">{t("ev.allPrograms")}</option>{asArray<string>(data?.programs).map((s) => <option key={s}>{s}</option>)}</select></label>
@@ -39,6 +39,7 @@ export function Events() {
           <button className="btn quiet" type="button" onClick={() => { const z = { severity: "", program: "", q: "" }; setDraft(z); setF(z); setOffset(0); }}>{t("ev.reset")}</button>
         </div>
       </form>
+      <div className="workspace-main workspace-stack">
       {isLoading && !data ? <Skeleton h={240} /> : error ? <Note kind="bad">{t("ev.failed")}</Note> : (
         <>
           <p className="soft small" role="status">{t("ev.showing")} {from}–{to} / {total}{f.severity || f.program || f.q ? ` (${t("ev.filtered")})` : ""}</p>
@@ -58,6 +59,7 @@ export function Events() {
           <div className="row"><button className="pill" type="button" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PAGE))}>{t("ev.newer")}</button><button className="pill" type="button" disabled={!data?.has_more} onClick={() => setOffset(offset + PAGE)}>{t("ev.older")}</button></div>
         </>
       )}
+      </div>
     </>
   );
 }

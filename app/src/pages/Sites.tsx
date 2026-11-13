@@ -81,14 +81,13 @@ export function Sites({ me }: { me: Me }) {
     <>
       {back}<PageHead title={t("title.sites")} help={t("site.lead")} />
       {err && <Note kind="bad">{err}</Note>}
-      {canEdit && !form && <button className="btn" type="button" onClick={() => { setCoords({ lat: "", lng: "" }); setForm({ site: null }); }}>{t("site.add")}</button>}
       {(sites.some((x) => x.latitude != null) || form) && (
         <PageBoundary inline><Suspense fallback={<Skeleton h={280} />}>
           <SiteMap sites={sites} states={Object.fromEntries(sites.map((x) => [x.site_id, stateOf(x, conns)]))} selected={selected} onSelect={(id) => pick(id === selected ? "" : id)} pick={form ? { lat: coords.lat, lng: coords.lng, onPick: (la, lo) => setCoords({ lat: la.toFixed(6), lng: lo.toFixed(6) }) } : undefined} />
           <p className="soft small">{t("site.mapCredit")}</p>
         </Suspense></PageBoundary>
       )}
-      {form && <SiteForm site={form.site} coords={coords} setCoords={setCoords} onDone={done} onCancel={() => setForm(null)} />}
+      <div className="workspace-main workspace-stack">
       {!sites.length ? <Note>{t("site.none")}</Note> : (
         <div className="stack">
           {sites.map((s) => {
@@ -119,6 +118,10 @@ export function Sites({ me }: { me: Me }) {
           })}
         </div>
       )}
+      </div>
+      <div className="workspace-rail workspace-stack">
+      {canEdit && !form && <button className="btn" type="button" onClick={() => { setCoords({ lat: "", lng: "" }); setForm({ site: null }); }}>{t("site.add")}</button>}
+      {form && <SiteForm site={form.site} coords={coords} setCoords={setCoords} onDone={done} onCancel={() => setForm(null)} />}
       {sel && (
         <section className="glass pad stack" aria-label={t("site.ready")}>
           <h2>{t("site.ready")}: {sel.name}</h2>
@@ -126,6 +129,7 @@ export function Sites({ me }: { me: Me }) {
           <a className="btn quiet" href="/app/hub">{t("hub.title")}</a>
         </section>
       )}
+      </div>
     </>
   );
 }

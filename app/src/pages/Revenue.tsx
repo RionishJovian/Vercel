@@ -42,7 +42,7 @@ export function Revenue({ me }: { me: Me }) {
         {(num(r.activation_time_unknown_count) ?? 0) > 0 ? <p className="note warn">{r.activation_time_unknown_count} {t("rv.unknown")}</p> : null}
       </section>
 
-      <section className="glass pad" aria-labelledby="rv-counts">
+      <section className="glass pad workspace-rail" aria-labelledby="rv-counts">
         <h2 id="rv-counts">{t("rv.counts")}</h2>
         <div className="meter" role="img" aria-label={counts.map((c) => `${t(c.label)} ${c.n}`).join(", ")}>
           {total > 0 ? counts.filter((c) => c.n > 0).map((c) => <i key={c.cls} className={c.cls} style={{ flexGrow: c.n }} />) : <i className="s-empty" style={{ flexGrow: 1 }} />}
@@ -52,6 +52,7 @@ export function Revenue({ me }: { me: Me }) {
         </ul>
       </section>
 
+      <div className="workspace-main workspace-stack">
       {gateways.length > 0 ? (
         <section className="stack" aria-labelledby="rv-by">
           <h2 id="rv-by">{t("rv.byRouter")}</h2>
@@ -67,6 +68,7 @@ export function Revenue({ me }: { me: Me }) {
       ) : null}
       <RevenuePayments canDecide={["ADMIN", "OWNER", "DEVELOPER"].includes(me.user?.user_role ?? "")} />
       {["ADMIN", "OWNER", "DEVELOPER"].includes(me.user?.user_role ?? "") && <BroadbandRevenue />}
+      </div>
     </>
   );
 }

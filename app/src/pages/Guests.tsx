@@ -172,7 +172,7 @@ export function Guests({ me }: { me: Me }) {
     <>
       <BackLink href="/app/more">{t("tab.more")}</BackLink>
       <PageHead title={t("gu.title")} help={t("gu.lead")} />
-      <div className="glass pad stack">
+      <div className="glass pad stack workspace-rail">
         {gateways.length > 1 ? (
           <div className="two">
             <select className="input" aria-label={t("gu.site")} value={site} onChange={(e) => { setSite(e.target.value); setDevice(""); }}><option value="">{t("gu.allSites")}</option>{siteIds.map((id) => <option key={id} value={id}>{siteNames.get(id) ?? (id === "unassigned" ? t("gu.unassigned") : id)}</option>)}</select>
@@ -197,6 +197,7 @@ export function Guests({ me }: { me: Me }) {
         </p>
         <p className="soft small" role="status">{status}</p>
       </div>
+      <div className="workspace-main workspace-stack">
       {filter === "banned" ? (
         bans.length === 0 ? <Note>{t("lu.noBans")}</Note> : (
           <div className="dt-wrap"><div className="dt-scroll">
@@ -270,6 +271,7 @@ export function Guests({ me }: { me: Me }) {
         <li>{t("lu.off")}</li>
         {kickHeld || !canEdit ? <li>{kickNote}</li> : null}
       </ul>
+      </div>
     </>
   );
 }

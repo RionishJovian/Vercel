@@ -20,7 +20,7 @@ export function TerminalLog() {
       </FilterBar>
       <Loading loading={p.isLoading && !p.data} error={p.error} text={t("dev.tl.failed")} />
       {p.data && (<>
-        {!rows.length ? <Note>{t("dev.tl.none")}</Note> : <div className="stack">{rows.map((e, i) => (
+        {!rows.length ? <Note>{t("dev.tl.none")}</Note> : <div className="workspace-main workspace-stack">{rows.map((e, i) => (
           <div className="glass pad stack" key={i}>
             <div className="row"><span className="soft small num">{when(e.created_at)}</span>{e.status_known ? <span className={"chip " + (Number(e.status) < 400 ? "ok" : "warn")}>{e.status}</span> : <span className="soft small">—</span>}</div>
             <code className="small" style={{ overflowWrap: "anywhere" }}>{e.script}</code>{e.body_unparsed && <span className="soft small">({t("dev.tl.raw")})</span>}

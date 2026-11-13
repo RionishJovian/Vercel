@@ -174,7 +174,7 @@ export function Stock() {
   const current = batch ? planByBatch.get(batch) : undefined;
 
   return (
-    <div className="stack">
+    <div className="workspace-grid">
       {incomplete.length > 0 && (
         <section className="glass pad stack">
           <h2>{t("v.pendingTitle")}</h2><p className="soft small">{t("v.pendingBody")}</p>
@@ -188,7 +188,7 @@ export function Stock() {
       )}
       {!filtered && all === 0 ? <Note>{t("v.empty")}</Note> : (
         <>
-          <div className="glass pad stack">
+          <div className="glass pad stack workspace-rail">
             <p className="code-rule">{t("tel.codeRule")} <span className="mono">ABCDEFGHJKMNPQRSTVWXYZ</span></p>
             <div className="dt-tools three">
               <input className="input" type="search" placeholder={t("vt.search")} aria-label={t("vt.search")} value={search} onChange={(e) => setSearch(e.target.value)} />
@@ -213,6 +213,7 @@ export function Stock() {
             {msg && <Note kind={msg.kind}>{msg.text}</Note>}
           </div>
 
+          <div className="workspace-main workspace-stack">
           <div className="dt-wrap">
             {selected.length > 0 && (
               <div className="dt-bulk" role="group" aria-label={bump(t("vt.selected"), selected.length)}>
@@ -268,6 +269,7 @@ export function Stock() {
             <Pager page={Math.min(page, pages)} perPage={PER_PAGE} total={total} shown={rows.length} onPage={setPage} />
           </div>
           <ul className="dt-foot">{handOutOn ? null : <li>{t("vt.handOutOff")}</li>}{routerDelete ? null : <li>{t("vt.deleteOff")}</li>}<li>{t("v.liveNote")}</li></ul>
+          </div>
         </>
       )}
       {slipFor ? <SlipDialog key={slipFor.code} voucher={slipFor} layout={layout} firstUse={firstUse} onClose={() => setSlipFor(null)} /> : null}

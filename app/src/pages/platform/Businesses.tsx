@@ -50,8 +50,8 @@ export function Businesses({ me }: { me: Me }) {
     setBusy(false);
   }
   return (
-    <>
-      <form className="glass pad stack" onSubmit={create}>
+    <div className="workspace-grid">
+      <form className="glass pad stack workspace-rail" onSubmit={create}>
         <h2>{t("pb.create")}</h2><p className="soft small">{t("pb.createHelp")}</p>
         <Field label={t("pb.company")}><input className="input" name="company" required /></Field>
         <Field label={t("pb.ownerEmail")}><input className="input" name="email" type="email" required /></Field>
@@ -59,8 +59,10 @@ export function Businesses({ me }: { me: Me }) {
         {msg && <Note kind="bad">{msg}</Note>}
         <button className="btn" type="submit" disabled={busy}>{t("pb.createBtn")}</button>
       </form>
+      <div className="workspace-main workspace-stack">
       <h2>{t("pb.records")}</h2><p className="soft small">{t("pb.legacy")}</p>
       {!list.length ? <Note>{t("pb.none")}</Note> : <div className="stack">{list.map((b) => <Row key={b.business_id} b={b} self={!!me.business?.business_id && b.business_id === me.business.business_id} onChanged={() => void mutate()} />)}</div>}
-    </>
+      </div>
+    </div>
   );
 }

@@ -38,7 +38,7 @@ export function Detail({ id, router, canReview }: { id: string; router?: RouterR
         <><Note kind="warn">{t("r.telFail")}</Note><button className="pill" type="button" onClick={() => void mutate()}>{t("c.retry")}</button></>
       ) : (
         <>
-          <section className="glass pad stack">
+          <section className="glass pad stack workspace-main">
             <div className="row"><h2>{t("r.health")}</h2><span className={"chip " + (tele?.state === "live" || tele?.state === "syncing" ? "ok" : "warn")}>{tele?.state || "—"}</span></div>
             <div className="kv-list">
             <Kv k={t("r.board")} v={(r.board_name || "—") + (r.routeros_version ? " " + r.routeros_version : "")} />
@@ -52,7 +52,7 @@ export function Detail({ id, router, canReview }: { id: string; router?: RouterR
             <Kv k={t("r.leases")} v={snap.dhcp_bound_leases == null ? "—" : String(snap.dhcp_bound_leases)} />
             </div>
           </section>
-          <section className="glass pad stack" aria-label={lang === "my" ? "Router ပြင်ဆင်မှုများ" : "Router configuration"}>
+          <section className="glass pad stack workspace-rail" aria-label={lang === "my" ? "Router ပြင်ဆင်မှုများ" : "Router configuration"}>
             <h2>{lang === "my" ? "Router ပြင်ဆင်မှုများ" : "Router configuration"}</h2>
             <p className="soft small">{lang === "my"
               ? "ဤစာမျက်နှာရှိ အခြေအနေပြချက်များမှာ ဖတ်ရန်သာဖြစ်သည်။ Router ပြင်ဆင်မှုများကို အောက်ပါ လုပ်ငန်းစဉ်များမှ စစ်ဆေး၊ အတည်ပြုပြီးမှ အသုံးပြုနိုင်သည်။ ဆာဗာက ပိတ်ထားသော လုပ်ဆောင်ချက်များကို ဤစာမျက်နှာက မဖွင့်နိုင်ပါ။"

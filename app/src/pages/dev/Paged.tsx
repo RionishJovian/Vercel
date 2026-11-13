@@ -29,13 +29,13 @@ export function usePaged<T>(path: string, initial: Filters, limit = 50) {
 
 export function Page({ title, lead, children }: { title: string; lead?: string; children: ReactNode }) {
   const { t } = useI18n();
-  return <><BackLink href="/app/more">{t("tab.more")}</BackLink><PageHead title={title} help={lead} />{children}</>;
+  return <div className="workspace-grid"><BackLink href="/app/more">{t("tab.more")}</BackLink><PageHead title={title} help={lead} />{children}</div>;
 }
 
 export function FilterBar({ children, onApply, onReset }: { children: ReactNode; onApply: () => void; onReset: () => void }) {
   const { t } = useI18n();
   return (
-    <form className="glass pad stack" onSubmit={(e) => { e.preventDefault(); onApply(); }}>
+    <form className="glass pad stack workspace-rail" onSubmit={(e) => { e.preventDefault(); onApply(); }}>
       {children}
       <div className="row" style={{ justifyContent: "flex-start" }}><button className="btn" type="submit">{t("ev.apply")}</button><button className="btn quiet" type="button" onClick={onReset}>{t("ev.reset")}</button></div>
     </form>

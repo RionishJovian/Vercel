@@ -26,10 +26,12 @@ export function Shops() {
     setBusy(false);
   }
   return (
-    <div className="stack">
+    <div className="workspace-grid">
+      <div className="workspace-main workspace-stack">
       {!list.length && <Note>{t("v.shops.empty")}</Note>}
       {list.map((s) => <div className="rowitem" key={s.id}><div className="stack" style={{ gap: 2 }}><b>{s.shop_name}</b>{s.phone && <span className="soft small">{s.phone}</span>}</div><span className="chip num">{s.code_prefix}</span></div>)}
-      <form className="glass pad stack" onSubmit={add}>
+      </div>
+      <form className="glass pad stack workspace-rail" onSubmit={add}>
         <Field label={t("v.shops.name")} htmlFor="sh-name"><input className="input" id="sh-name" name="name" maxLength={120} required /></Field>
         <Field label={t("v.shops.contact")} htmlFor="sh-contact"><input className="input" id="sh-contact" name="contact" maxLength={120} required /></Field>
         <Field label={t("v.shops.prefix")} htmlFor="sh-prefix"><input className="input" id="sh-prefix" name="prefix" minLength={2} maxLength={4} pattern="[A-Za-z]{2,4}" required style={{ textTransform: "uppercase" }} /></Field>

@@ -32,6 +32,7 @@ export function More({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
       <section className="glass pad stack" aria-label={t("more.display")}>
         <div className="row"><b>{t("more.display")}</b><div className="tools"><ThemeToggle /><LangSwitch /></div></div>
       </section>
+      <div className="workspace-cards">
       {GROUPS.map((g) => {
         const items = LINKS.filter((l) => l.group === g && allowed(l));
         if (!items.length) return null;
@@ -44,6 +45,7 @@ export function More({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
           </section>
         );
       })}
+      </div>
       <section className="glass pad stack">
         <p className="soft small">{t("more.signedIn")}</p>
         <p><b>{me.user?.full_name || me.user?.email}</b></p>

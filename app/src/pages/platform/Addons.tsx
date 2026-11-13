@@ -69,12 +69,14 @@ export function Addons({ me }: { me: Me }) {
   const pending = asArray<PReq>(reqs.data?.requests), addons = asArray<PAddon>(adds.data?.addons);
   const refresh = () => { void reqs.mutate(); void adds.mutate(); };
   return (
-    <>
-      <section className="glass pad stack"><h2>{t("pf.pending")}</h2>{pending.length ? pending.map((r) => <Pending key={r.id} r={r} onDone={refresh} />) : <p className="soft small">{t("pf.none")}</p>}</section>
+    <div className="workspace-grid">
+      <section className="glass pad stack workspace-main"><h2>{t("pf.pending")}</h2>{pending.length ? pending.map((r) => <Pending key={r.id} r={r} onDone={refresh} />) : <p className="soft small">{t("pf.none")}</p>}</section>
+      <div className="workspace-rail workspace-stack">
       <section className="glass pad stack"><h2>{t("pf.catalog")}</h2>
         {addons.map((a) => <div className="row small" key={a.id}><span>{a.name_en} <span className="soft mono">{a.addon_key}</span></span><span className={"chip " + (a.active ? "ok" : "")}>{a.active ? t("pf.active") : t("pf.hidden")} <span className="num">{mmk(a.price_mmk)}</span></span></div>)}
       </section>
       <NewAddon onDone={refresh} />
-    </>
+      </div>
+    </div>
   );
 }
