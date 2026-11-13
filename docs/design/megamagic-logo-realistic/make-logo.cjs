@@ -1,0 +1,153 @@
+// MegaMagic logo — realistic rendering of the approved wand-with-stars mark (logo A). Writes megamagic-logo.svg.
+const fs = require("fs");
+const f = (n) => +n.toFixed(2);
+
+// Four-point star made of 8 facets (light/dark halves per point) for a cut-gem bevel.
+function facetedStar(cx, cy, R, r, light, dark, id) {
+  const pts = [];
+  for (let i = 0; i < 8; i++) {
+    const a = (Math.PI / 4) * i - Math.PI / 2;
+    const rad = i % 2 === 0 ? R : r;
+    pts.push([cx + rad * Math.cos(a), cy + rad * Math.sin(a)]);
+  }
+  let s = "";
+  for (let i = 0; i < 8; i++) {
+    const p = pts[i], q = pts[(i + 1) % 8];
+    // light from the top-left: facets facing up/left are light
+    const mid = [(p[0] + q[0]) / 2 - cx, (p[1] + q[1]) / 2 - cy];
+    const lit = mid[0] * -0.7 + mid[1] * -0.7 > 0;
+    s += `<path d="M${f(cx)} ${f(cy)}L${f(p[0])} ${f(p[1])}L${f(q[0])} ${f(q[1])}Z" fill="${lit ? light : dark}"/>`;
+  }
+  const outline = "M" + pts.map((p) => `${f(p[0])} ${f(p[1])}`).join("L") + "Z";
+  return { facets: s, outline };
+}
+
+const gold = facetedStar(334, 150, 92, 22, "url(#goldLight)", "url(#goldDark)");
+const mint = facetedStar(418, 268, 40, 10, "#c9fbe6", "#4fd3a0");
+const pearl = facetedStar(186, 104, 28, 7, "#ffffff", "#d7efe5");
+
+const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+<title>MegaMagic</title>
+<defs>
+  <radialGradient id="tile" cx="30%" cy="22%" r="95%">
+    <stop offset="0" stop-color="#22b989"/>
+    <stop offset=".38" stop-color="#0d8a63"/>
+    <stop offset=".75" stop-color="#065a42"/>
+    <stop offset="1" stop-color="#033627"/>
+  </radialGradient>
+  <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#ffffff" stop-opacity=".55"/>
+    <stop offset=".35" stop-color="#ffffff" stop-opacity=".08"/>
+    <stop offset=".7" stop-color="#000000" stop-opacity="0"/>
+    <stop offset="1" stop-color="#000000" stop-opacity=".35"/>
+  </linearGradient>
+  <linearGradient id="gloss" gradientUnits="userSpaceOnUse" x1="0" y1="24" x2="0" y2="196">
+    <stop offset="0" stop-color="#ffffff" stop-opacity=".26"/>
+    <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+  </linearGradient>
+  <radialGradient id="floor" cx="50%" cy="100%" r="70%">
+    <stop offset="0" stop-color="#5ff0b8" stop-opacity=".22"/>
+    <stop offset="1" stop-color="#5ff0b8" stop-opacity="0"/>
+  </radialGradient>
+  <linearGradient id="shaft" gradientUnits="userSpaceOnUse" x1="0" y1="-19" x2="0" y2="19">
+    <stop offset="0" stop-color="#a9c7ba"/>
+    <stop offset=".18" stop-color="#ffffff"/>
+    <stop offset=".34" stop-color="#fbf8ef"/>
+    <stop offset=".7" stop-color="#d9e6df"/>
+    <stop offset="1" stop-color="#7f9c90"/>
+  </linearGradient>
+  <linearGradient id="cap" gradientUnits="userSpaceOnUse" x1="0" y1="-16" x2="0" y2="16">
+    <stop offset="0" stop-color="#1e4a3c"/>
+    <stop offset=".2" stop-color="#7cc7a8"/>
+    <stop offset=".34" stop-color="#1a5240"/>
+    <stop offset=".75" stop-color="#03211a"/>
+    <stop offset="1" stop-color="#010f0b"/>
+  </linearGradient>
+  <linearGradient id="band" gradientUnits="userSpaceOnUse" x1="0" y1="-19" x2="0" y2="19">
+    <stop offset="0" stop-color="#b9cfc5"/>
+    <stop offset=".2" stop-color="#ffffff"/>
+    <stop offset=".55" stop-color="#c7d8d0"/>
+    <stop offset="1" stop-color="#6c877b"/>
+  </linearGradient>
+  <linearGradient id="goldLight" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#fff6d2"/>
+    <stop offset=".55" stop-color="#ffe08a"/>
+    <stop offset="1" stop-color="#f6c556"/>
+  </linearGradient>
+  <linearGradient id="goldDark" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#f2b941"/>
+    <stop offset="1" stop-color="#c98a1c"/>
+  </linearGradient>
+  <radialGradient id="goldGlow">
+    <stop offset="0" stop-color="#ffe9a8" stop-opacity=".85"/>
+    <stop offset=".35" stop-color="#ffd36b" stop-opacity=".32"/>
+    <stop offset="1" stop-color="#ffd36b" stop-opacity="0"/>
+  </radialGradient>
+  <radialGradient id="mintGlow">
+    <stop offset="0" stop-color="#b6ffe0" stop-opacity=".7"/>
+    <stop offset="1" stop-color="#6ff2bd" stop-opacity="0"/>
+  </radialGradient>
+  <radialGradient id="whiteGlow">
+    <stop offset="0" stop-color="#ffffff" stop-opacity=".9"/>
+    <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+  </radialGradient>
+  <radialGradient id="tipGlow">
+    <stop offset="0" stop-color="#eafff5" stop-opacity=".55"/>
+    <stop offset="1" stop-color="#9ff5d2" stop-opacity="0"/>
+  </radialGradient>
+  <filter id="soft" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="9"/></filter>
+  <filter id="softer" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="16"/></filter>
+  <clipPath id="tileClip"><rect x="24" y="24" width="464" height="464" rx="116"/></clipPath>
+</defs>
+
+<!-- tile -->
+<rect x="24" y="24" width="464" height="464" rx="116" fill="url(#tile)"/>
+<g clip-path="url(#tileClip)">
+  <rect x="24" y="300" width="464" height="188" fill="url(#floor)"/>
+  <path d="M24 24H488V214C380 248 236 252 24 206Z" fill="url(#gloss)"/>
+  <!-- wand shadow on the glass -->
+  <g transform="translate(246 296) rotate(-45)" filter="url(#soft)" opacity=".38">
+    <path d="M-150 -17L112 -12A12 12 0 0 1 112 12L-150 17A17 17 0 0 1 -150 -17Z" fill="#011a12"/>
+  </g>
+</g>
+<rect x="25.5" y="25.5" width="461" height="461" rx="114.5" fill="none" stroke="url(#rim)" stroke-width="3"/>
+<rect x="31" y="31" width="450" height="450" rx="109" fill="none" stroke="#ffffff" stroke-opacity=".07" stroke-width="2"/>
+
+<!-- glow where the wand meets the star -->
+<circle cx="318" cy="190" r="64" fill="url(#tipGlow)"/>
+
+<!-- wand: tapered pearl shaft, dark polished tip, silver rings -->
+<g transform="translate(234 282) rotate(-45)">
+  <path d="M-150 -19L104 -14A14 14 0 0 1 104 14L-150 19A19 19 0 0 1 -150 -19Z" fill="url(#shaft)"/>
+  <path d="M-150 -19L104 -14A14 14 0 0 1 104 14L-150 19A19 19 0 0 1 -150 -19Z" fill="none" stroke="#5e7d70" stroke-opacity=".35" stroke-width="1.2"/>
+  <path d="M58 -14.9L104 -14A14 14 0 0 1 104 14L58 14.9Z" fill="url(#cap)"/>
+  <rect x="52" y="-16.6" width="9" height="33.2" rx="3.5" fill="url(#band)"/>
+  <rect x="-122" y="-19.2" width="8" height="38.4" rx="3" fill="url(#band)"/>
+  <rect x="-110" y="-19" width="4" height="38" rx="1.5" fill="url(#band)" opacity=".85"/>
+  <path d="M-160 -9.5L96 -7.5" stroke="#ffffff" stroke-opacity=".95" stroke-width="3.2" stroke-linecap="round"/>
+  <path d="M66 -8.4L110 -7.6" stroke="#c9f7e3" stroke-opacity=".6" stroke-width="2.4" stroke-linecap="round"/>
+</g>
+
+<!-- lead star -->
+<circle cx="334" cy="150" r="120" fill="url(#goldGlow)"/>
+<path d="${gold.outline}" fill="#ffd36b" filter="url(#softer)" opacity=".55"/>
+<g>${gold.facets}</g>
+<path d="${gold.outline}" fill="none" stroke="#fff3c4" stroke-opacity=".7" stroke-width="2" stroke-linejoin="round"/>
+<circle cx="334" cy="150" r="16" fill="url(#whiteGlow)"/><circle cx="334" cy="150" r="4" fill="#fffdf2"/>
+<path d="M334 70V230M254 150H414" stroke="#fff6d8" stroke-opacity=".35" stroke-width="2" stroke-linecap="round"/>
+
+<!-- companion sparkles -->
+<circle cx="418" cy="268" r="58" fill="url(#mintGlow)"/>
+<g>${mint.facets}</g>
+<circle cx="186" cy="104" r="40" fill="url(#whiteGlow)" opacity=".7"/>
+<g>${pearl.facets}</g>
+<circle cx="430" cy="98" r="18" fill="url(#whiteGlow)"/>
+<circle cx="430" cy="98" r="8" fill="#ffffff"/>
+<circle cx="250" cy="236" r="12" fill="url(#mintGlow)"/>
+<circle cx="250" cy="236" r="5" fill="#e6fff4"/>
+<circle cx="392" cy="352" r="9" fill="url(#whiteGlow)"/>
+<circle cx="392" cy="352" r="3.5" fill="#ffffff" fill-opacity=".85"/>
+</svg>
+`;
+fs.writeFileSync(__dirname + "/megamagic-logo.svg", svg);
+console.log("wrote", svg.length, "bytes");
