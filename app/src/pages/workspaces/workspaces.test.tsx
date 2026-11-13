@@ -71,6 +71,16 @@ describe("Customers", () => {
     expect(screen.queryByText("ma.su")).toBeNull();
     expect(container.querySelectorAll(".sub-row").length).toBe(1);
   });
+
+  it("explains a failed router list instead of loading forever, and retries it", async () => {
+    api["/routers"] = [500, { error: "boom" }];
+    wrap(<Customers params={new URLSearchParams("type=pppoe")} />);
+    expect(await screen.findByText("Subscriber records could not be read")).toBeTruthy();
+    api["/routers"] = [200, { routers: [{ device_id: "d", hardware_name: "Gate", deployment_layer: "MAIN_GATEWAY" }] }];
+    api["/routers/d/broadband/accounts"] = [200, { accounts: [{ id: "1", username: "ko.aung", profile: "10M", observation: null, session: null }] }];
+    (await import("@testing-library/react")).fireEvent.click(screen.getByRole("button", { name: /try again/i }));
+    expect(await screen.findByText("ko.aung")).toBeTruthy();
+  });
 });
 
 describe("subscriber state", () => {

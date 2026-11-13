@@ -1,4 +1,5 @@
 import { type ReactNode } from "react";
+import { OfflineNotice } from "./OfflineNotice";
 import { useFleet } from "../lib/useFleet";
 import { Icon } from "./icons";
 import { useI18n } from "../i18n";
@@ -68,7 +69,7 @@ export function Shell({ route, business, children }: { route: string; business?:
         <a className="brand" href="/app/home" aria-label="MegaMagic"><BrandMark size={32} /><Wordmark /></a>
         <div className="tools"><MagicDude /><span className="only-phone"><LangSwitch /></span></div>
       </header>
-      <main className="view" id="view" tabIndex={-1}>{children}</main>
+      <main className="view" id="view" tabIndex={-1}><OfflineNotice />{children}</main>
       <BottomNav active={tab} />
     </div>
   );
