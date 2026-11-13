@@ -140,6 +140,18 @@ func setupHarness(base string) {
 		harnessFatal = fmt.Errorf("load migration guest_plan_speed into %s: %w", harnessName, err)
 		return
 	}
+	// Gateway capacity (2026-11-13) needs the Store tables, which init.sql predates.
+	for _, name := range []string{"../../migrations/20261031100000_store_addons.sql", "../../db/migrations/20261113120000_gateway_capacity.sql"} {
+		raw, err := os.ReadFile(name)
+		if err != nil {
+			harnessFatal = fmt.Errorf("read migration %s: %w", name, err)
+			return
+		}
+		if _, err := db.Exec(string(raw)); err != nil {
+			harnessFatal = fmt.Errorf("load migration %s into %s: %w", name, harnessName, err)
+			return
+		}
+	}
 }
 
 func teardownHarness() {

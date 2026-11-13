@@ -211,6 +211,7 @@ func TestGuestVoucherSync_rejectsForeignOrMissingGateways(t *testing.T) {
 func TestGuestVoucherSyncBusiness_appliesEveryGateway(t *testing.T) {
 	db := harness_testdb(t)
 	biz, deviceA := loginFixture(t, db)
+	allowGateways(db, biz, 1)
 	var deviceB, laptop string
 	if err := db.QueryRow(`INSERT INTO devices (business_id, hardware_name, deployment_layer) VALUES ($1, 'Second Gateway', 'MAIN_GATEWAY') RETURNING device_id`, biz).Scan(&deviceB); err != nil {
 		t.Fatal(err)

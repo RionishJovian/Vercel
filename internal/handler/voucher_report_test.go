@@ -78,6 +78,7 @@ func TestDBVoucherReportFullInventoryAndTenantIsolation(t *testing.T) {
 		t.Fatal(err)
 	}
 	biz, foreign, empty := insertBusiness(db), insertBusiness(db), insertBusiness(db)
+	allowGateways(db, biz, 1) // two gateways in one business (2026-11-13 paid-gateway rule)
 	device := func(businessID, name string) string {
 		var id string
 		if err := db.QueryRow(`INSERT INTO devices(business_id,hardware_name) VALUES($1,$2) RETURNING device_id`, businessID, name).Scan(&id); err != nil {
