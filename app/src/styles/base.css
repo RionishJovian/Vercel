@@ -24,6 +24,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; }
 /* Data values (money, counts, addresses, models, masked codes) are set in JetBrains Mono; prose and labels never are. */
 .num, .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; font-feature-settings: "tnum", "zero"; letter-spacing: -.01em; }
+/* Tabular figures for a line that mixes a label and a figure: keeps the text font (Instrument Sans, Noto Sans Myanmar), unlike .num. */
+.tnum { font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
 .soft { color: var(--ink-soft); }
 .mute { color: var(--ink-mute); }
 .small { font-size: .875rem; }
@@ -52,9 +54,9 @@ button { cursor: pointer; }
   border-radius: var(--r-row); border: 1px solid var(--edge-soft); background: var(--glass-solid);
 }
 
-/* Controls */
+/* Controls use minimum heights and block padding so Myanmar marks can grow with text. */
 .btn {
-  display: inline-flex; align-items: center; justify-content: center; text-align: center; min-height: 52px; padding: 0 22px; border-radius: var(--r-control); border: 1px solid transparent; font-weight: 650;
+  display: inline-flex; align-items: center; justify-content: center; text-align: center; min-height: 52px; padding: .5em 22px; border-radius: var(--r-control); border: 1px solid transparent; font-weight: 650;
   color: var(--on-jade); background: linear-gradient(180deg, var(--jade), var(--jade-deep));
   box-shadow: 0 8px 20px -12px var(--jade-deep), inset 0 1px 0 rgba(255, 255, 255, .28);
   transition: transform var(--t-fast) var(--ease-out), filter var(--t-fast), box-shadow var(--t-fast);
@@ -63,7 +65,7 @@ button { cursor: pointer; }
 .btn:active { transform: translateY(1px) scale(.99); }
 .btn[disabled] { opacity: .55; cursor: not-allowed; }
 .btn.quiet { background: var(--glass-solid); color: var(--ink); border-color: var(--edge); box-shadow: none; }
-.btn.small { min-height: 44px; padding: 0 16px; font-size: .94rem; }
+.btn.small { min-height: 44px; padding: .4em 16px; font-size: .94rem; }
 .field { display: flex; flex-direction: column; gap: 6px; }
 .field > span { font-size: .875rem; font-weight: 600; color: var(--ink-soft); }
 .input {
@@ -73,7 +75,7 @@ button { cursor: pointer; }
 .input:focus { border-color: var(--jade); box-shadow: 0 0 0 3px var(--focus-ring); outline: none; }
 .input[aria-invalid="true"] { border-color: var(--bad); }
 .input::placeholder { color: var(--ink-mute); }
-.chip { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 12px; border-radius: 999px; font-size: .8125rem; font-weight: 600; border: 1px solid var(--edge-soft); background: var(--glass); }
+.chip { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: .25em 12px; border-radius: 999px; font-size: .8125rem; font-weight: 600; border: 1px solid var(--edge-soft); background: var(--glass); }
 .chip.ok { color: var(--ok); background: var(--ok-soft); border-color: transparent; } .chip.warn { color: var(--warn); background: var(--warn-soft); border-color: transparent; } .chip.bad { color: var(--bad); background: var(--bad-soft); border-color: transparent; }
 .chip.idle { color: var(--idle); background: var(--idle-soft); border-color: transparent; }
 .chip.info { color: var(--info); }
@@ -88,7 +90,7 @@ button { cursor: pointer; }
 /* Sub navigation */
 .scroll-x { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
 .scroll-x::-webkit-scrollbar { display: none; }
-.pill { min-height: 44px; padding: 0 18px; display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; border: 1px solid var(--edge); background: var(--glass-solid); font-weight: 650; font-size: .9375rem; white-space: nowrap; color: var(--ink); transition: background var(--t-base) var(--ease-out), color var(--t-fast); }
+.pill { min-height: 44px; padding: .4em 18px; display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; border: 1px solid var(--edge); background: var(--glass-solid); font-weight: 650; font-size: .9375rem; white-space: nowrap; color: var(--ink); transition: background var(--t-base) var(--ease-out), color var(--t-fast); }
 .pill[aria-current="page"], .pill.on { background: var(--jade); color: var(--on-jade); border-color: var(--jade); }
 .pill.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 55%, transparent); }
 .pill.danger { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 55%, transparent); }

@@ -37,9 +37,9 @@ export function Scans() {
                   {f.subtitle && <span className="soft small">{f.subtitle}</span>}{f.suggestion && <span className="soft small">{f.suggestion}</span>}
                 </div>
               ))}
-              {fs.length > 3 && <span className="soft small">+{fs.length - 3} {t("dev.sc.more")}</span>}
+              {fs.length > 3 && <span className="soft small tnum">+{fs.length - 3} {t("dev.sc.more")}</span>}
               {!fs.length && (r.node && (r.node.node_status || r.node.node_id) ? <span className="small"><span className={"chip " + tone(r.max_severity)}>{r.max_severity}</span> {r.node.node_status || r.node.node_id} <span className="soft">{r.node.source}</span></span> : <span className="soft small">{t("dev.sc.noFindings")}</span>)}
-              {Number(r.error_findings) > 0 && <span className="soft small">{r.error_findings} / {fs.length} {t("dev.sc.areErrors")}</span>}
+              {Number(r.error_findings) > 0 && <span className="soft small tnum">{r.error_findings} / {fs.length} {t("dev.sc.areErrors")}</span>}
             </article>
           );
         })}</div>}

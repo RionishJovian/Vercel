@@ -113,7 +113,7 @@ export function AccountPass({ me, pass, onRefresh }: { me: Me; pass: Pass; onRef
         {requests === null ? <Note kind="bad">{t("ap.reqFail")}</Note> : !requests?.length ? <p className="soft small">{t("ap.noRequests")}</p> : requests.map((r, i) => (
           <article className="stack rq" key={r.id ?? i}>
             <b>{t("ap." + (r.plan === "annual" ? "annual" : "monthly"))} · {t("st.status." + (["pending", "approved", "rejected"].includes(r.status) ? r.status : "pending"))}</b>
-            <p className="soft small">{when(r.created_at)}{Number.isInteger(r.amount_mmk) ? ` · ${price(r.amount_mmk, "")} · ${t("ap.bankRef")}: ${r.bank_reference ?? ""}` : ` · ${t("ap.activationReq")}`}</p>
+            <p className="soft small tnum">{when(r.created_at)}{Number.isInteger(r.amount_mmk) ? ` · ${price(r.amount_mmk, "")} · ${t("ap.bankRef")}: ${r.bank_reference ?? ""}` : ` · ${t("ap.activationReq")}`}</p>
             {r.status === "pending" && <p className="small">{t("ap.dontPayAgain")}</p>}
             {r.status === "rejected" && r.amount_mmk ? <p className="small">{t("ap.rejectedNote")}</p> : null}
           </article>

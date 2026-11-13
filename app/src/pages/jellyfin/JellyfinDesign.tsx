@@ -140,7 +140,7 @@ export function JellyfinDesign({ me }: { me: Me }) {
           <button className="btn quiet" type="button" disabled={busy || connector !== true} onClick={() => void loadLibraries()}>{t("jd.loadLibs")}</button>
           {connector === false && <p className="soft small">{t("jd.noConnector")}</p>}
           {libs.map((l) => <label className="check" key={l.ItemId}><span>{l.Name} <span className="chip">{l.CollectionType}</span></span><input type="checkbox" checked={chosen.includes(l.ItemId!)} onChange={(e) => { if (e.target.checked && chosen.length >= 16) { setLibMsg(t("jd.max16")); return; } edited.current = true; setChosen((c) => (e.target.checked ? [...new Set([...c, l.ItemId!])] : c.filter((x) => x !== l.ItemId))); }} /></label>)}
-          {chosen.length > 0 && !libs.length && <p className="soft small">{chosen.length} {t("jd.savedLibs")}</p>}
+          {chosen.length > 0 && !libs.length && <p className="soft small tnum">{chosen.length} {t("jd.savedLibs")}</p>}
           {libMsg && <p className="soft small" role="status">{libMsg}</p>}
         </Section>
         <Section title={t("jd.sales")}>

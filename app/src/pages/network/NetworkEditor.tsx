@@ -125,7 +125,7 @@ function TaskForm({ kind, inv, defaults, routerId, routerName, locked, setLocked
     const id = "nf-" + key;
     return options
       ? <select className="input" id={id} name={key} required disabled={locked || fixed(key)} value={value} onChange={(e) => change(key, e.target.value)}>{options.map(([v, label]) => <option key={v} value={v}>{label}</option>)}</select>
-      : <input className="input" id={id} name={key} required disabled={locked} maxLength={128} type={type === "password" ? "password" : type === "number" ? "number" : "text"} autoComplete={type === "password" ? "new-password" : undefined}
+      : <input className="input" id={id} name={key} required disabled={locked} maxLength={128} inputMode={type === "number" ? "numeric" : undefined} type={type === "password" ? "password" : type === "number" ? "number" : "text"} autoComplete={type === "password" ? "new-password" : undefined}
           readOnly={(!!selected && kind === "fairshare" && ["name", "target"].includes(key)) || fixed(key)} value={type === "password" ? values[key] ?? "" : value} onChange={(e) => change(key, e.target.value)} />;
   }
   const fields = s.fields;
@@ -287,12 +287,12 @@ export function NetworkEditor({ workspace, router, canEdit, reason, prefill }: {
       )}
       {pendingNote && !waiting && <Note>{pendingNote}</Note>}
       {waiting && <PendingPanel routerId={routerId} revertAt={pendingAt} onDone={finishPending} />}
-      {!offline && <div className="row"><span className="soft small">{t("net.loaded")}: {(inv.interfaces ?? []).length} {t("net.interfaces")}</span><button className="pill" type="button" disabled={locked || waiting} onClick={() => void reload()}>{t("net.refresh")}</button></div>}
+      {!offline && <div className="row"><span className="soft small tnum">{t("net.loaded")}: {(inv.interfaces ?? []).length} {t("net.interfaces")}</span><button className="pill" type="button" disabled={locked || waiting} onClick={() => void reload()}>{t("net.refresh")}</button></div>}
       {kinds.length > 1 && <div className="tasks compact" role="group" aria-label={tn(name)}>
         {kinds.map((k) => (
           <button type="button" className="task" key={k} aria-pressed={k === task} disabled={locked || waiting} onClick={() => { setTask(k); requestAnimationFrame(() => formTop.current?.scrollIntoView?.({ block: "start", behavior: "smooth" })); }}>
             <b>{tn(schema[k].title)}</b>
-            {!offline && <span className="mute small">{schema[k].menu ? `${listFor(inv, k).length} ${t("net.records")}` : t("net.wizard")}</span>}
+            {!offline && <span className="mute small tnum">{schema[k].menu ? `${listFor(inv, k).length} ${t("net.records")}` : t("net.wizard")}</span>}
           </button>
         ))}
       </div>}

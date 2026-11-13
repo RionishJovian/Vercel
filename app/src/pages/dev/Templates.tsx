@@ -54,7 +54,7 @@ export function Templates({ me }: { me: Me }) {
       <Loading loading={p.isLoading && !p.data} error={p.error} text={t("dev.tpl.failed")} />
       {p.data && (
         <>
-          <p className="soft small" role="status">{p.data.count} {t("dev.tpl.templates")}: {p.data.builtin} {t("dev.tpl.builtin")}, {p.data.custom} {t("dev.tpl.custom")}{p.filtered ? ` (${t("ev.filtered")})` : ""}</p>
+          <p className="soft small tnum" role="status">{p.data.count} {t("dev.tpl.templates")}: {p.data.builtin} {t("dev.tpl.builtin")}, {p.data.custom} {t("dev.tpl.custom")}{p.filtered ? ` (${t("ev.filtered")})` : ""}</p>
           {!list.length ? <Note>{t("dev.tpl.none")}</Note> : <div className="stack">{list.map((x) => (
             <div className="rowitem" key={x.id} style={{ alignItems: "flex-start" }}>
               <div className="stack" style={{ gap: 2, minWidth: 0 }}>
