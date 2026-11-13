@@ -19,14 +19,16 @@ type Client struct {
 func New(cfg config.RedisConfig) (*Client, error) {
 	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
 	rdb := redis.NewClient(&redis.Options{
-		Addr:         addr,
-		Password:     cfg.Password,
-		DB:           cfg.DB,
-		DialTimeout:  cfg.DialTimeout,
-		ReadTimeout:  cfg.ReadTimeout,
-		WriteTimeout: cfg.WriteTimeout,
-		PoolSize:     cfg.PoolSize,
-		MinIdleConns: cfg.MinIdleConns,
+		// Apply request contexts to actual socket I/O, including readiness.
+		ContextTimeoutEnabled: true,
+		Addr:                  addr,
+		Password:              cfg.Password,
+		DB:                    cfg.DB,
+		DialTimeout:           cfg.DialTimeout,
+		ReadTimeout:           cfg.ReadTimeout,
+		WriteTimeout:          cfg.WriteTimeout,
+		PoolSize:              cfg.PoolSize,
+		MinIdleConns:          cfg.MinIdleConns,
 	})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -43,7 +45,10 @@ func (c *Client) Close() error {
 }
 
 func (c *Client) IsConnected() bool {
-	return c.rdb.Ping(context.Background()).Err() == nil
+	// Readiness must never wait indefinitely for an unavailable cache.
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	return c.rdb.Ping(ctx).Err() == nil
 }
 
 // Key builds a namespaced key: mm:{business_id}:{suffix}

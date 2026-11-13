@@ -68,7 +68,7 @@ PY
 (cd "$app" && docker compose -f "$compose" up -d --no-deps --no-build --pull never api web)
 ready=false
 for attempt in $(seq 1 30);do
- if curl -fsS http://127.0.0.1:18080/ready -o "$backup/ready.json" && python3 - "$backup/ready.json" <<'PY'
+ if curl --connect-timeout 2 --max-time 8 -fsS http://127.0.0.1:18080/ready -o "$backup/ready.json" && python3 - "$backup/ready.json" <<'PY'
 import json,sys
 x=json.load(open(sys.argv[1]));assert x['status']=='ready';assert all(x['checks'][k]=='ok' for k in ['database','redis','nats'])
 PY
@@ -76,6 +76,13 @@ PY
  sleep 2
 done
 test "$ready" = true
+# Prove the binary itself reports the source revision selected for this rollout.
+curl --connect-timeout 2 --max-time 8 -fsS http://127.0.0.1:18080/api/v1/version -o "$backup/version.json"
+python3 - "$backup/version.json" "$release_sha" <<'PY'
+import json,sys
+x=json.load(open(sys.argv[1]))
+assert x.get('commit')==sys.argv[2], 'API runtime commit does not match release'
+PY
 for service in api web;do
  image=$api_image;test "$service" != web || image=$web_image
  expected_id=$(docker image inspect --format '{{.Id}}' "$image")
@@ -97,9 +104,9 @@ if ! cmp -s "$edge_new" "$edge"; then
 fi
 edge_policy=$(sed -n 's/.*Content-Security-Policy "\([^"]*\)".*/\1/p' "$edge_new")
 test -n "$edge_policy"
-curl -fsSI https://megamagic.tech/ | tr -d '\r' | grep -iqF "content-security-policy: $edge_policy"
+curl --connect-timeout 2 --max-time 8 -fsSI https://megamagic.tech/ | tr -d '\r' | grep -iqF "content-security-policy: $edge_policy"
 # Public readiness must be JSON too; a website fallback page cannot pass.
-curl -fsS https://megamagic.tech/ready -o "$backup/public-ready.json"
+curl --connect-timeout 2 --max-time 8 -fsS https://megamagic.tech/ready -o "$backup/public-ready.json"
 python3 - "$backup/public-ready.json" <<'PY'
 import json,sys
 x=json.load(open(sys.argv[1]));assert x['status']=='ready';assert all(v=='ok' for v in x['checks'].values())

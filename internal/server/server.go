@@ -535,7 +535,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		sugar:           sugar,
 		gin:             r,
 		http: &http.Server{
-			Addr:           fmt.Sprintf(":%d", cfg.Server.Port),
+			Addr:           httpListenAddress(cfg.Server),
 			Handler:        withWebFigHost(webFigProxy, r),
 			ReadTimeout:    cfg.Server.ReadTimeout,
 			WriteTimeout:   cfg.Server.WriteTimeout,
@@ -990,36 +990,68 @@ func healthCheck(c *gin.Context) {
 	})
 }
 
+// readinessProbes separates dependency checks from the HTTP response so all
+// fail-closed outcomes can be regression tested without live infrastructure.
+type readinessProbes struct {
+	database func() error
+	redis    func() bool
+	nats     func() bool
+}
+
 func readinessCheck(s *Server) gin.HandlerFunc {
+	return readinessCheckWithProbes(readinessProbes{
+		database: boundedDatabaseProbe(func(ctx context.Context) error {
+			if s.db == nil {
+				return errors.New("database unavailable")
+			}
+			return s.db.PingContext(ctx)
+		}),
+		redis: func() bool {
+			return s.cache != nil && s.cache.IsConnected()
+		},
+		nats: func() bool {
+			return s.messaging != nil && s.messaging.IsConnected()
+		},
+	})
+}
+
+func readinessCheckWithProbes(p readinessProbes) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		dbOK := "ok"
-		redisOK := "ok"
-		natsOK := "ok"
-
-		health := s.db.Ping()
-		if health != nil {
-			dbOK = fmt.Sprintf("error: %v", health)
+		checks := gin.H{
+			"database": "disconnected",
+			"redis":    "disconnected",
+			"nats":     "disconnected",
+		}
+		if p.database != nil && p.database() == nil {
+			checks["database"] = "ok"
+		}
+		if p.redis != nil && p.redis() {
+			checks["redis"] = "ok"
+		}
+		if p.nats != nil && p.nats() {
+			checks["nats"] = "ok"
 		}
 
-		if s.cache != nil && !s.cache.IsConnected() {
-			redisOK = "disconnected"
+		code, state := http.StatusOK, "ready"
+		if checks["database"] != "ok" || checks["redis"] != "ok" || checks["nats"] != "ok" {
+			code, state = http.StatusServiceUnavailable, "not_ready"
 		}
-
-		c.JSON(http.StatusOK, gin.H{
-			"status": "ready",
-			"checks": gin.H{
-				"database": dbOK,
-				"redis":    redisOK,
-				"nats":     natsOK,
-			},
-		})
+		// Never send raw dependency failures (including DSNs) to public callers.
+		c.Header("Cache-Control", "no-store")
+		c.JSON(code, gin.H{"status": state, "checks": checks})
 	}
 }
 
+// Populated by CI with -ldflags; local builds intentionally report development.
+// This is the running Go binary's source revision, not a request timestamp.
+var buildRevision = "development"
+
 func version(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
 	c.JSON(http.StatusOK, gin.H{
 		"version":   "0.1.0-dev",
-		"build":     "development",
+		"build":     buildRevision,
+		"commit":    buildRevision,
 		"timestamp": time.Now().UTC().Format(time.RFC3339),
 	})
 }
@@ -1115,23 +1147,20 @@ func registerGeoTopologyRoute(r gin.IRoutes, topologyMap gin.HandlerFunc) {
 func loggerMiddleware(log *zap.SugaredLogger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
-		path := c.Request.URL.Path
-		query := c.Request.URL.RawQuery
-
 		c.Next()
 
-		latency := time.Since(start)
-		status := c.Writer.Status()
-		clientIP := c.ClientIP()
-		method := c.Request.Method
-
+		// FullPath is the route template, never a voucher code or router ID.
+		// Raw paths and query strings can contain secrets and must not be logged.
+		route := c.FullPath()
+		if route == "" {
+			route = "unmatched"
+		}
 		log.Infow("HTTP request",
-			"method", method,
-			"path", path,
-			"query", query,
-			"status", status,
-			"latency_ms", latency.Milliseconds(),
-			"client_ip", clientIP,
+			"method", c.Request.Method,
+			"path", route,
+			"status", c.Writer.Status(),
+			"latency_ms", time.Since(start).Milliseconds(),
+			"client_ip", c.ClientIP(),
 			"user_agent", c.Request.UserAgent(),
 		)
 	}
