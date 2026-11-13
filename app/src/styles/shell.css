@@ -16,8 +16,8 @@
 }
 .brand { white-space: nowrap; display: flex; align-items: center; gap: 10px; min-height: 44px; }
 .wordmark { font-family: var(--font-display); font-weight: 650; font-size: 1.12rem; letter-spacing: -.02em; color: var(--ink); }
-.wordmark b { font-weight: 750; color: var(--jade); }
-:root[data-theme="day"] .wordmark b { color: var(--emerald-600); }
+.wordmark b { font-weight: 750; color: #38bdf8; }
+:root[data-theme="day"] .wordmark b { color: #0369a1; }
 .tools { display: flex; align-items: center; gap: 8px; }
 .seg { display: inline-flex; padding: 3px; border-radius: 999px; border: 1px solid var(--edge-soft); background: var(--glass-solid); }
 .seg button { min-height: 38px; min-width: 44px; padding: 0 12px; border: 0; border-radius: 999px; background: transparent; font-weight: 650; font-size: .875rem; color: var(--ink-soft); transition: background var(--t-fast), color var(--t-fast); }
@@ -25,12 +25,10 @@
 .view { max-width: var(--content-max); margin: 0 auto; display: flex; flex-direction: column; gap: 16px; padding-top: 8px; min-width: 0; }
 
 /* Brand mark: stars twinkle twice on load, then rest. */
-.brandmark { flex: none; display: block; border-radius: 30%; box-shadow: 0 6px 16px -10px rgba(5, 61, 44, .8); }
-.brandmark.is-animated .bm-star { transform-box: fill-box; transform-origin: center; animation: bm-twinkle 1.6s var(--ease-out) 2; }
-.brandmark.is-animated .bm-s1 { animation-delay: .18s; } .brandmark.is-animated .bm-s2 { animation-delay: .32s; }
-.brandmark.is-animated .bm-s3 { animation-delay: .46s; } .brandmark.is-animated .bm-s4 { animation-delay: .6s; }
-@keyframes bm-twinkle { 0%, 100% { transform: scale(1); opacity: 1; } 40% { transform: scale(.55) rotate(25deg); opacity: .55; } 70% { transform: scale(1.15); opacity: 1; } }
-@media (prefers-reduced-motion: reduce) { .brandmark .bm-star { animation: none !important; } }
+.brandmark { flex: none; display: block; }
+.brandmark.is-animated .bm-spark { transform-box: fill-box; transform-origin: center; animation: bm-twinkle 1.4s var(--ease-out) .2s 1; }
+@keyframes bm-twinkle { 0%, 100% { transform: scale(1); opacity: 1; } 40% { transform: scale(.7) rotate(20deg); opacity: .6; } 70% { transform: scale(1.1); } }
+@media (prefers-reduced-motion: reduce) { .brandmark .bm-spark { animation: none !important; } }
 
 /* Left rail (desktop) */
 .rail { display: none; }

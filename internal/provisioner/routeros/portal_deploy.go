@@ -123,26 +123,26 @@ func portalLoginHTML() string {
 	return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Connect to WiFi</title>
 <style>
-/* Obsidian and Cyan (owner decision 2026-11-13). The router serves this page before the guest has internet, so it
-   uses system fonts and no image: the budget is 24 KB and nothing may be fetched. Night by default; light phones get the Day twin. */
-:root{color-scheme:dark;--bg:#09090b;--surface:#111114;--sunken:#0c0c0f;--ink:#fafafa;--ink-soft:#d4d4d8;--ink-mute:#a1a1aa;--line:#ffffff17;--edge:#71717a;--accent:#06b6d4;--bad:#f87171;--bad-soft:#f8717120;--portal-brand:#06b6d4;--portal-tint:#111114;--portal-on-brand:#102c29}
-@media(prefers-color-scheme:light){:root{color-scheme:light;--bg:#fafafa;--surface:#ffffff;--sunken:#f4f4f5;--ink:#09090b;--ink-soft:#3f3f46;--ink-mute:#52525b;--line:#09090b1a;--edge:#71717a;--accent:#0e7490;--bad:#b91c1c;--bad-soft:#b91c1c14}}
+/* Layered deep-slate surfaces with a sky-cyan accent (owner direction 2026-11-13). The router serves this page before the guest has
+   internet, so it uses system fonts and no image: the budget is 24 KB and nothing may be fetched. Night by default; light phones get the Day twin. */
+:root{color-scheme:dark;--bg:#0b0e14;--surface:#121620;--sunken:#0e121a;--ink:#f8fafc;--ink-soft:#94a3b8;--ink-mute:#7b8ba3;--line:#ffffff17;--edge:#64748b;--accent:#38bdf8;--bad:#f87171;--bad-soft:#f8717120;--mesh:#38bdf817;--glow:0 0 0 3px #38bdf82e;--shadow:inset 0 1px 0 #ffffff0f,0 20px 40px -15px #0009;--portal-brand:#38bdf8;--portal-tint:#121620;--portal-on-brand:#06131f}
+@media(prefers-color-scheme:light){:root{color-scheme:light;--bg:#f8fafc;--surface:#ffffff;--sunken:#f1f5f9;--ink:#0f172a;--ink-soft:#475569;--ink-mute:#5b6b80;--line:#e2e8f0;--edge:#64748b;--accent:#0369a1;--bad:#b91c1c;--bad-soft:#b91c1c14;--mesh:#38bdf81f;--glow:0 0 0 3px #0369a129;--shadow:0 1px 3px #0f172a0f,0 8px 24px -8px #0f172a14}}
 *{box-sizing:border-box}html{min-height:100%;background:var(--bg)}
-body{margin:0;min-height:100vh;min-height:100svh;display:flex;align-items:center;justify-content:center;padding:32px 20px;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans Myanmar",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
-.card{width:100%;max-width:400px;padding:28px 24px;text-align:left;border-radius:8px;border:1px solid var(--line);background:color-mix(in srgb,var(--portal-tint) 6%,var(--surface))}
-.wifi-mark{display:block;width:40px;height:40px;margin:0 0 14px;color:var(--accent)}
-h1{font-size:28px;line-height:1.15;font-weight:650;letter-spacing:-.025em;margin:0 0 8px}
-p{color:var(--ink-soft);font-size:15px;line-height:1.6;margin:0 0 20px}
+body{margin:0;min-height:100vh;min-height:100svh;display:flex;align-items:center;justify-content:center;padding:32px 20px;background:radial-gradient(ellipse 75% 45% at 50% -10%,var(--mesh),transparent) no-repeat,var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans Myanmar",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+.card{width:100%;max-width:400px;padding:32px 28px;text-align:left;border-radius:12px;border:1px solid var(--line);background:color-mix(in srgb,var(--portal-tint) 6%,var(--surface));box-shadow:var(--shadow)}
+.wifi-mark{display:block;width:40px;height:40px;margin:0 0 16px;color:var(--accent)}
+h1{font-size:28px;line-height:1.15;font-weight:650;letter-spacing:-.028em;margin:0 0 8px;color:var(--ink)}
+p{color:var(--ink-soft);font-size:15px;line-height:1.6;margin:0 0 24px}
 label{display:block}.field-label{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
-input{display:block;width:100%;min-height:60px;padding:0 16px;border-radius:6px;border:1px solid var(--edge);background:var(--sunken);color:var(--ink);font:600 22px ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.14em;text-transform:uppercase}
+input{display:block;width:100%;min-height:60px;padding:0 16px;border-radius:8px;border:1px solid var(--edge);background:var(--sunken);color:var(--ink);font:600 22px ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.14em;text-transform:uppercase}
 input::placeholder{color:var(--ink-mute);letter-spacing:.3em}
-input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 1px var(--accent),0 0 0 4px #06b6d426}
-button:focus-visible,a.alt:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-button{width:100%;min-height:52px;margin-top:16px;padding:0 16px;border:1px solid color-mix(in srgb,var(--portal-brand) 70%,var(--ink));border-radius:6px;background:var(--portal-brand);color:var(--portal-on-brand);font:inherit;font-size:16px;font-weight:650;cursor:pointer;transition:filter .12s}
-button:hover{filter:brightness(1.1)}button:disabled{cursor:wait;opacity:.7}
-.brand{display:block;margin:20px 0 0;font-size:13px;line-height:1.5;color:var(--ink-mute);overflow-wrap:anywhere}
-a.alt{display:flex;align-items:center;justify-content:center;min-height:48px;margin-top:12px;border:1px solid var(--edge);border-radius:6px;color:var(--ink);font-size:15px;font-weight:600;text-decoration:none}
-.err{margin:12px 0;padding:10px 12px;border-radius:6px;background:var(--bad-soft);border:1px solid var(--bad);color:var(--bad);font-size:14px;line-height:1.5;text-align:left}
+input:focus{outline:none;border-color:var(--accent);box-shadow:var(--glow)}
+button:focus-visible,a.alt:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+button{width:100%;min-height:52px;margin-top:16px;padding:0 16px;border:1px solid color-mix(in srgb,var(--portal-brand) 70%,var(--ink));border-radius:8px;background-color:var(--portal-brand);background-image:linear-gradient(180deg,#ffffff33,#fff0);box-shadow:inset 0 1px 0 #ffffff40;color:var(--portal-on-brand);font:inherit;font-size:16px;font-weight:650;cursor:pointer;transition:filter .16s}
+button:hover{filter:brightness(1.07)}button:disabled{cursor:wait;opacity:.7}
+.brand{display:block;margin:24px 0 0;font-size:13px;line-height:1.5;color:var(--ink-mute);overflow-wrap:anywhere}
+a.alt{display:flex;align-items:center;justify-content:center;min-height:48px;margin-top:12px;border:1px solid var(--edge);border-radius:8px;color:var(--ink);font-size:15px;font-weight:600;text-decoration:none}
+.err{margin:12px 0;padding:10px 12px;border-radius:8px;background:var(--bad-soft);border:1px solid var(--bad);color:var(--bad);font-size:14px;line-height:1.5;text-align:left}
 .consent{display:flex;align-items:flex-start;gap:10px;text-align:left;font-size:14px;line-height:1.5;margin:16px 0 0;color:var(--ink-soft)}.consent input{width:22px;min-height:22px;height:22px;padding:0;margin:0;flex-shrink:0;accent-color:var(--accent)}
 details{margin:0 0 16px;font-size:14px;line-height:1.6;color:var(--ink-soft);text-align:left}details p{white-space:pre-wrap;margin:10px 0;font-size:14px}summary{cursor:pointer;min-height:44px;display:flex;align-items:center}
 @media(max-height:560px){body{align-items:flex-start;padding-top:24px}}

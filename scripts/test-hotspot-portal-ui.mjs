@@ -205,9 +205,9 @@ test('an owner colour gets readable button ink by contrast, and no colour keeps 
   const w = portal(t, async () => response({ config }));
   await settle();
   const ink = hex => { w.applyBranding({ primary_hex: hex }); return w.document.documentElement.style.getPropertyValue('--brand-ink'); };
-  assert.equal(ink('#06b6d4'), '#111'); // white on cyan would be 2.4:1
+  assert.equal(ink('#38bdf8'), '#06131f'); // white on sky cyan would be 2.0:1
   assert.equal(ink('#075044'), '#fff');
-  assert.equal(ink('#ffb547'), '#111');
+  assert.equal(ink('#ffb547'), '#06131f');
   w.applyBranding({});
   assert.equal(w.document.documentElement.style.getPropertyValue('--brand'), '');
 });

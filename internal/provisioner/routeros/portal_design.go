@@ -47,7 +47,7 @@ func portalDesignText(s string) string {
 // RenderPortalLogin supplies the same document for owner preview and deployment.
 // Preview removes all RouterOS macros/resources and makes login explicitly inert.
 func RenderPortalLogin(design *PortalLoginDesign, preview bool) (string, error) {
-	d := PortalLoginDesign{BusinessName: "WiFi Voucher", WelcomeText: "Enter voucher code to connect", PrimaryHex: "#06b6d4", GlassTintHex: "#111114"}
+	d := PortalLoginDesign{BusinessName: "WiFi Voucher", WelcomeText: "Enter voucher code to connect", PrimaryHex: "#38bdf8", GlassTintHex: "#121620"}
 	if design != nil {
 		d = *design
 	}
@@ -58,10 +58,10 @@ func RenderPortalLogin(design *PortalLoginDesign, preview bool) (string, error) 
 		d.WelcomeText = "Enter voucher code to connect"
 	}
 	if d.PrimaryHex == "" {
-		d.PrimaryHex = "#06b6d4"
+		d.PrimaryHex = "#38bdf8"
 	}
 	if d.GlassTintHex == "" {
-		d.GlassTintHex = "#111114"
+		d.GlassTintHex = "#121620"
 	}
 	if !model.IsHexColor(d.PrimaryHex) || !model.IsHexColor(d.GlassTintHex) {
 		return "", fmt.Errorf("portal colours must be literal hex colours")
@@ -142,8 +142,8 @@ func portalBrandText(hex string) string {
 		}
 		luminance += channel * weight
 	}
-	if luminance > .22 {
-		return "#102c29"
+	if luminance > .19 {
+		return "#06131f"
 	}
 	return "#fff"
 }

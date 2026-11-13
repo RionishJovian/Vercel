@@ -28,7 +28,7 @@ const themes = {
 };
 const textPairs = [
   ['ink', 'bg'], ['ink', 'surface'], ['ink-soft', 'surface'], ['ink-soft', 'sunken'], ['ink-mute', 'bg'], ['ink-mute', 'surface'], ['ink-mute', 'sunken'],
-  ['on-accent', 'accent'], ['on-accent', 'accent-hover'], ['accent-text', 'surface'], ['accent-text', 'bg'],
+  ['on-accent', 'accent'], ['on-accent', 'accent-deep'], ['on-accent', 'accent-hover'], ['accent-text', 'surface'], ['accent-text', 'bg'],
   ['ok', 'surface'], ['warn', 'surface'], ['bad', 'surface'], ['ok', 'bg'],
 ];
 const nonTextPairs = [['control-edge', 'sunken'], ['control-edge', 'surface'], ['accent', 'bg'], ['accent', 'surface']];
@@ -56,7 +56,7 @@ test('no page puts both languages in one text node', () => {
 });
 
 // The console sign-in scopes the same palette to .signin under the console's token names.
-const consoleNames = { bg: 'bg-0', surface: 'glass-solid', sunken: 'surface-sunken', accent: 'jade', 'accent-hover': 'jade-deep', 'on-accent': 'on-jade', 'accent-text': 'jade', 'control-edge': 'edge' };
+const consoleNames = { bg: 'bg-0', surface: 'glass-solid', sunken: 'surface-sunken', accent: 'jade', 'accent-deep': 'jade-deep', 'on-accent': 'on-jade', 'accent-text': 'jade', 'control-edge': 'edge' };
 for (const [name, sel] of [['night', ':root[data-theme="night"] .signin'], ['day', ':root[data-theme="day"] .signin']]) {
   const t = tokens(sel, signinCss);
   const pick = (k) => t[consoleNames[k] ?? k];
@@ -97,7 +97,7 @@ for (const [label, source, nightMarker, dayMarker] of [
   for (const [name, t] of [['night', night], ['day', day]]) {
     test(`${label} ${name}: text pairs reach 4.5:1 and share the public palette`, () => {
       const pairs = label === 'hosted portal'
-        ? [['ink', 'bg'], ['ink', 'surface'], ['ink-soft', 'surface'], ['ink-mute', 'bg'], ['ink-mute', 'surface'], ['ink-mute', 'sunken'], ['on-accent', 'accent'], ['accent-text', 'surface'], ['ok', 'surface'], ['warn', 'surface'], ['bad', 'surface']]
+        ? [['ink', 'bg'], ['ink', 'surface'], ['ink-soft', 'surface'], ['ink-mute', 'bg'], ['ink-mute', 'surface'], ['ink-mute', 'sunken'], ['on-accent', 'accent'], ['on-accent', 'accent-deep'], ['accent-text', 'surface'], ['ok', 'surface'], ['warn', 'surface'], ['bad', 'surface']]
         : [['ink', 'bg'], ['ink', 'surface'], ['ink-soft', 'surface'], ['ink-mute', 'surface'], ['bad', 'surface']];
       for (const [fg, bg] of pairs) {
         assert.ok(t[fg] && t[bg], `${label} ${name}: missing ${fg} or ${bg}`);
@@ -120,4 +120,44 @@ test('guest portal keeps 1.75 Burmese leading, talks only to /api/v1/portal and 
   for (const u of urls) assert.match(u, /^\/portal\//, `unexpected endpoint ${u}`);
   assert.doesNotMatch(portalHtml + routerGo.slice(routerGo.indexOf('<style>'), routerGo.indexOf('</style>')), /https?:\/\//);
   assert.doesNotMatch(portalHtml, /\bsrc="https?:|href="https?:/);
+});
+
+// The deep-slate surface system: a canvas that is never flat black, an elevated surface and a recessed input, plus the alabaster Day twin.
+test('surfaces are the layered deep-slate system in every file, with matching Day twins', () => {
+  const night = { bg: '#0b0e14', surface: '#121620', sunken: '#0e121a', ink: '#f8fafc', 'ink-soft': '#94a3b8', accent: '#38bdf8', 'on-accent': '#06131f' };
+  const day = { bg: '#f8fafc', surface: '#ffffff', sunken: '#f1f5f9', ink: '#0f172a', accent: '#0369a1', 'on-accent': '#ffffff' };
+  for (const [k, v] of Object.entries(night)) assert.equal(themes.night[k], v, `landing night ${k}`);
+  for (const [k, v] of Object.entries(day)) assert.equal(themes.day[k], v, `landing day ${k}`);
+  assert.notEqual(themes.night.bg, '#09090b', 'the canvas must not be flat black');
+  for (const [label, source, marker] of [['hosted portal', portalHtml, ':root {'], ['router login page', routerGo, ':root{color-scheme:dark']]) {
+    const t = inlineTokens(source, marker);
+    for (const k of ['bg', 'surface', 'sunken', 'ink', 'ink-soft', 'accent', 'on-accent']) if (t[k]) assert.equal(t[k], night[k], `${label} ${k}`);
+  }
+  assert.match(css, /radial-gradient\(ellipse 75% 45% at 50% -10%/, 'ambient mesh at the top of the hero and sign-in views');
+  assert.match(signinCss, /radial-gradient\(ellipse 75% 45% at 50% -10%/);
+  assert.match(portalHtml, /radial-gradient\(ellipse 75% 45% at 50% -10%/);
+});
+
+test('one logo mark everywhere: the signal-and-spark artwork, no green wand tile', () => {
+  const artwork = 'M33 8.5Q33.9 14.1 39.5 15Q33.9 15.9 33 21.5Q32.1 15.9 26.5 15Q32.1 14.1 33 8.5Z';
+  const files = {
+    'web/index.html': readFileSync(new URL('../web/index.html', import.meta.url), 'utf8'),
+    'web/signin.html': readFileSync(new URL('../web/signin.html', import.meta.url), 'utf8'),
+    'web/pricing.html': readFileSync(new URL('../web/pricing.html', import.meta.url), 'utf8'),
+    'app/src/components/Brand.tsx': readFileSync(new URL('../app/src/components/Brand.tsx', import.meta.url), 'utf8'),
+    'web/assets/images/megamagic-mark.svg': readFileSync(new URL('../web/assets/images/megamagic-mark.svg', import.meta.url), 'utf8'),
+  };
+  for (const [name, text] of Object.entries(files)) {
+    assert.ok(text.includes(artwork), `${name} is missing the mark artwork`);
+    assert.doesNotMatch(text, /#0e8a63|#053d2c|logo-a-/i, `${name} still carries the old green wand tile`);
+  }
+  assert.match(files['web/assets/images/megamagic-mark.svg'], /stroke-width="1\.75"/);
+});
+
+test('links are controls, not raw browser underlines', () => {
+  assert.match(css, /\ba \{[^}]*text-decoration:\s*none/);
+  const site = readFileSync(new URL('../web/assets/css/site-pages.css', import.meta.url), 'utf8');
+  assert.doesNotMatch(css + site + signinCss, /text-decoration:\s*underline/);
+  const tsx = readFileSync(new URL('../app/src/pages/SignIn.tsx', import.meta.url), 'utf8');
+  assert.doesNotMatch(tsx, /className="link"/);
 });

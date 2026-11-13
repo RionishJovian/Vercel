@@ -108,13 +108,13 @@ function safeHex(v, fallback) {
 }
 
 /** Pick the foreground with the higher WCAG contrast against a brand background. A mid colour such as cyan
- *  (#06B6D4) needs dark ink; white on it is only 2.4:1. */
+ *  (#38BDF8) needs dark ink; white on it is only 2.4:1. */
 function readableOn(hex) {
   var h = hex.replace("#", "");
   if (h.length === 3 || h.length === 4) { h = h[0]+h[0]+h[1]+h[1]+h[2]+h[2]; }
   function lin(v) { v = v / 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }
   var L = 0.2126 * lin(parseInt(h.substring(0,2),16)) + 0.7152 * lin(parseInt(h.substring(2,4),16)) + 0.0722 * lin(parseInt(h.substring(4,6),16));
-  return (L + 0.05) / 0.05518 > 1.05 / (L + 0.05) ? "#111" : "#fff";
+  return (L + 0.05) / 0.05518 > 1.05 / (L + 0.05) ? "#06131f" : "#fff";
 }
 
 /** The owner's colour recolours the primary button and a faint panel wash. Without one, the page keeps its

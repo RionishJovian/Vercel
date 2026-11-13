@@ -35,7 +35,9 @@ export function SignIn({ notice, onDone }: { notice?: string; onDone: () => void
     <div className="signin">
       <div className="signin-tools"><Toggles /></div>
       <form className="glass signin-card" onSubmit={submit} noValidate={false}>
-        <div className="signin-brand"><BrandMark size={72} /><h1><Wordmark /></h1><p className="soft">{t("s.tagline")}</p></div>
+        <div className="signin-brand"><BrandMark size={40} /><h1><Wordmark /></h1><p className="soft">{t("s.tagline")}</p></div>
+        {/* The current page is a label; the other side links to the account form, so nothing relies on an underlined text link. */}
+        <div className="signin-seg" role="group" aria-label={t("s.submit") + " / " + t("s.create")}><span aria-current="true">{t("s.submit")}</span><a href={`/signin?register=1&next=${next}`}>{t("s.create")}</a></div>
         {/* type="text" with an email keyboard: older logins have no domain suffix (e.g. kyaw@mikromagic). */}
         <label className="field"><span>{t("s.email")}</span><input className="input" name="email" type="text" inputMode="email" autoComplete="username" autoCapitalize="none" spellCheck={false} required autoFocus /></label>
         <div className="field">
@@ -52,8 +54,7 @@ export function SignIn({ notice, onDone }: { notice?: string; onDone: () => void
         </div>
         {error ? <p className="note bad" role="alert">{error}</p> : null}
         <button className="btn" type="submit" disabled={busy} aria-busy={busy || undefined}>{busy ? <><span className="spin" aria-hidden="true" />{t("s.working")}</> : t("s.submit")}</button>
-        <p className="signin-create"><a className="link" href={`/signin?register=1&next=${next}`}>{t("s.create")}</a></p>
-        <p className="small soft signin-help">{t("s.forgot")} <a className="link" href="https://t.me/nish2769" target="_blank" rel="noopener noreferrer">Telegram</a></p>
+        <div className="signin-help"><p className="small soft">{t("s.forgot")}</p><a className="btn quiet small" href="https://t.me/nish2769" target="_blank" rel="noopener noreferrer">Telegram</a></div>
       </form>
     </div>
   );

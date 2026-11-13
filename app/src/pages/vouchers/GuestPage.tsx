@@ -28,7 +28,7 @@ interface Draft {
   graceMin: string; graceData: string; voucher: boolean; payment: boolean; plans: Plan[];
 }
 const fromConfig = (c: Config): Draft => ({
-  name: c.business_name ?? "", welcome: c.welcome_text ?? "", terms: c.terms_text ?? "", primary: hexOr(c.primary_hex, "#06b6d4"), tint: hexOr(c.glass_tint_hex, "#111114"),
+  name: c.business_name ?? "", welcome: c.welcome_text ?? "", terms: c.terms_text ?? "", primary: hexOr(c.primary_hex, "#38bdf8"), tint: hexOr(c.glass_tint_hex, "#121620"),
   bankName: c.bank_name ?? "", bankHolder: c.bank_holder ?? "", bankAcc: c.bank_account ?? "", mmqr: c.mmqr_url ?? "", instructions: c.payment_instructions ?? "",
   graceMin: String(c.guest_grace_minutes ?? 10), graceData: String(c.guest_grace_data_mb ?? 50), voucher: on(c.voucher_login_enabled), payment: on(c.mobile_payment_enabled),
   plans: asArray<Plan>(c.guest_plans).map((p) => ({ key: p.key ?? "", label: p.label ?? "", minutes: p.minutes ?? 0, amount: p.amount ?? 0, data_mb: p.data_mb ?? 0, speed_down_mbps: p.speed_down_mbps ?? 0, speed_up_mbps: p.speed_up_mbps ?? 0 })),
