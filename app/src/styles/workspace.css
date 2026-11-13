@@ -16,6 +16,8 @@
   /* Conditional/role-gated rails must never leave an empty third of the page. */
   .workspace-grid:not(:has(> .workspace-rail)) > .workspace-main,
   .workspace-grid:not(:has(> .workspace-main)) > .workspace-rail { grid-column: 1 / -1; }
+  /* A single customer service stays compact while All keeps the eight/four split. */
+  .workspace-grid > .customer-panel-solo { width: 100%; max-width: 860px; }
   .workspace-stack { gap: 24px; }
   .home-services.cols2 { grid-template-columns: minmax(0, 1fr); }
   .workspace-cards { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 24px; align-items: start; }

@@ -152,15 +152,15 @@ export function Customers({ params }: { params: URLSearchParams }) {
       <header className="ws-head"><h1>{t("cu.title")}</h1><p className="ws-lead">{t("cu.lead")}</p></header>
       <Segmented<CustType> label={t("cu.type")} value={type} onChange={setType} options={[["all", t("cu.all")], ["hotspot", t("cu.hotspot")], ["pppoe", t("cu.pppoe")]]} />
       {type !== "pppoe" && (
-        <section className="glass pad stack workspace-rail" aria-labelledby="cu-hs">
+        <section className={`glass pad stack workspace-rail${type === "hotspot" ? " customer-panel-solo" : ""}`} aria-labelledby="cu-hs">
           <div className="row"><h2 id="cu-hs">{t("cu.hotspotUsers")}</h2><span className="chip">{t("cu.hotspot")}</span></div>
           <p className="soft small">{t("cu.hotspotHelp")}</p>
-          {report.data ? <div className="metrics"><Metric label={t("cu.activeCodes")} value={mmk(report.data.activated_count)} sub={t("cu.activeCodesHint")} /><Metric label={t("hm.startedToday")} value={mmk(report.data.activation_today)} /></div> : report.isLoading ? <Loading><SkMetrics n={2} /></Loading> : null}
+          {report.data ? <div className="metrics"><Metric label={t("cu.activeCodes")} value={mmk(report.data.activated_count)} sub={t(report.data.activated_count === 0 ? "cu.noActiveUsage" : "cu.activeCodesHint")} /><Metric label={t("hm.startedToday")} value={mmk(report.data.activation_today)} /></div> : report.isLoading ? <Loading><SkMetrics n={2} /></Loading> : null}
           <div className="actions-row"><a className="btn small" href="/app/guests">{t("cu.openSessions")}</a><a className="btn small quiet" href="/app/vouchers">{t("cu.findCode")}</a></div>
         </section>
       )}
       {type !== "hotspot" && (
-        <section className="glass pad stack workspace-main" aria-labelledby="cu-pp">
+        <section className={`glass pad stack workspace-main${type === "pppoe" ? " customer-panel-solo" : ""}`} aria-labelledby="cu-pp">
           <div className="row"><h2 id="cu-pp">{t("cu.subscribers")}</h2><span className="chip">{t("cu.pppoe")}</span></div>
           <div className="toolbar">
             <input className="input" type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("cu.search")} aria-label={t("cu.search")} />
