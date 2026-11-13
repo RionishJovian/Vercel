@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+<title>MegaMagic</title>
+<defs>
+  <radialGradient id="tile" cx="72%" cy="22%" r="100%">
+    <stop offset="0" stop-color="#1fae80"/><stop offset=".4" stop-color="#0b7a57"/><stop offset=".78" stop-color="#05452f"/><stop offset="1" stop-color="#022a1e"/>
+  </radialGradient>
+  <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#fff" stop-opacity=".5"/><stop offset=".35" stop-color="#fff" stop-opacity=".07"/><stop offset=".7" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".35"/>
+  </linearGradient>
+  <linearGradient id="gloss" gradientUnits="userSpaceOnUse" x1="0" y1="24" x2="0" y2="200">
+    <stop offset="0" stop-color="#fff" stop-opacity=".2"/><stop offset="1" stop-color="#fff" stop-opacity="0"/>
+  </linearGradient>
+  <radialGradient id="aura" cx="200" cy="316" r="260" gradientUnits="userSpaceOnUse">
+    <stop offset="0" stop-color="#ffe9a6" stop-opacity=".42"/><stop offset=".35" stop-color="#7ff5c9" stop-opacity=".16"/><stop offset="1" stop-color="#7ff5c9" stop-opacity="0"/>
+  </radialGradient>
+  <linearGradient id="a1" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#ffe6a0"/><stop offset="1" stop-color="#ffc94d"/></linearGradient>
+  <linearGradient id="a2" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#ffd772"/><stop offset=".5" stop-color="#d6f59a"/><stop offset="1" stop-color="#8ff0c4"/></linearGradient>
+  <linearGradient id="a3" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#a6f7d3"/><stop offset="1" stop-color="#5fe8b4"/></linearGradient>
+  <linearGradient id="shaft" gradientUnits="userSpaceOnUse" x1="0" y1="-17" x2="0" y2="17">
+    <stop offset="0" stop-color="#a9c7ba"/><stop offset=".18" stop-color="#fff"/><stop offset=".34" stop-color="#fbf8ef"/><stop offset=".7" stop-color="#d9e6df"/><stop offset="1" stop-color="#7f9c90"/>
+  </linearGradient>
+  <linearGradient id="cap" gradientUnits="userSpaceOnUse" x1="0" y1="-14" x2="0" y2="14">
+    <stop offset="0" stop-color="#1e4a3c"/><stop offset=".22" stop-color="#7cc7a8"/><stop offset=".36" stop-color="#1a5240"/><stop offset=".75" stop-color="#03211a"/><stop offset="1" stop-color="#010f0b"/>
+  </linearGradient>
+  <linearGradient id="band" gradientUnits="userSpaceOnUse" x1="0" y1="-17" x2="0" y2="17">
+    <stop offset="0" stop-color="#b9cfc5"/><stop offset=".2" stop-color="#fff"/><stop offset=".55" stop-color="#c7d8d0"/><stop offset="1" stop-color="#6c877b"/>
+  </linearGradient>
+  <radialGradient id="spark"><stop offset="0" stop-color="#fff" stop-opacity=".95"/><stop offset=".35" stop-color="#fff3c7" stop-opacity=".4"/><stop offset="1" stop-color="#fff3c7" stop-opacity="0"/></radialGradient>
+  <radialGradient id="tipglow"><stop offset="0" stop-color="#fffbe6"/><stop offset=".25" stop-color="#ffe089" stop-opacity=".85"/><stop offset=".6" stop-color="#ffd25e" stop-opacity=".25"/><stop offset="1" stop-color="#ffd25e" stop-opacity="0"/></radialGradient>
+  <filter id="glow" filterUnits="userSpaceOnUse" x="0" y="0" width="512" height="512"><feGaussianBlur stdDeviation="9"/></filter>
+  <filter id="soft" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="7"/></filter>
+  <clipPath id="tileClip"><rect x="24" y="24" width="464" height="464" rx="116"/></clipPath>
+</defs>
+
+<rect x="24" y="24" width="464" height="464" rx="116" fill="url(#tile)"/>
+<g clip-path="url(#tileClip)">
+  <rect x="24" y="24" width="464" height="464" fill="url(#aura)"/>
+  <path d="M24 24H488V206C380 240 236 244 24 198Z" fill="url(#gloss)"/>
+  <g transform="translate(210 330) rotate(135)" filter="url(#soft)" opacity=".4">
+    <path d="M20 -12L150 -16A16 16 0 0 1 150 16L20 12Z" fill="#011a12"/>
+  </g>
+</g>
+<rect x="25.5" y="25.5" width="461" height="461" rx="114.5" fill="none" stroke="url(#rim)" stroke-width="3"/>
+
+<!-- Wi-Fi arcs as spell light: soft glow, solid body, bright core -->
+<g fill="none" stroke-linecap="round">
+  <path d="M204.08 238.11A78 78 0 0 1 277.89 311.92" stroke="#ffd25e" stroke-width="34" opacity=".55" filter="url(#glow)"/>
+  <path d="M207.33 176.19A140 140 0 0 1 339.81 308.67" stroke="#b8f0a0" stroke-width="34" opacity=".5" filter="url(#glow)"/>
+  <path d="M210.57 114.28A202 202 0 0 1 401.72 305.43" stroke="#6ff2c0" stroke-width="34" opacity=".5" filter="url(#glow)"/>
+  <path d="M204.08 238.11A78 78 0 0 1 277.89 311.92" stroke="url(#a1)" stroke-width="22"/>
+  <path d="M207.33 176.19A140 140 0 0 1 339.81 308.67" stroke="url(#a2)" stroke-width="22"/>
+  <path d="M210.57 114.28A202 202 0 0 1 401.72 305.43" stroke="url(#a3)" stroke-width="22"/>
+  <path d="M213.02 242.14A75 75 0 0 1 273.86 302.98" stroke="#fffbea" stroke-opacity=".85" stroke-width="5"/>
+  <path d="M219.07 180.33A137 137 0 0 1 335.67 296.93" stroke="#fffdf2" stroke-opacity=".75" stroke-width="5"/>
+  <path d="M224.25 118.48A199 199 0 0 1 397.52 291.75" stroke="#f2fff9" stroke-opacity=".7" stroke-width="5"/>
+</g>
+<circle cx="276.3" cy="299.78" r="14.3" fill="url(#spark)"/><path d="M276.3 290.43L277.54 298.54L285.65 299.78L277.54 301.03L276.3 309.13L275.05 301.03L266.95 299.78L275.05 298.54Z" fill="#fffdf0"/><circle cx="247.88" cy="184.44" r="18.2" fill="url(#spark)"/><path d="M247.88 172.54L249.47 182.86L259.78 184.44L249.47 186.03L247.88 196.34L246.3 186.03L235.98 184.44L246.3 182.86Z" fill="#fffdf0"/><circle cx="327.9" cy="259.06" r="9" fill="url(#spark)" opacity=".8"/><circle cx="327.9" cy="259.06" r="2.48" fill="#ffffff"/><circle cx="400.03" cy="287.89" r="23.4" fill="url(#spark)"/><path d="M400.03 272.59L402.07 285.85L415.33 287.89L402.07 289.92L400.03 303.19L398 289.92L384.73 287.89L398 285.85Z" fill="#fffdf0"/><circle cx="301" cy="141.06" r="10" fill="url(#spark)" opacity=".8"/><circle cx="301" cy="141.06" r="2.75" fill="#ffffff"/><circle cx="371.31" cy="208.96" r="7" fill="url(#spark)" opacity=".8"/><circle cx="371.31" cy="208.96" r="1.93" fill="#ffffff"/><circle cx="285.8" cy="244.01" r="6" fill="url(#spark)" opacity=".8"/><circle cx="285.8" cy="244.01" r="1.65" fill="#ffffff"/><circle cx="217.98" cy="144.94" r="7" fill="url(#spark)" opacity=".8"/><circle cx="217.98" cy="144.94" r="1.93" fill="#ffffff"/><circle cx="389.31" cy="178.46" r="9" fill="url(#spark)" opacity=".8"/><circle cx="389.31" cy="178.46" r="2.48" fill="#ffffff"/><circle cx="272.31" cy="93.45" r="6" fill="url(#spark)" opacity=".8"/><circle cx="272.31" cy="93.45" r="1.65" fill="#ffffff"/>
+
+<!-- wand: pearl shaft pointing down-left from the tip -->
+<g transform="translate(200 316) rotate(135)">
+  <path d="M22 -13L150 -17A17 17 0 0 1 150 17L22 13A13 13 0 0 1 22 -13Z" fill="url(#shaft)"/>
+  <path d="M22 -13.1L58 -13.9V13.9L22 13.1A13 13 0 0 1 22 -13.1Z" fill="url(#cap)"/>
+  <rect x="56" y="-15.6" width="8" height="31.2" rx="3" fill="url(#band)"/>
+  <rect x="126" y="-17.6" width="7" height="35.2" rx="2.5" fill="url(#band)"/>
+  <rect x="136" y="-17.6" width="3.5" height="35.2" rx="1.4" fill="url(#band)" opacity=".85"/>
+  <path d="M68 7.2L160 9" stroke="#fff" stroke-opacity=".9" stroke-width="3" stroke-linecap="round"/>
+</g>
+
+<!-- the star at the tip is the Wi-Fi dot -->
+<circle cx="200" cy="316" r="58" fill="url(#tipglow)"/>
+<path d="M200 276L206.36 309.64L240 316L206.36 322.36L200 356L193.64 322.36L160 316L193.64 309.64Z" fill="#ffe7a0"/>
+<path d="M200 276L206.36 309.64L240 316L206.36 322.36L200 356L193.64 322.36L160 316L193.64 309.64Z" fill="none" stroke="#fff6d6" stroke-width="2"/>
+<path d="M200 292L204.24 311.76L224 316L204.24 320.24L200 340L195.76 320.24L176 316L195.76 311.76Z" fill="#fffdf2"/>
+<circle cx="200" cy="316" r="5" fill="#ffffff"/>
+</svg>
