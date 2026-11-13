@@ -118,7 +118,7 @@ func TestQuickConnectKeepsPrivateKeyOnlyInOnePasteScript(t *testing.T) {
 	// Anything belonging to someone else must stop the script before the first change.
 	firstWrite := strings.Index(script, "# APPLY: only add absent resources")
 	if firstWrite < 0 { t.Fatal("missing explicit preflight/apply boundary") }
-	for _, guard := range []string{"belongs to another setup", "multiple existing peers", "tunnel address already assigned elsewhere", "Hub destination route differs", "older Magic Hub tunnel found", "existing tunnel key differs"} {
+	for _, guard := range []string{"belongs to another setup", "multiple existing peers", "tunnel address already assigned elsewhere", "Hub destination route differs", "older Magic Hub tunnel found", "holds a key from an earlier setup. In the app, choose Start over"} {
 		if at := strings.Index(script, guard); at < 0 || at > firstWrite {
 			t.Fatalf("guard %q is missing or comes after the first change", guard)
 		}

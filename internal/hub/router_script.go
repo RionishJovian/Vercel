@@ -24,7 +24,9 @@ type RouterScripts struct {
 
 // GenerateRouterKeypair creates a WireGuard keypair for the one-paste setup.
 // The private key is returned only to the authenticated operator as part of a
-// no-store script response; it is never persisted by the application.
+// no-store script response. When durable setup is configured, the server keeps
+// it encrypted in the pending-enrollment store until the router connects (at
+// most PendingEnrollmentLifetime) and deletes it then; it is never sent to Hub.
 func GenerateRouterKeypair() (privateKey, publicKey string, err error) {
 	private := make([]byte, 32)
 	if _, err := rand.Read(private); err != nil {
@@ -152,6 +154,7 @@ func BuildRouterScripts(deviceID string, peer Peer) (RouterScripts, error) {
 }
 `, routeVar, raw, routeVar, routeVar, routeVar, marker, routeVar, name, routeVar)
 	}
+	setup += "\n# APPLY: add only the missing tunnel resources.\n"
 	setup += fmt.Sprintf(`:if ([:len $peer] = 0) do={ /interface/wireguard/peers add interface="%s" public-key="%s" endpoint-address="%s" endpoint-port=%d allowed-address=%s persistent-keepalive=25s comment="%s" }
 :if ([:len $addr] = 0) do={ /ip/address add address=%s interface="%s" comment="%s" }
 `, name, peer.HubPublicKey, host, port, strings.Join(peer.AllowedIPs, ","), marker, peer.TunnelAddress, name, marker)
@@ -175,14 +178,53 @@ func BuildRouterScripts(deviceID string, peer Peer) (RouterScripts, error) {
 }
 
 // BuildQuickConnectScript builds the one script a person pastes in WinBox. The
-// private key is shown only in this authenticated, no-store response and is
-// installed locally by the router.
+// private key appears only in this authenticated, no-store response; until the
+// router connects, the application keeps it encrypted in the pending-enrollment
+// store (at most PendingEnrollmentLifetime) so a late paste still works.
 //
 // It may create missing resources or re-enable exact matches. Existing
 // tunnels, peers, routes and addresses are never removed or reassigned.
-// Conflicting or older installations require an explicit, separately reviewed
-// migration; the default paste stops before the first write.
+// A router that holds a key from an earlier attempt stops before the first
+// write; recovery is either BuildResumeScript (keep that key) or the explicit
+// BuildStartOverScript.
 func BuildQuickConnectScript(deviceID string, peer Peer, privateKey string) (string, error) {
+	return buildQuickConnect(deviceID, peer, privateKey, false)
+}
+
+// BuildStartOverScript is the explicit, owner-confirmed recovery for a router
+// left with this gateway's tunnel from an earlier, abandoned attempt. It removes
+// only resources carrying this gateway's exact ownership marker (its own
+// interface, peers, address and routes), installs the new key on the same
+// interface and continues as a normal setup. Anything else still stops it.
+func BuildStartOverScript(deviceID string, peer Peer, privateKey string) (string, error) {
+	return buildQuickConnect(deviceID, peer, privateKey, true)
+}
+
+// BuildResumeScript continues an enrollment whose setup key is no longer held
+// by the application: it uses the key already on the router, never a new one.
+// It stops before any write unless the router's own Magic Hub interface exists
+// and its public key equals the Hub allocation.
+func BuildResumeScript(deviceID string, peer Peer) (string, error) {
+	scripts, err := BuildRouterScripts(deviceID, peer)
+	if err != nil {
+		return "", err
+	}
+	s := scripts.Setup
+	for _, r := range [][2]string{
+		{"# Magic Hub step 2. Review, then paste the entire block in WinBox New Terminal.\n# Scoped tunnel only. Does not enable SSH/REST or change WAN/LAN/firewall/users.\n",
+			"# Magic Hub resume. Uses the tunnel key this router already holds from the earlier setup.\n"},
+		{`:error "STOP: run step 1 first"`, `:error "STOP: this router does not hold the key from the earlier setup. In the app, choose Start over; nothing changed"`},
+		{`:error "STOP: router key differs from enrollment; no replacement performed"`, `:error "STOP: this router holds a different Magic Hub key. In the app, choose Start over; nothing changed"`},
+	} {
+		if strings.Count(s, r[0]) != 1 {
+			return "", fmt.Errorf("resume script template changed")
+		}
+		s = strings.Replace(s, r[0], r[1], 1)
+	}
+	return s, nil
+}
+
+func buildQuickConnect(deviceID string, peer Peer, privateKey string, startOver bool) (string, error) {
 	if !scriptKey(privateKey) {
 		return "", fmt.Errorf("invalid router private key")
 	}
@@ -205,13 +247,31 @@ func BuildQuickConnectScript(deviceID string, peer Peer, privateKey string) (str
 	}
 	var b strings.Builder
 	w := func(format string, args ...any) { fmt.Fprintf(&b, format, args...) }
+	// In start-over mode a difference is tolerated only for a resource that
+	// carries this gateway's exact marker; it is removed during APPLY.
+	differs := func(stop string) string {
+		if startOver {
+			return `:if ($mmOwned != true) do={ :error "` + stop + `" }`
+		}
+		return `:error "` + stop + `"`
+	}
 
-	w(`{
+	if startOver {
+		w(`{
+# Magic Hub START OVER for this gateway. Paste the entire block in WinBox New Terminal.
+# Replaces only this gateway's own tunnel (%[1]s): its key, peer, address and routes marked
+# "%[2]s". Other tunnels, WAN/LAN and users are not changed. Run it from the LAN, not over the tunnel.
+`, name, marker)
+	} else {
+		w(`{
 # Magic Hub one-paste setup. Paste the entire block in WinBox New Terminal.
 # Creates missing tunnel resources only. Does not remove prior tunnels or change WAN/LAN/users.
-# A different enrollment requires an explicit migration, NOT an automatic cleanup.
-
+# A different enrollment requires an explicit Start over, NOT an automatic cleanup.
+`)
+	}
+	w(`
 # PREFLIGHT: inspect all existing Magic Hub identities and destinations before any writes.
+:local mmOwned true
 :foreach mmItem in=[/interface/wireguard find where name~"^mmh-"] do={
   :local mmName [/interface/wireguard get $mmItem name]
   :local mmComment [/interface/wireguard get $mmItem comment]
@@ -223,24 +283,21 @@ func BuildQuickConnectScript(deviceID string, peer Peer, privateKey string) (str
 :if ([:len $mmIface] > 1) do={ :error "STOP: duplicate tunnel interface; nothing changed" }
 :if ([:len $mmIface] = 1) do={
   :if ([/interface/wireguard get $mmIface comment] != "%[2]s") do={ :error "STOP: interface belongs to another setup; nothing changed" }
-  :if ([/interface/wireguard get $mmIface public-key] != "%[5]s") do={ :error "STOP: existing tunnel key differs; migration required; nothing changed" }
+  :if ([/interface/wireguard get $mmIface public-key] != "%[5]s") do={ %[10]s }
 }
 :local mmPeer [/interface/wireguard/peers find where interface="%[1]s"]
-:if ([:len $mmPeer] > 1) do={ :error "STOP: multiple existing peers; nothing changed" }
-:if ([:len $mmPeer] = 1) do={
-  :if ([/interface/wireguard/peers get $mmPeer comment] != "%[2]s" ||
-       [/interface/wireguard/peers get $mmPeer public-key] != "%[6]s" ||
-       [/interface/wireguard/peers get $mmPeer endpoint-address] != "%[7]s" ||
-       [:tostr [/interface/wireguard/peers get $mmPeer endpoint-port]] != "%[8]s" ||
-       [:tostr [/interface/wireguard/peers get $mmPeer allowed-address]] != "%[9]s") do={
-    :error "STOP: existing Hub peer differs; migration required; nothing changed"
+%[11]s:foreach mmItem in=$mmPeer do={
+  :if ([/interface/wireguard/peers get $mmItem comment] != "%[2]s") do={ :error "STOP: a peer on the Magic Hub interface belongs to another setup; nothing changed" }
+  :if ([/interface/wireguard/peers get $mmItem public-key] != "%[6]s" ||
+       [/interface/wireguard/peers get $mmItem endpoint-address] != "%[7]s" ||
+       [:tostr [/interface/wireguard/peers get $mmItem endpoint-port]] != "%[8]s" ||
+       [:tostr [/interface/wireguard/peers get $mmItem allowed-address]] != "%[9]s") do={
+    %[12]s
   }
 }
 :foreach mmItem in=[/ip/address find where interface="%[1]s"] do={
-  :if ([/ip/address get $mmItem address] != "%[3]s" ||
-       [/ip/address get $mmItem comment] != "%[2]s") do={
-    :error "STOP: existing interface address differs; nothing changed"
-  }
+  :if ([/ip/address get $mmItem comment] != "%[2]s") do={ :error "STOP: an address on the Magic Hub interface belongs to another setup; nothing changed" }
+  :if ([/ip/address get $mmItem address] != "%[3]s") do={ %[13]s }
 }
 :foreach mmItem in=[/ip/address find where address="%[3]s"] do={
   :if ([/ip/address get $mmItem interface] != "%[1]s" ||
@@ -253,21 +310,35 @@ func BuildQuickConnectScript(deviceID string, peer Peer, privateKey string) (str
     :error "STOP: older Magic Hub route found. Migrate separately; nothing changed"
   }
 }
-`, name, marker, peer.TunnelAddress, privateKey, peer.RouterPublicKey, peer.HubPublicKey, host, portRaw, strings.Join(peer.AllowedIPs, ";"))
-for _, raw := range peer.AllowedIPs {
-  w(`:local mmRoute [/ip/route find where dst-address="%[1]s"]
+`, name, marker, peer.TunnelAddress, privateKey, peer.RouterPublicKey, peer.HubPublicKey, host, portRaw, strings.Join(peer.AllowedIPs, ";"),
+		differs("STOP: this router holds a key from an earlier setup. In the app, choose Start over; nothing changed"),
+		map[bool]string{false: ":if ([:len $mmPeer] > 1) do={ :error \"STOP: multiple existing peers; nothing changed\" }\n", true: ""}[startOver],
+		differs("STOP: existing Hub peer differs; migration required; nothing changed"),
+		differs("STOP: existing interface address differs; nothing changed"))
+	for _, raw := range peer.AllowedIPs {
+		w(`:local mmRoute [/ip/route find where dst-address="%[1]s"]
 :if ([:len $mmRoute] > 1) do={ :error "STOP: duplicate Hub routes; nothing changed" }
 :if ([:len $mmRoute] = 1) do={
-  :if ([/ip/route get $mmRoute comment] != "%[2]s" ||
-       [/ip/route get $mmRoute gateway] != "%[3]s") do={
-    :error "STOP: Hub destination route differs; nothing changed"
-  }
+  :if ([/ip/route get $mmRoute comment] != "%[2]s") do={ :error "STOP: Hub destination route belongs to another setup; nothing changed" }
+  :if ([/ip/route get $mmRoute gateway] != "%[3]s") do={ %[4]s }
 }
-`, raw, marker, name)
-}
-w(`
+`, raw, marker, name, differs("STOP: Hub destination route differs; nothing changed"))
+	}
+	w(`
 # APPLY: only add absent resources or enable the matching enrollment.
-:if ([:len $mmIface] = 0) do={
+`)
+	if startOver {
+		w(`:if ([:len $mmIface] = 1) do={
+  /interface/wireguard/peers remove [find where interface="%[1]s" and comment="%[2]s"]
+  /ip/address remove [find where interface="%[1]s" and comment="%[2]s"]
+  /ip/route remove [find where comment="%[2]s"]
+  /interface/wireguard set $mmIface private-key="%[3]s"
+  :if ([/interface/wireguard get $mmIface public-key] != "%[4]s") do={ :error "STOP: new key could not be verified; Safe Mode Ctrl+D undoes this paste" }
+  :set mmPeer [/interface/wireguard/peers find where interface="%[1]s"]
+}
+`, name, marker, privateKey, peer.RouterPublicKey)
+	}
+	w(`:if ([:len $mmIface] = 0) do={
   /interface/wireguard add name="%[1]s" mtu=1280 private-key="%[3]s" comment="%[2]s"
   :set mmIface [/interface/wireguard find where name="%[1]s"]
 }
@@ -281,12 +352,12 @@ w(`
   /ip/address add address=%[8]s interface="%[1]s" comment="%[2]s"
 } else={ /ip/address set $mmAddr disabled=no }
 `, name, marker, privateKey, peer.HubPublicKey, host, portRaw, strings.Join(peer.AllowedIPs, ","), peer.TunnelAddress)
-for _, raw := range peer.AllowedIPs {
-  w(`:if ([:len [/ip/route find where dst-address="%[1]s"]] = 0) do={
+	for _, raw := range peer.AllowedIPs {
+		w(`:if ([:len [/ip/route find where dst-address="%[1]s"]] = 0) do={
   /ip/route add dst-address=%[1]s gateway="%[2]s" comment="%[3]s"
 } else={ /ip/route set [find where dst-address="%[1]s"] disabled=no }
 `, raw, name, marker)
-}
+	}
 	w(":put \"Tunnel configured.\"\n}")
 	return b.String(), nil
 }

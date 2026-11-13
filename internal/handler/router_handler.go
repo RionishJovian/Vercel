@@ -69,6 +69,9 @@ type CreateRouterRequest struct {
 	Transport       string  `json:"transport"`
 	MACAddress      *string `json:"mac_address"`
 	ManagementIP    *string `json:"management_ip"`
+	// SiteID assigns a new gateway to an existing site of the same business in
+	// the same transaction, so a gateway is never left half-created without a site.
+	SiteID *string `json:"site_id"`
 }
 
 type UpdateRouterRequest struct {
@@ -223,9 +226,23 @@ func (h *RouterHandler) CreateRouter(c *gin.Context) {
 			kind = "routers"
 		}
 		// Access points are reported separately; the ported grant never defined
-		// an access-point limit, so do not invent one here.
-		if kind != "" && !h.SubscriptionOnly {
+		// an access-point limit, so do not invent one here. Gateways are limited by
+		// business_gateway_capacity() in the database (every mode), so the legacy
+		// combined router allowance is not applied to them a second time.
+		if kind != "" && !h.SubscriptionOnly && req.DeploymentLayer != "MAIN_GATEWAY" {
 			if err := h.allowRepo.CheckCapacityTXN(tx, businessID, kind); err != nil {
+				return err
+			}
+		}
+		var site string
+		if req.SiteID != nil {
+			if req.DeploymentLayer != "MAIN_GATEWAY" || !gatewaySiteUUID.MatchString(*req.SiteID) {
+				return errInvalidGatewaySite
+			}
+			if err := tx.QueryRow(`SELECT site_id FROM sites WHERE business_id=$1 AND site_id=$2 FOR KEY SHARE`, businessID, *req.SiteID).Scan(&site); err != nil {
+				if errors.Is(err, sql.ErrNoRows) {
+					return errInvalidGatewaySite
+				}
 				return err
 			}
 		}
@@ -233,10 +250,24 @@ func (h *RouterHandler) CreateRouter(c *gin.Context) {
 		if err != nil {
 			return err
 		}
+		if site != "" {
+			if _, err := tx.Exec(`UPDATE devices SET site_id=$1,updated_at=now() WHERE business_id=$2 AND device_id=$3`, site, businessID, cr.DeviceID); err != nil {
+				return err
+			}
+			cr.SiteID = &site
+		}
 		created = cr
 		return nil
 	})
 	if err != nil {
+		if errors.Is(err, errInvalidGatewaySite) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Choose a site of this business for the gateway", "code": "site_required"})
+			return
+		}
+		if isGatewayCapacity(err) {
+			gatewayCapacityConflict(c, h.db, businessID)
+			return
+		}
 		if errors.Is(err, database.ErrDeviceCapacityExceeded) {
 			c.JSON(http.StatusConflict, gin.H{"error": "capacity exceeded", "reason": "request additional capacity before adding this device"})
 			return
@@ -256,6 +287,8 @@ func (h *RouterHandler) CreateRouter(c *gin.Context) {
 
 	c.JSON(http.StatusCreated, gin.H{"router": created})
 }
+
+var errInvalidGatewaySite = errors.New("invalid gateway site")
 
 // UpdateRouter updates an existing router
 func (h *RouterHandler) UpdateRouter(c *gin.Context) {
@@ -334,6 +367,9 @@ func (h *RouterHandler) UpdateRouter(c *gin.Context) {
 		}
 
 		upd, err := h.deviceRepo.UpdateDeviceTXN(tx, existing)
+		if isGatewayCapacity(err) {
+			return &httpError{status: http.StatusConflict, msg: "All gateway slots on this account are in use. Buy another gateway slot in the Store, or remove a gateway you no longer use."}
+		}
 		if err != nil {
 			return &httpError{status: http.StatusInternalServerError, msg: "failed to update router"}
 		}

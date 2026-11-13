@@ -115,11 +115,31 @@ func TestAutomaticManagementScriptAndOutputBounds(t *testing.T) {
 	if strings.Index(script, "available-from=") > strings.Index(script, `" address=" . $2`) || strings.Contains(script, "get $mmSSH address") {
 		t.Fatal("the deprecated SSH allow-list name must be the fallback only")
 	}
-	// Finishing the script must not claim the router reached the Hub.
-	checked := strings.Index(script, "get $mmPeer rx")
-	complete := strings.Index(script, `:if ($mmReached) do={ :put "Setup complete.`)
-	if checked < 0 || complete < checked || !strings.Contains(script, "NOT CONNECTED YET") {
-		t.Fatal("setup must check the connection before saying it is complete")
+	// Finishing the script must not claim the router reached the Hub: it reports only data
+	// received during the check (not the cumulative counter) and never says to close WinBox.
+	start := strings.Index(script, ":set mmRxStart")
+	checked := strings.Index(script, "> $mmRxStart")
+	active := strings.Index(script, `:if ($mmReached) do={ :put "TUNNEL ACTIVE:`)
+	if start < 0 || checked < start || active < checked || !strings.Contains(script, "NOT CONNECTED YET") {
+		t.Fatal("setup must observe fresh traffic before reporting the tunnel active")
+	}
+	if strings.Contains(script, "close this window") || strings.Contains(script, "Setup complete") {
+		t.Fatal("setup must not tell the operator to close the window or claim completion")
+	}
+	if !strings.Contains(script, "SAFE MODE: if you turned on Safe Mode (Ctrl+X) before pasting, press Ctrl+X again now") {
+		t.Fatal("the Safe Mode commit instruction must always be printed")
+	}
+	// Setup never deletes other Magic Hub accounts, keys or rules (defect: broad mm-* cleanup).
+	for _, broad := range []string{`name~"^mm-"`, "mmOldUser", `/user remove`, `/user/group remove`} {
+		if strings.Contains(script, broad) {
+			t.Fatalf("setup removes other accounts: %q", broad)
+		}
+	}
+	// A group with our name is adopted only when proven ours, before any write.
+	groupCheck := strings.Index(script, `"STOP: a group named mm-123 exists and is not from Magic Hub`)
+	firstWrite := strings.Index(script, "/user/group add")
+	if groupCheck < 0 || firstWrite < 0 || groupCheck > firstWrite || !strings.Contains(script, `comment="mega-magic:mm-123"`) {
+		t.Fatal("group ownership must be proven before the first account write, and marked when created")
 	}
 	b := &boundedEnrollmentOutput{}
 	if _, err := b.Write(make([]byte, 65536)); err != nil {
@@ -161,11 +181,24 @@ func TestAutomaticEnrollmentRunsAsOneBlock(t *testing.T) {
 		if !strings.HasSuffix(combined, "\n}\n") {
 			t.Fatal("the script must run on paste")
 		}
-		// A user with our name that is not ours stops the script before any account change.
-		owner := strings.Index(combined, `"STOP: a user named`)
-		account := strings.Index(combined, "/user/group add")
-		if owner < 0 || account < 0 || owner > account {
-			t.Fatal("account writes precede the ownership check")
+		// A user or group with our name that is not ours stops the script before ANY change,
+		// including the tunnel's first write.
+		tunnelWrite := strings.Index(combined, "\n# APPLY:")
+		for _, guard := range []string{`"STOP: a user named`, `"STOP: a group named`} {
+			at := strings.Index(combined, guard)
+			if at < 0 || tunnelWrite < 0 || at > tunnelWrite {
+				t.Fatalf("%s is checked after the first write", guard)
+			}
+		}
+		if strings.Count(combined, "\n# APPLY:") != 1 || strings.Count(combined, "\n# APPLY (management)") != 1 {
+			t.Fatal("expected one tunnel and one management apply section")
+		}
+		// The header must describe what the combined paste changes.
+		if strings.Contains(combined, "Does not enable SSH/REST or change WAN/LAN/firewall/users") ||
+			strings.Contains(combined, "Does not remove prior tunnels or change WAN/LAN/users") ||
+			!strings.Contains(combined, "a dedicated management user and group (mm-...)") ||
+			!strings.Contains(combined, "If the SSH service is disabled it is enabled for the Magic Hub address only") {
+			t.Fatal("combined header misdescribes the changes")
 		}
 	}
 	if _, err := automaticEnrollmentScript("router", pendingManagement{tunnelScript: ":error \"failed\""}); err == nil {
@@ -196,7 +229,7 @@ func TestManagementSourceCIDR(t *testing.T) {
 		}
 	}
 	key := strings.Repeat("a", 64)
-	p := pendingManagement{user: "mm-test", proof: key, sourceCIDR: "10.77.0.1/32", tunnelScript: "{\n:put \"tunnel\"\n}"}
+	p := pendingManagement{user: "mm-test", proof: key, sourceCIDR: "10.77.0.1/32", tunnelScript: "{\n:put \"check\"\n# APPLY: tunnel\n:put \"tunnel\"\n}"}
 	script, err := automaticEnrollmentScript("router", p)
 	if err != nil || !strings.Contains(script, "address=10.77.0.1/32") || strings.Contains(script, "10.77.0.9/32") {
 		t.Fatal("source address did not follow current topology", err)

@@ -793,6 +793,7 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 			// Capacity: reading the allowance is fine for anyone; asking for more
 			// is not privileged, but DECIDING is.
 			protected.GET("/device-allowances", allowHandler.GetAllowance)
+			protected.GET("/gateway-capacity", handler.NewGatewayCapacityHandler(db).Get)
 			requests := protected.Group("/device-requests")
 			{
 				requests.GET("", allowHandler.ListRequests)

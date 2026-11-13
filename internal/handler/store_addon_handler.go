@@ -16,9 +16,10 @@ import (
 
 // StoreAddonHandler serves the Store add-on catalog (platform managed) and the
 // purchase requests RouterBOARD owners raise against it. Payment is a bank
-// transfer reference reviewed by the platform operator, as with app passes;
-// approving a request records the decision and the operator then applies the
-// add-on (for example extra router capacity) with the existing tools.
+// transfer reference reviewed by the platform operator, as with app passes.
+// Approving a router-slot request also grants one gateway unit in the same
+// transaction (gateway_capacity_grants); other add-on kinds still record only
+// the decision and are applied by the operator with the existing tools.
 type StoreAddonHandler struct {
 	db *database.DB
 }
@@ -39,6 +40,7 @@ func (h *StoreAddonHandler) RegisterPlatform(g *gin.RouterGroup) {
 	g.PUT("/store/addons/:id", h.PlatformUpdate)
 	g.GET("/store/requests", h.PlatformRequests)
 	g.POST("/store/requests/:id/decision", h.PlatformDecide)
+	g.POST("/store/requests/:id/fulfill", h.PlatformFulfill)
 }
 
 type storeAddon struct {
@@ -70,6 +72,10 @@ type storeAddonRequest struct {
 	DecisionNote  string  `json:"decision_note"`
 	CreatedAt     string  `json:"created_at"`
 	DecidedAt     *string `json:"decided_at,omitempty"`
+	// Kind and Fulfillment keep payment approval apart from the capacity it
+	// grants: a router slot is "fulfilled" only once its gateway grant exists.
+	Kind        string `json:"kind"`
+	Fulfillment string `json:"fulfillment"`
 }
 
 var (
@@ -135,20 +141,22 @@ func scanAddon(rows interface{ Scan(...any) error }) (storeAddon, error) {
 
 const requestSelect = `SELECT r.id,r.addon_id,a.addon_key,a.name_en,a.name_my,r.business_id,COALESCE(b.company_name,''),r.price_mmk,r.period,r.bank_reference,r.status,r.decision_note,
  to_char(r.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),
- CASE WHEN r.decided_at IS NULL THEN NULL ELSE to_char(r.decided_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') END
+ CASE WHEN r.decided_at IS NULL THEN NULL ELSE to_char(r.decided_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') END,
+ a.kind,CASE WHEN a.kind<>'router_slot' OR r.status<>'approved' THEN 'not_applicable' WHEN EXISTS(SELECT 1 FROM gateway_capacity_grants g WHERE g.store_request_id=r.id) THEN 'fulfilled' ELSE 'awaiting' END
  FROM store_addon_requests r JOIN store_addons a ON a.id=r.addon_id LEFT JOIN businesses b ON b.business_id=r.business_id `
 
 // Tenant transactions run as the restricted role, which cannot read businesses,
 // so owner-facing queries use this variant without that join.
 const requestSelectTenant = `SELECT r.id,r.addon_id,a.addon_key,a.name_en,a.name_my,r.business_id,'',r.price_mmk,r.period,r.bank_reference,r.status,r.decision_note,
  to_char(r.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),
- CASE WHEN r.decided_at IS NULL THEN NULL ELSE to_char(r.decided_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') END
+ CASE WHEN r.decided_at IS NULL THEN NULL ELSE to_char(r.decided_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') END,
+ a.kind,CASE WHEN a.kind<>'router_slot' OR r.status<>'approved' THEN 'not_applicable' WHEN EXISTS(SELECT 1 FROM gateway_capacity_grants g WHERE g.store_request_id=r.id) THEN 'fulfilled' ELSE 'awaiting' END
  FROM store_addon_requests r JOIN store_addons a ON a.id=r.addon_id `
 
 func scanRequest(rows interface{ Scan(...any) error }, withCompany bool) (storeAddonRequest, error) {
 	var r storeAddonRequest
 	var decided sql.NullString
-	err := rows.Scan(&r.ID, &r.AddonID, &r.AddonKey, &r.NameEN, &r.NameMY, &r.BusinessID, &r.Company, &r.PriceMMK, &r.Period, &r.BankReference, &r.Status, &r.DecisionNote, &r.CreatedAt, &decided)
+	err := rows.Scan(&r.ID, &r.AddonID, &r.AddonKey, &r.NameEN, &r.NameMY, &r.BusinessID, &r.Company, &r.PriceMMK, &r.Period, &r.BankReference, &r.Status, &r.DecisionNote, &r.CreatedAt, &decided, &r.Kind, &r.Fulfillment)
 	if decided.Valid {
 		s := decided.String
 		r.DecidedAt = &s
@@ -418,19 +426,48 @@ func (h *StoreAddonHandler) PlatformDecide(c *gin.Context) {
 	if in.Decision == "reject" {
 		status = "rejected"
 	}
-	res, err := h.db.Exec(`UPDATE store_addon_requests SET status=$2,decision_note=$3,decided_by=$4,decided_at=clock_timestamp() WHERE id=$1 AND status='pending'`,
-		id, status, strings.TrimSpace(in.Note), auth.GetUserID(c))
-	if err != nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "decision could not be recorded"})
+	// The decision and, for an approved router slot, its gateway grant commit
+	// together: approval never leaves capacity to a separate manual step, and a
+	// repeated approval cannot grant twice (the update is guarded on pending and
+	// the grant is unique per purchase).
+	actor := auth.GetUserID(c)
+	err := func() error {
+		tx, err := h.db.Begin()
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
+		var kind string
+		err = tx.QueryRow(`UPDATE store_addon_requests r SET status=$2,decision_note=$3,decided_by=$4,decided_at=clock_timestamp()
+			FROM store_addons a WHERE r.id=$1 AND r.status='pending' AND a.id=r.addon_id RETURNING a.kind`,
+			id, status, strings.TrimSpace(in.Note), actor).Scan(&kind)
+		if errors.Is(err, sql.ErrNoRows) {
+			var exists bool
+			if e := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM store_addon_requests WHERE id=$1)`, id).Scan(&exists); e != nil {
+				return e
+			}
+			if !exists {
+				return &httpError{status: http.StatusNotFound, msg: "request not found"}
+			}
+			return &httpError{status: http.StatusConflict, msg: "this request was already decided"}
+		}
+		if err != nil {
+			return err
+		}
+		if status == "approved" && kind == "router_slot" {
+			if _, _, err = database.FulfillRouterSlotTXN(tx, id, actor); err != nil {
+				return err
+			}
+		}
+		return tx.Commit()
+	}()
+	var he *httpError
+	if errors.As(err, &he) {
+		c.JSON(he.status, gin.H{"error": he.msg})
 		return
 	}
-	if n, _ := res.RowsAffected(); n != 1 {
-		var exists bool
-		if e := h.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM store_addon_requests WHERE id=$1)`, id).Scan(&exists); e == nil && !exists {
-			c.JSON(http.StatusNotFound, gin.H{"error": "request not found"})
-			return
-		}
-		c.JSON(http.StatusConflict, gin.H{"error": "this request was already decided"})
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "decision could not be recorded; nothing was changed"})
 		return
 	}
 	r, err := scanRequest(h.db.QueryRow(requestSelect+` WHERE r.id=$1`, id), true)
@@ -439,4 +476,39 @@ func (h *StoreAddonHandler) PlatformDecide(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"request": r})
+}
+
+// PlatformFulfill grants the gateway unit of a router-slot purchase that was
+// approved before automatic fulfilment existed (or whose fulfilment must be
+// retried). It is idempotent: a second call returns the same grant. Operators
+// should first confirm the capacity was not already raised by hand.
+func (h *StoreAddonHandler) PlatformFulfill(c *gin.Context) {
+	id := c.Param("id")
+	if !uuidPattern.MatchString(id) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request id"})
+		return
+	}
+	var grant string
+	var created bool
+	err := func() error {
+		tx, err := h.db.Begin()
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
+		if grant, created, err = database.FulfillRouterSlotTXN(tx, id, auth.GetUserID(c)); err != nil {
+			return err
+		}
+		return tx.Commit()
+	}()
+	switch {
+	case errors.Is(err, database.ErrPurchaseNotFound):
+		c.JSON(http.StatusNotFound, gin.H{"error": "request not found"})
+	case errors.Is(err, database.ErrPurchaseNotFulfillable):
+		c.JSON(http.StatusConflict, gin.H{"error": "Only an approved router-slot purchase adds a gateway", "code": "not_fulfillable"})
+	case err != nil:
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "fulfilment could not be recorded; nothing was changed"})
+	default:
+		c.JSON(http.StatusOK, gin.H{"grant_id": grant, "created": created, "fulfillment": "fulfilled"})
+	}
 }

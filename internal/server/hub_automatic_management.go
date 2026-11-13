@@ -255,8 +255,23 @@ func managementSourceCIDR(addresses []net.Addr) (string, error) {
 	return source, nil
 }
 
-// Keep both stages in one RouterOS execution block: a tunnel validation error
-// must stop execution before accounts, keys or management rules are changed.
+// combinedHeader describes what the combined paste really changes. It replaces
+// the tunnel block's own header, which only describes the tunnel.
+const combinedHeader = `# Magic Hub one-paste setup for this gateway. Paste the entire block in WinBox New Terminal.
+# It checks everything first and stops before any change if something does not belong to this setup.
+# It then adds: this gateway's WireGuard tunnel (mmh-...) with one address and /32 routes to Magic Hub;
+# a dedicated management user and group (mm-...) that can log in only from the Magic Hub address, with
+# an SSH key; one input firewall rule for that address (and a port redirect if SSH is not on port 22).
+# If the SSH service is disabled it is enabled for the Magic Hub address only; an existing SSH
+# allow-list gets that address added. WAN, LAN, Wi-Fi, HotSpot, DHCP, DNS, your other users,
+# other VPNs and other firewall rules are not changed. Other Magic Hub accounts are not removed.
+# Turn on Safe Mode (Ctrl+X) before pasting to be able to undo it; the end of the output says how to keep it.
+`
+
+// Keep both stages in one RouterOS execution block, and run the management
+// ownership checks together with the tunnel checks, before the tunnel's first
+// write: any refusal stops execution before tunnels, accounts, keys or rules change.
+// (One RouterOS block is not a transaction; Safe Mode is the undo.)
 func automaticEnrollmentScript(id string, p pendingManagement) (string, error) {
 	ip, network, err := net.ParseCIDR(p.sourceCIDR)
 	if err != nil || ip.To4() == nil || !ip.IsPrivate() {
@@ -267,48 +282,78 @@ func automaticEnrollmentScript(id string, p pendingManagement) (string, error) {
 		return "", errors.New("management source must be a single host")
 	}
 	tunnel := strings.TrimSpace(p.tunnelScript)
-	management := strings.TrimSpace(automaticManagementScript(id, p))
 	if !strings.HasPrefix(tunnel, "{\n") || !strings.HasSuffix(tunnel, "\n}") {
 		return "", errors.New("invalid tunnel execution block")
 	}
-	management = strings.ReplaceAll(management, "10.77.0.9/32", p.sourceCIDR)
-	management = strings.ReplaceAll(management, "10.77.0.9", ip.String())
-	// The tunnel block's header says it never touches SSH or users; this combined
-	// paste does, so say what it really changes before the operator runs it.
-	tunnel = strings.Replace(tunnel, "# Scoped tunnel only. Does not enable SSH/REST or change WAN/LAN/firewall/users.",
-		"# Creates the Magic Hub tunnel, then a dedicated management user, its group and SSH key,\n# lets SSH in from the Hub address only, and adds one input firewall rule for it.\n# WAN, LAN and your other users are not changed.", 1)
+	applyAt := strings.Index(tunnel, "\n# APPLY:")
+	if applyAt < 0 || strings.Count(tunnel, "\n# APPLY:") != 1 {
+		return "", errors.New("tunnel block lacks a single preflight/apply boundary")
+	}
+	// Drop the tunnel-only header comment lines; the combined header replaces them.
+	body := strings.TrimPrefix(tunnel[:applyAt], "{\n")
+	for strings.HasPrefix(body, "#") {
+		if nl := strings.IndexByte(body, '\n'); nl >= 0 {
+			body = body[nl+1:]
+		} else {
+			body = ""
+		}
+	}
+	scrub := func(s string) string {
+		s = strings.ReplaceAll(s, "10.77.0.9/32", p.sourceCIDR)
+		return strings.ReplaceAll(s, "10.77.0.9", ip.String())
+	}
+	preflight := scrub(managementPreflight(p))
+	apply := scrub(managementApply(id, p))
+	tunnelApply := strings.TrimSuffix(tunnel[applyAt+1:], "\n}")
 	// The final line break makes the terminal run the block on paste. Without it,
 	// a real WinBox terminal waited for one more Enter and looked finished.
-	return strings.TrimSuffix(tunnel, "\n}") + "\n" + strings.TrimPrefix(management, "{\n") + "\n", nil
+	return "{\n" + combinedHeader + body + preflight + "\n" + tunnelApply + "\n" + apply + "}\n", nil
 }
 
+// automaticManagementScript is the management part on its own (checks, then
+// changes) as one block. The combined paste uses the two parts separately.
 func automaticManagementScript(id string, p pendingManagement) string {
+	return "{\n# Dedicated Magic Hub management.\n" + managementPreflight(p) + managementApply(id, p) + "}"
+}
+
+// managementPreflight checks, without writing, that the management user and
+// group either do not exist or demonstrably belong to this enrollment.
+// Other Magic Hub (mm-...) accounts are left alone: retiring them is an
+// explicit step (the disconnect script), never a side effect of setup.
+func managementPreflight(p pendingManagement) string {
+	marker := "mega-magic:" + p.user
+	return fmt.Sprintf(`
+# PREFLIGHT (management): ownership checks before any change.
+:local account [/user find where name="%[1]s"]
+:if ([:len $account] > 1) do={ :error "STOP: duplicate users named %[1]s; nothing changed" }
+:if ([:len $account] = 1) do={
+  :if ([:pick [/user get $account comment] 0 %[2]d] != "%[3]s:") do={ :error "STOP: a user named %[1]s exists and is not from Magic Hub; nothing changed" }
+}
+:local grp [/user/group find where name="%[1]s"]
+:if ([:len $grp] > 1) do={ :error "STOP: duplicate groups named %[1]s; nothing changed" }
+:if ([:len $grp] = 1) do={
+  :if ([/user/group get $grp comment] != "%[3]s") do={
+    # Earlier setups created the group without a marker. Adopt it only when its
+    # sole member is this setup's own account; otherwise it is someone else's.
+    :local mmMembers [/user find where group="%[1]s"]
+    :if ([:len $mmMembers] != 1 || [:len $account] != 1) do={ :error "STOP: a group named %[1]s exists and is not from Magic Hub; nothing changed" }
+    :if ([/user get [:pick $mmMembers 0] name] != "%[1]s") do={ :error "STOP: a group named %[1]s exists and is not from Magic Hub; nothing changed" }
+  }
+}
+`, p.user, len(marker)+1, marker)
+}
+
+func managementApply(id string, p pendingManagement) string {
 	hash := sha256.Sum256([]byte(id))
 	iface := fmt.Sprintf("mmh-%x", hash[:6])
 	marker := "mega-magic:" + p.user
 	// All interpolated values are generated locally as hex, fixed labels or RSA
 	// authorized-key data. No operator text reaches the RouterOS commands.
 	// /ip/service also lists live SSH connections, so the service is the first match.
-	return fmt.Sprintf(`{
-# Dedicated Magic Hub management.
+	return fmt.Sprintf(`# APPLY (management): this enrollment's own account, key and access rules.
 :local mmSSH [:pick [/ip/service find where name="ssh"] 0]
 :local mmPort [/ip/service get $mmSSH port]
-:local account [/user find where name="%[1]s"]
-:if ([:len $account] = 1) do={
-  :if ([:pick [/user get $account comment] 0 %[2]d] != "%[3]s:") do={ :error "STOP: a user named %[1]s exists and is not from Magic Hub; management unchanged" }
-}
-:foreach mmOldUser in=[/user find where name~"^mm-" and name!="%[1]s"] do={
-  :local mmOldName [/user get $mmOldUser name]
-  :if ([:pick [/user get $mmOldUser comment] 0 14] = "mega-magic:mm-") do={
-    /user/ssh-keys remove [find where user=$mmOldName]
-    /ip/firewall/filter remove [find where comment=("mega-magic:" . $mmOldName)]
-    /ip/firewall/nat remove [find where comment=("mega-magic:" . $mmOldName)]
-    /user remove $mmOldUser
-    :do { /user/group remove [find where name=$mmOldName] } on-error={}
-  }
-}
-:local grp [/user/group find where name="%[1]s"]
-:if ([:len $grp] = 0) do={ /user/group add name="%[1]s" policy=ssh,read,write,policy,test,sensitive,reboot,ftp } else={ /user/group set $grp policy=ssh,read,write,policy,test,sensitive,reboot,ftp }
+:if ([:len $grp] = 0) do={ /user/group add name="%[1]s" policy=ssh,read,write,policy,test,sensitive,reboot,ftp comment="%[3]s" } else={ /user/group set $grp policy=ssh,read,write,policy,test,sensitive,reboot,ftp comment="%[3]s" }
 :if ([:len $account] = 0) do={ /user add name="%[1]s" group="%[1]s" address=10.77.0.9/32 password="%[4]s" comment="%[3]s:%[4]s" }
 :if ([:len $account] = 1) do={ /user set $account group="%[1]s" address=10.77.0.9/32 password="%[4]s" comment="%[3]s:%[4]s" disabled=no }
 :local keyfile "%[1]s.pub.txt"
@@ -345,19 +390,22 @@ func automaticManagementScript(id string, p pendingManagement) string {
   :local mmNat [/ip/firewall/nat find where dynamic=no]
   :if ([:len $mmNat] = 0) do={ /ip/firewall/nat add chain=dstnat action=redirect to-ports=$mmPort in-interface="%[6]s" src-address=10.77.0.9/32 protocol=tcp dst-port=22 comment="%[3]s" } else={ /ip/firewall/nat add chain=dstnat action=redirect to-ports=$mmPort in-interface="%[6]s" src-address=10.77.0.9/32 protocol=tcp dst-port=22 comment="%[3]s" place-before=[:pick $mmNat 0] }
 }
-# Say what actually happened: a finished script does not mean the router reached the Hub.
-:put "Checking the connection to Magic Hub (up to 30 seconds)..."
+# Report only what this check observed. Data received DURING the check shows the tunnel works now;
+# the cumulative counter alone does not. Management is confirmed separately by the app.
+:put "Checking for traffic from Magic Hub (up to 30 seconds)..."
 :local mmReached false
-:foreach mmPeer in=[/interface/wireguard/peers find where interface="%[6]s"] do={
-  :for mmTry from=1 to=30 do={
-    :if (!$mmReached) do={
-      :delay 1s
-      :do { :if ([:tonum [/interface/wireguard/peers get $mmPeer rx]] > 0) do={ :set mmReached true } } on-error={}
-    }
+:local mmHubPeer [:pick [/interface/wireguard/peers find where interface="%[6]s"] 0]
+:local mmRxStart 0
+:do { :set mmRxStart [:tonum [/interface/wireguard/peers get $mmHubPeer rx]] } on-error={}
+:for mmTry from=1 to=30 do={
+  :if (!$mmReached) do={
+    :delay 1s
+    :do { :if ([:tonum [/interface/wireguard/peers get $mmHubPeer rx]] > $mmRxStart) do={ :set mmReached true } } on-error={}
   }
 }
-:if ($mmReached) do={ :put "Setup complete. You can close this window: Mega Magic connects by itself." } else={ :put "NOT CONNECTED YET: this router has not reached Magic Hub. Check its internet connection. There is nothing more to paste: it connects by itself as soon as it can." }
-}`, p.user, len(marker)+1, marker, p.proof, p.public, iface)
+:if ($mmReached) do={ :put "TUNNEL ACTIVE: this router is receiving data from Magic Hub now. The app confirms router management by itself; that is a separate check shown in the app." } else={ :put "NOT CONNECTED YET: no data from Magic Hub during this check. Check this router's internet connection. Nothing more needs pasting: it connects by itself as soon as it can." }
+:put "SAFE MODE: if you turned on Safe Mode (Ctrl+X) before pasting, press Ctrl+X again now to keep these changes. Closing WinBox or the terminal while Safe Mode is on undoes them."
+`, p.user, len(marker)+1, marker, p.proof, p.public, iface)
 }
 
 // Bootstrap trust is scoped to the cryptographically authenticated WireGuard
