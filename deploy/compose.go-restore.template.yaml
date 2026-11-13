@@ -81,6 +81,9 @@ services:
     env_file:
     - ../.env.production
   web:
+    # Set only after read-only proxy verification and stable peer allocation.
+    environment:
+      MM_EDGE_PROXY_IP: ${MM_EDGE_PROXY_IP:-127.0.0.1}
     build:
       context: ..
       dockerfile: Dockerfile.web.prod

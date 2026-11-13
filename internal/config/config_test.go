@@ -370,3 +370,14 @@ func TestBackupCaptureRequiresSeparateStrongPassword(t *testing.T) {
 		t.Fatalf("valid capture-only config must not require the live applier: %v", err)
 	}
 }
+
+func TestLoadExactTrustedProxyPeers(t *testing.T) {
+ path:=filepath.Join(t.TempDir(),"config.yaml")
+ if err:=os.WriteFile(path,[]byte("environment: development\n"),0600);err!=nil{t.Fatal(err)}
+ t.Setenv("ENVIRONMENT","development")
+ t.Setenv("SERVER_TRUSTED_PROXY_IPS","172.18.0.5,172.18.0.1")
+ cfg,err:=Load(path);if err!=nil{t.Fatal(err)}
+ if len(cfg.Server.TrustedProxyIPs)!=2||cfg.Server.TrustedProxyIPs[0]!="172.18.0.5"{t.Fatalf("exact peer env not bound: %v",cfg.Server.TrustedProxyIPs)}
+ t.Setenv("SERVER_TRUSTED_PROXY_IPS","172.18.0.0/16")
+ if _,err:=Load(path);err==nil||!strings.Contains(err.Error(),"trusted_proxy_ips"){t.Fatalf("broad proxy trust accepted: %v",err)}
+}

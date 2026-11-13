@@ -101,11 +101,11 @@ func registerMediaRoutes(r *gin.Engine, service *auth.Service, db *database.DB, 
 	// Catalog reachability is not proof of LAN playback. Do not solicit a bank
 	// transfer until the owner-PC local delivery path has passed acceptance.
 	purchases.PlaybackReady = func(context.Context, string, string) bool { return false }
-	player := r.Group("/api/v1/media-playback", auth.BoundedPortalRateLimit(), auth.CookieOrigin())
+	player := r.Group("/api/v1/media-playback", auth.CookieOrigin())
 	player.POST("/:id/:passId/session", playback.Session)
 	player.GET("/:id/:passId/catalog/:library", playback.Catalog)
 	player.GET("/:id/:passId/stream/:library/:item", playback.Stream)
-	guest := r.Group("/api/v1/media-guest", auth.BoundedPortalRateLimit(), auth.CookieOrigin())
+	guest := r.Group("/api/v1/media-guest", auth.CookieOrigin())
 	guest.POST("/:id/checkout", purchases.Checkout)
 	guest.GET("/:id/passes/:passId", purchases.Status)
 	guest.POST("/:id/passes/:passId/receipt", purchases.Receipt)
