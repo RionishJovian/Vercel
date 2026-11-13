@@ -86,7 +86,7 @@ export function Wizard({ router, canEdit, reason }: { router?: RouterRow; canEdi
         <label className="field"><span>{t("nw.name")}</span><input className="input" name="name" required maxLength={24} pattern="[A-Za-z0-9][A-Za-z0-9_\-]*" defaultValue={d.name || "guest-lan"} /></label>
         <label className="field"><span>{t("nw.uplink")}</span><select className="input" name="wan_interface" required>{opt(ifaces.filter((i) => i.type !== "loopback"))}</select></label>
         <label className="field"><span>{t("nw.lan")}</span><select className="input" name="lan_interface" required>{opt(ifaces.filter((i) => LAN_TYPES.includes(i.type ?? "")))}</select></label>
-        <label className="field"><span>{t("nw.vlan")}</span><input className="input" name="vlan_id" type="number" min={0} max={4094} defaultValue={0} /></label>
+        <label className="field"><span>{t("nw.vlan")}</span><input className="input" name="vlan_id" type="number" inputMode="numeric" min={0} max={4094} defaultValue={0} /></label>
         <Hint>{t("nw.lanHelp")} {t("nw.vlanHelp")}</Hint>
       </fieldset>
       <fieldset className="glass pad stack fs" disabled={applying || !!offline}>

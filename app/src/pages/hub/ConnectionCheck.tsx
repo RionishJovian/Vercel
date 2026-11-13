@@ -29,7 +29,7 @@ export function ConnectionCheck({id}:{id:string}) {
   {s.key&&<Note kind="warn">{t(s.key)}</Note>}
   {p&&<div className="note" role="status">
    <b>{p.handshake_status==="recent_handshake"?t("hub.hs.recent"):p.handshake_status==="inactive"?t("hub.hs.inactive"):t("hub.hs.none")}</b>
-   <dl className="facts"><dt>{t("hub.addr")}</dt><dd>{p.tunnel_address||t("hub.notReported")}</dd><dt>{t("hub.lastHs")}</dt><dd>{p.last_handshake_at?new Date(p.last_handshake_at).toLocaleString():t("hub.never")}</dd></dl>
+   <dl className="facts"><dt>{t("hub.addr")}</dt><dd>{p.tunnel_address||t("hub.notReported")}</dd><dt>{t("hub.lastHs")}</dt><dd className="num">{p.last_handshake_at?new Date(p.last_handshake_at).toLocaleString():t("hub.never")}</dd></dl>
    <dl className="facts"><dt>{t("hub.progress.management")}</dt><dd>{t(management==="saved"?"hub.progress.saved":management==="missing"?"hub.progress.missing":"hub.progress.unknown")}</dd><dt>{t("hub.progress.setup")}</dt><dd>{t(setupKeys.get(setup??"")??"hub.progress.unknown")}</dd></dl>
    <p className="soft small">{t("hub.lookupNote")}</p>
   </div>}

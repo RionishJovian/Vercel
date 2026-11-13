@@ -96,7 +96,7 @@ export function ManagedDevices({ me }: { me: Me }) {
             <form className="glass pad stack" onSubmit={submitRequest}>
               <h3>{t("dm.newRequest")}</h3>
               <label className="field"><span>{t("dm.capacity")}</span><select className="input" name="kind">{kinds.map((k) => <option key={k}>{k}</option>)}</select></label>
-              <label className="field"><span>{t("dm.quantity")}</span><input className="input" name="qty" type="number" min={1} max={100} defaultValue={1} /></label>
+              <label className="field"><span>{t("dm.quantity")}</span><input className="input" name="qty" type="number" inputMode="numeric" min={1} max={100} defaultValue={1} /></label>
               <label className="field"><span>{t("dm.reason")}</span><input className="input" name="reason" placeholder={t("dm.reasonHint")} /></label>
               {reqMsg && <Note kind="bad">{reqMsg}</Note>}
               <div className="row" style={{ justifyContent: "flex-start" }}><button className="btn" type="submit">{t("dm.submit")}</button><button className="btn quiet" type="button" onClick={() => setReqOpen(false)}>{t("c.cancel")}</button></div>

@@ -21,7 +21,7 @@ export function AIUsage() {
     <Page title={t("dev.ai.title")} lead={t("dev.ai.lead")}>
       <Loading loading={p.isLoading && !p.data} error={p.error} text={t("dev.ai.failed")} />
       {p.data && (<>
-        <section className="glass pad stack"><p className="num"><b>{tok(s.events)}</b> {t("dev.ai.calls")} · <b>{tok(s.total_tokens)}</b> {t("dev.ai.tokens")} ({tok(s.prompt_tokens)} {t("dev.ai.prompt")} + {tok(s.completion_tokens)} {t("dev.ai.completion")}){Number(s.cached_events) > 0 ? ` · ${tok(s.cached_events)} ${t("dev.ai.cached")}` : ""}</p></section>
+        <section className="glass pad stack"><p className="num"><b className="num">{tok(s.events)}</b> {t("dev.ai.calls")} · <b className="num">{tok(s.total_tokens)}</b> {t("dev.ai.tokens")} ({tok(s.prompt_tokens)} {t("dev.ai.prompt")} + {tok(s.completion_tokens)} {t("dev.ai.completion")}){Number(s.cached_events) > 0 ? ` · ${tok(s.cached_events)} ${t("dev.ai.cached")}` : ""}</p></section>
         {Number(s.mismatched_events) > 0 && <Note kind="warn">{tok(s.mismatched_events)} {t("dev.ai.mismatch")}</Note>}
         <div className="two"><Groups title={t("dev.ai.byFeature")} list={asArray<Group>(s.by_feature)} /><Groups title={t("dev.ai.byModel")} list={asArray<Group>(s.by_model)} /></div>
         <FilterBar onApply={p.apply} onReset={p.reset}>

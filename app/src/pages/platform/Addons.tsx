@@ -19,7 +19,7 @@ function Pending({ r, onDone }: { r: PReq; onDone: () => void }) {
   return (
     <div className="stack rq">
       <div className="row"><b>{r.company_name || r.business_id}</b><span className="chip">{r.name_en}</span></div>
-      <div className="row small"><span className="soft num">{r.bank_reference}</span><span>{mmk(r.price_mmk)} {t("c.mmk")}</span></div>
+      <div className="row small"><span className="soft num">{r.bank_reference}</span><span className="num">{mmk(r.price_mmk)} {t("c.mmk")}</span></div>
       <input className="input" maxLength={500} aria-label={t("pf.note")} placeholder={t("pf.note")} value={note} onChange={(e) => setNote(e.target.value)} />
       <div className="row" style={{ justifyContent: "flex-start" }}>
         <button className="pill on" type="button" disabled={busy} onClick={() => void decide("approve")}>{t("pf.approve")}</button>
@@ -72,7 +72,7 @@ export function Addons({ me }: { me: Me }) {
     <>
       <section className="glass pad stack"><h2>{t("pf.pending")}</h2>{pending.length ? pending.map((r) => <Pending key={r.id} r={r} onDone={refresh} />) : <p className="soft small">{t("pf.none")}</p>}</section>
       <section className="glass pad stack"><h2>{t("pf.catalog")}</h2>
-        {addons.map((a) => <div className="row small" key={a.id}><span>{a.name_en} <span className="soft">{a.addon_key}</span></span><span className={"chip " + (a.active ? "ok" : "")}>{a.active ? t("pf.active") : t("pf.hidden")} {mmk(a.price_mmk)}</span></div>)}
+        {addons.map((a) => <div className="row small" key={a.id}><span>{a.name_en} <span className="soft">{a.addon_key}</span></span><span className={"chip num " + (a.active ? "ok" : "")}>{a.active ? t("pf.active") : t("pf.hidden")} {mmk(a.price_mmk)}</span></div>)}
       </section>
       <NewAddon onDone={refresh} />
     </>

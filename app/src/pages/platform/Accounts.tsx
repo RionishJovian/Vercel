@@ -86,9 +86,9 @@ export function Accounts() {
   const list = asArray<Acc>(data?.accounts), total = data?.total ?? 0;
   return (
     <>
-      <p className="soft small">{t("pa.lead")} {data?.as_of ? `${t("pa.observed")} ${new Date(data.as_of).toLocaleString()}.` : ""}</p>
+      <p className="soft small num">{t("pa.lead")} {data?.as_of ? `${t("pa.observed")} ${new Date(data.as_of).toLocaleString()}.` : ""}</p>
       <div className="stack">{list.map((a) => <AccountCard key={a.user_id} a={a} onChanged={() => void mutate()} />)}</div>
-      <div className="row"><button className="pill" type="button" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - 50))}>{t("ev.newer")}</button><span className="soft small">{total ? offset + 1 : 0}–{Math.min(offset + list.length, total)} / {total}</span><button className="pill" type="button" disabled={offset + list.length >= total} onClick={() => setOffset(offset + 50)}>{t("ev.older")}</button></div>
+      <div className="row"><button className="pill" type="button" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - 50))}>{t("ev.newer")}</button><span className="soft small num">{total ? offset + 1 : 0}–{Math.min(offset + list.length, total)} / {total}</span><button className="pill" type="button" disabled={offset + list.length >= total} onClick={() => setOffset(offset + 50)}>{t("ev.older")}</button></div>
     </>
   );
 }

@@ -63,7 +63,7 @@ function Card({ r, state, canEdit, cap, openId, setOpen, onChanged }: { r: GW; s
       <dl className="facts">
         <dt>{t("hub.transport")}</dt><dd>{r.transport || "direct"}</dd>
         <dt>{t("hub.mgmtIp")}</dt><dd className="num">{r.management_ip || t("hub.notRegistered")}</dd>
-        <dt>{t("hub.lastSignal")}</dt><dd>{r.last_seen_at ? new Date(r.last_seen_at).toLocaleString() : t("hub.noSignal")}</dd>
+        <dt>{t("hub.lastSignal")}</dt><dd className="num">{r.last_seen_at ? new Date(r.last_seen_at).toLocaleString() : t("hub.noSignal")}</dd>
       </dl>
       {canEdit && cap.lookup_enabled && <ConnectionCheck id={r.device_id} />}
       {kept && <Note kind="ok">{t("hub.keptNote")}</Note>}

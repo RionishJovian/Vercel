@@ -78,7 +78,7 @@ export function Ago({ at, prefix }: { at?: string | number | null; prefix?: stri
   const rtf = new Intl.RelativeTimeFormat(lang === "my" ? "my" : "en", { numeric: "auto" });
   const text = s < 45 ? rtf.format(-s, "second") : s < 3600 ? rtf.format(-Math.round(s / 60), "minute") : s < 86400 ? rtf.format(-Math.round(s / 3600), "hour") : rtf.format(-Math.round(s / 86400), "day");
   const exact = new Date(ms).toLocaleString();
-  return <time className="mute small" dateTime={new Date(ms).toISOString()} title={exact}>{prefix ? prefix + " " : ""}{text}</time>;
+  return <time className="mute small num" dateTime={new Date(ms).toISOString()} title={exact}>{prefix ? prefix + " " : ""}{text}</time>;
 }
 
 /** One figure with its label. A null value says "not available" rather than showing zero. */
@@ -88,7 +88,7 @@ export function Metric({ label, value, sub, tone }: { label: string; value: Reac
     <div className="metric" data-tone={tone}>
       <span className="metric-label">{label}</span>
       <b className="metric-value num">{value ?? <span className="mute metric-na">{t("c.unavailable")}</span>}</b>
-      {sub ? <span className="metric-sub">{sub}</span> : null}
+      {sub ? <span className="metric-sub num">{sub}</span> : null}
     </div>
   );
 }

@@ -177,7 +177,7 @@ export function Customers({ params }: { params: URLSearchParams }) {
                     <StatePill tone={st.tone}>{t(st.key)}</StatePill>
                     <span className="meta">
                       <span>{t("cu.plan")}: {r.profile || "—"}</span>
-                      <span>{r.session ? `${t("isp.connected")} · ${duration(r.session.uptime_seconds)} · ↓${bytes(r.session.download_bytes)} ↑${bytes(r.session.upload_bytes)}` : t("cu.noSession")}</span>
+                      <span className="num">{r.session ? `${t("isp.connected")} · ${duration(r.session.uptime_seconds)} · ↓${bytes(r.session.download_bytes)} ↑${bytes(r.session.upload_bytes)}` : t("cu.noSession")}</span>
                       {r.observation?.expires_at ? <span>{t("cu.expires")}: {new Date(r.observation.expires_at * 1000).toLocaleDateString()}</span> : null}
                       <span>{r.routerName}</span>
                       <Ago at={r.session_observed_at ?? r.observed_at} prefix={t("ws.reported")} />
@@ -191,7 +191,7 @@ export function Customers({ params }: { params: URLSearchParams }) {
           <div className="actions-row"><a className="btn small" href="#/pppoe">{t("cu.manageSubs")}</a></div>
         </section>
       )}
-      {asArray(pppoe.data?.failed).length ? <p className="note warn small">{t("isp.partial").replace("{n}", String(pppoe.data?.failed.length))}</p> : null}
+      {asArray(pppoe.data?.failed).length ? <p className="note warn small num">{t("isp.partial").replace("{n}", String(pppoe.data?.failed.length))}</p> : null}
     </>
   );
 }

@@ -7,7 +7,7 @@
   left: 50%; transform: translateX(-50%);
   bottom: calc(10px + env(safe-area-inset-bottom));
   width: min(calc(100% - 2 * var(--gutter, 16px)), 460px);
-  height: var(--bnav-h);
+  min-height: var(--bnav-h);
   padding: var(--bnav-pad);
   display: grid; grid-template-columns: repeat(var(--bnav-count, 5), minmax(0, 1fr)); align-items: stretch;
   border-radius: 999px;
@@ -40,15 +40,15 @@
 .bnav-tab {
   position: relative; z-index: 1;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
-  min-width: 0; min-height: 54px; border-radius: 999px;
+  min-width: 0; min-height: 54px; padding-block: 4px; border-radius: 999px;
   color: var(--ink-mute); text-decoration: none;
   -webkit-tap-highlight-color: transparent;
   transition: color 200ms ease;
 }
 .bnav-ico { display: grid; place-items: center; width: 24px; height: 24px; transition: transform 160ms ease; }
 .bnav-ico svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-.bnav-label { font-size: .7rem; font-weight: 650; line-height: 1.2; max-width: 100%; padding: 0 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-:lang(my) .bnav-label { font-size: .66rem; line-height: 1.4; }
+.bnav-label { font-size: .7rem; font-weight: 650; line-height: 1.2; max-width: 100%; padding: .25em 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:lang(my) .bnav-label { font-size: .66rem; line-height: 1.75; }
 
 .bnav-tab[aria-current="page"] { color: #053d2c; }
 .bnav-tab[aria-current="page"] .bnav-ico svg { stroke-width: 2; }

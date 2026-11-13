@@ -70,7 +70,7 @@ function AddonSection({ me }: { me: Me }) {
           {requests.map((r) => (
             <div className="stack rq" key={r.id}>
               <div className="row"><b>{loc(r, "name")}</b><span className={"chip " + statusChip(r.status)}>{t("st.status." + r.status)}</span></div>
-              <div className="row small"><span className="soft num">{r.bank_reference}</span><span className="soft">{mmk(r.price_mmk)} {t("c.mmk")}</span></div>
+              <div className="row small"><span className="soft num">{r.bank_reference}</span><span className="soft num">{mmk(r.price_mmk)} {t("c.mmk")}</span></div>
               {r.decision_note && <p className="soft small">{r.decision_note}</p>}
             </div>
           ))}
@@ -90,7 +90,7 @@ function LegacyHistory() {
     <section className="glass pad stack">
       <SectionHead title={t("st.legacy")} help={t("st.legacyNote")} />
       {error ? <Note kind="warn">{t("st.legacyFail")}</Note> : !list.length ? <p className="soft small">{t("st.legacyNone")}</p> : list.map((p, i) => (
-        <div className="rowitem" key={p.id ?? i}><div className="stack" style={{ gap: 2 }}><b className="small">{p.product ?? "—"}</b><span className="soft small">{p.created_at ? new Date(p.created_at).toLocaleString() : ""} · {p.status}</span></div><span className="num small">{p.amount_mmk != null ? mmk(p.amount_mmk) : ""}</span></div>
+        <div className="rowitem" key={p.id ?? i}><div className="stack" style={{ gap: 2 }}><b className="small">{p.product ?? "—"}</b><span className="soft small num">{p.created_at ? new Date(p.created_at).toLocaleString() : ""} · {p.status}</span></div><span className="num small">{p.amount_mmk != null ? mmk(p.amount_mmk) : ""}</span></div>
       ))}
     </section>
   );
@@ -113,7 +113,7 @@ export function Store({ me }: { me: Me }) {
         : (
           <>
             {own.data && own.data.scope === "account" && own.data.authority === "app_account_passes" ? (
-              <section className="glass pad stack"><h2>{t("ap.individual")}</h2><p>{t("ap.k." + (own.data.kind ?? "none"))} · {t("ap.s." + (own.data.state ?? "unknown"))}</p><p className="soft small">{t("ap.activation")}: {own.data.activated_at ? new Date(own.data.activated_at).toLocaleString() : t("ap.notRecorded")} · {t("ap.expiry")}: {own.data.expires_at ? new Date(own.data.expires_at).toLocaleString() : t("ap.notRecorded")}</p></section>
+              <section className="glass pad stack"><h2>{t("ap.individual")}</h2><p>{t("ap.k." + (own.data.kind ?? "none"))} · {t("ap.s." + (own.data.state ?? "unknown"))}</p><p className="soft small num">{t("ap.activation")}: {own.data.activated_at ? new Date(own.data.activated_at).toLocaleString() : t("ap.notRecorded")} · {t("ap.expiry")}: {own.data.expires_at ? new Date(own.data.expires_at).toLocaleString() : t("ap.notRecorded")}</p></section>
             ) : null}
             <LegacyHistory />
           </>

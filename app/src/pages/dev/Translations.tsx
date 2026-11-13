@@ -53,7 +53,7 @@ export function Translations({ me }: { me: Me }) {
       {isDev && edit && <Editor item={edit === "new" ? null : edit} locales={locales} namespaces={namespaces} onDone={() => { setEdit(null); void p.mutate(); }} />}
       <Loading loading={p.isLoading && !p.data} error={p.error} text={t("dev.tr.failed")} />
       {p.data && (<>
-        <p className="soft small">{tok(p.data.total)} {t("dev.tr.overrides")} · {t("dev.tr.byLocale")}: {facet(p.data.by_locale)} · {t("dev.tr.byNs")}: {facet(p.data.by_namespace)}</p>
+        <p className="soft small num">{tok(p.data.total)} {t("dev.tr.overrides")} · {t("dev.tr.byLocale")}: {facet(p.data.by_locale)} · {t("dev.tr.byNs")}: {facet(p.data.by_namespace)}</p>
         <FilterBar onApply={p.apply} onReset={p.reset}>
           <div className="two"><Select label={t("dev.tr.locale")} value={p.draft.locale} onChange={(v) => p.setDraft("locale", v)} all={t("dev.tr.allLocales")} options={locales} /><Select label={t("dev.tr.namespace")} value={p.draft.namespace} onChange={(v) => p.setDraft("namespace", v)} all={t("dev.tr.allNs")} options={namespaces} /></div>
           <Field label={t("dev.search")}><input className="input" value={p.draft.q} placeholder={t("dev.tr.searchHint")} onChange={(e) => p.setDraft("q", e.target.value)} /></Field>

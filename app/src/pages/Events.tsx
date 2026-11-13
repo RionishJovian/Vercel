@@ -41,7 +41,7 @@ export function Events() {
       </form>
       {isLoading && !data ? <Skeleton h={240} /> : error ? <Note kind="bad">{t("ev.failed")}</Note> : (
         <>
-          <p className="soft small" role="status">{t("ev.showing")} {from}–{to} / {total}{f.severity || f.program || f.q ? ` (${t("ev.filtered")})` : ""}</p>
+          <p className="soft small num" role="status">{t("ev.showing")} {from}–{to} / {total}{f.severity || f.program || f.q ? ` (${t("ev.filtered")})` : ""}</p>
           {!events.length ? <Note>{t("ev.none")}</Note> : (
             <div className="stack">
               {events.map((e, i) => (

@@ -48,7 +48,7 @@ export function Pager({ offset, shown, total, hasMore, onNewer, onOlder, filtere
   const { t } = useI18n();
   return (
     <>
-      <p className="soft small" role="status">{t("ev.showing")} {shown ? offset + 1 : 0}–{offset + shown} / {tok(total)} {unit}{filtered ? ` (${t("ev.filtered")})` : ""}</p>
+      <p className="soft small num" role="status">{t("ev.showing")} {shown ? offset + 1 : 0}–{offset + shown} / {tok(total)} {unit}{filtered ? ` (${t("ev.filtered")})` : ""}</p>
       <div className="row"><button className="pill" type="button" disabled={offset === 0} onClick={onNewer}>{t("ev.newer")}</button><button className="pill" type="button" disabled={!hasMore} onClick={onOlder}>{t("ev.older")}</button></div>
     </>
   );

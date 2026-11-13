@@ -191,7 +191,7 @@ export function Guests({ me }: { me: Me }) {
           {chip("over", t("lu.over"), "bad", factsRead && available.length > 0, counts.over)}
           {chip("banned", t("lu.banned"), "bad", bindingsRead, counts.banned)}
         </div>
-        <p className="soft small">
+        <p className="soft small num">
           {siteLabel}{readAt ? ` · ${t("lu.updated")} ${new Date(readAt).toLocaleTimeString()}` : ""}
           {available.length < scoped.length ? ` · ${t("gu.sources")} ${available.length} / ${scoped.length}` : ""}
         </p>
@@ -207,7 +207,7 @@ export function Guests({ me }: { me: Me }) {
                   const v = binding.values ?? {}, mine = v.comment === BAN_COMMENT, can = canEdit && s.writable && mine && !!v["mac-address"];
                   return (
                     <tr key={s.gateway.device_id + (binding.id ?? i)}>
-                      <td data-cell="primary" className="dt-mono">{v["mac-address"] || "—"}</td>
+                      <td data-cell="primary" className="dt-mono num">{v["mac-address"] || "—"}</td>
                       <td data-cell="line">{mine ? t("lu.banByApp") : v.comment || t("lu.banOther")}</td>
                       <td data-cell="actions" className="dt-right"><div className="dt-actions"><button className="dt-btn" type="button" disabled={!can || busy || reading} title={can ? undefined : mine ? kickNote : t("lu.banOther")} onClick={() => void setBan(s, v["mac-address"] ?? "", false)}>{t("lu.unban")}</button></div></td>
                     </tr>
@@ -243,9 +243,9 @@ export function Guests({ me }: { me: Me }) {
                     <tr key={r.key} data-on={picked.has(r.key) ? "" : undefined}>
                       <td className="dt-check"><input type="checkbox" aria-label={`${t("vt.selectRow")} ${v.user ?? ""}`} checked={picked.has(r.key)} onChange={(e) => toggle(r.key, e.target.checked)} /></td>
                       <td data-cell="status">{r.over ? <span className="dt-status" data-tone="bad">{t("lu.over")}</span> : r.near ? <span className="dt-status" data-tone="warn">{t("lu.near")}</span> : r.idle ? <span className="dt-status">{t("lu.idle")}</span> : <span className="dt-status" data-tone="ok" title={t("gu.active")}>{t("lu.active")}</span>}</td>
-                      <td data-cell="primary"><span className="dt-code">{v.user || t("gu.guest")}</span>{gateways.length > 1 ? <span className="dt-sub">{r.s.gateway.hardware_name}</span> : null}</td>
-                      <td data-cell="half-a" className="dt-mono">{v.address || "—"}</td>
-                      <td data-cell="half-b" className="dt-mono">{v["mac-address"] || "—"}</td>
+                      <td data-cell="primary"><span className="dt-code num">{v.user || t("gu.guest")}</span>{gateways.length > 1 ? <span className="dt-sub">{r.s.gateway.hardware_name}</span> : null}</td>
+                      <td data-cell="half-a" className="dt-mono num">{v.address || "—"}</td>
+                      <td data-cell="half-b" className="dt-mono num">{v["mac-address"] || "—"}</td>
                       <td data-cell="half-a" data-label={t("lu.uptime")} className="num">{fmtUptime(v.uptime)}</td>
                       <td data-cell="half-b" data-label={t("lu.left")} className="num">{r.left === null ? "—" : fmtDuration(r.left)}</td>
                       <td data-cell="line" data-label={t("lu.downUp")} className="num">{fmtBytes(v["bytes-out"])} ↓ / {fmtBytes(v["bytes-in"])} ↑</td>
