@@ -2,6 +2,8 @@
 <html lang="my" data-lang="my" data-theme="night">
 <head>
   <meta charset="utf-8">
+  <meta name="referrer" content="no-referrer">
+  <script src="/assets/js/signin.js?v=20261114-auth1"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Sign in — MegaMagic</title>
   <meta name="description" content="Sign in or create an account to manage your MikroTik Hotspot and PPPoE service.">
@@ -53,7 +55,7 @@
       <div id="alert" class="alert" tabindex="-1" hidden></div>
       <noscript><p class="alert bad"><span lang="en">Sign-in needs JavaScript. Turn it on and reload this page.</span><span lang="my">ဝင်ရန် JavaScript လိုသည်။ ဖွင့်ပြီး စာမျက်နှာကို ပြန်ဖွင့်ပါ။</span></p></noscript>
 
-      <form id="login-form" novalidate>
+      <form id="login-form" method="post" novalidate>
         <div class="field">
           <label for="email"><span lang="en">Email</span><span lang="my">အီးမေးလ်</span></label>
           <!-- type="text", NOT "email": migrated logins are TLD-less (e.g. kyaw@mikromagic); browser email validation would block submit. -->
@@ -69,31 +71,31 @@
         <button class="btn primary" type="submit" id="submit"><span class="spinner" aria-hidden="true" hidden></span><span class="label"><span lang="en">Sign in</span><span lang="my">ဝင်မည်</span></span></button>
       </form>
 
-      <form id="register-form" novalidate hidden>
+      <form id="register-form" method="post" novalidate hidden>
         <p class="trial"><span lang="en">Free for 7 days. No payment needed to start.</span><span lang="my">၇ ရက် အခမဲ့။ စတင်ရန် ငွေပေးရန် မလိုပါ။</span></p>
         <div class="field">
           <label for="r-company"><span lang="en">Business name</span><span lang="my">လုပ်ငန်းအမည်</span></label>
-          <input class="input" id="r-company" name="company" type="text" autocomplete="organization" required maxlength="255" aria-describedby="r-company-err">
+          <input disabled class="input" id="r-company" name="company" type="text" autocomplete="organization" required maxlength="255" aria-describedby="r-company-err">
           <p class="field-error" id="r-company-err"></p>
         </div>
         <div class="field">
           <label for="r-name"><span lang="en">Your name</span><span lang="my">သင့်အမည်</span></label>
-          <input class="input" id="r-name" name="name" type="text" autocomplete="name" required maxlength="255" aria-describedby="r-name-err">
+          <input disabled class="input" id="r-name" name="name" type="text" autocomplete="name" required maxlength="255" aria-describedby="r-name-err">
           <p class="field-error" id="r-name-err"></p>
         </div>
         <div class="field">
           <label for="r-email"><span lang="en">Email</span><span lang="my">အီးမေးလ်</span></label>
-          <input class="input" id="r-email" name="email" type="email" autocomplete="email" required inputmode="email" autocapitalize="none" spellcheck="false" aria-describedby="r-email-err">
+          <input disabled class="input" id="r-email" name="email" type="email" autocomplete="email" required inputmode="email" autocapitalize="none" spellcheck="false" aria-describedby="r-email-err">
           <p class="field-error" id="r-email-err"></p>
         </div>
         <div class="field">
           <label for="r-password"><span lang="en">Password</span><span lang="my">စကားဝှက်</span></label>
-          <div class="pw"><input class="input" id="r-password" name="password" type="password" autocomplete="new-password" required minlength="8" aria-describedby="r-password-caps r-password-err"><button type="button" class="pw-toggle" data-pw="r-password" aria-pressed="false" aria-controls="r-password"><span class="sr-only"><span lang="en">Show password</span><span lang="my">စကားဝှက် ပြရန်</span></span><svg viewBox="0 0 24 24" aria-hidden="true" class="eye-open"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/></svg><svg viewBox="0 0 24 24" aria-hidden="true" class="eye-off"><path d="M3 3l18 18M10.6 6.1A9.6 9.6 0 0 1 12 6c6 0 9.5 6 9.5 6a16 16 0 0 1-3 3.6M6.6 7.6A15.6 15.6 0 0 0 2.5 12S6 18 12 18a9 9 0 0 0 4.3-1.1M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg></button></div>
+          <div class="pw"><input disabled class="input" id="r-password" name="password" type="password" autocomplete="new-password" required minlength="8" aria-describedby="r-password-caps r-password-err"><button disabled type="button" class="pw-toggle" data-pw="r-password" aria-pressed="false" aria-controls="r-password"><span class="sr-only"><span lang="en">Show password</span><span lang="my">စကားဝှက် ပြရန်</span></span><svg viewBox="0 0 24 24" aria-hidden="true" class="eye-open"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/></svg><svg viewBox="0 0 24 24" aria-hidden="true" class="eye-off"><path d="M3 3l18 18M10.6 6.1A9.6 9.6 0 0 1 12 6c6 0 9.5 6 9.5 6a16 16 0 0 1-3 3.6M6.6 7.6A15.6 15.6 0 0 0 2.5 12S6 18 12 18a9 9 0 0 0 4.3-1.1M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg></button></div>
           <p class="caps" id="r-password-caps" hidden><span lang="en">Caps Lock is on.</span><span lang="my">Caps Lock ဖွင့်ထားသည်။</span></p>
           <p class="field-error" id="r-password-err"></p>
           <p class="field-hint"><span lang="en">At least 8 characters.</span><span lang="my">အနည်းဆုံး စာလုံး ၈ လုံး။</span></p>
         </div>
-        <button class="btn primary" type="submit" id="r-submit"><span class="spinner" aria-hidden="true" hidden></span><span class="label"><span lang="en">Create account</span><span lang="my">အကောင့် ဖွင့်မည်</span></span></button>
+        <button disabled class="btn primary" type="submit" id="r-submit"><span class="spinner" aria-hidden="true" hidden></span><span class="label"><span lang="en">Create account</span><span lang="my">အကောင့် ဖွင့်မည်</span></span></button>
       </form>
       <div class="help">
         <p><span lang="en">Forgot your password? There is no self-service reset yet — message us and we will help you back in.</span><span lang="my">စကားဝှက် မေ့သွားပါသလား? ကိုယ်တိုင် ပြန်သတ်မှတ်၍ မရသေးပါ — ဆက်သွယ်ပါက ပြန်ဝင်နိုင်အောင် ကူညီပါမည်။</span></p>
@@ -104,6 +106,5 @@
 
   <script src="/assets/js/api.js" defer></script>
   <script src="/assets/js/site.js"></script>
-  <script src="/assets/js/signin.js" defer></script>
 </body>
 </html>
