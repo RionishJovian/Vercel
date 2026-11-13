@@ -163,3 +163,51 @@ test('preview stays inert and legacy redemption does not claim verified internet
   assert.match(w.document.getElementById('root').textContent, /Gateway internet access has not been verified/);
   assert.doesNotMatch(w.document.getElementById('root').textContent, /Voucher accepted|Your device is connected/);
 });
+
+test('plan rows show the price apart, and the pay screen leads with the amount and a copyable account number', async t => {
+  const cfg = { ...config, mobile_payment_enabled: true, voucher_login_enabled: false, bank_name: 'KBZ Bank', bank_holder: 'Test Owner', bank_account: '0123456789', payment_instructions: 'Add your phone number in the note.', guest_plans: [{ key: 'hour', label: '1 Hour', minutes: 60, amount: 1000, data_mb: 1024, speed_down_mbps: 5 }] };
+  const w = portal(t, async () => response({ config: cfg }));
+  Object.defineProperty(w.navigator, 'clipboard', { value: { writeText: async () => {} }, configurable: true });
+  await settle();
+  const plan = w.document.querySelector('.plan[data-key="hour"]');
+  assert.match(plan.querySelector('.amt').textContent, /^1,000\s+MMK$/);
+  assert.match(plan.querySelector('.sub').textContent, /1 hr · 1024 MB · 5 Mbps/);
+  assert.equal(w.document.querySelector('.flow [aria-current="step"]').textContent, 'Choose');
+  w.renderPay(cfg, 'req-1', new Date(Date.now() + 600000).toISOString(), cfg.guest_plans[0]);
+  const text = w.document.getElementById('root').textContent;
+  assert.match(w.document.querySelector('.due b').textContent, /1,000\s+MMK/);
+  assert.match(text, /KBZ Bank/); assert.match(text, /Add your phone number in the note\./);
+  assert.equal(w.document.querySelector('[data-copy]').getAttribute('data-copy'), '0123456789');
+  assert.equal(w.document.querySelector('.flow [aria-current="step"]').textContent, 'Pay');
+  assert.match(w.document.getElementById('timer').textContent, /^\d\d:\d\d$/);
+  const file = new w.File(['x'], 'slip.png', { type: 'image/png' });
+  Object.defineProperty(w.document.getElementById('receipt'), 'files', { value: [file] });
+  w.document.getElementById('receipt').dispatchEvent(new w.Event('change'));
+  assert.equal(w.document.getElementById('receipt-name').textContent, 'slip.png');
+});
+
+test('the accepted view counts the verified pass down and shows no clock for an unverified one', async t => {
+  const w = portal(t, async (_u, o) => !o?.method ? response({ config, guest_voucher_access: true }) : response(grant()));
+  await settle(); fill(w);
+  w.document.getElementById('voucher-submit').click();
+  await settle();
+  assert.match(w.document.querySelector('.pass-state').textContent, /Pass active/);
+  assert.match(w.document.getElementById('pass-left').textContent, /^(\d+:)?\d{1,2}:\d\d$/);
+  const legacy = portal(t, async (_u, o) => !o?.method ? response({ config, guest_voucher_access: false }) : response({ status: 'recorded' }));
+  await settle(); fill(legacy);
+  legacy.document.getElementById('voucher-submit').click();
+  await settle();
+  assert.equal(legacy.document.getElementById('pass-left'), null);
+  assert.equal(legacy.document.querySelector('.pass-state'), null);
+});
+
+test('an owner colour gets readable button ink by contrast, and no colour keeps the Obsidian and Cyan defaults', async t => {
+  const w = portal(t, async () => response({ config }));
+  await settle();
+  const ink = hex => { w.applyBranding({ primary_hex: hex }); return w.document.documentElement.style.getPropertyValue('--brand-ink'); };
+  assert.equal(ink('#38bdf8'), '#06131f'); // white on sky cyan would be 2.0:1
+  assert.equal(ink('#075044'), '#fff');
+  assert.equal(ink('#ffb547'), '#06131f');
+  w.applyBranding({});
+  assert.equal(w.document.documentElement.style.getPropertyValue('--brand'), '');
+});

@@ -1,0 +1,63 @@
+/* Console workspaces: one phone column, twelve desktop tracks from 1024px.
+   Panels declare their role; API results and role-gated children never decide their placement. */
+.workspace-grid, .workspace-stack, .workspace-cards { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.workspace-grid > *, .workspace-stack > *, .workspace-cards > * { min-width: 0; }
+
+@media (min-width: 1024px) {
+  :root { --content-max: 1360px; }
+  .shell { --workspace-pad: clamp(24px, 2vw, 32px); padding: 0 var(--workspace-pad) 40px calc(var(--rail-w) + var(--workspace-pad)); }
+  .view, .topbar { width: 100%; max-width: var(--content-max); }
+  .topbar::before { inset-inline: calc(-1 * var(--workspace-pad)); }
+
+  .workspace-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 24px; align-items: start; grid-auto-flow: row dense; }
+  .workspace-grid > * { grid-column: 1 / -1; }
+  .workspace-grid > .workspace-main { grid-column: 1 / span 8; order: 1; }
+  .workspace-grid > .workspace-rail { grid-column: 9 / span 4; order: 1; }
+  /* Conditional/role-gated rails must never leave an empty third of the page. */
+  .workspace-grid:not(:has(> .workspace-rail)) > .workspace-main,
+  .workspace-grid:not(:has(> .workspace-main)) > .workspace-rail { grid-column: 1 / -1; }
+  .workspace-stack { gap: 24px; }
+  .home-services.cols2 { grid-template-columns: minmax(0, 1fr); }
+  .workspace-cards { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 24px; align-items: start; }
+  .workspace-cards > * { grid-column: span 6; }
+  .workspace-cards > :last-child:nth-child(odd) { grid-column: 1 / -1; }
+  .workspace-main.router-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .nwform > fieldset { grid-column: span 6; }
+  .workspace-main .workspace-cards > *, .workspace-rail .workspace-cards > * { grid-column: 1 / -1; }
+
+  /* Paragraph measure is independent of panel/table width. Data values keep their own scale. */
+  .route-workspace p:not(.num, .mono, .ledger-figure, .hero-figure, .stock-figure) { max-width: 65ch; }
+  .workspace-rail :where(.row, .toolbar, .actions-row) { flex-wrap: wrap; }
+  .workspace-rail :where(.two, .tasks) { grid-template-columns: minmax(0, 1fr); }
+  /* Table styles are lazy-loaded; this must also beat .dt-tools.three after navigation. */
+  .workspace-rail .dt-tools, .workspace-rail .dt-tools.three { grid-template-columns: minmax(0, 1fr); }
+  .workspace-rail .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .workspace-rail :where(.input, .pill, .btn) { max-width: 100%; min-width: 0; }
+  .workspace-rail .pill { white-space: normal; overflow-wrap: anywhere; }
+  .workspace-rail :where(.facts, .kv) { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .workspace-rail :where(dd, b, .num, .mono) { overflow-wrap: anywhere; }
+  .workspace-main > .dt-wrap { width: 100%; }
+
+  /* Editors keep the live preview visible beside a wide form, without changing phone order. */
+  .gp-layout { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 24px; }
+  .gp-layout > .gp-form { grid-column: 1 / span 8; grid-row: 1; min-width: 0; }
+  .gp-layout > .gp-preview { grid-column: 9 / span 4; grid-row: 1; min-width: 0; }
+  .gp-preview .phone { width: 100%; }
+  .gp-preview .glass.pad { padding: 16px; }
+
+  /* Canvas and inspector share the same tracks. The stage owns any internal pan/scroll. */
+  .nt-layout, .map-layout { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 24px; align-items: start; }
+  .nt-stage, .map-layout > :first-child { grid-column: 1 / span 9; min-width: 0; }
+  .nt-inspector, .map-layout > .inspector { grid-column: 10 / span 3; min-width: 0; }
+  .nt-inspector :where(.row, .actions-row) { flex-wrap: wrap; }
+  .nt-inspector .facts { grid-template-columns: minmax(0, 1fr); }
+  .nt-inspector dd { margin: 0 0 8px; overflow-wrap: anywhere; }
+  .nt-inspector :where(.pill, .btn) { white-space: normal; max-width: 100%; }
+  .steps { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 16px; }
+  .steps > .step { grid-column: span 6; min-width: 0; }
+  .steps > .step:last-child:nth-child(odd) { grid-column: 1 / -1; }
+}
+
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .workspace-main.router-grid { grid-template-columns: minmax(0, 1fr); }
+}

@@ -22,8 +22,8 @@ function Item({ r, onDone }: { r: Req; onDone: () => void }) {
   }
   return (
     <form className="glass pad stack" onSubmit={decide}>
-      <b>{r.email}</b><p className="soft small">{r.plan} · {t("pr.requested")} {r.created_at ? new Date(r.created_at).toLocaleString() : ""}</p>
-      {paid ? <p className="small">{t("ap.amount")}: {mmk(r.amount_mmk!)} MMK<br />{t("ap.bankRef")}: {r.bank_reference}<br />{t("pr.payee")}: {r.bank_snapshot?.bank_name} · {r.bank_snapshot?.account_number} · {r.bank_snapshot?.holder_name}</p> : <p className="small">{t("pr.noEvidence")}</p>}
+      <b>{r.email}</b><p className="soft small">{r.plan} · {t("pr.requested")} <span className="num">{r.created_at ? new Date(r.created_at).toLocaleString() : ""}</span></p>
+      {paid ? <p className="small">{t("ap.amount")}: <span className="num">{mmk(r.amount_mmk!)}</span> MMK<br />{t("ap.bankRef")}: <span className="num">{r.bank_reference}</span><br />{t("pr.payee")}: {r.bank_snapshot?.bank_name} · <span className="num">{r.bank_snapshot?.account_number}</span> · {r.bank_snapshot?.holder_name}</p> : <p className="small">{t("pr.noEvidence")}</p>}
       <label className="check"><span>{paid ? t("pr.checkedBank") : t("pr.reviewedReq")}</span><input type="checkbox" required /></label>
       <div className="row" style={{ justifyContent: "flex-start", flexWrap: "wrap" }}><button className="btn" type="submit" data-decision="approve" disabled={busy}>{t("pa.approve")}</button><button className="btn quiet" type="submit" data-decision="reject" disabled={busy}>{t("pr.reject")}</button></div>
       {msg && <p className="soft small" role="status">{msg}</p>}
@@ -41,7 +41,7 @@ export function Renewals() {
     <>
       <p className="soft small">{t("pr.lead")}</p>
       <button className="pill" type="button" onClick={() => void mutate()}>{t("pr.refresh")}</button>
-      {!list.length ? <Note>{t("pr.none")}</Note> : <div className="stack">{list.map((r) => <Item key={r.id} r={r} onDone={() => void mutate()} />)}</div>}
+      {!list.length ? <Note>{t("pr.none")}</Note> : <div className="workspace-cards">{list.map((r) => <Item key={r.id} r={r} onDone={() => void mutate()} />)}</div>}
     </>
   );
 }

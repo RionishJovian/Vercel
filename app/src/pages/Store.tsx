@@ -108,6 +108,7 @@ export function Store({ me }: { me: Me }) {
   return (
     <>
       {back}<h1>{t("title.store")}</h1>
+      <div className="workspace-main workspace-stack">
       {mode === "individual_pass" ? <AccountPass me={me} pass={sub.data} onRefresh={() => void sub.mutate()} />
         : mode === "subscription_only" ? <Note kind="warn">{t("st.subOnly")}</Note>
         : (
@@ -118,7 +119,8 @@ export function Store({ me }: { me: Me }) {
             <LegacyHistory />
           </>
         )}
-      <AddonSection me={me} />
+      </div>
+      <div className="workspace-rail workspace-stack"><AddonSection me={me} /></div>
     </>
   );
 }

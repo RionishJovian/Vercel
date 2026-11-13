@@ -3,6 +3,7 @@ import { api, ApiError, isUnauthorized } from "../../lib/api";
 import { useI18n } from "../../i18n";
 import { Note } from "../../components/ui";
 import { enrollError } from "./messages";
+import { splitCidr } from "../../lib/age";
 import { validWifi, withNewRouterNetwork, type Uplink } from "./newRouterNetwork";
 
 interface Enrolled { state?: string; router_configuration_required?: boolean; one_paste?: boolean; automatic_management?: boolean; router_script?: string; tunnel_address?: string; hub_public_key?: string; endpoint?: string; allowed_ips?: string[] }
@@ -23,10 +24,12 @@ export function Script({ title, text }: { title: string; text: string }) {
     try { await navigator.clipboard.writeText(pasteText); setLabel("copied"); } catch { area.current?.focus(); area.current?.select(); setLabel("manual"); }
   }
   return (
-    <div className="stack">
-      <h4>{title}</h4>
+    <div className="cmd">
+      <div className="cmd-bar">
+        <b>{title}</b>
+        <button className="pill" type="button" data-done={label === "copied" ? "true" : undefined} onClick={() => void copy()}>{t(label === "copy" ? "hub.copy" : label === "copied" ? "hub.copied" : "hub.copyManual")}</button>
+      </div>
       <textarea ref={area} className="input script" rows={9} readOnly spellCheck={false} aria-label={title} value={pasteText} />
-      <button className="pill" type="button" onClick={() => void copy()}>{t(label === "copy" ? "hub.copy" : label === "copied" ? "hub.copied" : "hub.copyManual")}</button>
     </div>
   );
 }
@@ -178,7 +181,7 @@ export function Enrollment({ id, onVerified }: { id: string; onVerified: () => v
           <Script title={t("hub.setupTitle")} text={result.data.router_script ?? ""} />
           <Note kind="warn">{t(networkSetup ? "hub.net.safe" : "hub.w.once")}</Note>
           <p className="soft small">{t("hub.keepPrivate")}</p>
-          <div role="status" aria-live="polite"><Note kind={reached ? "ok" : ""}>{t(reached ? "hub.w.reached" : "hub.w.waiting")}</Note></div>
+          <div role="status" aria-live="polite" className="link-state" data-state={reached ? "up" : "wait"}><i className="led" data-state={reached ? "up" : "wait"} aria-hidden="true" /><span>{t(reached ? "hub.w.reached" : "hub.w.waiting")}</span></div>
           {slow && (
             <div className="stack" role="group" aria-label={t("hub.w.help")}>
               <b>{t("hub.w.help")}</b>
@@ -188,11 +191,11 @@ export function Enrollment({ id, onVerified }: { id: string; onVerified: () => v
             </div>
           )}
           <details className="wiz-where"><summary>{t("hub.w.details")}</summary>
-            <dl className="facts">
-              <dt>{t("hub.addr")}</dt><dd><code>{result.data.tunnel_address}</code></dd>
-              <dt>{t("hub.pubkey")}</dt><dd><code>{result.data.hub_public_key || t("hub.notReported")}</code></dd>
-              <dt>{t("hub.endpoint")}</dt><dd><code>{result.data.endpoint || t("hub.notReported")}</code></dd>
-              <dt>{t("hub.allowed")}</dt><dd><code>{Array.isArray(result.data.allowed_ips) ? result.data.allowed_ips.join(", ") : t("hub.notReported")}</code></dd>
+            <dl className="spec">
+              <dt>{t("hub.addr")}</dt><dd>{(() => { const a = splitCidr(result.data.tunnel_address); return a ? <code className="num">{a.addr}<span className="cidr">{a.cidr}</span></code> : <span className="nil">{t("hub.notReported")}</span>; })()}</dd>
+              <dt>{t("hub.pubkey")}</dt><dd>{result.data.hub_public_key ? <code className="mono wrap">{result.data.hub_public_key}</code> : <span className="nil">{t("hub.notReported")}</span>}</dd>
+              <dt>{t("hub.endpoint")}</dt><dd>{result.data.endpoint ? <code className="num">{result.data.endpoint}</code> : <span className="nil">{t("hub.notReported")}</span>}</dd>
+              <dt>{t("hub.allowed")}</dt><dd>{Array.isArray(result.data.allowed_ips) ? <code className="num">{result.data.allowed_ips.join(", ")}</code> : <span className="nil">{t("hub.notReported")}</span>}</dd>
             </dl>
           </details>
         </section>

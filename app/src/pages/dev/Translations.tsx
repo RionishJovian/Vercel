@@ -49,16 +49,21 @@ export function Translations({ me }: { me: Me }) {
     <Page title={t("dev.tr.title")}>
       <Note kind="warn"><b>{t("dev.tr.global")}</b> {isDev ? t("dev.tr.careful") : t("dev.tr.devOnly")}</Note>
       {err && <Note kind="bad">{err}</Note>}
+      <div className="workspace-rail workspace-stack">
       {isDev && !edit && <button className="btn" type="button" onClick={() => setEdit("new")}>{t("dev.tr.add")}</button>}
       {isDev && edit && <Editor item={edit === "new" ? null : edit} locales={locales} namespaces={namespaces} onDone={() => { setEdit(null); void p.mutate(); }} />}
-      <Loading loading={p.isLoading && !p.data} error={p.error} text={t("dev.tr.failed")} />
-      {p.data && (<>
-        <p className="soft small">{tok(p.data.total)} {t("dev.tr.overrides")} · {t("dev.tr.byLocale")}: {facet(p.data.by_locale)} · {t("dev.tr.byNs")}: {facet(p.data.by_namespace)}</p>
+        {p.data && (
         <FilterBar onApply={p.apply} onReset={p.reset}>
           <div className="two"><Select label={t("dev.tr.locale")} value={p.draft.locale} onChange={(v) => p.setDraft("locale", v)} all={t("dev.tr.allLocales")} options={locales} /><Select label={t("dev.tr.namespace")} value={p.draft.namespace} onChange={(v) => p.setDraft("namespace", v)} all={t("dev.tr.allNs")} options={namespaces} /></div>
           <Field label={t("dev.search")}><input className="input" value={p.draft.q} placeholder={t("dev.tr.searchHint")} onChange={(e) => p.setDraft("q", e.target.value)} /></Field>
         </FilterBar>
-        {!items.length ? <Note>{t("dev.tr.none")}</Note> : <div className="stack">{items.map((o) => (
+        )}
+      </div>
+      <div className="workspace-main workspace-stack">
+      <Loading loading={p.isLoading && !p.data} error={p.error} text={t("dev.tr.failed")} />
+      {p.data && (<>
+        <p className="soft small">{tok(p.data.total)} {t("dev.tr.overrides")} · {t("dev.tr.byLocale")}: {facet(p.data.by_locale)} · {t("dev.tr.byNs")}: {facet(p.data.by_namespace)}</p>
+        {!items.length ? <Note>{t("dev.tr.none")}</Note> : <div className="workspace-main workspace-stack">{items.map((o) => (
           <div className="glass pad stack" key={o.id}>
             <div className="row"><span className="chip num">{o.locale} / {o.namespace}</span><span className="soft small num">{when(o.updated_at)}</span></div>
             <p className="small soft" style={{ overflowWrap: "anywhere" }}>{o.key}</p><p style={{ overflowWrap: "anywhere" }}>{o.value}</p>
@@ -67,6 +72,7 @@ export function Translations({ me }: { me: Me }) {
         ))}</div>}
         <Pager offset={p.offset} shown={items.length} total={p.data.total ?? 0} hasMore={p.data.has_more} onNewer={p.newer} onOlder={p.older} filtered={p.filtered} unit={t("dev.tr.overrides")} />
       </>)}
+      </div>
     </Page>
   );
 }

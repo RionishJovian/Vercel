@@ -10,8 +10,9 @@ import { NetworkMap } from "./NetworkMap";
 import { hubStatusFrom, type HubStatus } from "../../lib/hubStatus";
 import { useFleet, type FleetData } from "../../lib/useFleet";
 import { HubChip } from "./HubChip";
+import { ageShort } from "../../lib/age";
 
-export interface RouterRow extends Router { site_id?: string | null; is_online?: boolean; transport?: string; last_seen_at?: string }
+export interface RouterRow extends Router { device_model?: string; vendor?: string; site_id?: string | null; is_online?: boolean; transport?: string; last_seen_at?: string }
 
 // Once the status has loaded, a router it does not list is "unavailable", not "checking".
 const hubStatusFromFleet = (fleet: FleetData | undefined, routers: RouterRow[]): Record<string, HubStatus> => ({ ...Object.fromEntries(routers.map((d): [string, HubStatus] => [d.device_id, { state: "unknown" }])), ...hubStatusFrom(fleet) });
@@ -39,7 +40,7 @@ export function Routers({ sub, params, me }: { sub: string; params: URLSearchPar
       <h1>{t("title.router")}</h1>
       {tabs}
       {!list.length && <Note>{t("r.empty")}</Note>}
-      <div className="router-grid">
+      <div className="router-grid workspace-main">
         {list.map((d) => (
           <a className="glass pad router-card" key={d.device_id} href={"/app/router/" + encodeURIComponent(d.device_id)}>
             <div className={"rc-pic" + (hub[d.device_id]?.state === "up" ? " on" : "")}><img src={deviceImage(d)} alt="" width={64} height={64} loading="lazy" /><i className="rc-led" aria-hidden="true" /></div>
@@ -49,12 +50,13 @@ export function Routers({ sub, params, me }: { sub: string; params: URLSearchPar
                 <span className="chip">{d.transport === "wireguard" ? "Magic Hub" : d.transport || "—"}</span>
                 {d.deployment_layer === "MAIN_GATEWAY" && <span className="chip">Gateway</span>}
               </div>
-              <p className="soft small">{hub[d.device_id]?.at ? t("r.hubSeen") : t("r.lastSeen")}: {seenAt(hub[d.device_id]?.at ?? d.last_seen_at, t("r.never"))}</p>
+              {d.device_model && <span className="rc-model">{d.device_model}</span>}
+              <p className="rc-age" title={seenAt(hub[d.device_id]?.at ?? d.last_seen_at, t("r.never"))}>{hub[d.device_id]?.at ? t("r.hubSeen") : t("r.lastSeen")}: {ageShort(hub[d.device_id]?.at ?? d.last_seen_at) ? <><span className="num">{ageShort(hub[d.device_id]?.at ?? d.last_seen_at)}</span> ·{" "}</> : null}{seenAt(hub[d.device_id]?.at ?? d.last_seen_at, t("r.never"))}</p>
             </div>
           </a>
         ))}
       </div>
-      <section className="glass pad stack"><SectionHead title={t("r.tools")} help={t("r.toolsHelp")} /><div className="scroll-x">
+      <section className="glass pad stack workspace-rail"><SectionHead title={t("r.tools")} help={t("r.toolsHelp")} /><div className="scroll-x">
         <a className="pill" href="/app/hub">{t("hub.title")}</a>
         {list.some((d) => d.deployment_layer !== "MAIN_GATEWAY") && <a className="pill" href="/app/managed-devices">{t("dm.title")}</a>}
         <a className="pill" href="/app/topology">{t("tp.title")}</a>

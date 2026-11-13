@@ -1,0 +1,134 @@
+/* Step 3B (2026-11-13): network telemetry for Sites, Routers, Magic Hub and Vouchers.
+   One idea carries it: a "wire spec", a quiet key/value readout where only data is set in JetBrains Mono
+   (IPs, /32 tunnel addresses, router models, ages, voucher codes) and labels stay in Instrument Sans.
+   Colours come from the shell tokens, so Night and Day both follow without extra rules. */
+
+/* ---- Wire spec: label left, value right, one hairline between rows ---- */
+.spec { display: grid; grid-template-columns: minmax(0, auto) minmax(0, 1fr); margin: 0; border: 1px solid var(--edge-soft); border-radius: var(--r-row); background: var(--surface-sunken); overflow: hidden; }
+.spec > dt, .spec > dd { margin: 0; padding: 9px 14px; border-top: 1px solid var(--edge-soft); min-width: 0; }
+.spec > dt:first-of-type, .spec > dt:first-of-type + dd { border-top: 0; }
+.spec > dt { color: var(--ink-mute); font-size: .8125rem; display: flex; align-items: center; padding-right: 20px; }
+.spec > dd { text-align: right; font-size: .875rem; overflow-wrap: anywhere; display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.spec > dd.is-key { justify-content: flex-start; text-align: left; }
+.spec .cidr { color: var(--jade); font-weight: 600; }
+.spec .nil { color: var(--ink-mute); font-family: var(--font-body); font-size: .8125rem; letter-spacing: 0; }
+/* Long values (a public key) wrap inside the row instead of widening the page. */
+.spec .wrap { word-break: break-all; text-align: left; font-size: .8125rem; line-height: 1.5; }
+@media (max-width: 330px) {
+  .spec { grid-template-columns: 1fr; }
+  .spec > dt { padding: 9px 14px 0; border-top: 1px solid var(--edge-soft); }
+  .spec > dt:first-of-type { border-top: 0; }
+  .spec > dd { border-top: 0; padding: 2px 14px 9px; justify-content: flex-start; text-align: left; }
+}
+/* The existing .facts lists (Hub card, tunnel details) pick up the same mono values. */
+.facts code, .facts .num { font-family: var(--mono); font-size: .8125rem; letter-spacing: -.01em; }
+
+/* ---- Link LED: state as a light plus a word, never colour alone ---- */
+.led { flex: none; width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid var(--ink-mute); background: transparent; }
+.led[data-state="up"], .led[data-state="online"] { background: var(--ok); border-color: var(--ok); box-shadow: 0 0 0 3px var(--ok-soft); }
+.led[data-state="down"], .led[data-state="offline"] { background: var(--bad); border-color: var(--bad); box-shadow: 0 0 0 3px var(--bad-soft); }
+.led[data-state="wait"] { background: var(--warn); border-color: var(--warn); animation: led-beat 1.8s ease-in-out infinite; }
+@keyframes led-beat { 0%, 100% { box-shadow: 0 0 0 0 var(--warn-soft); } 50% { box-shadow: 0 0 0 5px var(--warn-soft); } }
+
+/* ---- Sites: a card is a name, a place and one readout line ---- */
+.site-card { gap: 10px; }
+.site-pick { grid-template-columns: auto minmax(0, 1fr) auto; }
+.site-pick .dot-state { width: 10px; height: 10px; box-shadow: none; }
+.site-pick .dot-state.online { box-shadow: 0 0 0 3px var(--ok-soft); }
+.site-pick .dot-state.offline { box-shadow: 0 0 0 3px var(--bad-soft); }
+.site-pick b { overflow-wrap: anywhere; }
+.site-meta { display: grid; border: 1px solid var(--edge-soft); border-radius: var(--r-row); background: var(--surface-sunken); font-size: .8125rem; color: var(--ink-mute); overflow: hidden; }
+.site-meta > span { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; padding: 7px 12px; min-width: 0; }
+.site-meta > span + span { border-top: 1px solid var(--edge-soft); }
+.site-meta .num { color: var(--ink-soft); text-align: right; overflow-wrap: anywhere; }
+/* On a phone the path state drops under the name, so a long Burmese label never squeezes the title. */
+@media (max-width: 520px) {
+  .site-pick { grid-template-columns: auto minmax(0, 1fr); align-items: start; row-gap: 6px; }
+  .site-pick .dot-state { margin-top: 7px; }
+  .site-pick > .stack:last-child { grid-column: 2; flex-direction: row; justify-content: space-between; align-items: baseline; gap: 12px; text-align: left !important; }
+}
+
+/* ---- Router cards ---- */
+.router-card .rc-model { font-family: var(--mono); font-size: .8125rem; color: var(--ink-soft); letter-spacing: -.01em; }
+.router-card .rc-age { font-size: .8125rem; color: var(--ink-mute); }
+.router-card .rc-age .num { color: var(--ink-soft); }
+.router-card h2 { overflow-wrap: anywhere; }
+
+/* Detail readout: a labelled ledger rather than loose rows. */
+.kv-list { display: grid; margin: 0; border: 1px solid var(--edge-soft); border-radius: var(--r-row); background: var(--surface-sunken); overflow: hidden; }
+.kv-list > .row { padding: 9px 14px; min-height: 40px; }
+.kv-list > .row + .row { border-top: 1px solid var(--edge-soft); }
+.kv-list .num { text-align: right; overflow-wrap: anywhere; }
+
+/* ---- Magic Hub: the one-paste command ---- */
+.cmd { border: 1px solid var(--edge); border-radius: var(--r-row); overflow: hidden; background: var(--surface-sunken); }
+.cmd-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 6px 6px 14px; border-bottom: 1px solid var(--edge-soft); background: var(--glass-solid); }
+.cmd-bar b { font-size: .875rem; font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.cmd-bar .pill { min-height: 44px; flex: none; }
+.cmd-bar .pill[data-done="true"] { color: var(--ok); border-color: var(--ok); }
+.cmd .script { display: block; width: 100%; border: 0; border-radius: 0; min-height: 168px; max-height: 280px; resize: vertical; background: transparent; font-family: var(--mono); font-size: .75rem; line-height: 1.6; letter-spacing: 0; white-space: pre; overflow: auto; }
+.cmd .script:focus { box-shadow: inset 0 0 0 2px var(--jade); }
+
+/* Handshake readout: one line that says where the tunnel stands. */
+.link-state { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border: 1px solid var(--edge-soft); border-radius: var(--r-row); background: var(--surface-sunken); font-size: .9375rem; }
+.link-state .led { margin-top: 7px; }
+.link-state[data-state="up"] { border-color: color-mix(in srgb, var(--ok) 35%, transparent); color: var(--ok); }
+.link-state[data-state="wait"] { color: var(--ink-soft); }
+
+/* Setup steps read as one calm rail with a pointer on the current step. */
+.wiz-rail { gap: 0; border: 1px solid var(--edge-soft); border-radius: var(--r-row); overflow: hidden; background: var(--surface-sunken); }
+.wiz-rail li + li { border-left: 1px solid var(--edge-soft); }
+.wiz-rail .wiz-dot { border: 0; border-radius: 0; background: transparent; }
+.wiz-rail [data-state="current"] .wiz-dot { box-shadow: inset 0 -2px 0 var(--jade); }
+.wiz-num { font-family: var(--mono); }
+
+/* ---- Vouchers ---- */
+/* Codes are 8 characters from a 22-letter alphabet; a fixed width keeps every row aligned. */
+.dt-code, .dt-mono, .code { font-family: var(--mono); font-feature-settings: "tnum", "zero"; }
+.dt-code { font-weight: 600; font-size: .875rem; letter-spacing: .08em; display: inline-block; min-width: 8ch; }
+.dt-code[data-masked="true"] { color: var(--ink-mute); letter-spacing: .14em; }
+.dt td.num, .dt [data-cell="half-a"], .dt [data-cell="half-b"] { font-size: .8125rem; }
+.dt-summary .num { font-size: .8125rem; }
+@media (min-width: 761px) { .dt-btn, .dt-filter, .dt-page { min-height: 32px; } }
+.dt [data-label]::before { font-family: var(--font-body); letter-spacing: 0; }
+
+.code-rule { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; padding: 10px 14px; border: 1px dashed var(--edge); border-radius: var(--r-row); font-size: .8125rem; color: var(--ink-soft); }
+.code-rule .mono { font-size: .75rem; letter-spacing: .12em; color: var(--ink); overflow-wrap: anywhere; }
+
+.batch-form .input.num { font-size: .9375rem; }
+.batch-sum { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: .8125rem; color: var(--ink-soft); padding-top: 4px; }
+.code-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 8px; }
+.code-list .code-chip { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 44px; padding: 0 12px; border: 1px solid var(--edge-soft); border-radius: var(--r-row); background: var(--surface-sunken); }
+.code-list .code-chip b { font-size: .9375rem; letter-spacing: .1em; }
+
+/* ---- Burmese: more air, never clipped, and the mono face falls back to Noto Sans Myanmar ---- */
+:lang(my) .chip, :lang(my) .pill, :lang(my) .btn, :lang(my) .dt-btn, :lang(my) .dt-filter, :lang(my) .dt-status { line-height: 1.75; }
+:lang(my) .row > .chip { line-height: 1.75; }
+:lang(my) .spec > dt, :lang(my) .spec > dd, :lang(my) .site-meta, :lang(my) .link-state, :lang(my) .code-rule, :lang(my) .cmd-bar b { line-height: 1.75; }
+:lang(my) .wiz-name { line-height: 1.6; }
+:lang(my) .dt td { padding-block: 8px; }
+
+/* ---- Step 3C (2026-11-13): media catalogue, guest-page editors and platform screens ----
+   Same wire-spec vocabulary as 3B: labels in Instrument Sans, only data (counts, MMK amounts, dates,
+   plan keys, library paths, pairing codes) in JetBrains Mono. No new colours: everything reads the shell
+   tokens, so Night and Day follow and the 4.5:1 / 3:1 checks keep covering these screens. */
+.input.num, .input.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; font-feature-settings: "tnum", "zero"; letter-spacing: -.01em; }
+.input.num:lang(my), .input.mono:lang(my) { line-height: 1.75; }
+.input.num::placeholder { font-family: var(--font-body); }
+
+/* Pairing code: a terminal-style readout instead of a dashed box. */
+.pair-code { font-family: var(--mono); color: var(--jade); background: var(--surface-sunken); border: 1px solid var(--edge); border-radius: var(--r-row); }
+
+/* Ledgers inside cards (Jellyfin link and library lists). */
+.lib-list .row { align-items: baseline; gap: 16px; }
+.lib-list .lib-path { font-size: .75rem; color: var(--ink-mute); text-align: right; overflow-wrap: anywhere; min-width: 0; }
+.thumb { width: 64px; height: 64px; object-fit: cover; border-radius: var(--r-row); border: 1px solid var(--edge-soft); }
+
+/* Plan cards in the guest-page editor. */
+.plan-card { border-radius: var(--r-panel); }
+.plan-card .two { gap: 12px; }
+
+/* Platform account cards use .spec; keep it tidy inside a card. */
+.glass > .spec { margin-block: 2px; }
+.spec > dd.num { font-size: .8125rem; }
+:lang(my) .kv-list .row, :lang(my) .plan-card label, :lang(my) .spec > dt { line-height: 1.75; }

@@ -9,6 +9,7 @@ import { PageBoundary } from "../components/PageBoundary";
 import { connectionIsFresh, stateOf, type Site, type Conn } from "../lib/siteState";
 export { connectionIsFresh } from "../lib/siteState";
 import { errorText } from "../lib/errors";
+import { ageShort } from "../lib/age";
 
 const SiteMap = lazy(() => import("../components/SiteMap"));
 
@@ -66,6 +67,7 @@ export function Sites({ me }: { me: Me }) {
   const sites = asArray<Site>(sitesRes.data?.sites), conns = asArray<Conn>(connRes.data?.connections);
   const pick = (id: string) => { setSelected(id); try { localStorage.setItem(SELECTED, id); } catch { /* ignore */ } };
   const sel = sites.find((s) => s.site_id === selected);
+  const seen = (s: Site) => { const times = conns.filter((c) => c.site_id === s.site_id).map((c) => c.cloud_last_seen_at).filter(Boolean).sort(); return ageShort(times[times.length - 1]); };
   const paths = sel ? conns.filter((c) => c.site_id === sel.site_id) : [];
   const checks: Array<[boolean, string]> = sel ? [[sel.latitude != null && sel.longitude != null, "site.chk.coords"], [(num(sel.device_count) ?? 0) > 0, "site.chk.device"], [paths.length > 0, "site.chk.path"], [paths.some((c) => connectionIsFresh(c)), "site.chk.live"]] : [];
   const done = () => { setForm(null); void sitesRes.mutate(); };
@@ -79,14 +81,13 @@ export function Sites({ me }: { me: Me }) {
     <>
       {back}<PageHead title={t("title.sites")} help={t("site.lead")} />
       {err && <Note kind="bad">{err}</Note>}
-      {canEdit && !form && <button className="btn" type="button" onClick={() => { setCoords({ lat: "", lng: "" }); setForm({ site: null }); }}>{t("site.add")}</button>}
       {(sites.some((x) => x.latitude != null) || form) && (
         <PageBoundary inline><Suspense fallback={<Skeleton h={280} />}>
           <SiteMap sites={sites} states={Object.fromEntries(sites.map((x) => [x.site_id, stateOf(x, conns)]))} selected={selected} onSelect={(id) => pick(id === selected ? "" : id)} pick={form ? { lat: coords.lat, lng: coords.lng, onPick: (la, lo) => setCoords({ lat: la.toFixed(6), lng: lo.toFixed(6) }) } : undefined} />
           <p className="soft small">{t("site.mapCredit")}</p>
         </Suspense></PageBoundary>
       )}
-      {form && <SiteForm site={form.site} coords={coords} setCoords={setCoords} onDone={done} onCancel={() => setForm(null)} />}
+      <div className="workspace-main workspace-stack">
       {!sites.length ? <Note>{t("site.none")}</Note> : (
         <div className="stack">
           {sites.map((s) => {
@@ -96,8 +97,13 @@ export function Sites({ me }: { me: Me }) {
                 <button className="site-pick" type="button" aria-pressed={s.site_id === selected} onClick={() => pick(s.site_id === selected ? "" : s.site_id)}>
                   <span className={"dot-state " + st} aria-hidden="true" />
                   <span className="stack" style={{ gap: 2, textAlign: "left" }}><b>{s.name}</b><span className="soft small">{s.location || t("site.noLocation")}</span></span>
-                  <span className="stack" style={{ gap: 2, textAlign: "right" }}><b className="small num">{count} {t(count === 1 ? "site.device" : "site.devices")}</b><span className="soft small">{t("site.path." + st)}</span></span>
+                  <span className="stack" style={{ gap: 2, textAlign: "right" }}><b className="small"><span className="num">{count}</span> {t(count === 1 ? "site.device" : "site.devices")}</b><span className="soft small">{t("site.path." + st)}</span></span>
                 </button>
+                <div className="site-meta">
+                  <span>{t("tel.tz")} <span className="num">{s.timezone || "—"}</span></span>
+                  <span>{t("tel.coords")} <span className="num">{s.latitude != null && s.longitude != null ? `${s.latitude.toFixed(4)}, ${s.longitude.toFixed(4)}` : "—"}</span></span>
+                  {seen(s) && <span>{t("tel.last")} <span className="num">{seen(s)}</span></span>}
+                </div>
                 {canEdit && (confirmDel === s.site_id ? (
                   <div className="note warn stack"><p className="small">{t("site.delConfirm")}</p>
                     <div className="row" style={{ justifyContent: "flex-start" }}><button className="pill" type="button" onClick={() => setConfirmDel("")}>{t("c.cancel")}</button><button className="pill danger" type="button" onClick={() => void remove(s.site_id)}>{t("site.delete")}</button></div></div>
@@ -112,6 +118,10 @@ export function Sites({ me }: { me: Me }) {
           })}
         </div>
       )}
+      </div>
+      <div className="workspace-rail workspace-stack">
+      {canEdit && !form && <button className="btn" type="button" onClick={() => { setCoords({ lat: "", lng: "" }); setForm({ site: null }); }}>{t("site.add")}</button>}
+      {form && <SiteForm site={form.site} coords={coords} setCoords={setCoords} onDone={done} onCancel={() => setForm(null)} />}
       {sel && (
         <section className="glass pad stack" aria-label={t("site.ready")}>
           <h2>{t("site.ready")}: {sel.name}</h2>
@@ -119,6 +129,7 @@ export function Sites({ me }: { me: Me }) {
           <a className="btn quiet" href="/app/hub">{t("hub.title")}</a>
         </section>
       )}
+      </div>
     </>
   );
 }

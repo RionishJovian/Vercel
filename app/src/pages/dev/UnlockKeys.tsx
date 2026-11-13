@@ -20,7 +20,7 @@ export function UnlockKeys() {
           <div className="two"><Select label={t("dev.kind")} value={p.draft.kind} onChange={(v) => p.setDraft("kind", v)} all={t("dev.allKinds")} options={asArray<string>(p.data.kinds)} /><Select label={t("dev.status")} value={p.draft.status} onChange={(v) => p.setDraft("status", v)} all={t("dev.anyStatus")} options={["active", "expired", "consumed"]} /></div>
           <Field label={t("dev.search")}><input className="input" value={p.draft.q} placeholder={t("dev.uk.search")} onChange={(e) => p.setDraft("q", e.target.value)} /></Field>
         </FilterBar>
-        {!keys.length ? <Note>{t("dev.uk.none")}</Note> : <div className="stack">{keys.map((k, i) => (
+        {!keys.length ? <Note>{t("dev.uk.none")}</Note> : <div className="workspace-main workspace-stack">{keys.map((k, i) => (
           <div className="glass pad stack" key={i}>
             <div className="row"><b>{k.key_name || k.key_kind}</b><span className={"chip " + (k.status === "active" ? "ok" : k.status === "consumed" ? "" : "warn")}>{k.status}</span></div>
             <p className="soft small">{k.key_kind} · {k.attributes}</p>

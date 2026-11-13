@@ -123,29 +123,29 @@ func portalLoginHTML() string {
 	return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Connect to WiFi</title>
 <style>
-:root{color-scheme:dark;--portal-brand:#075044;--portal-tint:#061f26;--portal-on-brand:#fff}
-*{box-sizing:border-box}html{min-height:100%;background:#051b22}
-body{margin:0;min-height:100vh;min-height:100svh;display:flex;align-items:center;justify-content:center;padding:32px 20px;background:#051b22;color:#edf7f5;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Inter","Segoe UI",sans-serif;-webkit-font-smoothing:antialiased;background-position:center;background-size:cover;background-repeat:no-repeat}
-.card{position:relative;width:76%;max-width:340px;padding:34px 25px 32px;text-align:center;border-radius:33px;background:rgba(7,33,37,.46);border:1px solid #efffffb3;box-shadow:0 24px 65px #0008,0 0 0 2px #b3d3d336,inset 0 1px 2px #fff9,inset 2px 0 5px #e3f7ff55,inset -2px -2px 5px #efffde55;-webkit-backdrop-filter:blur(18px) saturate(125%);backdrop-filter:blur(18px) saturate(125%)}
-.card:before{content:"";position:absolute;pointer-events:none;inset:3px;border:1px solid #e0f7f829;border-radius:29px}
-.wifi-mark{display:block;width:98px;height:80px;object-fit:contain;margin:0 auto 10px}
-h1{font-size:28px;line-height:1.2;font-weight:600;letter-spacing:-.035em;margin:0 0 10px;color:#f0f7f5}
-p{color:#d4e3df;font-size:11.5px;line-height:1.6;margin:0 0 22px}
+/* Layered deep-slate surfaces with a sky-cyan accent (owner direction 2026-11-13). The router serves this page before the guest has
+   internet, so it uses system fonts and no image: the budget is 24 KB and nothing may be fetched. Night by default; light phones get the Day twin. */
+:root{color-scheme:dark;--bg:#0b0e14;--surface:#121620;--sunken:#0e121a;--ink:#f8fafc;--ink-soft:#94a3b8;--ink-mute:#7b8ba3;--line:#ffffff17;--edge:#64748b;--accent:#38bdf8;--bad:#f87171;--bad-soft:#f8717120;--mesh:#38bdf817;--glow:0 0 0 3px #38bdf82e;--shadow:inset 0 1px 0 #ffffff0f,0 20px 40px -15px #0009;--portal-brand:#38bdf8;--portal-tint:#121620;--portal-on-brand:#06131f}
+@media(prefers-color-scheme:light){:root{color-scheme:light;--bg:#f8fafc;--surface:#ffffff;--sunken:#f1f5f9;--ink:#0f172a;--ink-soft:#475569;--ink-mute:#5b6b80;--line:#e2e8f0;--edge:#64748b;--accent:#0369a1;--bad:#b91c1c;--bad-soft:#b91c1c14;--mesh:#38bdf81f;--glow:0 0 0 3px #0369a129;--shadow:0 1px 3px #0f172a0f,0 8px 24px -8px #0f172a14}}
+*{box-sizing:border-box}html{min-height:100%;background:var(--bg)}
+body{margin:0;min-height:100vh;min-height:100svh;display:flex;align-items:center;justify-content:center;padding:32px 20px;background:radial-gradient(ellipse 75% 45% at 50% -10%,var(--mesh),transparent) no-repeat,var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans Myanmar",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+.card{width:100%;max-width:400px;padding:32px 28px;text-align:left;border-radius:12px;border:1px solid var(--line);background:color-mix(in srgb,var(--portal-tint) 6%,var(--surface));box-shadow:var(--shadow)}
+.wifi-mark{display:block;width:40px;height:40px;margin:0 0 16px;color:var(--accent)}
+h1{font-size:28px;line-height:1.15;font-weight:650;letter-spacing:-.028em;margin:0 0 8px;color:var(--ink)}
+p{color:var(--ink-soft);font-size:15px;line-height:1.6;margin:0 0 24px}
 label{display:block}.field-label{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
-input{display:block;width:100%;min-height:46px;padding:12px 14px;border-radius:13px;border:1px solid #dcf4f36b;background:#a1cecc0c;box-shadow:inset 0 1px 2px #ffffff12;color:#f1faf7;font:inherit;font-size:15px;letter-spacing:.1em;text-transform:uppercase}
-input::placeholder{color:#a8cecb;letter-spacing:.28em;opacity:.9}
-input:focus,button:focus-visible{outline:2px solid #bbfbe6;outline-offset:4px}
-button{width:100%;min-height:50px;margin-top:23px;padding:12px 8px;border:1px solid #b4ffe0b3;border-radius:13px;background-color:var(--portal-brand);background-image:linear-gradient(150deg,#c2fff41f,#ffffff00 48%,#001c1a55);box-shadow:0 0 16px #48deb63b,inset 0 1px 3px #cafffca1,inset 0 -2px 4px #cafffb24;color:var(--portal-on-brand);font:inherit;font-size:15px;font-weight:500;cursor:pointer;transition:filter .15s,box-shadow .15s}
-button:hover{filter:brightness(1.12);box-shadow:0 0 22px #48deb659,inset 0 1px 3px #cafffca1}button:disabled{cursor:wait;opacity:.7}
-.brand{display:block;margin:17px 0 -10px;font-size:9px;line-height:1.5;letter-spacing:.12em;color:#c6d8d2;text-transform:uppercase;overflow-wrap:anywhere}
-a.alt{display:block;margin-top:14px;padding:13px 8px;border:1px solid #dcf4f36b;border-radius:13px;background:#a1cecc0c;color:#edf7f5;font-size:14px;text-decoration:none}a.alt:focus-visible{outline:2px solid #bbfbe6;outline-offset:4px}
-.err{margin:12px 0;padding:10px 12px;border-radius:11px;background:#431e2de8;border:1px solid #ffbdca66;color:#ffe1e8;font-size:12px;line-height:1.5;text-align:left}
-.consent{display:flex;align-items:flex-start;gap:8px;text-align:left;font-size:11px;line-height:1.5;margin:18px 0 -8px;color:#d4e3df}.consent input{width:17px;min-height:17px;height:17px;padding:0;margin:1px 0;flex-shrink:0;accent-color:var(--portal-brand)}
-details{margin:0 0 17px;font-size:11px;line-height:1.6;color:#d4e3df;text-align:left}details p{white-space:pre-wrap;margin:10px 0}
-@media(max-width:360px){.card{width:100%;padding:28px 24px}h1{font-size:27px}}
-@media(min-width:600px){.card{width:340px;padding:40px 36px}.wifi-mark{width:86px;height:72px}h1{font-size:32px}p{font-size:13px}button{font-size:16px}}
-@media(max-height:560px){body{align-items:flex-start;padding-top:24px}.wifi-mark{height:44px;margin-bottom:12px}.card{padding-top:22px;padding-bottom:22px}}
-@media(prefers-reduced-transparency:reduce){.card{background:#09272e;-webkit-backdrop-filter:none;backdrop-filter:none}}
+input{display:block;width:100%;min-height:60px;padding:0 16px;border-radius:8px;border:1px solid var(--edge);background:var(--sunken);color:var(--ink);font:600 22px ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.14em;text-transform:uppercase}
+input::placeholder{color:var(--ink-mute);letter-spacing:.3em}
+input:focus{outline:none;border-color:var(--accent);box-shadow:var(--glow)}
+button:focus-visible,a.alt:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+button{width:100%;min-height:52px;margin-top:16px;padding:0 16px;border:1px solid color-mix(in srgb,var(--portal-brand) 70%,var(--ink));border-radius:8px;background-color:var(--portal-brand);background-image:linear-gradient(180deg,#ffffff33,#fff0);box-shadow:inset 0 1px 0 #ffffff40;color:var(--portal-on-brand);font:inherit;font-size:16px;font-weight:650;cursor:pointer;transition:filter .16s}
+button:hover{filter:brightness(1.07)}button:disabled{cursor:wait;opacity:.7}
+.brand{display:block;margin:24px 0 0;font-size:13px;line-height:1.5;color:var(--ink-mute);overflow-wrap:anywhere}
+a.alt{display:flex;align-items:center;justify-content:center;min-height:48px;margin-top:12px;border:1px solid var(--edge);border-radius:8px;color:var(--ink);font-size:15px;font-weight:600;text-decoration:none}
+.err{margin:12px 0;padding:10px 12px;border-radius:8px;background:var(--bad-soft);border:1px solid var(--bad);color:var(--bad);font-size:14px;line-height:1.5;text-align:left}
+.consent{display:flex;align-items:flex-start;gap:10px;text-align:left;font-size:14px;line-height:1.5;margin:16px 0 0;color:var(--ink-soft)}.consent input{width:22px;min-height:22px;height:22px;padding:0;margin:0;flex-shrink:0;accent-color:var(--accent)}
+details{margin:0 0 16px;font-size:14px;line-height:1.6;color:var(--ink-soft);text-align:left}details p{white-space:pre-wrap;margin:10px 0;font-size:14px}summary{cursor:pointer;min-height:44px;display:flex;align-items:center}
+@media(max-height:560px){body{align-items:flex-start;padding-top:24px}}
 @media(prefers-reduced-motion:reduce){button{transition:none}}
 </style></head><body><main class="card">
 <h1>Wi-Fi Access</h1>

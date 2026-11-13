@@ -55,12 +55,12 @@ export function IconTile({ name, tone = "" }: { name: IconName; tone?: string })
   return <span className="icontile" data-tone={tone || undefined}><Icon name={name} /></span>;
 }
 
-/** Initials in a jade gradient disc. The hue shifts a little per name so rows are easy to tell apart. */
+/** Initials in a sky gradient disc. The hue shifts a little per name so rows are easy to tell apart. */
 export function Avatar({ name }: { name?: string }) {
   const text = (name ?? "").trim();
   const initials = text.split(/[\s@._-]+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join("") || "·";
   let h = 0; for (const c of text) h = (h * 31 + c.charCodeAt(0)) % 40;
-  return <span className="avatar" style={{ ["--hue" as string]: 150 + h }} aria-hidden="true">{initials}</span>;
+  return <span className="avatar" style={{ ["--hue" as string]: 190 + h }} aria-hidden="true">{initials}</span>;
 }
 
 /** Status in words and colour. "idle" means no trustworthy evidence — never presented as offline. */

@@ -6,25 +6,24 @@ body {
 }
 /* Burmese stacks tall: give it more air than Latin. */
 :lang(my) body, :lang(my) { line-height: 1.75; }
-:lang(my) h1, :lang(my) h2, :lang(my) h3 { line-height: 1.5; letter-spacing: 0; }
+:lang(my) h1, :lang(my) h2, :lang(my) h3 { line-height: 1.6; letter-spacing: 0; }
 
-/* One calm field behind everything: a soft mint light from the top, no objects or photography. */
+/* One calm field behind everything: a faint sky light from the top edge, no objects or photography. */
 body::before {
   content: ""; position: fixed; inset: 0; z-index: -1;
-  background:
-    radial-gradient(80% 40% at 20% -5%, var(--glow), transparent 70%),
-    linear-gradient(180deg, var(--bg-1), var(--bg-0) 60%);
+  background: radial-gradient(ellipse 75% 45% at 50% -10%, var(--glow), transparent), var(--bg-0);
 }
 
 h1, h2, h3, p { margin: 0; }
-h1, h2, h3 { font-family: var(--font-display); font-weight: 650; letter-spacing: -.015em; line-height: 1.15; }
+h1, h2, h3 { font-family: var(--font-display); font-weight: 650; letter-spacing: -.02em; line-height: 1.15; }
 h1 { font-size: clamp(1.6rem, 4.2vw, 2rem); }
 h2 { font-size: 1.15rem; }
 h3 { font-size: 1.02rem; }
 a { color: inherit; text-decoration: none; }
 button, input, select, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; }
-.num { font-family: var(--font-display); font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; letter-spacing: -.02em; }
+/* Data values (money, counts, addresses, models, masked codes) are set in JetBrains Mono; prose and labels never are. */
+.num, .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; font-feature-settings: "tnum", "zero"; letter-spacing: -.01em; }
 .soft { color: var(--ink-soft); }
 .mute { color: var(--ink-mute); }
 .small { font-size: .875rem; }
@@ -32,7 +31,7 @@ button { cursor: pointer; }
 .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
-:focus-visible { outline: 3px solid var(--jade); outline-offset: 2px; border-radius: 8px; }
+:focus-visible { outline: 2px solid var(--jade); outline-offset: 3px; border-radius: 6px; }
 ::selection { background: var(--jade-soft); }
 
 @media (prefers-reduced-motion: reduce) {
@@ -40,7 +39,7 @@ button { cursor: pointer; }
 }
 
 /* Glass surfaces */
-/* Surfaces: solid ivory/emerald panels with a hairline and soft depth. Translucency is kept for bars only. */
+/* Surfaces: layered slate panels with a hairline, a top-edge highlight and soft depth. Translucency is kept for bars only. */
 .glass {
   position: relative; background: var(--glass-solid); border: 1px solid var(--edge-soft); border-radius: var(--r-panel);
   box-shadow: inset 0 1px 0 var(--shine), var(--shadow);
@@ -56,8 +55,8 @@ button { cursor: pointer; }
 /* Controls */
 .btn {
   display: inline-flex; align-items: center; justify-content: center; text-align: center; min-height: 52px; padding: 0 22px; border-radius: var(--r-control); border: 1px solid transparent; font-weight: 650;
-  color: var(--on-jade); background: linear-gradient(180deg, color-mix(in srgb, var(--jade) 90%, white), var(--jade));
-  box-shadow: 0 8px 20px -14px var(--jade-deep), inset 0 1px 0 rgba(255, 255, 255, .3);
+  color: var(--on-jade); background: linear-gradient(180deg, var(--jade), var(--jade-deep));
+  box-shadow: 0 8px 20px -12px var(--jade-deep), inset 0 1px 0 rgba(255, 255, 255, .28);
   transition: transform var(--t-fast) var(--ease-out), filter var(--t-fast), box-shadow var(--t-fast);
 }
 .btn:hover { filter: brightness(1.06); }
@@ -71,7 +70,7 @@ button { cursor: pointer; }
   min-height: 52px; width: 100%; padding: 0 16px; border-radius: var(--r-control); border: 1px solid var(--edge);
   background: var(--surface-sunken); color: var(--ink); transition: border-color var(--t-fast), box-shadow var(--t-fast);
 }
-.input:focus { border-color: var(--jade); box-shadow: 0 0 0 3px var(--jade-soft); outline: none; }
+.input:focus { border-color: var(--jade); box-shadow: 0 0 0 3px var(--focus-ring); outline: none; }
 .input[aria-invalid="true"] { border-color: var(--bad); }
 .input::placeholder { color: var(--ink-mute); }
 .chip { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 12px; border-radius: 999px; font-size: .8125rem; font-weight: 600; border: 1px solid var(--edge-soft); background: var(--glass); }

@@ -1,0 +1,163 @@
+// Contrast and language guards for the public pages (landing, sign-in, pricing).
+// Text pairs must reach 4.5:1 in both themes; input borders and the focus ring 3:1.
+// Each text appears once per language and the other is hidden, so English and Burmese are never shown side by side.
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+
+const css = readFileSync(new URL('../web/assets/css/landing.css', import.meta.url), 'utf8');
+const signinCss = readFileSync(new URL('../app/src/styles/signin.css', import.meta.url), 'utf8');
+
+function tokens(selector, source = css) {
+  const out = {};
+  const start = source.indexOf(selector + ' {');
+  assert.ok(start >= 0, `missing token block ${selector}`);
+  const body = source.slice(source.indexOf('{', start) + 1, source.indexOf('}', start));
+  for (const m of body.matchAll(/--([a-z0-9-]+):\s*(#[0-9a-f]{6})\b/g)) out[m[1]] = m[2];
+  return out;
+}
+const lum = (hex) => {
+  const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+  return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+};
+const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+
+const themes = {
+  night: tokens(':root, :root[data-theme="night"]'),
+  day: tokens(':root[data-theme="day"]'),
+};
+const textPairs = [
+  ['ink', 'bg'], ['ink', 'surface'], ['ink-soft', 'surface'], ['ink-soft', 'sunken'], ['ink-mute', 'bg'], ['ink-mute', 'surface'], ['ink-mute', 'sunken'],
+  ['on-accent', 'accent'], ['on-accent', 'accent-deep'], ['on-accent', 'accent-hover'], ['accent-text', 'surface'], ['accent-text', 'bg'],
+  ['ok', 'surface'], ['warn', 'surface'], ['bad', 'surface'], ['ok', 'bg'],
+];
+const nonTextPairs = [['control-edge', 'sunken'], ['control-edge', 'surface'], ['accent', 'bg'], ['accent', 'surface']];
+
+for (const [name, t] of Object.entries(themes)) {
+  test(`${name}: text colour pairs reach 4.5:1`, () => {
+    for (const [fg, bg] of textPairs) assert.ok(ratio(t[fg], t[bg]) >= 4.5, `${fg} ${t[fg]} on ${bg} ${t[bg]} is ${ratio(t[fg], t[bg]).toFixed(2)}`);
+  });
+  test(`${name}: input borders and focus ring reach 3:1`, () => {
+    for (const [fg, bg] of nonTextPairs) assert.ok(ratio(t[fg], t[bg]) >= 3, `${fg} on ${bg} is ${ratio(t[fg], t[bg]).toFixed(2)}`);
+  });
+}
+
+test('Burmese keeps 1.75 line height and the inactive language is hidden', () => {
+  assert.match(css, /--lh-my:\s*1\.75/);
+  assert.match(css, /\[data-lang="my"\] body[^{]*\{\s*line-height:\s*var\(--lh-my\)/);
+  assert.match(css, /\[data-lang="en"\] \[lang="my"\],\s*\[data-lang="my"\] \[lang="en"\]\s*\{\s*display:\s*none/);
+});
+
+test('no page puts both languages in one text node', () => {
+  for (const f of ['index.html', 'signin.html', 'pricing.html']) {
+    const html = readFileSync(new URL('../web/' + f, import.meta.url), 'utf8');
+    assert.doesNotMatch(html, /\p{Script=Latin}{2,}\p{Script=Myanmar}/u, `${f}: Latin text runs straight into Burmese`);
+  }
+});
+
+// The console sign-in scopes the same palette to .signin under the console's token names.
+const consoleNames = { bg: 'bg-0', surface: 'glass-solid', sunken: 'surface-sunken', accent: 'jade', 'accent-deep': 'jade-deep', 'on-accent': 'on-jade', 'accent-text': 'jade', 'control-edge': 'edge' };
+for (const [name, sel] of [['night', ':root[data-theme="night"] .signin'], ['day', ':root[data-theme="day"] .signin']]) {
+  const t = tokens(sel, signinCss);
+  const pick = (k) => t[consoleNames[k] ?? k];
+  test(`console sign-in ${name}: text pairs reach 4.5:1 and match the public pages`, () => {
+    for (const [fg, bg] of textPairs) {
+      const a = pick(fg), b = pick(bg);
+      assert.ok(a && b, `missing ${fg} or ${bg}`);
+      assert.ok(ratio(a, b) >= 4.5, `${fg} ${a} on ${bg} ${b} is ${ratio(a, b).toFixed(2)}`);
+    }
+    for (const k of ['ink', 'ink-soft', 'ink-mute', 'ok', 'warn', 'bad', 'control-edge']) assert.equal(pick(k), themes[name][k], `${k} differs from landing.css`);
+  });
+  test(`console sign-in ${name}: input border reaches 3:1`, () => {
+    assert.ok(ratio(pick('control-edge'), pick('sunken')) >= 3);
+  });
+}
+test('console sign-in keeps Burmese line height at 1.75', () => {
+  assert.match(signinCss, /:lang\(my\) \.signin[^{]*\{\s*line-height:\s*1\.75/);
+});
+
+// Guest portal (hosted page and router-served page) carry the same palette inline, in Night and in the light-phone Day twin.
+const portalHtml = readFileSync(new URL('../web/portal.html', import.meta.url), 'utf8');
+const routerGo = readFileSync(new URL('../internal/provisioner/routeros/portal_deploy.go', import.meta.url), 'utf8');
+function inlineTokens(source, marker) {
+  const at = source.indexOf(marker);
+  assert.ok(at >= 0, `missing ${marker}`);
+  const body = source.slice(source.indexOf('{', at) + 1, source.indexOf('}', at));
+  const out = {};
+  for (const m of body.matchAll(/--([a-z0-9-]+):\s*(#[0-9a-f]{6})\b/g)) out[m[1]] = m[2];
+  return out;
+}
+const portalNames = { 'accent-text': 'accent-text' };
+for (const [label, source, nightMarker, dayMarker] of [
+  ['hosted portal', portalHtml, ':root {', '@media (prefers-color-scheme: light) {'],
+  ['router login page', routerGo, ':root{color-scheme:dark', '@media(prefers-color-scheme:light){:root{'],
+]) {
+  const night = inlineTokens(source, nightMarker);
+  const day = inlineTokens(source, dayMarker === '@media (prefers-color-scheme: light) {' ? dayMarker + '\n    :root {' : dayMarker);
+  for (const [name, t] of [['night', night], ['day', day]]) {
+    test(`${label} ${name}: text pairs reach 4.5:1 and share the public palette`, () => {
+      const pairs = label === 'hosted portal'
+        ? [['ink', 'bg'], ['ink', 'surface'], ['ink-soft', 'surface'], ['ink-mute', 'bg'], ['ink-mute', 'surface'], ['ink-mute', 'sunken'], ['on-accent', 'accent'], ['on-accent', 'accent-deep'], ['accent-text', 'surface'], ['ok', 'surface'], ['warn', 'surface'], ['bad', 'surface']]
+        : [['ink', 'bg'], ['ink', 'surface'], ['ink-soft', 'surface'], ['ink-mute', 'surface'], ['bad', 'surface']];
+      for (const [fg, bg] of pairs) {
+        assert.ok(t[fg] && t[bg], `${label} ${name}: missing ${fg} or ${bg}`);
+        assert.ok(ratio(t[fg], t[bg]) >= 4.5, `${label} ${name}: ${fg} ${t[fg]} on ${bg} ${t[bg]} is ${ratio(t[fg], t[bg]).toFixed(2)}`);
+      }
+      for (const k of ['ink', 'ink-soft', 'ink-mute', 'bad']) if (t[k]) assert.equal(t[k], themes[name][k], `${label} ${name}: ${k} differs from landing.css`);
+    });
+    test(`${label} ${name}: control edge and focus ring reach 3:1`, () => {
+      assert.ok(ratio(t.edge, t.sunken) >= 3, `edge on sunken ${ratio(t.edge, t.sunken).toFixed(2)}`);
+      assert.ok(ratio(t.accent, t.bg) >= 3, `accent on bg ${ratio(t.accent, t.bg).toFixed(2)}`);
+    });
+  }
+}
+
+test('guest portal keeps 1.75 Burmese leading, talks only to /api/v1/portal and carries no external asset', () => {
+  assert.match(portalHtml, /:lang\(my\) body[^{]*\{\s*line-height:\s*1\.75/);
+  const js = readFileSync(new URL('../web/assets/js/portal.js', import.meta.url), 'utf8');
+  const urls = [...js.matchAll(/API \+ "(\/[^"]*)"/g)].map((m) => m[1]);
+  assert.ok(urls.length >= 5);
+  for (const u of urls) assert.match(u, /^\/portal\//, `unexpected endpoint ${u}`);
+  assert.doesNotMatch(portalHtml + routerGo.slice(routerGo.indexOf('<style>'), routerGo.indexOf('</style>')), /https?:\/\//);
+  assert.doesNotMatch(portalHtml, /\bsrc="https?:|href="https?:/);
+});
+
+// The deep-slate surface system: a canvas that is never flat black, an elevated surface and a recessed input, plus the alabaster Day twin.
+test('surfaces are the layered deep-slate system in every file, with matching Day twins', () => {
+  const night = { bg: '#0b0e14', surface: '#121620', sunken: '#0e121a', ink: '#f8fafc', 'ink-soft': '#94a3b8', accent: '#38bdf8', 'on-accent': '#06131f' };
+  const day = { bg: '#f8fafc', surface: '#ffffff', sunken: '#f1f5f9', ink: '#0f172a', accent: '#0369a1', 'on-accent': '#ffffff' };
+  for (const [k, v] of Object.entries(night)) assert.equal(themes.night[k], v, `landing night ${k}`);
+  for (const [k, v] of Object.entries(day)) assert.equal(themes.day[k], v, `landing day ${k}`);
+  assert.notEqual(themes.night.bg, '#09090b', 'the canvas must not be flat black');
+  for (const [label, source, marker] of [['hosted portal', portalHtml, ':root {'], ['router login page', routerGo, ':root{color-scheme:dark']]) {
+    const t = inlineTokens(source, marker);
+    for (const k of ['bg', 'surface', 'sunken', 'ink', 'ink-soft', 'accent', 'on-accent']) if (t[k]) assert.equal(t[k], night[k], `${label} ${k}`);
+  }
+  assert.match(css, /radial-gradient\(ellipse 75% 45% at 50% -10%/, 'ambient mesh at the top of the hero and sign-in views');
+  assert.match(signinCss, /radial-gradient\(ellipse 75% 45% at 50% -10%/);
+  assert.match(portalHtml, /radial-gradient\(ellipse 75% 45% at 50% -10%/);
+});
+
+test('one logo mark everywhere: the signal-and-spark artwork, no green wand tile', () => {
+  const artwork = 'M33 8.5Q33.9 14.1 39.5 15Q33.9 15.9 33 21.5Q32.1 15.9 26.5 15Q32.1 14.1 33 8.5Z';
+  const files = {
+    'web/index.html': readFileSync(new URL('../web/index.html', import.meta.url), 'utf8'),
+    'web/signin.html': readFileSync(new URL('../web/signin.html', import.meta.url), 'utf8'),
+    'web/pricing.html': readFileSync(new URL('../web/pricing.html', import.meta.url), 'utf8'),
+    'app/src/components/Brand.tsx': readFileSync(new URL('../app/src/components/Brand.tsx', import.meta.url), 'utf8'),
+    'web/assets/images/megamagic-mark.svg': readFileSync(new URL('../web/assets/images/megamagic-mark.svg', import.meta.url), 'utf8'),
+  };
+  for (const [name, text] of Object.entries(files)) {
+    assert.ok(text.includes(artwork), `${name} is missing the mark artwork`);
+    assert.doesNotMatch(text, /#0e8a63|#053d2c|logo-a-/i, `${name} still carries the old green wand tile`);
+  }
+  assert.match(files['web/assets/images/megamagic-mark.svg'], /stroke-width="1\.75"/);
+});
+
+test('links are controls, not raw browser underlines', () => {
+  assert.match(css, /\ba \{[^}]*text-decoration:\s*none/);
+  const site = readFileSync(new URL('../web/assets/css/site-pages.css', import.meta.url), 'utf8');
+  assert.doesNotMatch(css + site + signinCss, /text-decoration:\s*underline/);
+  const tsx = readFileSync(new URL('../app/src/pages/SignIn.tsx', import.meta.url), 'utf8');
+  assert.doesNotMatch(tsx, /className="link"/);
+});

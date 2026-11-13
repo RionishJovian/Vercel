@@ -15,6 +15,7 @@ import { enrollmentUnavailableKey } from "./messages";
 import { ConnectionCheck } from "./ConnectionCheck";
 import type { RouterRow } from "../routers";
 import { errorText } from "../../lib/errors";
+import { ageShort } from "../../lib/age";
 
 interface GW extends RouterRow { site_id?: string | null; management_ip?: string; vendor?: string; device_model?: string; management_connected?: boolean }
 interface Capability { available?: boolean; lookup_enabled?: boolean; code?: string }
@@ -59,11 +60,11 @@ function Card({ r, state, canEdit, cap, openId, setOpen, onChanged }: { r: GW; s
   );
   return (
     <article className="glass pad stack gw-card" data-tone={tone || undefined}>
-      <div className="row"><div className="who"><span className={"medal sm" + (state === "up" ? " on" : "")}><Icon name="router" /></span><div className="stack" style={{ gap: 2 }}><h2>{r.hardware_name || t("hub.unnamed")}</h2><span className="soft small">{[r.vendor, r.device_model].filter(Boolean).join(" ")}</span></div></div><span className={"chip " + tone}>{t("fl.state." + (["up", "stale", "offline"].includes(state) ? state : "unknown"))}</span></div>
-      <dl className="facts">
-        <dt>{t("hub.transport")}</dt><dd>{r.transport || "direct"}</dd>
-        <dt>{t("hub.mgmtIp")}</dt><dd className="num">{r.management_ip || t("hub.notRegistered")}</dd>
-        <dt>{t("hub.lastSignal")}</dt><dd>{r.last_seen_at ? new Date(r.last_seen_at).toLocaleString() : t("hub.noSignal")}</dd>
+      <div className="row"><div className="who"><span className={"medal sm" + (state === "up" ? " on" : "")}><Icon name="router" /></span><div className="stack" style={{ gap: 2 }}><h2>{r.hardware_name || t("hub.unnamed")}</h2><span className="rc-model">{[r.vendor, r.device_model].filter(Boolean).join(" ")}</span></div></div><span className={"chip " + tone}>{t("fl.state." + (["up", "stale", "offline"].includes(state) ? state : "unknown"))}</span></div>
+      <dl className="spec">
+        <dt>{t("hub.transport")}</dt><dd><span className="mono">{r.transport || "direct"}</span></dd>
+        <dt>{t("hub.mgmtIp")}</dt><dd>{r.management_ip ? <span className="num">{r.management_ip}</span> : <span className="nil">{t("hub.notRegistered")}</span>}</dd>
+        <dt>{t("hub.lastSignal")}</dt><dd>{r.last_seen_at ? <><span className="num">{ageShort(r.last_seen_at) ?? "—"}</span><span className="soft small" title={new Date(r.last_seen_at).toLocaleString()}>{new Date(r.last_seen_at).toLocaleString()}</span></> : <span className="nil">{t("hub.noSignal")}</span>}</dd>
       </dl>
       {canEdit && cap.lookup_enabled && <ConnectionCheck id={r.device_id} />}
       {kept && <Note kind="ok">{t("hub.keptNote")}</Note>}
@@ -150,8 +151,8 @@ export function Hub({ me }: { me: Me }) {
     <>
       {back}<PageHead title={t("hub.title")} help={t("hub.lead")} />
       {!gateways.length && <Note>{t("hub.none")}</Note>}
-      <div className="router-grid">{gateways.map((r) => <Card key={r.device_id} r={r} state={states.get(r.device_id) ?? "unknown"} canEdit={canEdit} cap={capability} openId={openId} setOpen={setOpen} onChanged={refresh} />)}</div>
-      {canEdit && <AddGateway sites={sites} onDone={(id) => { refresh(); if (id) setOpen(id); }} />}
+      <div className="router-grid workspace-main">{gateways.map((r) => <Card key={r.device_id} r={r} state={states.get(r.device_id) ?? "unknown"} canEdit={canEdit} cap={capability} openId={openId} setOpen={setOpen} onChanged={refresh} />)}</div>
+      {canEdit && <div className="workspace-rail"><AddGateway sites={sites} onDone={(id) => { refresh(); if (id) setOpen(id); }} /></div>}
     </>
   );
 }

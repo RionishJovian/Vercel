@@ -12,15 +12,15 @@ func TestRouterPortalOfflineArtworkAndReferenceDesign(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{`<h1>Wi-Fi Access</h1>`, `Enter voucher code to connect`, `Connect to Wi-Fi`, `class="wifi-mark"`, `background-image:url("data:image/webp;base64,`, `data-preview="true"`, `prefers-reduced-transparency`, `prefers-reduced-motion`} {
+	for _, want := range []string{`<h1>Wi-Fi Access</h1>`, `Enter voucher code to connect`, `Connect to Wi-Fi`, `class="wifi-mark"`, `--portal-brand:#38bdf8`, `data-preview="true"`, `prefers-color-scheme:light`, `prefers-reduced-motion`} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("reference portal missing %q", want)
 		}
 	}
-	if strings.Count(page, "data:image/webp;base64,") != 2 || strings.Contains(page, "https://") || strings.Contains(page, "http://") || len(page) > 24000 {
-		t.Fatalf("portal must contain both local assets within its router budget: bytes=%d", len(page))
+	if strings.Contains(page, "data:image/") || strings.Contains(page, "url(") || strings.Contains(page, "https://") || strings.Contains(page, "http://") || len(page) > 24000 {
+		t.Fatalf("portal must carry no image or external asset and stay within its router budget: bytes=%d", len(page))
 	}
-	t.Logf("Complete offline glass portal: %d bytes", len(page))
+	t.Logf("Complete offline deep-slate and sky-cyan portal: %d bytes", len(page))
 	if path := os.Getenv("MM_ROUTER_PORTAL_DESIGN_FILE"); path != "" {
 		if err := os.WriteFile(path, []byte(page), 0600); err != nil {
 			t.Fatal(err)
@@ -57,8 +57,8 @@ func TestRouterPortalDesignEscapesOwnerTextAndKeepsMacrosOwned(t *testing.T) {
 	if _, err := RenderPortalLogin(&PortalLoginDesign{TermsText: strings.Repeat("界", 2001)}, false); err == nil {
 		t.Fatal("unbounded router document")
 	}
-	for _, c := range []string{"#fff", "#ffffff", "#ffb547", "#fff0"} {
-		if portalBrandText(c) != "#102c29" {
+	for _, c := range []string{"#fff", "#ffffff", "#ffb547", "#fff0", "#38bdf8"} {
+		if portalBrandText(c) != "#06131f" {
 			t.Fatalf("light brand needs dark button text: %s", c)
 		}
 	}

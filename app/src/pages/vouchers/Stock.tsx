@@ -174,7 +174,7 @@ export function Stock() {
   const current = batch ? planByBatch.get(batch) : undefined;
 
   return (
-    <div className="stack">
+    <div className="workspace-grid">
       {incomplete.length > 0 && (
         <section className="glass pad stack">
           <h2>{t("v.pendingTitle")}</h2><p className="soft small">{t("v.pendingBody")}</p>
@@ -188,7 +188,8 @@ export function Stock() {
       )}
       {!filtered && all === 0 ? <Note>{t("v.empty")}</Note> : (
         <>
-          <div className="glass pad stack">
+          <div className="glass pad stack workspace-rail">
+            <p className="code-rule">{t("tel.codeRule")} <span className="mono">ABCDEFGHJKMNPQRSTVWXYZ</span></p>
             <div className="dt-tools three">
               <input className="input" type="search" placeholder={t("vt.search")} aria-label={t("vt.search")} value={search} onChange={(e) => setSearch(e.target.value)} />
               <select className="input" aria-label={t("p.pick")} value={batch} onChange={(e) => { const v = e.target.value; changeFilter(() => setBatch(v)); }}>
@@ -212,6 +213,7 @@ export function Stock() {
             {msg && <Note kind={msg.kind}>{msg.text}</Note>}
           </div>
 
+          <div className="workspace-main workspace-stack">
           <div className="dt-wrap">
             {selected.length > 0 && (
               <div className="dt-bulk" role="group" aria-label={bump(t("vt.selected"), selected.length)}>
@@ -245,7 +247,7 @@ export function Stock() {
                       return (
                         <tr key={v.id} data-on={picked.has(v.id) ? "" : undefined}>
                           <td className="dt-check"><input type="checkbox" aria-label={`${t("vt.selectRow")} ${secret ? "" : v.code}`} checked={picked.has(v.id)} onChange={(e) => toggle(v, e.target.checked)} /></td>
-                          <td data-cell="primary"><span className="dt-code" title={secret ? t("vt.hiddenCode") : undefined}>{secret ? "••••••••" : v.code}</span></td>
+                          <td data-cell="primary"><span className="dt-code" data-masked={secret ? "true" : undefined} title={secret ? t("vt.hiddenCode") : undefined}>{secret ? "••••••••" : v.code}</span></td>
                           <td data-cell="line"><div className="dt-plan" title={shop ? `${v.plan_label} · ${shop}` : v.plan_label}>{v.plan_label || "—"}{shop ? <span className="soft"> · {shop}</span> : null}</div></td>
                           <td data-cell="status">{secret ? <span className="dt-status" data-tone="warn">{t("vt.notInstalled")}</span> : <span className="dt-status" data-tone={TONE[v.status ?? ""] || undefined}>{STATUSES.includes(v.status as (typeof STATUSES)[number]) ? t("vt.status." + v.status) : v.status || "—"}</span>}</td>
                           <td data-cell="half-a" data-label={t("v.dataUsed")} className="num" title={asOf}>{data}</td>
@@ -267,6 +269,7 @@ export function Stock() {
             <Pager page={Math.min(page, pages)} perPage={PER_PAGE} total={total} shown={rows.length} onPage={setPage} />
           </div>
           <ul className="dt-foot">{handOutOn ? null : <li>{t("vt.handOutOff")}</li>}{routerDelete ? null : <li>{t("vt.deleteOff")}</li>}<li>{t("v.liveNote")}</li></ul>
+          </div>
         </>
       )}
       {slipFor ? <SlipDialog key={slipFor.code} voucher={slipFor} layout={layout} firstUse={firstUse} onClose={() => setSlipFor(null)} /> : null}

@@ -21,8 +21,8 @@ export function PlatformIncidents() {
   return (
     <>
       <div className="capsules"><div className="capsule"><span className="soft small">{t("pi.open")}</span><b className="num">{c.open ?? 0}</b></div><div className="capsule"><span className="soft small">{t("pi.resolved")}</span><b className="num">{c.resolved ?? 0}</b></div></div>
-      {!list.length ? <Note>{t("pi.none")}</Note> : <div className="stack">{list.map((i, k) => (
-        <div className="glass pad stack" key={i.id ?? k}><div className="row"><span className={"chip " + tone(i.severity)}>{i.severity || "info"}</span><span className="soft small">{i.opened_at ? new Date(i.opened_at).toLocaleString() : ""}</span></div>
+      {!list.length ? <Note>{t("pi.none")}</Note> : <div className="workspace-cards">{list.map((i, k) => (
+        <div className="glass pad stack" key={i.id ?? k}><div className="row"><span className={"chip " + tone(i.severity)}>{i.severity || "info"}</span><span className="soft small num">{i.opened_at ? new Date(i.opened_at).toLocaleString() : ""}</span></div>
           <b>{names.get(i.business_id ?? "") ?? i.business_id ?? "—"}</b><p className="soft small">{i.subject_label || i.subject_id || "—"} · {i.kind}</p></div>
       ))}</div>}
     </>

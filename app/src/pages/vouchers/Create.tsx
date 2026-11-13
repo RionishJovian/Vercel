@@ -26,6 +26,7 @@ export function Create() {
   const [saved, setSaved] = useState(readPending);
   const [selected, setSelected] = useState(() => String(readPending()?.device_id ?? ""));
   const [failure, setFailure] = useState("");
+  const [sum, setSum] = useState({ count: 50, data: 1024 });
   const gateways = asArray<Router>(routers.data?.routers).filter(d => d.deployment_layer === "MAIN_GATEWAY");
   const gateway = gateways.find(g => g.device_id === selected) ?? gateways[0];
   const profiles = useSWR<{ profiles?: string[] }>(gateway ? `/routers/${encodeURIComponent(gateway.device_id)}/portal/profiles` : null, fetcher, { shouldRetryOnError: false });
@@ -84,25 +85,29 @@ export function Create() {
   }
 
   return (
-    <div className="stack">
+    <div className="workspace-grid">
       {profiles.error && <Note kind="warn">{errorText(profiles.error, t("c.loadFailed"))}</Note>}
       {profiles.data && !ready && <Note kind="warn">{t("v.hotspotRequired")} <a className="link" href={"/app/network/new?router=" + encodeURIComponent(gateway.device_id)}>{t("nw.title")}</a></Note>}
       {(!profiles.data || !ready) && <button className="pill" type="button" disabled={profiles.isValidating} onClick={() => void profiles.mutate()}>{t(profiles.isValidating ? "r.checking" : "c.retry")}</button>}
       {saved?.batch_id && <Note kind="warn">{t("v.pendingFirst")} <button type="button" className="pill" disabled={busy} onClick={() => void retry(saved.batch_id!)}>{t("v.retrySavedBatch")}</button></Note>}
-      <form className="glass pad stack" onSubmit={submit}>
+      <form className="glass pad stack batch-form workspace-main" onSubmit={submit} onChange={(e) => { const f = new FormData(e.currentTarget); setSum({ count: Number(f.get("count")) || 0, data: Number(f.get("data")) || 0 }); }}>
         <Field label={t("v.f.gateway")} htmlFor="gv-gw"><select className="input" id="gv-gw" name="gw" value={gateway.device_id} onChange={e => setSelected(e.target.value)} disabled={busy || !!saved} required>{gateways.map((g) => <option key={g.device_id} value={g.device_id}>{g.hardware_name || g.device_id}</option>)}</select></Field>
         <Field label={t("v.f.label")} htmlFor="gv-label"><input className="input" id="gv-label" name="label" maxLength={80} required placeholder="1 day" /></Field>
         <Field label={t("v.f.duration")} htmlFor="gv-dur"><select className="input" id="gv-dur" name="dur" defaultValue="1440">{DURATIONS.map((m) => <option key={m} value={m}>{t("v.d." + m)}</option>)}</select></Field>
         <div className="two">
-          <Field label={t("v.f.data")} htmlFor="gv-data"><input className="input" id="gv-data" name="data" type="number" inputMode="numeric" min={1} step={1} required defaultValue={1024} /></Field>
-          <Field label={t("v.f.price")} htmlFor="gv-price"><input className="input" id="gv-price" name="price" type="number" inputMode="numeric" min={0} step={1} required defaultValue={0} /></Field>
+          <Field label={t("v.f.data")} htmlFor="gv-data"><input className="input num" id="gv-data" name="data" type="number" inputMode="numeric" min={1} step={1} required defaultValue={1024} /></Field>
+          <Field label={t("v.f.price")} htmlFor="gv-price"><input className="input num" id="gv-price" name="price" type="number" inputMode="numeric" min={0} step={1} required defaultValue={0} /></Field>
         </div>
         <div className="two">
-          <Field label={t("v.f.count")} htmlFor="gv-count"><input className="input" id="gv-count" name="count" type="number" inputMode="numeric" min={1} max={max} step={1} required defaultValue={50} /></Field>
+          <Field label={t("v.f.count")} htmlFor="gv-count"><input className="input num" id="gv-count" name="count" type="number" inputMode="numeric" min={1} max={max} step={1} required defaultValue={50} /></Field>
           <Field label={t("v.f.shop")} htmlFor="gv-shop"><select className="input" id="gv-shop" name="shop"><option value="">{t("v.noShop")}</option>{shopList.map((s) => <option key={s.id} value={s.id}>{s.shop_name}</option>)}</select></Field>
         </div>
         <button className="btn" type="submit" disabled={busy || !ready || !!saved}>{t("v.create")}</button>
       </form>
+      <div className="workspace-rail workspace-stack">
+        <p className="code-rule">{t("tel.codeRule")}</p>
+        <p className="batch-sum">{t("tel.sum")} <b className="num">{sum.count}</b> {t("tel.codes")} · <b className="num">{sum.data.toLocaleString()} MB</b></p>
+
       {result?.kind === "creating" && <Note>{t("v.creating")}</Note>}
       {result?.kind === "failed" && <Note kind="bad">{failure || t("v.createFailed")}</Note>}
       {result?.kind === "notReady" && <Note kind="warn">{t("v.notReady")}</Note>}
@@ -110,9 +115,10 @@ export function Create() {
         <>
           <Note kind="ok">{t("v.ready")}</Note><Note kind="warn">{t("v.codesOnce")}</Note>
           <button className="btn" type="button" onClick={() => void print(result.codes)}>{t("v.print")}</button>
-          <div className="glass pad stack">{result.codes.map((v) => <div className="row" key={v.code}><b className="num code">{v.code}</b><span className="soft small">{t("v.validFirstUse")}</span></div>)}</div>
+          <div className="glass pad stack"><p className="soft small">{t("v.validFirstUse")}</p><div className="code-list">{result.codes.map((v) => <div className="code-chip" key={v.code}><b className="num code">{v.code}</b></div>)}</div></div>
         </>
       )}
+      </div>
     </div>
   );
 }

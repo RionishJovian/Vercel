@@ -11,7 +11,8 @@ import { JellyfinDesign } from "./jellyfin/JellyfinDesign";
 const PARTS = ["dash", "vouchers", "guest"] as const;
 type Part = (typeof PARTS)[number];
 const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v.toLocaleString("en-US") : "—");
-const Kv = ({ k, v }: { k: string; v: string }) => <div className="row small"><span className="soft">{k}</span><b className="num">{v}</b></div>;
+const Kv = ({ k, v, data = true }: { k: string; v: React.ReactNode; data?: boolean }) => <div className="row small"><span className="soft">{k}</span><b className={data ? "num" : undefined}>{v}</b></div>;
+const Ledger = ({ children }: { children: React.ReactNode }) => <div className="kv-list">{children}</div>;
 
 interface Job { state?: string; result?: Record<string, unknown>; error_code?: string }
 /** Queue one job and poll it until the owner's PC has answered (or about 60 s pass). */
@@ -44,20 +45,22 @@ function Live() {
   }, []);
   useEffect(() => { void load(); }, [load]);
   return (
-    <section className="glass pad stack">
+    <section className="glass pad stack workspace-main">
       <h2>{t("j.status")}</h2>
       {state.kind === "loading" && <p className="soft">{t("j.checking")}</p>}
       {state.kind === "err" && <><Note kind="warn">{t("j.noAnswer")}</Note><button className="pill" type="button" onClick={() => void load()}>{t("c.retry")}</button></>}
       {state.kind === "ok" && (() => {
         const { d, libs } = state, c = d.counts ?? {};
         return (<>
-          <Kv k={t("j.server")} v={(d.server?.ServerName ?? "—") + (d.server?.Version ? " " + d.server.Version : "")} />
-          <Kv k={t("j.watching")} v={n(d.active_sessions)} />
-          <Kv k={t("j.movies")} v={n(c.MovieCount ?? c.movies)} />
-          <Kv k={t("j.series")} v={n(c.SeriesCount ?? c.series)} />
+          <Ledger>
+            <Kv k={t("j.server")} data={false} v={<>{d.server?.ServerName ?? "—"}{d.server?.Version && <> <span className="num">{d.server.Version}</span></>}</>} />
+            <Kv k={t("j.watching")} v={n(d.active_sessions)} />
+            <Kv k={t("j.movies")} v={n(c.MovieCount ?? c.movies)} />
+            <Kv k={t("j.series")} v={n(c.SeriesCount ?? c.series)} />
+          </Ledger>
           <h3>{t("j.libraries")}</h3>
           {!libs.length && <p className="soft">{t("j.noLibraries")}</p>}
-          {libs.map((l, i) => <div className="row" key={i}><span>{l.Name || "—"} <span className="chip">{l.CollectionType || "—"}</span></span><span className="soft small">{l.Locations?.[0] ?? ""}</span></div>)}
+          {libs.length > 0 && <div className="kv-list lib-list">{libs.map((l, i) => <div className="row" key={i}><span>{l.Name || "—"} <span className="chip">{l.CollectionType || "—"}</span></span><span className="mono lib-path">{l.Locations?.[0] ?? ""}</span></div>)}</div>}
           <button className="pill" type="button" disabled={scan === "busy" || scan === "done"} onClick={async () => {
             if (!window.confirm(t("j.scanConfirm"))) return;
             setScan("busy");
@@ -94,11 +97,13 @@ function Dashboard() {
     } catch { setPairErr(true); }
   }
   return (
-    <>
-      <section className="glass pad stack">
+    <div className="workspace-grid">
+      <section className="glass pad workspace-summary">
         <div className="link-hero"><span className={"medal" + (linked ? " on" : "")}><Icon name="play" /></span><div className="stack" style={{ gap: 6 }}><h2>{t("j.link")}</h2><span className={"chip " + (linked ? "ok" : "warn")}>{linked ? t("j.linked") : t("j.notLinked")}</span></div></div>
+      </section>
+      <section className="glass pad stack workspace-rail">
         {linked ? (<>
-          <Kv k={t("j.server")} v={c?.server_name ?? "—"} /><Kv k={t("j.lastSeen")} v={c?.last_seen_at ? new Date(c.last_seen_at).toLocaleString() : "—"} />
+          <Ledger><Kv k={t("j.server")} data={false} v={c?.server_name ?? "—"} /><Kv k={t("j.lastSeen")} v={c?.last_seen_at ? new Date(c.last_seen_at).toLocaleString() : "—"} /></Ledger>
           <button className="pill danger" type="button" onClick={async () => { if (!window.confirm(t("j.unlinkConfirm"))) return; try { await api.del("/media/connection"); } catch { /* shown on refresh */ } void mutate(); }}>{t("j.unlink")}</button>
         </>) : (<>
           <p className="soft">{t("j.pairHelp")}</p>
@@ -108,8 +113,8 @@ function Dashboard() {
           <p className="soft small">{t("j.pairExpiry")}</p>
         </>)}
       </section>
-      {linked ? <Live /> : <section className="glass pad stack"><h2>{t("j.status")}</h2><p className="soft">{t("j.needLink")}</p></section>}
-    </>
+      {linked ? <Live /> : <section className="glass pad stack workspace-main"><h2>{t("j.status")}</h2><p className="soft">{t("j.needLink")}</p></section>}
+    </div>
   );
 }
 

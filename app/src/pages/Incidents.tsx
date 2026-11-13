@@ -49,6 +49,7 @@ export function Incidents({ me }: { me: Me }) {
     <>
       {back}<PageHead title={t("inc.title")} help={t("inc.lead")} />
       {err && <Note kind="bad">{err}</Note>}
+      <div className="workspace-main workspace-stack">
       {!list.length ? <Note kind="ok">{t("inc.none")}</Note> : (
         <div className="stack">
           {list.map((i) => (
@@ -68,6 +69,13 @@ export function Incidents({ me }: { me: Me }) {
           ))}
         </div>
       )}
+      </div>
+      <section className="glass pad stack workspace-rail" aria-label={t("hm.quick")}>
+        <h2>{t("hm.quick")}</h2>
+        <button className="pill" type="button" onClick={() => void mutate()}>{t("gu.refresh")}</button>
+        <a className="pill" href="/app/fleet">{t("fl.title")}</a>
+        <a className="pill" href="/app/net">{t("nav.network")}</a>
+      </section>
     </>
   );
 }

@@ -41,6 +41,12 @@ export function Home({ me, routerId }: { me: Me; routerId?: string | null }) {
         </div>
       </header>
 
+      <section className="glass pad stack workspace-summary" aria-labelledby="hm-network">
+        <div className="row"><h2 id="hm-network">{t("nav.network")}</h2><a className="link small" href="/app/net">{t("hm.open")}</a></div>
+        <NetworkStrip />
+      </section>
+
+      <div className="workspace-rail workspace-stack">
       {setup.loading ? (
         <Loading><div className="glass pad stack setup-card"><div className="row"><Bar w="55%" /><Bar w="12%" size=".875rem" /></div><span className="progress" /><Bar w="50%" size=".875rem" /></div></Loading>
       ) : !setup.complete && (
@@ -66,19 +72,6 @@ export function Home({ me, routerId }: { me: Me; routerId?: string | null }) {
         </section>
       )}
 
-      <div className="only-narrow">
-        <Segmented<Service> label={t("hm.service")} value={service} onChange={setService} options={[["hotspot", t("nav.hotspot")], ["pppoe", t("nav.isp")]]} />
-      </div>
-      <div className="ws-grid cols2 dual">
-        <div className="svc" data-active={service === "hotspot" || undefined}><HotspotCard /></div>
-        <div className="svc" data-active={service === "pppoe" || undefined}><PppoeCard gateways={routers.gateways} /></div>
-      </div>
-
-      <section className="glass pad stack" aria-labelledby="hm-network">
-        <div className="row"><h2 id="hm-network">{t("nav.network")}</h2><a className="link small" href="/app/net">{t("hm.open")}</a></div>
-        <NetworkStrip />
-      </section>
-
       <section className="stack" aria-label={t("hm.quick")}>
         <h2 className="group-title">{t("hm.quick")}</h2>
         <nav className="tiles">
@@ -88,6 +81,17 @@ export function Home({ me, routerId }: { me: Me; routerId?: string | null }) {
           <a className="tile" href="/app/hub"><span className="tile-ico"><Icon name="router" /></span><b>{t("hm.qRouter")}</b></a>
         </nav>
       </section>
+      </div>
+      <div className="workspace-main workspace-stack">
+      <div className="only-narrow">
+        <Segmented<Service> label={t("hm.service")} value={service} onChange={setService} options={[["hotspot", t("nav.hotspot")], ["pppoe", t("nav.isp")]]} />
+      </div>
+      <div className="ws-grid cols2 dual home-services">
+        <div className="svc" data-active={service === "hotspot" || undefined}><HotspotCard /></div>
+        <div className="svc" data-active={service === "pppoe" || undefined}><PppoeCard gateways={routers.gateways} /></div>
+      </div>
+
+      </div>
     </>
   );
 }

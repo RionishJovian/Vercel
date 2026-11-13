@@ -37,9 +37,9 @@ export function Guide({ me }: { me: Me }) {
     <>
       <BackLink href="/app/more">{t("tab.more")}</BackLink>
       <PageHead title={t("gd.title")} help={t("gd.lead")} />
-      <input className="input" type="search" placeholder={t("gd.search")} aria-label={t("gd.search")} value={q} onChange={(e) => setQ(e.target.value)} />
+      <input className="input workspace-rail" type="search" placeholder={t("gd.search")} aria-label={t("gd.search")} value={q} onChange={(e) => setQ(e.target.value)} />
       {!shown.length && <Note>{t("gd.none")}</Note>}
-      <div className="stack">{shown.map((g) => <a key={g.href} className="rowitem menu-link" href={g.href}><span className="stack" style={{ gap: 2 }}><b>{g.title(t)}</b><span className="soft small">{g.desc(t)}</span></span><span aria-hidden="true" className="soft">›</span></a>)}</div>
+      <div className="workspace-cards workspace-main">{shown.map((g) => <a key={g.href} className="rowitem menu-link" href={g.href}><span className="stack" style={{ gap: 2 }}><b>{g.title(t)}</b><span className="soft small">{g.desc(t)}</span></span><span aria-hidden="true" className="soft">›</span></a>)}</div>
     </>
   );
 }

@@ -49,7 +49,22 @@ var MM = {
   last6:    "Bank/transaction နံပါတ် နောက်ဆုံး ၆ လုံး",         // kept English "Bank/transaction"
   receipt:  "Receipt ဓာတ်ပုံ (optional)",                      // Receipt kept English; [native review]
   verConfirm:"ငွေပေးချေပြီးပါပြီ — အတည်ပြုပါ",                 // [typo fixed; native review]
-  requestRec:"လက်ခံရရှိပါပြီ — owner က မကြာမီ အတည်ပြုပါလိမ့်မည်"  // [typo fixed; native review]
+  requestRec:"လက်ခံရရှိပါပြီ — owner က မကြာမီ အတည်ပြုပါလိမ့်မည်", // [typo fixed; native review]
+  flowChoose:"ရွေးပါ",            // Choose  [native review]
+  flowPay:   "ပေးချေပါ",          // Pay  [native review]
+  flowConfirm:"အတည်ပြုပါ",        // Confirm  [native review]
+  flowLabel: "အဆင့်များ",         // Steps  [native review]
+  amountDue: "ပေးရမည့် ပမာဏ",     // Amount to pay  [native review]
+  copy:      "ကူးယူရန်",          // Copy  [native review]
+  copied:    "ကူးပြီး",           // Copied  [native review]
+  bankName:  "ဘဏ်",               // Bank  [native review]
+  holderName:"အမည်",              // Name  [native review]
+  accountNo: "အကောင့်နံပါတ်",     // Account number  [native review]
+  pickPhoto: "ဓာတ်ပုံ ရွေးပါ",    // Choose photo  [native review]
+  trialEndsIn:"ယာယီအင်တာနက် ကုန်ရန်", // Temporary internet ends in  [native review]
+  passActive:"အသုံးပြုနိုင်ပါပြီ", // Pass active  [native review]
+  timeLeft:  "ကျန်ရှိသော အချိန်", // Time left  [native review]
+  passEnded: "Pass ကုန်ဆုံးပါပြီ" // Pass ended  [native review]
   // 'waiting' — malformed in the draft and deliberately REMOVED so the safe
   // English fallback renders until a native speaker supplies correct text.
 };
@@ -92,23 +107,25 @@ function safeHex(v, fallback) {
   return /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(s) ? s : fallback;
 }
 
-/** Pick a readable foreground for a brand background, so a light owner colour
- *  does not end up as white-on-yellow. */
+/** Pick the foreground with the higher WCAG contrast against a brand background. A mid colour such as cyan
+ *  (#38BDF8) needs dark ink; white on it is only 2.4:1. */
 function readableOn(hex) {
   var h = hex.replace("#", "");
   if (h.length === 3 || h.length === 4) { h = h[0]+h[0]+h[1]+h[1]+h[2]+h[2]; }
-  var r = parseInt(h.substring(0,2),16), g = parseInt(h.substring(2,4),16), b = parseInt(h.substring(4,6),16);
-  var lum = (0.299*r + 0.587*g + 0.114*b) / 255;
-  return lum > 0.62 ? "#111" : "#fff";
+  function lin(v) { v = v / 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }
+  var L = 0.2126 * lin(parseInt(h.substring(0,2),16)) + 0.7152 * lin(parseInt(h.substring(2,4),16)) + 0.0722 * lin(parseInt(h.substring(4,6),16));
+  return (L + 0.05) / 0.05518 > 1.05 / (L + 0.05) ? "#06131f" : "#fff";
 }
 
+/** The owner's colour recolours the primary button and a faint panel wash. Without one, the page keeps its
+ *  Obsidian and Cyan defaults (cyan in Night, deep cyan in Day). */
 function applyBranding(cfg) {
-  var root = document.documentElement, s = root.style;
-  var brand = safeHex(cfg.primary_hex, "#0e5a5a");
-  var tint  = safeHex(cfg.glass_tint_hex, "#7ad0ff");
-  s.setProperty("--brand", brand);
-  s.setProperty("--brand-ink", readableOn(brand));
-  s.setProperty("--tint", tint);
+  var s = document.documentElement.style;
+  var brand = safeHex(cfg.primary_hex, "");
+  var tint = safeHex(cfg.glass_tint_hex, "");
+  if (brand) { s.setProperty("--brand", brand); s.setProperty("--brand-ink", readableOn(brand)); }
+  else { s.removeProperty("--brand"); s.removeProperty("--brand-ink"); }
+  if (tint) s.setProperty("--tint", tint); else s.removeProperty("--tint");
 }
 
 /* --- data ---------------------------------------------------------------- */
@@ -148,10 +165,21 @@ function accessMethodEnabled(cfg, key) {
 }
 
 function portalHeading(cfg, titleKey, titleEnglish) {
-  return '<h1>' + t(titleEnglish, titleKey) + '</h1>' +
+  return '<div class="head">' +
     (cfg.business_name ? '<p class="biz">' + esc(cfg.business_name) + '</p>' : '') +
-    (cfg.welcome_text ? '<p class="welcome">' + esc(cfg.welcome_text) + '</p>' : '');
+    '<h1>' + t(titleEnglish, titleKey) + '</h1>' +
+    (cfg.welcome_text ? '<p class="welcome">' + esc(cfg.welcome_text) + '</p>' : '') +
+    '</div>';
 }
+
+/** Choose, pay, confirm: a real sequence, so it is shown as one. */
+function flow(step) {
+  var labels = [t("Choose", "flowChoose"), t("Pay", "flowPay"), t("Confirm", "flowConfirm")];
+  return '<ol class="flow" aria-label="' + esc(t("Steps", "flowLabel")) + '">' + labels.map(function (l, i) {
+    return '<li' + (i + 1 === step ? ' aria-current="step"' : (i + 1 < step ? ' class="done"' : '')) + '>' + esc(l) + '</li>';
+  }).join("") + '</ol>';
+}
+function money(n) { return Number(n || 0).toLocaleString("en"); }
 
 // Voucher is the primary screen whenever it is enabled. Mobile payment is a
 // separate, explicitly navigated screen when the owner enables both methods.
@@ -185,7 +213,7 @@ function renderVoucher(cfg) {
     '<section class="voucher-login" aria-labelledby="voucher-title">' +
       '<h3 id="voucher-title">' + t("Use a voucher code", "voucherTitle") + '</h3>' +
       '<p class="voucher-help">' + t("Enter the code printed on your WiFi voucher.", "voucherHelp") + '</p>' +
-      '<div class="voucher-row"><input id="voucher-code" inputmode="text" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" maxlength="64" placeholder="Voucher code" aria-label="Voucher code">' +
+      '<div class="voucher-row"><input id="voucher-code" class="code-input" inputmode="text" autocomplete="one-time-code" autocapitalize="characters" autocorrect="off" spellcheck="false" maxlength="64" placeholder="••••••••" aria-label="Voucher code">' +
       '<button class="btn" id="voucher-submit" type="button">' + t("Connect", "voucherConnect") + '</button></div>' +
       '<p class="voucher-msg" id="voucher-msg" role="status" aria-live="polite"></p>' +
     '</section>' +
@@ -214,18 +242,17 @@ function renderPlans(cfg) {
   var rows = plans.map(function (p) {
     var dm = p.data_mb ? " · " + p.data_mb + " MB" : "";
     var mins = p.minutes ? (p.minutes >= 60 ? (p.minutes/60) + " hr" : p.minutes + " min") : "";
-    var amt = p.amount ? " · " + p.amount.toLocaleString("en") + " MMK" : "";
     var spd = p.speed_down_mbps ? " · " + p.speed_down_mbps + " Mbps" : "";
-    return '<button class="plan" data-key="' + esc(p.key) + '">' +
-      '<div class="nm">' + esc(p.label) + '</div>' +
-      '<div class="sub">' + esc(mins) + esc(dm) + esc(spd) + amt + '</div></button>';
+    var detail = (mins + dm + spd).replace(/^ · /, "");
+    return '<button class="plan" type="button" data-key="' + esc(p.key) + '">' +
+      '<span><span class="nm">' + esc(p.label) + '</span>' + (detail ? '<span class="sub">' + esc(detail) + '</span>' : '') + '</span>' +
+      (p.amount ? '<span class="amt">' + esc(money(p.amount)) + ' <small>MMK</small></span>' : '') + '</button>';
   }).join("");
   document.getElementById("root").innerHTML =
     portalHeading(cfg, "buy", "Buy WiFi") +
-    '<p class="steps">' + t("1) Choose a plan · 2) Pay by bank transfer (free trial) · 3) Enter phone + last 6 digits", "steps") + '</p>' +
-    '<h3>' + t("Choose a plan", "choose") + '</h3>' +
+    flow(1) +
     (PREVIEW && cfg.preview_sample ? '<p class="pv-sample-note">Sample preview data — add a plan to replace it.</p>' : '') +
-    (rows || '<p class="msg">' + t("No plans are available yet.", "noPlans") + '</p>') +
+    (rows ? '<div class="plan-list" role="group" aria-label="' + esc(t("Choose a plan", "choose")) + '">' + rows + '</div>' : '<p class="msg">' + t("No plans are available yet.", "noPlans") + '</p>') +
     (accessMethodEnabled(cfg, "voucher_login_enabled") ? '<button class="btn btn-secondary" id="portal-back-voucher" type="button">' + t("← Use a voucher code", "backVoucher") + '</button>' : '') +
     consentMarkup(cfg);
   document.querySelectorAll(".plan").forEach(function (b) {
@@ -360,12 +387,16 @@ async function redeemVoucher(cfg) {
     applyBranding(cfg);
     RERENDER = null;
     document.getElementById("root").innerHTML =
-      '<h1 class="ok">' + (verifiedGuestAccess ? t("Voucher accepted", "voucherAccepted") : esc("Voucher recorded")) + '</h1>' +
-      '<p class="welcome">' + (verifiedGuestAccess ? t("Voucher activated for this device. Open a website to check your internet access. If you are asked to sign in again, use the same code.", "voucherActivated") : esc("Gateway internet access has not been verified. Contact the hotspot owner before using another code.")) + '</p>' +
-      (verifiedGuestAccess ? '<p class="steps">' + esc(t("Valid until: ", "voucherExpiry")) + esc(new Date(data.expires_at).toLocaleString()) + '<br>' + esc(t("Total data allowance: ", "voucherAllowance")) + esc(data.data_mb) + ' MB</p>' : '') +
+      '<div class="pass">' +
+      (verifiedGuestAccess ? '<p class="pass-state"><i></i>' + t("Pass active", "passActive") + '</p>' : '') +
+      '<div class="head"><h1 class="ok">' + (verifiedGuestAccess ? t("Voucher accepted", "voucherAccepted") : esc("Voucher recorded")) + '</h1>' +
+      '<p class="welcome">' + (verifiedGuestAccess ? t("Voucher activated for this device. Open a website to check your internet access. If you are asked to sign in again, use the same code.", "voucherActivated") : esc("Gateway internet access has not been verified. Contact the hotspot owner before using another code.")) + '</p></div>' +
+      (verifiedGuestAccess ? '<div class="pass-clock"><span>' + esc(t("Time left", "timeLeft")) + '</span><b id="pass-left"></b></div>' +
+        '<dl class="pass-rows"><div><dt>' + esc(t("Valid until: ", "voucherExpiry")) + '</dt><dd>' + esc(new Date(data.expires_at).toLocaleString()) + '</dd></div>' +
+        '<div><dt>' + esc(t("Total data allowance: ", "voucherAllowance")) + '</dt><dd>' + esc(data.data_mb) + ' MB</dd></div></dl>' : '') +
       mediaPanel(cfg) +
-      (cfg.terms_text ? '<p class="terms">' + esc(cfg.terms_text) + '</p>' : '');
-      if (verifiedGuestAccess) loadMediaTiles();
+      (cfg.terms_text ? '<p class="terms">' + esc(cfg.terms_text) + '</p>' : '') + '</div>';
+    if (verifiedGuestAccess) { loadMediaTiles(); tickPass(new Date(data.expires_at).getTime()); }
   } catch (e) {
     if (msg.isConnected) msg.textContent = (e.message || t("Could not redeem this voucher.", "voucherFailed")) + ' ' +
       t("Retry the same code. If access is still unavailable, ask the hotspot owner before using another voucher.", "voucherRetry");
@@ -379,7 +410,8 @@ async function buy(cfg, key) {
   var consent = portalConsent(cfg);
   if (consent === null) return;
   // Preview must not create real purchase requests on the owner's queue.
-  if (PREVIEW) { renderPay(cfg, "preview-request", new Date(Date.now() + (cfg.guest_grace_minutes || 10) * 60000).toISOString()); return; }
+  var plan = (cfg.guest_plans || []).filter(function (p) { return p.key === key; })[0] || null;
+  if (PREVIEW) { renderPay(cfg, "preview-request", new Date(Date.now() + (cfg.guest_grace_minutes || 10) * 60000).toISOString(), plan); return; }
   if (!DEVICE || !clientMac()) {
     root.innerHTML = '<p class="msg">' + t("Open this page from the hotspot login screen, then try again.", "hotspotContext") + '</p>';
     return;
@@ -392,35 +424,77 @@ async function buy(cfg, key) {
     var res = await fetch(API + "/portal/" + DEVICE + "/guest-purchase", { method: "POST", headers: { "X-MM-CSRF": "1" }, body: fd });
     var d = await res.json();
     if (!res.ok) throw new Error(d.error || ("http-" + res.status));
-    renderPay(Object.assign({}, cfg, { guest_grace_data_mb: d.grace_data_mb, guest_grace_minutes: d.grace_minutes }), d.request_id, d.grace_expires_at);
+    renderPay(Object.assign({}, cfg, { guest_grace_data_mb: d.grace_data_mb, guest_grace_minutes: d.grace_minutes }), d.request_id, d.grace_expires_at, plan);
   } catch (e) {
     root.innerHTML = '<p class="msg">' + esc(e.message) + '</p>';
   }
 }
 
-function renderPay(cfg, reqId, graceExp) {
+function renderPay(cfg, reqId, graceExp, plan) {
   applyBranding(cfg);
-  RERENDER = function () { renderPay(cfg, reqId, graceExp); };
+  RERENDER = function () { renderPay(cfg, reqId, graceExp, plan); };
   var end = new Date(graceExp).getTime();
+  var canCopy = !!(navigator.clipboard && navigator.clipboard.writeText);
+  function row(labelEn, labelKey, value, copyable) {
+    return '<div><dt>' + t(labelEn, labelKey) + '</dt><dd class="mono">' + esc(value) + '</dd>' +
+      (copyable && canCopy ? '<button class="btn btn-quiet" type="button" data-copy="' + esc(value) + '">' + t("Copy", "copy") + '</button>' : '<span></span>') + '</div>';
+  }
+  var hasBank = cfg.bank_name || cfg.bank_holder || cfg.bank_account;
   document.getElementById("root").innerHTML =
-    '<h1>' + t("Pay by bank transfer", "pay") + '</h1>' +
-    '<p class="steps">' + t("Scan the QR and complete the bank transfer before the trial ends.", "trial") + '</p>' +
-    '<div class="qr">' + (cfg.mmqr_url ? '<img src="' + esc(cfg.mmqr_url) + '">' : '') +
-      (cfg.bank_name || cfg.bank_holder || cfg.bank_account
-        ? '<div class="bank">' + esc(cfg.bank_name||"") + ' · ' + esc(cfg.bank_holder||"") + ' · ' + esc(cfg.bank_account||"") + '</div>' : '') +
-    '</div>' +
-    (cfg.payment_instructions ? '<p class="steps pay-note">' + esc(cfg.payment_instructions) + '</p>' : '') +
-    '<p class="timer" id="timer"></p>' +
-    '<p class="steps" id="grace-allowance">' + (LANG === "my" ? 'ယာယီအင်တာနက်: ' : 'Temporary internet: ') + esc(cfg.guest_grace_data_mb || 50) + ' MB · ' + esc(cfg.guest_grace_minutes || 10) + (LANG === "my" ? ' မိနစ်။ အချိန် သို့မဟုတ် ဒေတာ ကန့်သတ်ချက် ပြည့်လျှင် ရပ်ပါမည်။' : ' minutes. Access ends when either limit is reached. Uploads and downloads count.') + '</p>' +
+    '<div class="head"><h1>' + t("Pay by bank transfer", "pay") + '</h1>' +
+    '<p class="welcome">' + t("Scan the QR and complete the bank transfer before the trial ends.", "trial") + '</p></div>' +
+    flow(2) +
+    (plan && plan.amount ? '<div class="due"><span>' + t("Amount to pay", "amountDue") + '</span><b>' + esc(money(plan.amount)) + ' <small>MMK</small></b></div>' : '') +
+    (cfg.mmqr_url ? '<div class="qr"><img src="' + esc(cfg.mmqr_url) + '" alt="MMQR"></div>' : '') +
+    (hasBank ? '<dl class="bank-rows">' +
+      (cfg.bank_name ? row("Bank", "bankName", cfg.bank_name, false) : '') +
+      (cfg.bank_holder ? row("Name", "holderName", cfg.bank_holder, false) : '') +
+      (cfg.bank_account ? row("Account number", "accountNo", cfg.bank_account, true) : '') + '</dl>' : '') +
+    (cfg.payment_instructions ? '<p class="pay-note">' + esc(cfg.payment_instructions) + '</p>' : '') +
+    '<div class="grace"><span class="mute">' + t("Temporary internet ends in", "trialEndsIn") + '</span><p class="timer" id="timer"></p>' +
+    '<p class="grace-note" id="grace-allowance">' + (LANG === "my" ? 'ယာယီအင်တာနက်: ' : 'Temporary internet: ') + esc(cfg.guest_grace_data_mb || 50) + ' MB · ' + esc(cfg.guest_grace_minutes || 10) + (LANG === "my" ? ' မိနစ်။ အချိန် သို့မဟုတ် ဒေတာ ကန့်သတ်ချက် ပြည့်လျှင် ရပ်ပါမည်။' : ' minutes. Access ends when either limit is reached. Uploads and downloads count.') + '</p></div>' +
     '<h3>' + t("After paying, confirm here", "afterPay") + '</h3>' +
-    '<div class="form-row"><label>' + t("Phone number you paid from", "phone") + '</label><input id="phone" inputmode="tel"></div>' +
-    '<div class="form-row"><label>' + t("Last 6 digits of the bank / transaction number", "last6") + '</label><input id="last6" inputmode="numeric" maxlength="6"></div>' +
-    '<div class="form-row"><label>' + t("Receipt photo (optional)", "receipt") + '</label><input id="receipt" type="file" accept="image/*"></div>' +
-    '<button class="btn" id="confirm">' + t("I have paid — verify", "verConfirm") + '</button>' +
-    '<p class="msg" id="msg"></p>' +
+    '<div class="field"><label for="phone">' + t("Phone number you paid from", "phone") + '</label><input id="phone" type="tel" inputmode="tel" autocomplete="tel"></div>' +
+    '<div class="field"><label for="last6">' + t("Last 6 digits of the bank / transaction number", "last6") + '</label><input id="last6" class="mono" inputmode="numeric" maxlength="6" autocomplete="off"></div>' +
+    '<div class="field"><span class="lbl">' + t("Receipt photo (optional)", "receipt") + '</span>' +
+      '<label class="file" for="receipt"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8a2 2 0 0 1 2-2h2l1.2-1.6h5.6L16 6h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zM12 16a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z"/></svg><span id="receipt-name">' + t("Choose photo", "pickPhoto") + '</span><input id="receipt" type="file" accept="image/*"></label></div>' +
+    '<button class="btn" id="confirm" type="button">' + t("I have paid — verify", "verConfirm") + '</button>' +
+    '<p class="msg" id="msg" role="status"></p>' +
     (cfg.terms_text ? '<p class="terms">' + esc(cfg.terms_text) + '</p>' : '');
   tickTimer(end);
   document.getElementById("confirm").addEventListener("click", function () { confirm(reqId); });
+  var receipt = document.getElementById("receipt");
+  receipt.addEventListener("change", function () {
+    var f = receipt.files && receipt.files[0];
+    document.getElementById("receipt-name").textContent = f ? f.name : t("Choose photo", "pickPhoto");
+  });
+  document.querySelectorAll("[data-copy]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      navigator.clipboard.writeText(b.getAttribute("data-copy")).then(function () {
+        b.textContent = t("Copied", "copied");
+        setTimeout(function () { if (b.isConnected) b.textContent = t("Copy", "copy"); }, 1600);
+      }, function () {});
+    });
+  });
+}
+
+function fmtClock(ms) {
+  var total = Math.max(0, Math.floor(ms / 1000)), h = Math.floor(total / 3600), m = Math.floor(total % 3600 / 60), sec = total % 60;
+  return (h > 0 ? h + ":" + (m < 10 ? "0" : "") : "") + m + ":" + (sec < 10 ? "0" : "") + sec;
+}
+var PASS_TIMER = null;
+/** Counts the active pass down to its expiry; stops when the screen is replaced. */
+function tickPass(end) {
+  clearInterval(PASS_TIMER);
+  var el = document.getElementById("pass-left");
+  if (!el) return;
+  var fn = function () {
+    if (!el.isConnected) { clearInterval(PASS_TIMER); return; }
+    var diff = end - Date.now();
+    if (diff <= 0) { el.textContent = t("Pass ended", "passEnded"); clearInterval(PASS_TIMER); return; }
+    el.textContent = fmtClock(diff);
+  };
+  PASS_TIMER = setInterval(fn, 1000); fn();
 }
 
 function tickTimer(end) {
@@ -456,9 +530,9 @@ async function confirm(reqId) {
     var res = await fetch(API + "/portal/guest-purchase/" + reqId + "/receipt", { method: "POST", headers: { "X-MM-CSRF": "1" }, body: fd });
     var d = await res.json();
     if (!res.ok) throw new Error(d.error || ("http-" + res.status));
-    document.getElementById("root").innerHTML =
-      '<h1 class="ok">' + t("Request received", "requestRec") + '</h1>' +
-      '<p class="ok">' + t("The owner has been notified. Temporary access ends when its time or data allowance runs out; paid access starts after approval.", "waiting") + '</p>';
+    document.getElementById("root").innerHTML = flow(4) +
+      '<div class="head"><h1 class="ok">' + t("Request received", "requestRec") + '</h1>' +
+      '<p class="ok">' + t("The owner has been notified. Temporary access ends when its time or data allowance runs out; paid access starts after approval.", "waiting") + '</p></div>';
   } catch (e) {
     msg.textContent = t("Could not submit", "submitErr") + ": " + e.message;
   }

@@ -28,7 +28,7 @@ interface Draft {
   graceMin: string; graceData: string; voucher: boolean; payment: boolean; plans: Plan[];
 }
 const fromConfig = (c: Config): Draft => ({
-  name: c.business_name ?? "", welcome: c.welcome_text ?? "", terms: c.terms_text ?? "", primary: hexOr(c.primary_hex, "#ffb547"), tint: hexOr(c.glass_tint_hex, "#7ad0ff"),
+  name: c.business_name ?? "", welcome: c.welcome_text ?? "", terms: c.terms_text ?? "", primary: hexOr(c.primary_hex, "#38bdf8"), tint: hexOr(c.glass_tint_hex, "#121620"),
   bankName: c.bank_name ?? "", bankHolder: c.bank_holder ?? "", bankAcc: c.bank_account ?? "", mmqr: c.mmqr_url ?? "", instructions: c.payment_instructions ?? "",
   graceMin: String(c.guest_grace_minutes ?? 10), graceData: String(c.guest_grace_data_mb ?? 50), voucher: on(c.voucher_login_enabled), payment: on(c.mobile_payment_enabled),
   plans: asArray<Plan>(c.guest_plans).map((p) => ({ key: p.key ?? "", label: p.label ?? "", minutes: p.minutes ?? 0, amount: p.amount ?? 0, data_mb: p.data_mb ?? 0, speed_down_mbps: p.speed_down_mbps ?? 0, speed_up_mbps: p.speed_up_mbps ?? 0 })),
@@ -125,22 +125,22 @@ export function GuestPage() {
           <p className="soft small">{t("g.methodsHint")}</p>
         </Section>
         <Section title={t("g.pay")} help={t("g.instrHint") + " " + t("g.graceHint")}>
-          {text("bankName", t("g.bank"), { maxLength: 120 })}{text("bankHolder", t("g.holder"), { maxLength: 120 })}{text("bankAcc", t("g.acc"), { maxLength: 60, inputMode: "numeric" })}{text("mmqr", t("g.mmqr"), { maxLength: 500, placeholder: "https://…/mmqr.jpg" })}
+          {text("bankName", t("g.bank"), { maxLength: 120 })}{text("bankHolder", t("g.holder"), { maxLength: 120 })}{text("bankAcc", t("g.acc"), { maxLength: 60, inputMode: "numeric", className: "input num" })}{text("mmqr", t("g.mmqr"), { maxLength: 500, placeholder: "https://…/mmqr.jpg" })}
           <Field label={t("g.instr")} htmlFor="gp-instr"><textarea className="input" id="gp-instr" maxLength={600} rows={4} value={draft.instructions} onChange={(e) => set("instructions", e.target.value)} style={{ padding: "12px 16px", minHeight: 104 }} /></Field>
-          <div className="two">{text("graceMin", t("g.graceMin"), { type: "number", min: 1, max: 1440, inputMode: "numeric" })}{text("graceData", t("g.graceData"), { type: "number", min: 1, max: 10240, inputMode: "numeric" })}</div>
+          <div className="two">{text("graceMin", t("g.graceMin"), { type: "number", min: 1, max: 1440, inputMode: "numeric", className: "input num" })}{text("graceData", t("g.graceData"), { type: "number", min: 1, max: 10240, inputMode: "numeric", className: "input num" })}</div>
         </Section>
         <section className="stack"><SectionHead title={t("g.plans")} help={t("g.plan.speedHint")} />
           {draft.plans.map((p, i) => (
-            <div className="glass pad stack" key={i}>
-              <div className="two"><Field label={t("g.plan.key")}><input className="input" value={p.key} onChange={(e) => setPlan(i, { key: e.target.value })} /></Field><Field label={t("g.plan.label")}><input className="input" value={p.label} onChange={(e) => setPlan(i, { label: e.target.value })} /></Field></div>
+            <div className="glass pad stack plan-card" key={i}>
+              <div className="two"><Field label={t("g.plan.key")}><input className="input mono" value={p.key} onChange={(e) => setPlan(i, { key: e.target.value })} /></Field><Field label={t("g.plan.label")}><input className="input" value={p.label} onChange={(e) => setPlan(i, { label: e.target.value })} /></Field></div>
               <div className="two">
-                <Field label={t("g.plan.minutes")}><input className="input" type="number" min={0} inputMode="numeric" value={p.minutes} onChange={(e) => setPlan(i, { minutes: parseInt(e.target.value || "0", 10) || 0 })} /></Field>
-                <Field label={t("g.plan.price")}><input className="input" type="number" min={0} inputMode="numeric" value={p.amount} onChange={(e) => setPlan(i, { amount: parseInt(e.target.value || "0", 10) || 0 })} /></Field>
+                <Field label={t("g.plan.minutes")}><input className="input num" type="number" min={0} inputMode="numeric" value={p.minutes} onChange={(e) => setPlan(i, { minutes: parseInt(e.target.value || "0", 10) || 0 })} /></Field>
+                <Field label={t("g.plan.price")}><input className="input num" type="number" min={0} inputMode="numeric" value={p.amount} onChange={(e) => setPlan(i, { amount: parseInt(e.target.value || "0", 10) || 0 })} /></Field>
               </div>
-              <Field label={t("g.plan.data")}><input className="input" type="number" min={0} inputMode="numeric" value={p.data_mb} onChange={(e) => setPlan(i, { data_mb: parseInt(e.target.value || "0", 10) || 0 })} /></Field>
+              <Field label={t("g.plan.data")}><input className="input num" type="number" min={0} inputMode="numeric" value={p.data_mb} onChange={(e) => setPlan(i, { data_mb: parseInt(e.target.value || "0", 10) || 0 })} /></Field>
               <div className="two">
-                <Field label={t("g.plan.down")}><input className="input" type="number" min={0} max={10000} inputMode="numeric" value={p.speed_down_mbps ?? 0} onChange={(e) => setPlan(i, { speed_down_mbps: speedValue(e.target.value) })} /></Field>
-                <Field label={t("g.plan.up")}><input className="input" type="number" min={0} max={10000} inputMode="numeric" value={p.speed_up_mbps ?? 0} onChange={(e) => setPlan(i, { speed_up_mbps: speedValue(e.target.value) })} /></Field>
+                <Field label={t("g.plan.down")}><input className="input num" type="number" min={0} max={10000} inputMode="numeric" value={p.speed_down_mbps ?? 0} onChange={(e) => setPlan(i, { speed_down_mbps: speedValue(e.target.value) })} /></Field>
+                <Field label={t("g.plan.up")}><input className="input num" type="number" min={0} max={10000} inputMode="numeric" value={p.speed_up_mbps ?? 0} onChange={(e) => setPlan(i, { speed_up_mbps: speedValue(e.target.value) })} /></Field>
               </div>
               <button className="pill danger" type="button" onClick={() => set("plans", draft.plans.filter((_, j) => j !== i))}>{t("g.plan.remove")}</button>
             </div>

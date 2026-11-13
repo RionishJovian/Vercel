@@ -106,6 +106,7 @@ export function ProfilePage() {
         {out("photo")}
       </section>
 
+      <div className="workspace-rail workspace-stack">
       <form className="glass pad stack" onSubmit={saveProfile} key={p.full_name + lang}>
         <h2>{t("pf.details")}</h2>
         <Field label={t("pf.name")} htmlFor="pf-name"><input className="input" id="pf-name" name="name" maxLength={255} required defaultValue={p.full_name} /></Field>
@@ -122,6 +123,8 @@ export function ProfilePage() {
         {out("password")}<button className="btn quiet" type="submit">{t("pf.changePw")}</button>
       </form>
 
+      </div>
+      <div className="workspace-main workspace-stack">
       {tg.error ? <Note kind="bad">{t("tg.loadFailed")}</Note> : tg.isLoading ? <Skeleton h={250} /> : <form className="glass pad stack" onSubmit={saveTelegram} key={JSON.stringify([T.bot_token, T.target_chat_id, T.approver_user_id, T.enabled])}>
         <h2>{t("pf.tg")}</h2><p className="soft small">{p.user_role === "DEVELOPER" ? t("tg.platformScope") : t("tg.businessScope")}</p>
         <TelegramStatus runtime={T.runtime} />
@@ -133,6 +136,7 @@ export function ProfilePage() {
         {out("tg")}
         <div className="row" style={{ justifyContent: "flex-start", flexWrap: "wrap" }}><button className="btn" type="submit">{t("pf.tgSave")}</button><button className="btn quiet" type="button" onClick={() => void testBot()}>{t("pf.tgTest")}</button><button className="btn quiet" type="button" disabled={!T.enabled || T.runtime?.receiver !== "running"} onClick={() => void sendTest()}>{t("tg.testSend")}</button></div>
       </form>}
+      </div>
     </>
   );
 }

@@ -25,7 +25,7 @@ export function Scans() {
       {crashes > 0 && <Note kind="warn">{crashes} {t("dev.sc.crash")}</Note>}
       <Loading loading={p.isLoading && !p.data} error={p.error} text={t("dev.sc.failed")} />
       {p.data && (<>
-        {!runs.length ? <Note>{t("dev.sc.none")}</Note> : <div className="stack">{runs.map((r, i) => {
+        {!runs.length ? <Note>{t("dev.sc.none")}</Note> : <div className="workspace-main workspace-stack">{runs.map((r, i) => {
           const fs = asArray<Finding>(r.findings);
           return (
             <article className="glass pad stack" key={i}>

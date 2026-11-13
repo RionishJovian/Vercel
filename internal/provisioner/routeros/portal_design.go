@@ -1,8 +1,6 @@
 package routeros
 
 import (
-	_ "embed"
-	"encoding/base64"
 	"fmt"
 	"html"
 	"math"
@@ -12,17 +10,9 @@ import (
 	"unicode/utf8"
 )
 
-// Generated reference-matched artwork is bundled in the document itself. The
-// guest therefore needs neither WAN access nor an external asset allowlist.
-//
-//go:embed assets/jade-portal-wallpaper.webp
-var portalWallpaper []byte
-
-//go:embed assets/jade-portal-wifi.webp
-var portalWiFiMark []byte
-
-var portalWallpaperURL = "data:image/webp;base64," + base64.StdEncoding.EncodeToString(portalWallpaper)
-var portalWiFiMarkURL = "data:image/webp;base64," + base64.StdEncoding.EncodeToString(portalWiFiMark)
+// The router serves this page before the guest has internet, so it carries no image and no web font: the Wi-Fi
+// mark is inline SVG and the type is the phone's own. Obsidian and Cyan, owner decision 2026-11-13.
+const portalWiFiMarkSVG = `<svg class="wifi-mark" viewBox="0 0 24 24" width="40" height="40" aria-hidden="true" focusable="false"><path d="M4 9.5a11.5 11.5 0 0 1 16 0M7 12.6a7.2 7.2 0 0 1 10 0M9.8 15.6a3 3 0 0 1 4.4 0M12 18.6h.01" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`
 
 // PortalLoginDesign is the router-safe subset of saved portal settings. It has
 // no payment credentials, external resources, media access or arbitrary markup.
@@ -57,7 +47,7 @@ func portalDesignText(s string) string {
 // RenderPortalLogin supplies the same document for owner preview and deployment.
 // Preview removes all RouterOS macros/resources and makes login explicitly inert.
 func RenderPortalLogin(design *PortalLoginDesign, preview bool) (string, error) {
-	d := PortalLoginDesign{BusinessName: "WiFi Voucher", WelcomeText: "Enter voucher code to connect", PrimaryHex: "#075044", GlassTintHex: "#061f26"}
+	d := PortalLoginDesign{BusinessName: "WiFi Voucher", WelcomeText: "Enter voucher code to connect", PrimaryHex: "#38bdf8", GlassTintHex: "#121620"}
 	if design != nil {
 		d = *design
 	}
@@ -68,10 +58,10 @@ func RenderPortalLogin(design *PortalLoginDesign, preview bool) (string, error) 
 		d.WelcomeText = "Enter voucher code to connect"
 	}
 	if d.PrimaryHex == "" {
-		d.PrimaryHex = "#075044"
+		d.PrimaryHex = "#38bdf8"
 	}
 	if d.GlassTintHex == "" {
-		d.GlassTintHex = "#061f26"
+		d.GlassTintHex = "#121620"
 	}
 	if !model.IsHexColor(d.PrimaryHex) || !model.IsHexColor(d.GlassTintHex) {
 		return "", fmt.Errorf("portal colours must be literal hex colours")
@@ -80,7 +70,7 @@ func RenderPortalLogin(design *PortalLoginDesign, preview bool) (string, error) 
 		return "", fmt.Errorf("portal branding is too long for a router login page")
 	}
 	page := portalLoginHTML()
-	page = strings.Replace(page, `<main class="card">`, `<main class="card"><img class="wifi-mark" src="`+portalWiFiMarkURL+`" alt="" width="78" height="66">`, 1)
+	page = strings.Replace(page, `<main class="card">`, `<main class="card">`+portalWiFiMarkSVG, 1)
 	page = strings.Replace(page, "<p>Enter voucher code to connect</p>", "<p>"+portalDesignText(d.WelcomeText)+"</p>", 1)
 	if d.BankTransfer {
 		href := "#"
@@ -95,7 +85,7 @@ func RenderPortalLogin(design *PortalLoginDesign, preview bool) (string, error) 
 	if d.BusinessName != "WiFi Voucher" {
 		page = strings.Replace(page, "</main>", `<span class="brand">`+portalDesignText(d.BusinessName)+`</span></main>`, 1)
 	}
-	css := `<style>:root{--portal-brand:` + d.PrimaryHex + `;--portal-tint:` + d.GlassTintHex + `;--portal-on-brand:` + portalBrandText(d.PrimaryHex) + `}body{background-image:url("` + portalWallpaperURL + `")}.card{background-color:color-mix(in srgb,var(--portal-tint) 7%,#08252b77)}</style>`
+	css := `<style>:root{--portal-brand:` + d.PrimaryHex + `;--portal-tint:` + d.GlassTintHex + `;--portal-on-brand:` + portalBrandText(d.PrimaryHex) + `}</style>`
 	page = strings.Replace(page, "</head>", css+"</head>", 1)
 	if d.TermsText != "" {
 		page = strings.Replace(page, "<form id=\"voucher-login\"", `<details><summary>Internet access terms</summary><p>`+portalDesignText(d.TermsText)+`</p></details><form id="voucher-login"`, 1)
@@ -152,8 +142,8 @@ func portalBrandText(hex string) string {
 		}
 		luminance += channel * weight
 	}
-	if luminance > .22 {
-		return "#102c29"
+	if luminance > .19 {
+		return "#06131f"
 	}
 	return "#fff"
 }

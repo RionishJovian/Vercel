@@ -47,7 +47,7 @@ export function Fleet() {
         </div>
       </section>
       {!peers.length && <Note>{t("fl.none")}</Note>}
-      <div className="stack">
+      <div className="workspace-cards">
         {peers.map((p, i) => {
           const state = String(p.state ?? "unknown").toLowerCase(), level = LEVEL[state] ?? 0, r = byId.get(p.device_id ?? "");
           return (

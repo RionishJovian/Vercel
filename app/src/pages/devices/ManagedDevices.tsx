@@ -58,8 +58,7 @@ export function ManagedDevices({ me }: { me: Me }) {
     <>
       {back}<PageHead title={t("dm.title")} help={t("dm.lead")} />
       {err && <Note kind="bad">{err}</Note>}
-      {canEdit && !form && <button className="btn" type="button" onClick={() => setForm({})}>{t("dm.add")}</button>}
-      {form && <DeviceForm rec={form.rec} layers={form.rec ? LAYERS : DOWNSTREAM} blocked={form.rec ? undefined : exhausted} onDone={refresh} onCancel={() => setForm(null)} />}
+      <div className="workspace-main workspace-stack">
       {!list.length ? <Note>{t("dm.none")}</Note> : (
         <div className="stack">{list.map((r) => (
           <article className="glass pad stack" key={r.device_id}>
@@ -75,6 +74,10 @@ export function ManagedDevices({ me }: { me: Me }) {
         ))}</div>
       )}
       {me.user?.user_role === "OWNER" && <APOptimizationReviews />}
+      </div>
+      <div className="workspace-rail workspace-stack">
+      {canEdit && !form && <button className="btn" type="button" onClick={() => setForm({})}>{t("dm.add")}</button>}
+      {form && <DeviceForm rec={form.rec} layers={form.rec ? LAYERS : DOWNSTREAM} blocked={form.rec ? undefined : exhausted} onDone={refresh} onCancel={() => setForm(null)} />}
       {capacity && a && (
         <section className="glass pad stack"><h2>{t("dm.allowances")}</h2>
           <Row label={t("dm.routers")} granted={a.routers} used={a.used_routers} /><Row label={t("dm.controllers")} granted={a.controllers} used={a.used_controllers} /><Row label={t("pa.sites")} granted={a.sites} used={a.used_sites} /><Row label={t("dm.aps")} granted={null} used={a.used_access_points} />
@@ -104,6 +107,7 @@ export function ManagedDevices({ me }: { me: Me }) {
           )}
         </section>
       )}
+      </div>
     </>
   );
 }

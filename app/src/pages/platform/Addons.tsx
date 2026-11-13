@@ -19,7 +19,7 @@ function Pending({ r, onDone }: { r: PReq; onDone: () => void }) {
   return (
     <div className="stack rq">
       <div className="row"><b>{r.company_name || r.business_id}</b><span className="chip">{r.name_en}</span></div>
-      <div className="row small"><span className="soft num">{r.bank_reference}</span><span>{mmk(r.price_mmk)} {t("c.mmk")}</span></div>
+      <div className="row small"><span className="soft num">{r.bank_reference}</span><span><span className="num">{mmk(r.price_mmk)}</span> {t("c.mmk")}</span></div>
       <input className="input" maxLength={500} aria-label={t("pf.note")} placeholder={t("pf.note")} value={note} onChange={(e) => setNote(e.target.value)} />
       <div className="row" style={{ justifyContent: "flex-start" }}>
         <button className="pill on" type="button" disabled={busy} onClick={() => void decide("approve")}>{t("pf.approve")}</button>
@@ -42,12 +42,12 @@ function NewAddon({ onDone }: { onDone: () => void }) {
   return (
     <form className="glass pad stack" onSubmit={add}>
       <h2>{t("pf.new")}</h2>
-      <Field label={t("pf.key")}><input className="input" name="key" maxLength={40} pattern="[a-z0-9_]{3,40}" required /></Field>
+      <Field label={t("pf.key")}><input className="input mono" name="key" maxLength={40} pattern="[a-z0-9_]{3,40}" required /></Field>
       <Field label={t("pf.nameEn")}><input className="input" name="en" maxLength={120} required /></Field>
       <Field label={t("pf.nameMy")}><input className="input" name="my" maxLength={120} required /></Field>
       <Field label={t("pf.descEn")}><input className="input" name="den" maxLength={600} /></Field>
       <Field label={t("pf.descMy")}><input className="input" name="dmy" maxLength={600} /></Field>
-      <Field label={t("pf.price")}><input className="input" name="price" type="number" min={0} step={1} inputMode="numeric" required /></Field>
+      <Field label={t("pf.price")}><input className="input num" name="price" type="number" min={0} step={1} inputMode="numeric" required /></Field>
       <div className="two">
         <Field label={t("pf.kind")}><select className="input" name="kind">{["router_slot", "server", "feature"].map((k) => <option key={k} value={k}>{t("st.kind." + k)}</option>)}</select></Field>
         <Field label={t("pf.period")}><select className="input" name="period">{["one_time", "monthly", "annual"].map((p) => <option key={p} value={p}>{t("st.period." + p)}</option>)}</select></Field>
@@ -69,12 +69,14 @@ export function Addons({ me }: { me: Me }) {
   const pending = asArray<PReq>(reqs.data?.requests), addons = asArray<PAddon>(adds.data?.addons);
   const refresh = () => { void reqs.mutate(); void adds.mutate(); };
   return (
-    <>
-      <section className="glass pad stack"><h2>{t("pf.pending")}</h2>{pending.length ? pending.map((r) => <Pending key={r.id} r={r} onDone={refresh} />) : <p className="soft small">{t("pf.none")}</p>}</section>
+    <div className="workspace-grid">
+      <section className="glass pad stack workspace-main"><h2>{t("pf.pending")}</h2>{pending.length ? pending.map((r) => <Pending key={r.id} r={r} onDone={refresh} />) : <p className="soft small">{t("pf.none")}</p>}</section>
+      <div className="workspace-rail workspace-stack">
       <section className="glass pad stack"><h2>{t("pf.catalog")}</h2>
-        {addons.map((a) => <div className="row small" key={a.id}><span>{a.name_en} <span className="soft">{a.addon_key}</span></span><span className={"chip " + (a.active ? "ok" : "")}>{a.active ? t("pf.active") : t("pf.hidden")} {mmk(a.price_mmk)}</span></div>)}
+        {addons.map((a) => <div className="row small" key={a.id}><span>{a.name_en} <span className="soft mono">{a.addon_key}</span></span><span className={"chip " + (a.active ? "ok" : "")}>{a.active ? t("pf.active") : t("pf.hidden")} <span className="num">{mmk(a.price_mmk)}</span></span></div>)}
       </section>
       <NewAddon onDone={refresh} />
-    </>
+      </div>
+    </div>
   );
 }
