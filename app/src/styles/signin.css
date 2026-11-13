@@ -1,0 +1,49 @@
+/* Console sign-in: Obsidian and Cyan, with a Day twin. Same palette, type and Burmese leading as the public pages
+   (web/assets/css/landing.css, owner direction 2026-11-13). Tokens are scoped to .signin so the rest of the console keeps
+   the emerald/ivory system; the shared .glass, .input and .btn rules pick the new values up through the usual names.
+   scripts/test-public-pages-ui.mjs checks these pairs at 4.5:1 (text) and 3:1 (input border). */
+.signin {
+  --font-display: "Instrument Sans Variable", "Noto Sans Myanmar", system-ui, sans-serif;
+  --font-body: "Instrument Sans Variable", "Noto Sans Myanmar", system-ui, sans-serif;
+  --mono: "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --r-instrument: 8px; --r-panel: 8px; --r-row: 6px; --r-control: 6px;
+  --shine: transparent; --shadow: none;
+  --accent-hover: #22d3ee;
+  background: var(--bg-0); color: var(--ink); font-family: var(--font-body);
+}
+:root[data-theme="night"] .signin {
+  --bg-0: #09090b; --glass-solid: #111114; --surface-sunken: #0c0c0f;
+  --ink: #fafafa; --ink-soft: #d4d4d8; --ink-mute: #a1a1aa;
+  --edge: #71717a; --edge-soft: rgba(255, 255, 255, .09);
+  --jade: #06b6d4; --jade-deep: #22d3ee; --jade-soft: rgba(6, 182, 212, .13); --on-jade: #04141a; --accent-hover: #22d3ee;
+  --ok: #10b981; --ok-soft: rgba(16, 185, 129, .13); --warn: #fbbf24; --warn-soft: rgba(251, 191, 36, .12); --bad: #f87171; --bad-soft: rgba(248, 113, 113, .12);
+}
+:root[data-theme="day"] .signin {
+  --bg-0: #fafafa; --glass-solid: #ffffff; --surface-sunken: #f4f4f5;
+  --ink: #09090b; --ink-soft: #3f3f46; --ink-mute: #52525b;
+  --edge: #71717a; --edge-soft: rgba(9, 9, 11, .10);
+  --jade: #0e7490; --jade-deep: #155e75; --jade-soft: rgba(14, 116, 144, .09); --on-jade: #ffffff; --accent-hover: #155e75;
+  --ok: #047857; --ok-soft: rgba(4, 120, 87, .10); --warn: #92400e; --warn-soft: rgba(146, 64, 14, .09); --bad: #b91c1c; --bad-soft: rgba(185, 28, 28, .08);
+}
+
+.signin :focus-visible { outline: 2px solid var(--jade); outline-offset: 2px; border-radius: 4px; }
+.signin-card { text-align: left; padding: clamp(22px, 5vw, 32px); gap: 18px; border-color: var(--edge-soft); }
+.signin-brand { flex-direction: row; align-items: center; gap: 12px; margin-bottom: 0; flex-wrap: wrap; }
+.signin-brand svg { width: 40px; height: 40px; }
+.signin-brand h1 { font-size: 1.4rem; letter-spacing: -.02em; }
+.signin-brand h1 .wordmark { font-size: 1.4rem; }
+.signin-brand p { flex-basis: 100%; font-size: .95rem; }
+.signin-card .input { min-height: 48px; padding: 0 14px; }
+.signin-card .input[name="email"] { font-family: var(--mono); font-size: .95rem; }
+.signin-card .btn { min-height: 48px; border-radius: var(--r-control); background: var(--jade); box-shadow: none; }
+.signin-card .btn:hover { filter: none; background: var(--accent-hover); }
+.signin-card .btn[disabled] { opacity: .6; }
+.signin-card .pw-toggle { right: 2px; top: 2px; border-radius: 4px; }
+.signin-create, .signin-help { text-align: left; }
+.signin-help { padding-top: 14px; border-top: 1px solid var(--edge-soft); }
+.signin .seg { border-radius: var(--r-control); border-color: var(--edge-soft); background: var(--surface-sunken); }
+.signin .seg button { border-radius: 4px; }
+.signin .iconbtn { border-radius: var(--r-control); }
+/* Burmese stacks vowels and marks above and below the line: 1.75 for text and controls, 1.6 for headings. */
+:lang(my) .signin, :lang(my) .signin .btn, :lang(my) .signin .input, :lang(my) .signin .note { line-height: 1.75; }
+:lang(my) .signin h1 { line-height: 1.6; letter-spacing: 0; }
