@@ -27,7 +27,7 @@ export function Hotspot() {
           <Recovery title={t("isp.noGateway")} detail={t("hs.noGatewayHelp")} action={{ href: "/app/setup", label: t("su.continue") }} />
         ) : (
           <dl className="kv">
-            <dt>{t("hs.gateway")}</dt><dd>{gw === null ? "…" : gw.map((g) => g.hardware_name || g.device_id).join(", ")}</dd>
+            <dt>{t("hs.gateway")}</dt><dd>{gw === null ? (routers.error ? t("c.unavailable") : "…") : gw.map((g) => g.hardware_name || g.device_id).join(", ")}</dd>
             <dt>{t("ws.checked")}</dt><dd><Ago at={health.checkedAt} /></dd>
             <dt>{t("hs.interval")}</dt><dd>{t("hs.intervalValue")}</dd>
           </dl>
@@ -78,7 +78,8 @@ export function Isp({ me }: { me: Me }) {
         <div className="row"><h2 id="isp-overview">{t("isp.overview")}</h2>{s?.newestObservation ? <Ago at={s.newestObservation} prefix={t("ws.reported")} /> : null}</div>
         {routers.gateways && routers.gateways.length === 0 ? (
           <Recovery title={t("isp.noGateway")} detail={t("isp.noGatewayHelp")} action={{ href: "/app/setup", label: t("su.continue") }} />
-        ) : pppoe.isLoading || routers.isLoading ? <Loading><SkMetrics n={4} cols="four" /></Loading> : pppoe.error ? <Recovery title={t("isp.unavailable")} onRetry={() => void pppoe.mutate()} /> : (
+        ) : routers.error && !routers.data ? <Recovery title={t("isp.unavailable")} onRetry={() => void routers.mutate()} />
+        : pppoe.isLoading || routers.isLoading ? <Loading><SkMetrics n={4} cols="four" /></Loading> : pppoe.error ? <Recovery title={t("isp.unavailable")} onRetry={() => void pppoe.mutate()} /> : (
           <>
             <div className="metrics four">
               <Metric label={t("isp.subscribers")} value={s ? mmk(s.total) : null} />
@@ -165,7 +166,7 @@ export function Customers({ params }: { params: URLSearchParams }) {
               <option value="all">{t("cu.f.all")}</option><option value="connected">{t("isp.connected")}</option><option value="suspended">{t("isp.suspended")}</option><option value="expired">{t("isp.expired")}</option>
             </select>
           </div>
-          {routers.gateways?.length === 0 ? <p className="soft small">{t("isp.noGatewayHelp")}</p> : pppoe.isLoading || !routers.gateways ? <Loading><SkList n={3} /></Loading> : pppoe.error ? <Recovery title={t("isp.unavailable")} onRetry={() => void pppoe.mutate()} /> : rows.length === 0 ? (
+          {routers.gateways?.length === 0 ? <p className="soft small">{t("isp.noGatewayHelp")}</p> : routers.error && !routers.data ? <Recovery title={t("isp.unavailable")} onRetry={() => void routers.mutate()} /> : pppoe.isLoading || !routers.gateways ? <Loading><SkList n={3} /></Loading> : pppoe.error ? <Recovery title={t("isp.unavailable")} onRetry={() => void pppoe.mutate()} /> : rows.length === 0 ? (
             <p className="soft small" role="status">{pppoe.data?.total ? t("cu.noMatch") : t("cu.noSubs")}</p>
           ) : (
             <ul className="list-table" aria-label={t("cu.subscribers")}>

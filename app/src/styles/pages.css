@@ -513,3 +513,11 @@ details.adv summary { cursor: pointer; min-height: 36px; display: flex; align-it
 .signin-card .btn .spin { width: 18px; height: 18px; margin-right: 8px; border-radius: 50%; border: 2.5px solid currentColor; border-right-color: transparent; animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .signin-help { text-align: center; }
+
+/* Touch targets (spec: at least 44 x 44). The visible controls keep their size; a transparent layer extends
+   the area that accepts taps. */
+.helpbtn { position: relative; }
+.helpbtn::after { content: ""; position: absolute; inset: -7px; border-radius: 50%; }
+.row > a.link.small, .svc-card > header > a.link.small { position: relative; }
+.row > a.link.small::after, .svc-card > header > a.link.small::after { content: ""; position: absolute; inset: -12px -8px; }
+@media (pointer: coarse) { .maplibregl-ctrl.maplibregl-ctrl-group button { width: 44px; height: 44px; } }

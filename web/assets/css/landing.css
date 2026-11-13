@@ -75,8 +75,8 @@ img, svg { display: block; }
 .iconbtn { width: 44px; height: 44px; flex: none; display: grid; place-items: center; border-radius: 50%; border: 1px solid var(--edge-soft); background: var(--surface); cursor: pointer; }
 .iconbtn svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 [data-theme="night"] .i-sun, [data-theme="day"] .i-moon, :root:not([data-theme]) .i-moon { display: none; }
-.seg { display: inline-flex; padding: 3px; border-radius: 999px; border: 1px solid var(--edge-soft); background: var(--surface); }
-.seg button { min-height: 38px; min-width: 44px; padding: 0 12px; border: 0; border-radius: 999px; background: transparent; font-weight: 650; font-size: .875rem; color: var(--ink-soft); cursor: pointer; transition: background .15s, color .15s; }
+.seg { display: inline-flex; padding: 1px; border-radius: 999px; border: 1px solid var(--edge-soft); background: var(--surface); }
+.seg button { min-height: 44px; min-width: 44px; padding: 0 12px; border: 0; border-radius: 999px; background: transparent; font-weight: 650; font-size: .875rem; color: var(--ink-soft); cursor: pointer; transition: background .15s, color .15s; }
 .seg button[aria-pressed="true"] { background: var(--jade); color: var(--on-jade); }
 .nav .signin { display: none; }
 @media (min-width: 760px) { .nav-links { display: flex; } .nav .signin { display: inline-flex; } }
@@ -160,3 +160,6 @@ footer.site nav { display: flex; flex-wrap: wrap; gap: 0 14px; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+
+/* Keep the brand link a 44 px target when the wordmark is hidden on narrow phones. */
+.brand { min-width: 44px; min-height: 44px; }
