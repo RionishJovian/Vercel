@@ -37,7 +37,7 @@ There is no shared LAN, voucher pool, failover or load balancing. The rule is re
 ## Evidence
 | Check | Result |
 |---|---|
-| `go vet ./internal/...`, `go test -race ./internal/...` | Pass. |
+| `go vet ./internal/...`, `go test -race ./internal/...` **with** `MM_TEST_DB_URL` (disposable PostgreSQL 16, as CI does with 17) | Pass (exit 0). The first CI run failed: the database-backed suites build their schema from `database/init.sql` and lacked the new migration, which I had missed because those tests skip without `MM_TEST_DB_URL`. Fixed in `f43a1d2`: the fixtures now load the Store tables and the migration, and multi-gateway fixtures get an explicit test grant. `deploy/server/test-mm-migrate.sh`: 63/63. |
 | `TestGatewayCapacitySchema`: real schema built with `mm-migrate init` + `up` on disposable PostgreSQL 16 | 9/9. Base allowance refuses B. Pending, rejected and feature purchases add nothing; forged grants are refused. Exactly-once fulfilment and retry. **8 concurrent inserts for the last slot: exactly 1 succeeds.** Legacy grants count and are not rewritten. Revocation keeps devices and blocks only new enrollments beyond capacity. RLS and tenant isolation, including a tenant self-grant (permission denied). Switch and site rules under enforcement. Operator exemption. |
 | Handler tests | Expired key → resume, no removal. Start over only when asked. Start over without a remover → 409, nothing changed. |
 | Hub script tests | Start over removes only marker-scoped items, with all guards before APPLY. Resume carries no private key and stops before writes. Two gateways in one tenant share no names, markers or accounts. The default paste is still non-destructive. |
