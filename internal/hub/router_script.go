@@ -250,10 +250,12 @@ func buildQuickConnect(deviceID string, peer Peer, privateKey string, startOver 
 	// In start-over mode a difference is tolerated only for a resource that
 	// carries this gateway's exact marker; it is removed during APPLY.
 	// Each such check runs only after the resource's marker was verified, so in
-	// start-over mode the difference is this gateway's own earlier state.
+	// start-over mode the difference is this gateway's own earlier state and the
+	// branch is empty (it is replaced in APPLY). Never put a "#" comment inside a
+	// one-line block: RouterOS would comment out the closing brace.
 	differs := func(stop string) string {
 		if startOver {
-			return `# this gateway's own earlier state; replaced in APPLY`
+			return ""
 		}
 		return `:error "` + stop + `"`
 	}

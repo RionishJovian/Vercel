@@ -2,6 +2,7 @@ package hub
 
 import (
 	"encoding/base64"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -117,7 +118,9 @@ func TestQuickConnectKeepsPrivateKeyOnlyInOnePasteScript(t *testing.T) {
 	}
 	// Anything belonging to someone else must stop the script before the first change.
 	firstWrite := strings.Index(script, "# APPLY: only add absent resources")
-	if firstWrite < 0 { t.Fatal("missing explicit preflight/apply boundary") }
+	if firstWrite < 0 {
+		t.Fatal("missing explicit preflight/apply boundary")
+	}
 	for _, guard := range []string{"belongs to another setup", "multiple existing peers", "tunnel address already assigned elsewhere", "Hub destination route differs", "older Magic Hub tunnel found", "holds a key from an earlier setup. In the app, choose Start over"} {
 		if at := strings.Index(script, guard); at < 0 || at > firstWrite {
 			t.Fatalf("guard %q is missing or comes after the first change", guard)
@@ -140,26 +143,34 @@ func TestQuickConnectKeepsPrivateKeyOnlyInOnePasteScript(t *testing.T) {
 
 func TestQuickConnectDoesNotDeleteOrReplaceExistingTunnelResources(t *testing.T) {
 	privateKey, publicKey, err := GenerateRouterKeypair()
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	p := scriptFixture()
 	p.RouterPublicKey = publicKey
 	p.AllowedIPs = []string{"10.77.0.1/32", "10.77.0.9/32"}
 	script, err := BuildQuickConnectScript("gateway", p, privateKey)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, forbidden := range []string{
 		"/interface/wireguard remove", "/interface/wireguard/peers remove",
 		"/ip/address remove", "/ip/route remove",
 		"/interface/wireguard set $mmIface private-key=",
 		"/ip/route set $mmItem gateway=", "/ip/address set $mmItem interface=",
 	} {
-		if strings.Contains(script, forbidden) { t.Fatalf("quick paste performs destructive action %q", forbidden) }
+		if strings.Contains(script, forbidden) {
+			t.Fatalf("quick paste performs destructive action %q", forbidden)
+		}
 	}
 	for _, guard := range []string{
 		"older Magic Hub tunnel found", "older Magic Hub route found",
 		"existing Hub peer differs", "existing interface address differs",
 		"tunnel address already assigned elsewhere", "Hub destination route differs",
 	} {
-		if !strings.Contains(script, guard) { t.Fatalf("missing non-destructive preflight guard: %q", guard) }
+		if !strings.Contains(script, guard) {
+			t.Fatalf("missing non-destructive preflight guard: %q", guard)
+		}
 	}
 	if !strings.Contains(script, "allowed-address=10.77.0.1/32,10.77.0.9/32") {
 		t.Fatal("multi-address allowlist not preserved in new peer creation")
@@ -272,5 +283,33 @@ func TestTwoGatewaysInOneTenantHaveSeparateIdentities(t *testing.T) {
 	disconnect, err := BuildDisconnectScript(p.RouterID, p, userB)
 	if err != nil || strings.Contains(disconnect, markerA) || strings.Contains(disconnect, userA) {
 		t.Fatal("gateway B's disconnect touches gateway A")
+	}
+}
+
+// A "#" inside a one-line RouterOS block comments out its closing brace, so no
+// generated script may contain one there.
+func TestScriptsHaveNoInlineCommentsInsideBlocks(t *testing.T) {
+	privateKey, publicKey, _ := GenerateRouterKeypair()
+	p := scriptFixture()
+	p.RouterPublicKey = publicKey
+	quick, _ := BuildQuickConnectScript("gateway", p, privateKey)
+	startOver, _ := BuildStartOverScript("gateway", p, privateKey)
+	resume, _ := BuildResumeScript("gateway", p)
+	for name, script := range map[string]string{"quick": quick, "start over": startOver, "resume": resume} {
+		if hasInlineBlockComment(script) {
+			t.Errorf("%s has a comment inside a one-line block", name)
+		}
+	}
+}
+
+var inlineBlockComment = regexp.MustCompile(`\{[ \t]*#`)
+
+func hasInlineBlockComment(script string) bool { return inlineBlockComment.MatchString(script) }
+
+func TestInlineBlockCommentDetector(t *testing.T) {
+	// The exact line the start-over builder produced before the fix.
+	old := `:if ([/interface/wireguard get $mmIface public-key] != "k") do={ # this gateway's own earlier state; replaced in APPLY }`
+	if !hasInlineBlockComment(old) || hasInlineBlockComment(":if (x) do={}\n# a full-line comment") {
+		t.Fatal("detector does not tell an inline block comment from a full-line comment")
 	}
 }
