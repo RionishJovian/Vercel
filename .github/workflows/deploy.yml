@@ -73,6 +73,23 @@ jobs:
           export PATH=/usr/lib/postgresql/17/bin:$PATH
           bash -n deploy/server/mm-migrate && bash deploy/server/test-mm-migrate.sh
 
+  # Python account/payment API (backend/). Not production code (Go is), so it does not gate the build job yet.
+  python-api:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Python tests (isolated SQLite, pinned requirements)
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install -q -r requirements.txt
+          PYTHONDONTWRITEBYTECODE=1 "$RUNNER_TEMP/venv/bin/python" -m unittest discover -s tests -p 'test_*.py'
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24'
+      - run: node --test tests/account-client.test.mjs
+
   build:
     needs: validate
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.deploy_vps))

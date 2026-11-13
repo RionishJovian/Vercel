@@ -1,6 +1,10 @@
 import unittest, sys, tempfile, json, urllib.request, urllib.error, threading, time, hmac, hashlib, os
 from pathlib import Path
-sys.path.insert(0,str(Path(__file__).resolve().parents[1]));import server
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+# The legacy demo server (root server.py) was never committed: .gitignore's /server.* rule hid it. Its payment-decision
+# webhook therefore has no implementation here, and these tests cannot run. Skipped explicitly, not silently; see STATUS.md.
+try:import server
+except ImportError:raise unittest.SkipTest('legacy demo server (root server.py) is not in this repository; see STATUS.md')
 class WorkflowTests(unittest.TestCase):
  @classmethod
  def setUpClass(cls):
