@@ -56,6 +56,19 @@ describe("Quick setup", () => {
 });
 
 describe("Customers", () => {
+  it.each([
+    ["en", 0, "No active usage records yet"],
+    ["my", 0, "လက်ရှိအသုံးပြုမှု မှတ်တမ်းမရှိသေးပါ"],
+    ["en", 3, "First use recorded"],
+    ["my", 3, "ပထမအသုံးပြုမှု မှတ်တမ်းရှိ"],
+  ])("shows an accurate usage hint in %s for %s codes", async (lang, count, hint) => {
+    localStorage.setItem("mm2_lang", String(lang));
+    api["/voucher-report"] = [200, { activated_count: count, activation_today: 0 }];
+    wrap(<Customers params={new URLSearchParams("type=hotspot")} />);
+    expect(await screen.findByText(String(hint))).toBeTruthy();
+    if (count) expect(screen.queryByText(/No active usage records yet|လက်ရှိအသုံးပြုမှု မှတ်တမ်းမရှိသေးပါ/)).toBeNull();
+  });
+
   it("labels PPPoE subscribers by service and filters by search", async () => {
     api["/routers"] = [200, { routers: [{ device_id: "d", hardware_name: "Gate", deployment_layer: "MAIN_GATEWAY" }] }];
     api["/routers/d/broadband/accounts"] = [200, { accounts: [

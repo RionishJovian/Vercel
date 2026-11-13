@@ -8,7 +8,8 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 const styles = await Promise.all(['tokens','base','shell','pages','telemetry','workspace'].map(n => readFile(new URL(`../app/src/styles/${n}.css`, import.meta.url), 'utf8')));
 styles.push(await readFile(new URL('../app/src/components/tables.css', import.meta.url), 'utf8')); // Lazy table CSS can arrive after workspace.css.
-const fixture = `<!doctype html><html data-theme="night" lang="en"><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>${styles.join('\n')}</style></head><body><div class="shell"><main class="view"><div class="workspace-grid route-workspace"><section class="glass pad" id="summary">Status summary</section><section class="workspace-main glass pad" id="primary"><h1>Workspace</h1><p>${'Readable operational notes. '.repeat(20)}</p></section><aside class="workspace-rail glass pad" id="rail"><div class="dt-tools three" id="filters"><input class="input" value="ABC12345"><select class="input"><option>All batches</option></select><button class="dt-filter">Refresh</button></div></aside><section class="workspace-grid" id="solo"><div class="workspace-main glass pad">No side rail</div></section><section class="nt-layout"><div class="glass nt-stage" id="canvas">Topology canvas</div><aside class="glass pad nt-inspector" id="inspector">Selected node</aside></section></div></main></div></body></html>`;
+const sidebar = `<aside class="rail"><a class="rail-brand" href="#">MegaMagic</a><nav class="rail-nav">${[2,4,4,2,2].map((n,g)=>`<div class="rail-group"><p class="rail-label">Navigation</p>${Array.from({length:n},(_,i)=>`<a class="rail-item" href="#">${g===3&&i===1?'သတိပေးချက်':'Navigation item'}</a>`).join('')}</div>`).join('')}</nav><div class="rail-foot"><button class="iconbtn">☀</button><div class="seg"><button>မြန်မာ</button><button>EN</button></div></div></aside>`;
+const fixture = `<!doctype html><html data-theme="night" lang="en"><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>${styles.join('\n')}</style></head><body><div class="shell">${sidebar}<main class="view"><div class="workspace-grid route-workspace"><section class="glass pad" id="summary">Status summary</section><section class="workspace-main glass pad" id="primary"><h1>Workspace</h1><p>${'Readable operational notes. '.repeat(20)}</p></section><aside class="workspace-rail glass pad" id="rail"><div class="dt-tools three" id="filters"><input class="input" value="ABC12345"><select class="input"><option>All batches</option></select><button class="dt-filter">Refresh</button></div></aside><section class="workspace-grid" id="solo"><div class="workspace-main glass pad">No side rail</div></section><section class="workspace-grid"><div class="workspace-main customer-panel-solo glass pad" id="single-pppoe">PPPoE</div></section><section class="workspace-grid"><div class="workspace-rail customer-panel-solo glass pad" id="single-hotspot">Hotspot</div></section><section class="nt-layout"><div class="glass nt-stage" id="canvas">Topology canvas</div><aside class="glass pad nt-inspector" id="inspector">Selected node</aside></section></div></main></div></body></html>`;
 const server=createServer((_req,res)=>{res.writeHead(200,{'Content-Type':'text/html'});res.end(fixture);});
 const wait=async(fn,label,ms=12000)=>{const end=Date.now()+ms;while(Date.now()<end){if(await fn())return;await new Promise(r=>setTimeout(r,50));}throw new Error('timeout: '+label);};
 let browser,profile,ws;
@@ -30,11 +31,12 @@ try {
  for(const width of [375,1023,1024,1440,1920])for(const theme of ['night','day'])for(const lang of ['en','my']){
   await send('Emulation.setDeviceMetricsOverride',{width,height:1000,deviceScaleFactor:1,mobile:false});
   await evaluate(`document.documentElement.dataset.theme=${JSON.stringify(theme)};document.documentElement.lang=${JSON.stringify(lang)}`);
-  const m=await evaluate(`(()=>{const box=id=>{const r=document.querySelector(id).getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,right:r.right,bottom:r.bottom}};return {summary:box('#summary'),primary:box('#primary'),rail:box('#rail'),solo:box('#solo'),soloMain:box('#solo > div'),canvas:box('#canvas'),inspector:box('#inspector'),view:box('.view'),scroll:document.documentElement.scrollWidth,tracks:getComputedStyle(document.querySelector('.route-workspace')).gridTemplateColumns.split(' ').length,filterTracks:getComputedStyle(document.querySelector('#filters')).gridTemplateColumns.split(' ').length,measure:parseFloat(getComputedStyle(document.querySelector('#primary p')).maxWidth)}})()`);
+  const m=await evaluate(`(()=>{const box=id=>{const r=document.querySelector(id).getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,right:r.right,bottom:r.bottom}};return {singlePppoe:box('#single-pppoe'),singleHotspot:box('#single-hotspot'),summary:box('#summary'),primary:box('#primary'),rail:box('#rail'),solo:box('#solo'),soloMain:box('#solo > div'),canvas:box('#canvas'),inspector:box('#inspector'),view:box('.view'),scroll:document.documentElement.scrollWidth,tracks:getComputedStyle(document.querySelector('.route-workspace')).gridTemplateColumns.split(' ').length,filterTracks:getComputedStyle(document.querySelector('#filters')).gridTemplateColumns.split(' ').length,measure:parseFloat(getComputedStyle(document.querySelector('#primary p')).maxWidth)}})()`);
   const label=`${width}px ${theme} ${lang}`;
   assert.ok(m.scroll<=width,`${label}: document overflow`);
   if(width>=1024){
    assert.equal(m.filterTracks,1,`${label}: lazy table styles do not squeeze rail filters into three columns`);
+   for(const panel of [m.singlePppoe,m.singleHotspot])assert.ok(Math.abs(panel.width-Math.min(m.view.width,860))<1,`${label}: single customer panel keeps a compact width`);
    assert.equal(m.tracks,12,`${label}: twelve tracks`);
    assert.ok(Math.abs(m.primary.y-m.rail.y)<1,`${label}: primary and rail share a row`);
    assert.ok(m.primary.right<m.rail.x,`${label}: primary is left of rail`);
@@ -51,6 +53,16 @@ try {
    assert.ok(Math.abs(m.primary.width-m.rail.width)<1,`${label}: mobile panels fill one column`);
   }
   checks++;
+ }
+ for(const height of [768,820,900])for(const theme of ['night','day'])for(const lang of ['en','my']){
+  await send('Emulation.setDeviceMetricsOverride',{width:1440,height,deviceScaleFactor:1,mobile:false});
+  await evaluate(`document.documentElement.dataset.theme=${JSON.stringify(theme)};document.documentElement.lang=${JSON.stringify(lang)}`);
+  const m=await evaluate(`(()=>{const nav=document.querySelector('.rail-nav'),brand=document.querySelector('.rail-brand'),foot=document.querySelector('.rail-foot');const top=brand.getBoundingClientRect().top,footer=foot.getBoundingClientRect().top;nav.scrollTop=nav.scrollHeight;const last=nav.querySelector('.rail-group:last-child .rail-item:last-child').getBoundingClientRect(),box=nav.getBoundingClientRect();return {top,footer,afterTop:brand.getBoundingClientRect().top,afterFooter:foot.getBoundingClientRect().top,lastBottom:last.bottom,navBottom:box.bottom,footBottom:foot.getBoundingClientRect().bottom,overflow:nav.scrollHeight>nav.clientHeight,padding:box.bottom-last.bottom}})()`);
+  const label=`sidebar ${height}px ${theme} ${lang}`;
+  assert.ok(m.overflow,`${label}: navigation owns vertical scrolling`);
+  assert.ok(m.lastBottom<=m.navBottom&&m.navBottom<=m.footer,`${label}: bottom item clears the footer`);
+  assert.ok(m.padding>=15,`${label}: bottom navigation breathing room`);
+  assert.ok(m.footBottom<=height&&m.top===m.afterTop&&m.footer===m.afterFooter,`${label}: header and footer stay pinned`);
  }
  console.log(`Workspace layout: ${checks} viewport/theme/language combinations passed (375, 1023, 1024, 1440, 1920px).`);
 } finally {
