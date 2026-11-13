@@ -55,13 +55,16 @@ const page = (lang, theme) => `<!doctype html><html data-theme="${theme}" lang="
 <div class="dt-filters"><button class="dt-filter" id="flt">အားလုံး</button></div><div class="dt-pager"><div class="dt-pages"><button class="dt-page" id="pg">1</button></div></div></div>
 </body></html>`;
 
-const LANGS = new Set(['en', 'my']);
-const THEMES = new Set(['night', 'day']);
-let current = page('en', 'night');
+// Every page is built here from constants. A request only chooses which prebuilt page to send; no request value is ever written into markup.
+const FONT_FILES = ['instrument-sans-latin-wght-normal-BbzFLZTg.woff2', 'jetbrains-mono-latin-wght-normal.woff2', 'noto-sans-myanmar-myanmar-400-normal-C_Ri2PLj.woff2', 'noto-sans-myanmar-myanmar-600-normal-Cju0GbT9.woff2'];
+const FONTS = new Map(FONT_FILES.map((f) => [`/fonts/${f}`, new URL(`../web/assets/fonts/${f}`, import.meta.url)]));
+const PAGES = new Map();
+for (const l of ['en', 'my']) for (const t of ['night', 'day']) PAGES.set(`${l}:${t}`, page(l, t));
 const server = createServer(async (req, res) => { const u = new URL(req.url, 'http://x');
-  if (u.pathname.startsWith('/fonts/')) { try { res.writeHead(200, {'Content-Type': 'font/woff2'}); res.end(await readFile(new URL(`../web/assets/fonts/${u.pathname.slice(7).replace(/[^a-zA-Z0-9._-]/g, '')}`, import.meta.url))); } catch { res.writeHead(404); res.end(); } return; } const lang = LANGS.has(u.searchParams.get('lang')) ? u.searchParams.get('lang') : 'en'; // Only known values reach the markup.
-  const theme = THEMES.has(u.searchParams.get('theme')) ? u.searchParams.get('theme') : 'night';
-  current = page(lang, theme); res.writeHead(200, {'Content-Type': 'text/html'}); res.end(current); });
+  const font = FONTS.get(u.pathname);
+  if (font) { res.writeHead(200, {'Content-Type': 'font/woff2'}); res.end(await readFile(font)); return; }
+  const html = PAGES.get(`${u.searchParams.get('lang')}:${u.searchParams.get('theme')}`) ?? PAGES.get('en:night');
+  res.writeHead(200, {'Content-Type': 'text/html'}); res.end(html); });
 const wait = async (fn, label, ms = 12000) => { const end = Date.now() + ms; while (Date.now() < end) { if (await fn()) return; await new Promise((r) => setTimeout(r, 50)); } throw new Error('timeout: ' + label); };
 let browser, profile, ws;
 try {
