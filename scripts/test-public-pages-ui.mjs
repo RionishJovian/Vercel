@@ -75,3 +75,49 @@ for (const [name, sel] of [['night', ':root[data-theme="night"] .signin'], ['day
 test('console sign-in keeps Burmese line height at 1.75', () => {
   assert.match(signinCss, /:lang\(my\) \.signin[^{]*\{\s*line-height:\s*1\.75/);
 });
+
+// Guest portal (hosted page and router-served page) carry the same palette inline, in Night and in the light-phone Day twin.
+const portalHtml = readFileSync(new URL('../web/portal.html', import.meta.url), 'utf8');
+const routerGo = readFileSync(new URL('../internal/provisioner/routeros/portal_deploy.go', import.meta.url), 'utf8');
+function inlineTokens(source, marker) {
+  const at = source.indexOf(marker);
+  assert.ok(at >= 0, `missing ${marker}`);
+  const body = source.slice(source.indexOf('{', at) + 1, source.indexOf('}', at));
+  const out = {};
+  for (const m of body.matchAll(/--([a-z0-9-]+):\s*(#[0-9a-f]{6})\b/g)) out[m[1]] = m[2];
+  return out;
+}
+const portalNames = { 'accent-text': 'accent-text' };
+for (const [label, source, nightMarker, dayMarker] of [
+  ['hosted portal', portalHtml, ':root {', '@media (prefers-color-scheme: light) {'],
+  ['router login page', routerGo, ':root{color-scheme:dark', '@media(prefers-color-scheme:light){:root{'],
+]) {
+  const night = inlineTokens(source, nightMarker);
+  const day = inlineTokens(source, dayMarker === '@media (prefers-color-scheme: light) {' ? dayMarker + '\n    :root {' : dayMarker);
+  for (const [name, t] of [['night', night], ['day', day]]) {
+    test(`${label} ${name}: text pairs reach 4.5:1 and share the public palette`, () => {
+      const pairs = label === 'hosted portal'
+        ? [['ink', 'bg'], ['ink', 'surface'], ['ink-soft', 'surface'], ['ink-mute', 'bg'], ['ink-mute', 'surface'], ['ink-mute', 'sunken'], ['on-accent', 'accent'], ['accent-text', 'surface'], ['ok', 'surface'], ['warn', 'surface'], ['bad', 'surface']]
+        : [['ink', 'bg'], ['ink', 'surface'], ['ink-soft', 'surface'], ['ink-mute', 'surface'], ['bad', 'surface']];
+      for (const [fg, bg] of pairs) {
+        assert.ok(t[fg] && t[bg], `${label} ${name}: missing ${fg} or ${bg}`);
+        assert.ok(ratio(t[fg], t[bg]) >= 4.5, `${label} ${name}: ${fg} ${t[fg]} on ${bg} ${t[bg]} is ${ratio(t[fg], t[bg]).toFixed(2)}`);
+      }
+      for (const k of ['ink', 'ink-soft', 'ink-mute', 'bad']) if (t[k]) assert.equal(t[k], themes[name][k], `${label} ${name}: ${k} differs from landing.css`);
+    });
+    test(`${label} ${name}: control edge and focus ring reach 3:1`, () => {
+      assert.ok(ratio(t.edge, t.sunken) >= 3, `edge on sunken ${ratio(t.edge, t.sunken).toFixed(2)}`);
+      assert.ok(ratio(t.accent, t.bg) >= 3, `accent on bg ${ratio(t.accent, t.bg).toFixed(2)}`);
+    });
+  }
+}
+
+test('guest portal keeps 1.75 Burmese leading, talks only to /api/v1/portal and carries no external asset', () => {
+  assert.match(portalHtml, /:lang\(my\) body[^{]*\{\s*line-height:\s*1\.75/);
+  const js = readFileSync(new URL('../web/assets/js/portal.js', import.meta.url), 'utf8');
+  const urls = [...js.matchAll(/API \+ "(\/[^"]*)"/g)].map((m) => m[1]);
+  assert.ok(urls.length >= 5);
+  for (const u of urls) assert.match(u, /^\/portal\//, `unexpected endpoint ${u}`);
+  assert.doesNotMatch(portalHtml + routerGo.slice(routerGo.indexOf('<style>'), routerGo.indexOf('</style>')), /https?:\/\//);
+  assert.doesNotMatch(portalHtml, /\bsrc="https?:|href="https?:/);
+});

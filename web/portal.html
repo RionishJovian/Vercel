@@ -2,126 +2,181 @@
 <html lang="my-MM">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#09090b" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#fafafa" media="(prefers-color-scheme: light)">
 <title>Guest WiFi</title>
 <style>
-  /* This page carries NO external asset. Cloudflare serves /assets/* with
-     `max-age=604800, immutable` and deploy.sh only hash-stamps the URLs written
-     inside app.html, so a guest page linking /assets/css/styles.css unstamped can
-     be served fresh markup against week-stale CSS (audit finding D1). The rules
-     below are the ONLY ones the shared sheet was contributing to this page —
-     established by enumerating every rule in styles.css that mentions a class or
-     tag this page uses, then confirming with a computed-style A/B (18 elements at
-     the plans step, 25 at the pay step), not guessed. */
-  html { color-scheme: dark; }
-  *, *::before, *::after { box-sizing: border-box; }
-  body { margin: 0; font-size: 15px; line-height: 1.45; color: #f6f8ff; -webkit-font-smoothing: antialiased; }
-  h1, h2, h3, h4 { font-weight: 650; letter-spacing: -0.01em; }
-  h3 { font-size: 1.17em; margin: 1em 0; }
-  /* Form controls do NOT inherit the page font from the UA sheet, so the shared
-     sheet's `font: inherit` is reproduced here. Without it the confirm button
-     renders in Arial at `normal` line-height instead of the page font at 1.45 —
-     measured, not assumed. It sits BEFORE the .btn rule below so that rule's own
-     font-size still wins, exactly as it did with the stylesheet present. */
-  .btn { font: inherit; }
-  /* Reproduced from the shared sheet: it applies to this page's inputs below
-     900px. Harmless today (they are already width:100%) but carried over so the
-     mobile behaviour does not quietly depend on the UA default. */
-  @media (max-width: 900px) { input, select, textarea { max-width: 100%; } }
+  /* Guest portal, Obsidian and Cyan (owner decision 2026-11-13; same palette as the public pages and console sign-in).
+     Night is the default; guests whose phone is set to light get the Day twin automatically.
+     Fonts come from this host (font-src 'self'); the page links no other external asset, so a stale shared sheet
+     can never be served against fresh markup (audit finding D1). scripts/test-public-pages-ui.mjs checks these
+     token pairs at 4.5:1 for text and 3:1 for control edges, in both schemes. */
+  @font-face { font-family: "Instrument Sans Variable"; font-weight: 400 700; font-display: swap; src: url(/assets/fonts/instrument-sans-latin-wght-normal-BbzFLZTg.woff2) format("woff2"); }
+  @font-face { font-family: "JetBrains Mono Variable"; font-weight: 100 800; font-display: swap; src: url(/assets/fonts/jetbrains-mono-latin-wght-normal.woff2) format("woff2"); }
+  @font-face { font-family: "Noto Sans Myanmar"; font-weight: 400; font-display: swap; src: url(/assets/fonts/noto-sans-myanmar-myanmar-400-normal-C_Ri2PLj.woff2) format("woff2"); unicode-range: U+1000-109F, U+200C-200D, U+25CC, U+A92E, U+A9E0-A9FE, U+AA60-AA7F; }
+  @font-face { font-family: "Noto Sans Myanmar"; font-weight: 600; font-display: swap; src: url(/assets/fonts/noto-sans-myanmar-myanmar-600-normal-Cju0GbT9.woff2) format("woff2"); unicode-range: U+1000-109F, U+200C-200D, U+25CC, U+A92E, U+A9E0-A9FE, U+AA60-AA7F; }
 
-  /* Owner-set branding arrives as --brand / --tint (validated hex). Every other
-     value here is a fallback so the page is complete before the config lands. */
+  /* Owner branding arrives as --brand / --tint (validated hex) and only recolours the primary button and a faint
+     panel wash. Focus rings, text and status colours never depend on it, so any owner colour stays legible. */
   :root {
-    --brand: #075044; --brand-ink: #ffffff; --tint: #061f26; --bg: #051b22;
-    --line: rgba(220,244,243,.42); --line-soft: rgba(224,247,248,.2);
-    --muted: #d4e3df; --faint: #b7cdc8;
-    --warn: #ffd08a; --ok: #90e8b7;
+    color-scheme: dark;
+    --bg: #09090b; --surface: #111114; --sunken: #0c0c0f;
+    --ink: #fafafa; --ink-soft: #d4d4d8; --ink-mute: #a1a1aa;
+    --line: rgba(255, 255, 255, .09); --edge: #71717a;
+    --accent: #06b6d4; --accent-text: #22d3ee; --on-accent: #04141a; --accent-soft: rgba(6, 182, 212, .13);
+    --ok: #10b981; --ok-soft: rgba(16, 185, 129, .13);
+    --warn: #fbbf24; --warn-soft: rgba(251, 191, 36, .12);
+    --bad: #f87171; --bad-soft: rgba(248, 113, 113, .12);
+    --brand: var(--accent); --brand-ink: var(--on-accent); --tint: var(--surface);
+    --font: "Instrument Sans Variable", "Noto Sans Myanmar", system-ui, sans-serif;
+    --mono: "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo, monospace;
   }
-  body { position: relative; min-height: 100vh; padding: 56px 18px; overflow-x: hidden; background: #051b22 url("/assets/images/jade-portal-wallpaper-v1.webp") center / cover no-repeat; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", "Segoe UI", sans-serif; isolation: isolate; }
-  /* Same dark emerald glass card as the router voucher page, so guests see one design from code entry to payment. */
-  .guest { position: relative; z-index: 0; max-width: 400px; margin: 0 auto; padding: 108px 25px 32px; text-align: center; background: color-mix(in srgb, var(--tint) 7%, rgba(8,37,43,.47)); border: 1px solid rgba(239,255,255,.7); border-radius: 33px; box-shadow: 0 24px 65px rgba(0,0,0,.53), 0 0 0 2px rgba(179,211,211,.21), inset 0 1px 2px rgba(255,255,255,.6), inset 2px 0 5px rgba(227,247,255,.33), inset -2px -2px 5px rgba(239,255,222,.33); -webkit-backdrop-filter: blur(18px) saturate(125%); backdrop-filter: blur(18px) saturate(125%); }
-  .guest::before { content: ""; position: absolute; inset: 3px; z-index: -1; pointer-events: none; border: 1px solid rgba(224,247,248,.16); border-radius: 29px; }
-  .guest::after { content: ""; position: absolute; top: 26px; left: 50%; width: 78px; height: 66px; margin-left: -39px; background: url("/assets/images/jade-portal-wifi-v1.webp") center / contain no-repeat; }
-  @media (prefers-reduced-transparency: reduce) { .guest { background: #09272e; -webkit-backdrop-filter: none; backdrop-filter: none; } }
-  .guest h1 { font-size: 28px; font-weight: 600; line-height: 1.15; margin: 0 0 8px; color: #fff; letter-spacing: -.025em; }
-  .guest .biz { color: #fff; margin: 0 0 8px; font-size: 13px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
-  .welcome { color: var(--muted); margin: 0 0 22px; line-height: 1.6; }
-  .steps { color: var(--muted); font-size: 12px; line-height: 1.55; margin: 0 0 18px; padding: 11px 13px; background: rgba(3,22,26,.35); border: 1px solid var(--line-soft); border-radius: 12px; }
-  .plan { position: relative; display: block; width: 100%; text-align: left; padding: 15px 44px 15px 15px; margin: 0 0 9px; color: #fff; background: rgba(161,206,204,.08); border: 1px solid var(--line-soft); border-radius: 14px; cursor: pointer; transition: border-color .15s, background .15s, transform .15s; -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
-  .plan::after { content: "→"; position: absolute; right: 16px; top: 50%; color: #fff; font-size: 18px; transform: translateY(-50%); }
-  .plan:hover, .plan:focus-visible { border-color: color-mix(in srgb, var(--brand) 64%, white); background: rgba(255,255,255,.13); transform: translateY(-1px); outline: none; }
-  .plan .nm { font-weight: 700; } .plan .sub { color: var(--muted); font-size: 13px; margin-top: 3px; }
-  .portal-or { display: flex; align-items: center; gap: 10px; margin: 22px 0 16px; color: var(--faint); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
-  .portal-or::before, .portal-or::after { content: ""; flex: 1; height: 1px; background: var(--line-soft); }
-  .voucher-login { padding: 16px; text-align: left; background: rgba(3,22,26,.3); border: 1px solid var(--line-soft); border-radius: 16px; }
-  .voucher-login h3 { margin: 0 0 5px; }
-  .voucher-help { margin: 0 0 12px; color: var(--muted); font-size: 13px; }
-  .voucher-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
-  .voucher-row input { width: 100%; min-height: 48px; padding: 11px 13px; color: #fff; background: rgba(161,206,204,.05); border: 1px solid var(--line); border-radius: 13px; font: 700 16px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .08em; text-transform: uppercase; -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
-  .voucher-row input::placeholder { color: rgba(255,255,255,.48); }
-  .voucher-row input:focus { outline: 3px solid color-mix(in srgb, var(--brand) 32%, transparent); outline-offset: 1px; border-color: color-mix(in srgb, var(--brand) 70%, white); }
-  .voucher-row .btn { width: auto; min-width: 108px; }
-  .voucher-msg { min-height: 20px; margin: 9px 0 0; font-size: 13px; }
-  .btn { display: inline-flex; align-items: center; justify-content: center; width: 100%; min-height: 50px; color: var(--brand-ink); border: 1px solid rgba(180,255,224,.7); padding: 12px 18px; border-radius: 13px; background-color: var(--brand); background-image: linear-gradient(150deg, rgba(194,255,244,.12), rgba(255,255,255,0) 48%, rgba(0,28,26,.33)); box-shadow: 0 0 16px rgba(72,222,182,.23), inset 0 1px 3px rgba(202,255,252,.63), inset 0 -2px 4px rgba(202,255,251,.14); font-size: 15px; font-weight: 500; cursor: pointer; }
-  .btn:hover { filter: brightness(1.12); }
-  .btn:disabled { opacity: .5; }
-  .btn-secondary { margin-top: 14px; color: #fff; background: rgba(161,206,204,.08); border: 1px solid var(--line); box-shadow: none; }
-  .portal-nav { display: grid; gap: 8px; margin-top: 18px; }
-  .portal-nav-note { margin: 0; color: var(--faint); font-size: 12px; text-align: center; }
-  .qr { text-align: center; margin: 16px 0; }
-  .qr img { width: 210px; height: 210px; padding: 8px; background: #fff; border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 20px 45px -22px rgba(0,0,0,.8); }
-  .qr .bank { color: var(--muted); font-size: 14px; margin-top: 8px; }
-  .pay-note { white-space: pre-wrap; text-align: left; color: #fff; }
-  .timer { font-family: ui-monospace, monospace; font-size: 28px; font-weight: 700; color: var(--warn); text-align: center; margin: 14px 0; }
-  .form-row { margin: 0 0 14px; } .form-row label { display: block; color: var(--muted); font-size: 12px; font-weight: 650; margin: 0 0 6px; }
-  .form-row { text-align: left; }
-  .form-row input { width: 100%; min-height: 46px; padding: 10px 12px; color: #fff; background: rgba(161,206,204,.05); border: 1px solid var(--line); border-radius: 12px; font-size: 16px; }
-  .form-row input:focus { outline: 3px solid color-mix(in srgb, var(--brand) 30%, transparent); outline-offset: 1px; border-color: color-mix(in srgb, var(--brand) 70%, white); }
-  .msg { color: var(--warn); margin: 12px 0; }
+  @media (prefers-color-scheme: light) {
+    :root {
+      color-scheme: light;
+      --bg: #fafafa; --surface: #ffffff; --sunken: #f4f4f5;
+      --ink: #09090b; --ink-soft: #3f3f46; --ink-mute: #52525b;
+      --line: rgba(9, 9, 11, .10); --edge: #71717a;
+      --accent: #0e7490; --accent-text: #0e7490; --on-accent: #ffffff; --accent-soft: rgba(14, 116, 144, .09);
+      --ok: #047857; --ok-soft: rgba(4, 120, 87, .10);
+      --warn: #92400e; --warn-soft: rgba(146, 64, 14, .09);
+      --bad: #b91c1c; --bad-soft: rgba(185, 28, 28, .08);
+    }
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; min-height: 100vh; min-height: 100svh; color: var(--ink); background: var(--bg); font: 16px/1.5 var(--font); -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+  /* Burmese stacks vowels and marks above and below the line: 1.75 for text, 1.6 for headings. */
+  :lang(my) body, :lang(my) .btn, :lang(my) input { line-height: 1.75; }
+  h1, h2, h3, p { margin: 0; }
+  h1, h2, h3 { font-weight: 650; letter-spacing: -.025em; line-height: 1.15; text-wrap: balance; }
+  :lang(my) h1, :lang(my) h2, :lang(my) h3 { line-height: 1.6; letter-spacing: 0; }
+  h1 { font-size: 1.75rem; }
+  h3 { font-size: 1.05rem; }
+  .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; letter-spacing: 0; }
+  button, input { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+  /* The screen is the panel on a phone; on wider screens it becomes one hairline panel. */
+  .guest { max-width: 440px; margin: 0 auto; padding: calc(72px + env(safe-area-inset-top)) 20px calc(32px + env(safe-area-inset-bottom)); display: grid; gap: 20px; align-content: start; }
+  @media (min-width: 600px) {
+    .guest { margin-top: 48px; margin-bottom: 48px; padding: 32px; border: 1px solid var(--line); border-radius: 8px; background: color-mix(in srgb, var(--tint) 6%, var(--surface)); }
+  }
+  .guest > * { min-width: 0; }
+  .head { display: grid; gap: 6px; }
+  .biz { color: var(--ink-soft); font-size: .95rem; font-weight: 600; overflow-wrap: anywhere; }
+  .welcome { color: var(--ink-soft); }
+
+  /* Language and preview chrome */
+  .lang { position: fixed; top: calc(12px + env(safe-area-inset-top)); right: 16px; z-index: 2; min-height: 44px; display: inline-flex; align-items: center; padding: 0 14px; border: 1px solid var(--edge); border-radius: 6px; background: var(--surface); color: var(--ink); font-weight: 600; font-size: .9rem; cursor: pointer; }
+  .lang[aria-disabled="true"] { opacity: .6; cursor: not-allowed; }
+  .pv-badge { position: fixed; top: calc(12px + env(safe-area-inset-top)); left: 16px; z-index: 2; min-height: 32px; display: inline-flex; align-items: center; padding: 0 10px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); color: var(--ink-mute); font: 600 .75rem var(--mono); }
+  .pv-sample-note { color: var(--ink-mute); font-size: .85rem; }
+
+  /* Progress through a real sequence: choose, pay, confirm. */
+  .flow { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .flow li { padding-top: 8px; border-top: 3px solid var(--line); color: var(--ink-mute); font-size: .85rem; font-weight: 600; }
+  .flow li[aria-current="step"] { border-top-color: var(--accent); color: var(--ink); }
+  .flow li.done { border-top-color: var(--ok); color: var(--ink-soft); }
+
+  /* Buttons */
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 52px; padding: 0 20px; border-radius: 6px; border: 1px solid color-mix(in srgb, var(--brand) 70%, var(--ink)); background: var(--brand); color: var(--brand-ink); font-weight: 650; font-size: 1rem; text-decoration: none; cursor: pointer; transition: filter .12s, transform .12s; }
+  .btn:hover { filter: brightness(1.1); }
+  .btn:active { transform: translateY(1px); }
+  .btn:disabled, .btn[aria-disabled="true"] { opacity: .6; cursor: not-allowed; transform: none; filter: none; }
+  .btn-secondary { background: transparent; color: var(--ink); border-color: var(--edge); }
+  .btn-secondary:hover { filter: none; background: var(--accent-soft); }
+  .btn-quiet { width: auto; min-height: 44px; padding: 0 14px; font-size: .9rem; background: transparent; color: var(--accent-text); border-color: var(--edge); }
+
+  /* Voucher: the code field is the hero. */
+  .voucher-login { display: grid; gap: 12px; }
+  .voucher-help { color: var(--ink-soft); font-size: .95rem; }
+  .voucher-row { display: grid; gap: 10px; }
+  .code-input, .voucher-row input { width: 100%; min-height: 60px; padding: 0 16px; border: 1px solid var(--edge); border-radius: 6px; background: var(--sunken); color: var(--ink); font: 600 1.4rem var(--mono); letter-spacing: .14em; text-transform: uppercase; }
+  .voucher-row input::placeholder { color: var(--ink-mute); letter-spacing: .3em; }
+  .voucher-row input:focus, .field input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 0 0 4px var(--accent-soft); }
+  .voucher-msg { min-height: 1.5em; font-size: .92rem; }
+  .portal-nav { display: grid; gap: 8px; padding-top: 16px; border-top: 1px solid var(--line); }
+  .portal-nav-note { color: var(--ink-mute); font-size: .85rem; }
+
+  /* Plans: ruled rows, name and speed on the left, price on the right. */
+  .plan-list { display: grid; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--surface); }
+  .plan { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; width: 100%; min-height: 64px; padding: 12px 16px; text-align: left; color: var(--ink); background: transparent; border: 0; border-bottom: 1px solid var(--line); cursor: pointer; }
+  .plan:last-child { border-bottom: 0; }
+  .plan:hover, .plan:focus-visible { background: var(--accent-soft); outline-offset: -2px; }
+  .plan .nm { font-weight: 650; overflow-wrap: anywhere; }
+  .plan .sub { display: block; margin-top: 2px; color: var(--ink-mute); font: 500 .8rem var(--mono); }
+  .plan .amt { font: 600 1.1rem var(--mono); white-space: nowrap; }
+  .plan .amt small { color: var(--ink-mute); font-size: .72rem; font-weight: 500; }
+
+  /* Payment */
+  .due { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+  .due span { color: var(--ink-soft); font-weight: 600; }
+  .due b { font: 600 1.6rem var(--mono); letter-spacing: -.02em; }
+  .due b small { color: var(--ink-mute); font-size: .8rem; font-weight: 500; }
+  .qr { display: grid; justify-items: center; gap: 10px; }
+  .qr img { width: 208px; height: 208px; padding: 8px; background: #fff; border: 1px solid var(--line); border-radius: 8px; }
+  .bank-rows { display: grid; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+  .bank-rows > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "l b" "v b"; column-gap: 12px; row-gap: 2px; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+  .bank-rows > div:last-child { border-bottom: 0; }
+  .bank-rows dt { grid-area: l; color: var(--ink-mute); font-size: .85rem; }
+  .bank-rows dd { grid-area: v; margin: 0; font-size: 1.05rem; font-weight: 600; overflow-wrap: anywhere; }
+  .bank-rows > div > :last-child { grid-area: b; }
+  .pay-note, .grace-note { padding: 12px 14px; border: 1px solid var(--line); border-radius: 6px; background: var(--sunken); color: var(--ink-soft); font-size: .92rem; }
+  .pay-note { white-space: pre-wrap; }
+  .grace { display: grid; gap: 6px; padding: 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--warn-soft); }
+  .timer { color: var(--warn); font: 600 1.9rem var(--mono); letter-spacing: 0; }
+  .field { display: grid; gap: 6px; }
+  .field label, .field .lbl { color: var(--ink-soft); font-size: .9rem; font-weight: 600; }
+  .field input[type="text"], .field input[type="tel"], .field input[type="search"], .field input:not([type]) { width: 100%; min-height: 52px; padding: 0 14px; border: 1px solid var(--edge); border-radius: 6px; background: var(--sunken); color: var(--ink); font-size: 1rem; }
+  .field input.mono { font-family: var(--mono); font-size: 1.1rem; letter-spacing: .1em; }
+  .mute { color: var(--ink-mute); font-size: .9rem; font-weight: 600; }
+  .file { position: relative; display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 0 14px; border: 1px dashed var(--edge); border-radius: 6px; color: var(--ink-soft); cursor: pointer; overflow-wrap: anywhere; }
+  .file:hover { background: var(--accent-soft); }
+  .file:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .file input { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
+  .file svg { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+  /* Messages */
+  .msg { color: var(--warn); }
   .ok { color: var(--ok); }
-  .terms { color: var(--faint); font-size: 12px; margin: 18px 0 0; border-top: 1px solid var(--line-soft); padding-top: 12px; }
-  .lang { position: fixed; top: 16px; right: 18px; z-index: 2; color: #fff; background: rgba(3,22,26,.5); border: 1px solid var(--line); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); border-radius: 999px; padding: 8px 13px; cursor: pointer; font-size: 12px; font-weight: 650; box-shadow: 0 8px 24px rgba(0,0,0,.22); }
-  /* Preview chrome: makes it unmistakable that this is not a live hotspot, and
-     that its actions are inert. */
-  .pv-badge { position: fixed; top: 12px; left: 14px; color: #fff; background: rgba(3,22,26,.55); border: 1px solid var(--line); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); border-radius: 999px; padding: 6px 11px; font-size: 11px; font-weight: 700; letter-spacing: .08em; }
-  .pv-sample-note { margin: 0 0 14px; color: var(--muted); font-size: 12px; }
-  @media (max-width: 600px) {
-    body { padding: 64px 14px 24px; }
-    .guest { min-height: 0; margin: 0 auto; padding: 108px 20px 28px; border-radius: 29px; }
-    .lang { top: 13px; right: 14px; }
-    .voucher-row { grid-template-columns: 1fr; }
-    .voucher-row .btn { width: 100%; }
-  }
-  
-  /* Guest media panel. Shown only after a voucher is accepted and only when the
-     owner configured a media server. Tap targets stay >=44px for iOS. */
-  .mm-media { margin-top: 28px; text-align: left; }
-  .mm-media-title { font-size: 1.1rem; margin: 0 0 4px; }
-  .mm-media-sub { font-size: .82rem; opacity: .75; margin: 0 0 14px; }
-  .mm-media-grid {
-    display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
-    gap: 12px; margin-bottom: 16px;
-  }
+  .terms { margin-top: 4px; padding-top: 12px; border-top: 1px solid var(--line); color: var(--ink-mute); font-size: .85rem; }
+  label.terms { display: flex; align-items: flex-start; gap: 10px; min-height: 44px; }
+  label.terms input { width: 22px; height: 22px; flex: none; margin: 0; accent-color: var(--accent); }
+
+  /* Active pass: shown only after the gateway confirms the voucher. */
+  .pass { display: grid; gap: 14px; animation: pass-in .3s cubic-bezier(.22, 1, .36, 1) both; }
+  .pass-state { display: inline-flex; align-items: center; gap: 8px; justify-self: start; min-height: 28px; padding: 0 10px; border-radius: 4px; background: var(--ok-soft); color: var(--ok); font-size: .85rem; font-weight: 650; }
+  .pass-state i { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+  .pass-clock { display: grid; gap: 2px; padding: 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+  .pass-clock span { color: var(--ink-soft); font-size: .9rem; font-weight: 600; }
+  .pass-clock b { font: 600 2.2rem var(--mono); letter-spacing: -.02em; }
+  .pass-rows { display: grid; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); margin: 0; }
+  .pass-rows > div { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+  .pass-rows > div:last-child { border-bottom: 0; }
+  .pass-rows dt { color: var(--ink-mute); font-size: .9rem; }
+  .pass-rows dd { margin: 0; font: 500 .9rem var(--mono); text-align: right; overflow-wrap: anywhere; }
+  @keyframes pass-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+
+  /* Guest media panel. Shown only after a voucher is accepted and only when the owner configured a media server.
+     Tap targets stay >=44px for iOS. */
+  .mm-media { margin-top: 12px; display: grid; gap: 8px; text-align: left; }
+  .mm-media-title { font-size: 1.1rem; }
+  .mm-media-sub { font-size: .85rem; color: var(--ink-mute); }
+  .mm-media-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 12px; margin-bottom: 8px; }
   .mm-media-grid:empty { display: none; }
   .mm-media-card { margin: 0; }
-  .mm-media-img {
-    display: block; width: 100%; aspect-ratio: 2 / 3; object-fit: cover;
-    border-radius: var(--radius-sm, 8px); background: rgba(255,255,255,.08);
-  }
-  .mm-media-img-empty { border: 1px solid rgba(255,255,255,.12); }
-  .mm-media-card figcaption {
-    font-size: .74rem; line-height: 1.3; margin-top: 6px;
-  }
-  /* Title stays on one line; the caption wraps beneath it. */
-  .mm-media-card figcaption > :first-child {
-    display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  }
-  .mm-media-cap { display: block; font-size: .68rem; opacity: .68; margin-top: 2px; }
-  .btn.mm-media-open {
-    display: inline-flex; align-items: center; justify-content: center;
-    min-height: 44px; padding: 0 18px; text-decoration: none;
-  }
-  .mm-media-note { display: block; font-size: .76rem; opacity: .7; margin-top: 8px; }
+  .mm-media-img { display: block; width: 100%; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 6px; background: var(--sunken); }
+  .mm-media-img-empty { border: 1px solid var(--line); }
+  .mm-media-card figcaption { font-size: .78rem; line-height: 1.3; margin-top: 6px; }
+  .mm-media-card figcaption > :first-child { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mm-media-cap { display: block; font-size: .72rem; color: var(--ink-mute); margin-top: 2px; }
+  .btn.mm-media-open { min-height: 48px; }
+  .mm-media-note { display: block; font-size: .8rem; color: var(--ink-mute); }
 </style>
 </head>
 <body>
