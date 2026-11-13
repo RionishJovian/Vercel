@@ -147,6 +147,8 @@
 .wiz-list { margin: 0; padding-left: 1.25rem; display: grid; gap: 4px; }
 .wiz h3:focus { outline: none; }
 .port-panel { position: relative; width: 100%; max-width: 560px; margin-inline: auto; }
+.port-panel-scroll { min-width: 0; max-width: 100%; overflow-x: auto; padding: 8px; }
+.port-panel-wrap { min-width: 0; }
 .port-panel.portrait { max-width: 184px; }
 .home-port-grid { display: grid; gap: 16px; }
 .home-port-grid:has(.port-panel-wrap) { grid-template-columns: minmax(0, 1fr); }
