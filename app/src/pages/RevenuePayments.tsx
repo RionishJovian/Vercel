@@ -54,7 +54,7 @@ export function RevenuePayments({ canDecide }: { canDecide: boolean }) {
           </section>
           <section className="glass pad stack"><h3>{t("rp.funnel")}</h3>
             {([["rp.submitted", s.total], ["rp.approved", s.approved], ["rp.pending", s.pending], ["rp.rejected", s.rejected]] as const).map(([l, v]) => <div className="row small" key={l}><span>{t(l)}</span><b className="num">{v}</b></div>)}
-            <p className="soft small">{s.total ? `${t("rp.rate")}: ${Math.round((s.approved / s.total) * 100)}% · ${t("rp.manual")}` : lang === "my" ? "ငွေပေးချေမှု တောင်းဆိုချက်မရှိသေးပါ — အတည်ပြုနှုန်း မသတ်မှတ်နိုင်သေးပါ။" : "No payment requests yet — approval rate is not applicable."}</p>
+            <p className="soft small tnum">{s.total ? `${t("rp.rate")}: ${Math.round((s.approved / s.total) * 100)}% · ${t("rp.manual")}` : lang === "my" ? "ငွေပေးချေမှု တောင်းဆိုချက်မရှိသေးပါ — အတည်ပြုနှုန်း မသတ်မှတ်နိုင်သေးပါ။" : "No payment requests yet — approval rate is not applicable."}</p>
           </section>
           <section className="glass pad stack"><h3>{t("rp.plans")}</h3>
             {!s.plans.length ? <p className="soft small">{t("rp.noPlans")}</p> : s.plans.map((p) => <div className="row small" key={p.key}><b className="mono">{p.key}</b><span className="soft num">{p.requests} / {p.approved} ({p.requests ? Math.round((p.approved / p.requests) * 100) : 0}%)</span><b className="num">{mmk(p.revenue)}</b></div>)}
@@ -69,7 +69,7 @@ export function RevenuePayments({ canDecide }: { canDecide: boolean }) {
           return (
             <article className="glass pad stack" key={r.id}>
               <div className="row"><b className="num">{mmk(Number(r.amount || 0))} MMK</b><span className={"chip " + (state === "approved" ? "ok" : state === "rejected" ? "bad" : "warn")}>{t("st.status." + (["pending", "approved", "rejected"].includes(state) ? state : "pending"))}</span></div>
-              <p className="soft small">{r.plan_key || "—"} · {r.created_at ? new Date(r.created_at).toLocaleString() : ""}</p><p className="small mono">{ref}</p>
+              <p className="soft small num">{r.plan_key || "—"} · {r.created_at ? new Date(r.created_at).toLocaleString() : ""}</p><p className="small mono">{ref}</p>
               {state === "pending" && (canDecide ? <div className="row" style={{ justifyContent: "flex-start" }}><button className="pill on" type="button" disabled={!!busy} onClick={() => void decide(r.id, "approve")}>{t("pf.approve")}</button><button className="pill danger" type="button" disabled={!!busy} onClick={() => void decide(r.id, "reject")}>{t("pr.reject")}</button></div> : <span className="soft small">{t("rp.readOnly")}</span>)}
             </article>
           );

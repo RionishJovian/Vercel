@@ -142,7 +142,7 @@ function PppoeCard({ gateways }: { gateways: ReturnType<typeof useRouters>["gate
             <Metric label={t("isp.suspended")} value={s ? mmk(s.suspended) : null} tone={s && s.suspended ? "warn" : undefined} />
             <Metric label={t("isp.paidToday")} value={report.data && num(report.data.today_mmk) !== null ? `${mmk(report.data.today_mmk)} ${t("c.mmk")}` : null} sub={t("isp.recorded")} />
           </div>
-          {s?.failed.length ? <p className="note warn small">{t("isp.partial").replace("{n}", String(s.failed.length))}</p> : null}
+          {s?.failed.length ? <p className="note warn small tnum">{t("isp.partial").replace("{n}", String(s.failed.length))}</p> : null}
           {s?.newestObservation ? <Ago at={s.newestObservation} prefix={t("ws.reported")} /> : null}
         </>
       )}

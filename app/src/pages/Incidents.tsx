@@ -54,7 +54,7 @@ export function Incidents({ me }: { me: Me }) {
         <div className="stack">
           {list.map((i) => (
             <article className="glass pad stack" key={i.id} data-tone={tone(i.severity) || undefined}>
-              <div className="row"><IconTile name="alert" tone={tone(i.severity)} /><span className={"chip " + tone(i.severity)}>{i.severity || "info"}</span><span className="soft small">{i.opened_at ? new Date(i.opened_at).toLocaleString() : ""}</span></div>
+              <div className="row"><IconTile name="alert" tone={tone(i.severity)} /><span className={"chip " + tone(i.severity)}>{i.severity || "info"}</span><span className="soft small num">{i.opened_at ? new Date(i.opened_at).toLocaleString() : ""}</span></div>
               <b>{i.subject_label || i.subject_id || "—"}</b>
               <p className="soft small num">{i.kind}</p>
               {i.detail && <p className="small">{i.detail.replace(/\s+/g, " ").slice(0, 160)}</p>}

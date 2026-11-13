@@ -158,13 +158,13 @@ export function CAPsMANInventoryPanel({ id, siteId, canReview }: { id: string; s
       {ready.view.controllers.map((controller) => <div className="stack" key={controller.family}>
         <h3>{controller.family === "modern" ? "Modern WiFi CAPsMAN" : "Legacy CAPsMAN"}</h3>
         {!controller.inventory_available ? <Note kind="warn">{my ? "Controller စာရင်းဖတ်မရပါ" : "CAP inventory unavailable — AP count unknown."}</Note> :
-          <p className="soft small">{controller.caps?.length ?? 0} {my ? "CAP စာရင်းမှတ်တမ်း" : "CAP records reported"} · {controller.radio_inventory_available
+          <p className="soft small num">{controller.caps?.length ?? 0} {my ? "CAP စာရင်းမှတ်တမ်း" : "CAP records reported"} · {controller.radio_inventory_available
             ? (my ? "Radio စာရင်းရရှိ" : "Radio inventory readable")
             : (my ? "Radio စာရင်းဖတ်မရ" : "Radio inventory unavailable")}</p>}
         {controller.inventory_available && (controller.caps ?? []).map((cap, index) =>
           <div className="note stack" key={cap.identity || String(index)}>
             <b>{cap.identity || (my ? "CAP အမည်မသိ" : "Unnamed CAP")}</b>
-            <p className="soft small">{cap.address || "—"} · {cap.state_known ? cap.state : (my ? "အခြေအနေမသိ" : "State unknown")}</p>
+            <p className="soft small num">{cap.address || "—"} · {cap.state_known ? cap.state : (my ? "အခြေအနေမသိ" : "State unknown")}</p>
             <p className="soft small">{my ? "အွန်လိုင်းအတည်ပြုချက်မရှိ · SSID အတည်ပြုချက်မရှိ" : "Online unverified · Broadcast SSID unverified"}</p>
           </div>)}
       </div>)}

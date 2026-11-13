@@ -12,8 +12,8 @@ export function BroadbandRevenue() {
   {error && <Note kind="warn"><p>{t("bb.reportFailed")}</p>{data && <p>{t("bb.savedReport")}</p>}</Note>}
   {!data && !error && <p>…</p>}
   {data && <>
-   <div className="row"><span>{t("bb.today")}: <b>{mmk(data.today_mmk)} {t("c.mmk")}</b></span><span>{t("bb.total")}: <b>{mmk(data.amount_mmk)} {t("c.mmk")}</b></span></div>
-   {data.pending_count > 0 && <p className="note warn">{t("bb.pending")}: {data.pending_count}</p>}
+   <div className="row"><span>{t("bb.today")}: <b className="num">{mmk(data.today_mmk)} {t("c.mmk")}</b></span><span>{t("bb.total")}: <b className="num">{mmk(data.amount_mmk)} {t("c.mmk")}</b></span></div>
+   {data.pending_count > 0 && <p className="note warn tnum">{t("bb.pending")}: {data.pending_count}</p>}
   </>}
  </section>;
 }

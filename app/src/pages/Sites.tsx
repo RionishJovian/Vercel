@@ -38,8 +38,8 @@ function SiteForm({ site, coords, setCoords, onDone, onCancel }: { site: Site | 
       <Field label={t("site.location")} htmlFor="s-loc"><input className="input" id="s-loc" name="location" placeholder={t("site.locationHint")} defaultValue={site?.location ?? ""} /></Field>
       <Field label={t("site.tz")} htmlFor="s-tz"><input className="input" id="s-tz" name="tz" defaultValue={site?.timezone ?? "Asia/Yangon"} /></Field>
       <div className="two">
-        <Field label={t("site.lat")} htmlFor="s-lat"><input className="input" id="s-lat" name="lat" type="number" step="any" min={-90} max={90} placeholder="16.866" value={coords.lat} onChange={(e) => setCoords({ ...coords, lat: e.target.value })} /></Field>
-        <Field label={t("site.lng")} htmlFor="s-lng"><input className="input" id="s-lng" name="lng" type="number" step="any" min={-180} max={180} placeholder="96.195" value={coords.lng} onChange={(e) => setCoords({ ...coords, lng: e.target.value })} /></Field>
+        <Field label={t("site.lat")} htmlFor="s-lat"><input className="input" id="s-lat" name="lat" type="number" inputMode="decimal" step="any" min={-90} max={90} placeholder="16.866" value={coords.lat} onChange={(e) => setCoords({ ...coords, lat: e.target.value })} /></Field>
+        <Field label={t("site.lng")} htmlFor="s-lng"><input className="input" id="s-lng" name="lng" type="number" inputMode="decimal" step="any" min={-180} max={180} placeholder="96.195" value={coords.lng} onChange={(e) => setCoords({ ...coords, lng: e.target.value })} /></Field>
       </div>
       <p className="soft small">{t("site.pinHelp")}</p>
       <div className="row" style={{ justifyContent: "flex-start" }}><button className="pill" type="button" onClick={() => setCoords({ lat: "", lng: "" })}>{t("site.clearPin")}</button>
