@@ -104,7 +104,7 @@ The owner asked for server-wide router read/write/edit/delete on 2026-11-06. The
 - **2026-11-13 (verified): PR #201 is live.** Merge `7f63fbf` was deployed by run 672. The 66 served `/app/assets` files match a local build byte for byte, and the 66 retained `/v2/assets` files match the pinned manifest. `/ready` is ok. The clean URLs and old-link redirects are in place. Image digests, rollback copy and the remaining gaps (no signed-in production session; live PPPoE gate value not readable without SSH) are in `docs/HANDOFF-PUBLIC-PAGES-URLS-20261112.md`, section "Production release verification". Rollback branch: `rollback/pre-public-pages-20261112` (`5931ed0`).
 
 - WebFig Cloud Access has never signed in to a real router. AGENTS section 4 (2026-10-22) bars embedded third-party dashboards and separate logins; the owner has not yet recorded whether WebFig, in its own tab with the router's own login, is an accepted exception.
-- Real-router results and open bugs: `docs/HARDWARE-TRIAL-RESULTS-20261106.md`. The owner's hAP ax2 is no longer at factory settings.
+- Real-router results and open bugs: `docs/HARDWARE-TRIAL-RESULTS-20261106.md` and `docs/HARDWARE-TRIAL-RESULTS-20261107.md`. The owner's hAP ax2 is no longer at factory settings.
 
 - `/Users/aces/AGENTS.md` (workspace file outside this repo) still names the Hostinger host and `ssh mikromagic-hostinger`; it is out of date and not changed here.
 - Dependabot PRs 91, 92, 93 (Vite, `@vitejs/plugin-react`, TypeScript 7) fail `npm ci` on peer-dependency conflicts; PR 87 (Go modules) needs a rebase onto the `ENVIRONMENT` binding fix. PR 45 says it needs a router test before deploy. Each now deploys on merge.
