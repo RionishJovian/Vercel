@@ -31,6 +31,7 @@ export function Detail({ id, router, canReview }: { id: string; router?: RouterR
   return (
     <>
       <h1>{router?.hardware_name || id}</h1>
+      {router?.device_model && <p className="rc-model">{router.device_model}</p>}
       {/* Outside the loading/error branches so a restart (when telemetry briefly fails) does not close it. */}
       <FirmwareUpgrade id={id} fw={snap?.firmware ?? undefined} onDone={() => void mutate()} />
       {isLoading ? <Skeleton h={300} /> : error || !snap ? (
@@ -39,6 +40,7 @@ export function Detail({ id, router, canReview }: { id: string; router?: RouterR
         <>
           <section className="glass pad stack">
             <div className="row"><h2>{t("r.health")}</h2><span className={"chip " + (tele?.state === "live" || tele?.state === "syncing" ? "ok" : "warn")}>{tele?.state || "—"}</span></div>
+            <div className="kv-list">
             <Kv k={t("r.board")} v={(r.board_name || "—") + (r.routeros_version ? " " + r.routeros_version : "")} />
             <Kv k="CPU" v={pct(r.cpu_percent)} />
             <Kv k={t("r.memory")} v={`${mb(r.memory_used_bytes)} / ${mb(r.memory_total_bytes)}`} />
@@ -48,6 +50,7 @@ export function Detail({ id, router, canReview }: { id: string; router?: RouterR
             {firmwareText(snap.firmware ?? undefined, words) && <Kv k={t("r.firmware")} v={firmwareText(snap.firmware ?? undefined, words)} />}
             <Kv k={t("r.guests")} v={snap.hotspot_sessions == null ? "—" : String(snap.hotspot_sessions)} />
             <Kv k={t("r.leases")} v={snap.dhcp_bound_leases == null ? "—" : String(snap.dhcp_bound_leases)} />
+            </div>
           </section>
           <section className="glass pad stack" aria-label={lang === "my" ? "Router ပြင်ဆင်မှုများ" : "Router configuration"}>
             <h2>{lang === "my" ? "Router ပြင်ဆင်မှုများ" : "Router configuration"}</h2>

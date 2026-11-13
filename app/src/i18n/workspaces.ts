@@ -2,6 +2,7 @@
 // Burmese is a first draft for native-speaker review, like the other string files.
 const workspaces = {
   en: {
+    "tel.codeRule": "Codes are 8 characters. I, L, O and U are never used.", "tel.sum": "Creates", "tel.codes": "codes", "tel.last": "Last signal", "tel.coords": "Coordinates", "tel.tz": "Time zone", 
     "nav.main": "Main", "nav.skip": "Skip to content", "nav.home": "Home", "nav.network": "Network", "nav.vouchers": "Vouchers", "nav.activity": "Activity", "nav.more": "More",
     "nav.setup": "Quick setup", "nav.hotspot": "Hotspot", "nav.isp": "PPPoE ISP", "nav.customers": "Customers", "nav.topology": "Topology", "nav.devices": "Managed devices",
     "nav.approvals": "Changes & approvals", "nav.alerts": "Alerts", "nav.revenue": "Revenue", "nav.settings": "Settings & more",
@@ -77,6 +78,7 @@ const workspaces = {
     "cfg.rollback": "Backups and rollback", "cfg.rollbackHelp": "Take a backup or restore an earlier one.", "cfg.recent": "Recent change record", "cfg.recentUnavailable": "The change record could not be read.", "cfg.noChanges": "No changes recorded yet.", "cfg.change": "Change",
   },
   my: {
+    "tel.codeRule": "ကုဒ်တစ်ခုတွင် စာလုံး ၈ လုံးရှိသည်။ I, L, O, U ကို မသုံးပါ။", "tel.sum": "ဖန်တီးမည်", "tel.codes": "ကုဒ်", "tel.last": "နောက်ဆုံး signal", "tel.coords": "တည်နေရာ ကိုဩဒိနိတ်", "tel.tz": "အချိန်ဇုန်", 
     "nav.main": "ပင်မ", "nav.skip": "အကြောင်းအရာသို့ ကျော်ရန်", "nav.home": "ပင်မ", "nav.network": "ကွန်ရက်", "nav.vouchers": "ဗောက်ချာ", "nav.activity": "လှုပ်ရှားမှု", "nav.more": "နောက်ထပ်",
     "nav.setup": "အမြန်စတင်", "nav.hotspot": "Hotspot", "nav.isp": "PPPoE ISP", "nav.customers": "ဖောက်သည်များ", "nav.topology": "ကွန်ရက်ပုံ", "nav.devices": "စီမံသော စက်များ",
     "nav.approvals": "ပြောင်းလဲမှုနှင့် အတည်ပြုချက်", "nav.alerts": "သတိပေးချက်", "nav.revenue": "ဝင်ငွေ", "nav.settings": "ဆက်တင်နှင့် အခြား",

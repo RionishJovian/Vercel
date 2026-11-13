@@ -7,6 +7,7 @@ import "./styles/tokens.css";
 import "./styles/base.css";
 import "./styles/shell.css";
 import "./styles/pages.css";
+import "./styles/telemetry.css";
 import "./styles/signin.css";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
