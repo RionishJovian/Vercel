@@ -55,9 +55,13 @@ const page = (lang, theme) => `<!doctype html><html data-theme="${theme}" lang="
 <div class="dt-filters"><button class="dt-filter" id="flt">အားလုံး</button></div><div class="dt-pager"><div class="dt-pages"><button class="dt-page" id="pg">1</button></div></div></div>
 </body></html>`;
 
+const LANGS = new Set(['en', 'my']);
+const THEMES = new Set(['night', 'day']);
 let current = page('en', 'night');
 const server = createServer(async (req, res) => { const u = new URL(req.url, 'http://x');
-  if (u.pathname.startsWith('/fonts/')) { try { res.writeHead(200, {'Content-Type': 'font/woff2'}); res.end(await readFile(new URL(`../web/assets/fonts/${u.pathname.slice(7).replace(/[^a-zA-Z0-9._-]/g, '')}`, import.meta.url))); } catch { res.writeHead(404); res.end(); } return; } current = page(u.searchParams.get('lang') ?? 'en', u.searchParams.get('theme') ?? 'night'); res.writeHead(200, {'Content-Type': 'text/html'}); res.end(current); });
+  if (u.pathname.startsWith('/fonts/')) { try { res.writeHead(200, {'Content-Type': 'font/woff2'}); res.end(await readFile(new URL(`../web/assets/fonts/${u.pathname.slice(7).replace(/[^a-zA-Z0-9._-]/g, '')}`, import.meta.url))); } catch { res.writeHead(404); res.end(); } return; } const lang = LANGS.has(u.searchParams.get('lang')) ? u.searchParams.get('lang') : 'en'; // Only known values reach the markup.
+  const theme = THEMES.has(u.searchParams.get('theme')) ? u.searchParams.get('theme') : 'night';
+  current = page(lang, theme); res.writeHead(200, {'Content-Type': 'text/html'}); res.end(current); });
 const wait = async (fn, label, ms = 12000) => { const end = Date.now() + ms; while (Date.now() < end) { if (await fn()) return; await new Promise((r) => setTimeout(r, 50)); } throw new Error('timeout: ' + label); };
 let browser, profile, ws;
 try {
