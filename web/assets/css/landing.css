@@ -87,8 +87,8 @@ img, svg { display: block; }
 .iconbtn svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 [data-theme="night"] .i-sun, [data-theme="day"] .i-moon, :root:not([data-theme]) .i-moon { display: none; }
 /* Segmented control, used for language and for Sign in / Create account. */
-.seg { display: inline-flex; padding: 3px; border-radius: 999px; border: 1px solid var(--line-strong); background: var(--sunken); }
-.seg button { min-height: 38px; min-width: 44px; padding: 0 14px; border: 0; border-radius: 999px; background: transparent; font-weight: 600; font-size: .875rem; color: var(--ink-soft); cursor: pointer; transition: background .16s, color .16s; }
+.seg { display: inline-flex; padding: 1px; border-radius: 999px; border: 1px solid var(--line-strong); background: var(--sunken); }
+.seg button { min-height: 44px; min-width: 44px; padding: 0 14px; border: 0; border-radius: 999px; background: transparent; font-weight: 600; font-size: .875rem; color: var(--ink-soft); cursor: pointer; transition: background .16s, color .16s; }
 .seg button:hover { color: var(--ink); }
 .seg button[aria-pressed="true"] { background: linear-gradient(180deg, var(--accent), var(--accent-deep)); color: var(--on-accent); }
 .nav .signin { display: none; }
@@ -184,3 +184,6 @@ footer.site a:hover { background: var(--accent-soft); color: var(--ink); }
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
   .rig-wait { visibility: hidden; }
 }
+
+/* Keep the brand link a 44 px target when the wordmark is hidden on narrow phones. */
+.brand { min-width: 44px; min-height: 44px; }

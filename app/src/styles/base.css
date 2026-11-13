@@ -115,3 +115,7 @@ button { cursor: pointer; }
   body.printing .print-root.thermal { display: block; }
   .print-root.thermal .card { border: 0; border-bottom: 1px dashed #000; border-radius: 0; padding: 3mm; text-align: center; }
 }
+
+/* Offline notice: an always-present live region; empty while online, so it takes no space. */
+.offline-slot:empty { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.view > .offline-slot { animation: none; }

@@ -18,8 +18,8 @@
 .wordmark { font-family: var(--font-display); font-weight: 650; font-size: 1.12rem; letter-spacing: -.02em; color: var(--ink); }
 .wordmark b { font-weight: 750; color: var(--jade); }
 .tools { display: flex; align-items: center; gap: 8px; }
-.seg { display: inline-flex; padding: 3px; border-radius: 999px; border: 1px solid var(--edge-soft); background: var(--glass-solid); }
-.seg button { min-height: 38px; min-width: 44px; padding: 0 12px; border: 0; border-radius: 999px; background: transparent; font-weight: 650; font-size: .875rem; color: var(--ink-soft); transition: background var(--t-fast), color var(--t-fast); }
+.seg { display: inline-flex; padding: 1px; border-radius: 999px; border: 1px solid var(--edge-soft); background: var(--glass-solid); }
+.seg button { min-height: 44px; min-width: 44px; padding: 0 12px; border: 0; border-radius: 999px; background: transparent; font-weight: 650; font-size: .875rem; color: var(--ink-soft); transition: background var(--t-fast), color var(--t-fast); }
 .seg button[aria-pressed="true"] { background: linear-gradient(180deg, var(--jade), var(--jade-deep)); color: var(--on-jade); }
 .view { max-width: var(--content-max); margin: 0 auto; display: flex; flex-direction: column; gap: 16px; padding-top: 8px; min-width: 0; }
 
@@ -57,3 +57,6 @@
 .iconbtn { width: 44px; height: 44px; flex: none; display: grid; place-items: center; border-radius: 50%; border: 1px solid var(--edge-soft); background: var(--glass-solid); color: var(--ink); }
 .iconbtn svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 @media (max-width: 359px) { .topbar .wordmark { display: none; } }
+
+/* Keep the brand link a 44 px target when the wordmark is hidden on narrow phones. */
+.brand { min-width: 44px; min-height: 44px; }
