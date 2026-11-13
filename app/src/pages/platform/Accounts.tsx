@@ -16,6 +16,7 @@ interface Acc {
 }
 interface Res { accounts?: Acc[]; total?: number; as_of?: string }
 const when = (v?: string) => (v ? new Date(v).toLocaleString() : "—");
+const Num = ({ children }: { children: React.ReactNode }) => <span className="num">{children}</span>;
 const n = (v: unknown) => (typeof v === "number" ? v.toLocaleString() : "—");
 
 function AccountCard({ a, onChanged }: { a: Acc; onChanged: () => void }) {
@@ -44,12 +45,12 @@ function AccountCard({ a, onChanged }: { a: Acc; onChanged: () => void }) {
     <article className="glass pad stack">
       <div className="row"><div className="who"><Avatar name={a.full_name || a.email} /><b style={{ overflowWrap: "anywhere" }}>{a.email}</b></div><span className={"chip " + (a.is_active ? "ok" : "bad")}>{a.is_active ? t("pa.enabled") : t("pa.disabledAcc")}</span></div>
       <p className="soft small">{a.full_name} · {a.user_role} · {a.company_name}</p>
-      <div className="row small"><span className={"chip " + tone}>{t("pa.presence." + (["online", "idle", "offline", "unobserved"].includes(a.presence ?? "") ? a.presence : "unobserved"))}</span><span className="soft">{t("pa.heartbeat")}: {when(a.last_seen_at)}</span></div>
-      <dl className="facts">
+      <div className="row small"><span className={"chip " + tone}>{t("pa.presence." + (["online", "idle", "offline", "unobserved"].includes(a.presence ?? "") ? a.presence : "unobserved"))}</span><span className="soft">{t("pa.heartbeat")}: <Num>{when(a.last_seen_at)}</Num></span></div>
+      <dl className="spec">
         <dt>{t("pa.pass")}</dt><dd>{t("pa.k." + (["monthly", "annual", "trial", "spark", "none"].includes(p.kind ?? "") ? p.kind : "none"))} · {t("ap.s." + (p.state ?? "unknown"))}</dd>
-        <dt>{t("ap.activation")}</dt><dd>{when(p.activated_at)}</dd><dt>{t("ap.expiry")}</dt><dd>{when(p.expires_at)}</dd>
-        {p.transition_expires_at && <><dt>{t("ap.transitionEnds")}</dt><dd>{when(p.transition_expires_at)}</dd></>}
-        <dt>{t("pa.routers")}</dt><dd>{n(l.router_count)} / {cap(l.router_limit)}</dd><dt>{t("pa.sites")}</dt><dd>{n(l.site_count)} / {cap(l.site_limit)}</dd>
+        <dt>{t("ap.activation")}</dt><dd className="num">{when(p.activated_at)}</dd><dt>{t("ap.expiry")}</dt><dd className="num">{when(p.expires_at)}</dd>
+        {p.transition_expires_at && <><dt>{t("ap.transitionEnds")}</dt><dd className="num">{when(p.transition_expires_at)}</dd></>}
+        <dt>{t("pa.routers")}</dt><dd className="num">{n(l.router_count)} / {cap(l.router_limit)}</dd><dt>{t("pa.sites")}</dt><dd className="num">{n(l.site_count)} / {cap(l.site_limit)}</dd>
         <dt>{t("pa.authLogin")}</dt><dd>{isDev ? t("pa.al.exempt") : a.operator_workspace ? t("pa.al.operator") : a.authorized_login === true ? t("pa.al.this") : a.primary_login_id ? t("pa.al.other") : t("pa.al.review")}</dd>
       </dl>
       {!p.activated_at && <p className="soft small">{t("pa.noPass")}</p>}
@@ -88,7 +89,7 @@ export function Accounts() {
     <>
       <p className="soft small">{t("pa.lead")} {data?.as_of ? `${t("pa.observed")} ${new Date(data.as_of).toLocaleString()}.` : ""}</p>
       <div className="stack">{list.map((a) => <AccountCard key={a.user_id} a={a} onChanged={() => void mutate()} />)}</div>
-      <div className="row"><button className="pill" type="button" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - 50))}>{t("ev.newer")}</button><span className="soft small">{total ? offset + 1 : 0}–{Math.min(offset + list.length, total)} / {total}</span><button className="pill" type="button" disabled={offset + list.length >= total} onClick={() => setOffset(offset + 50)}>{t("ev.older")}</button></div>
+      <div className="row"><button className="pill" type="button" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - 50))}>{t("ev.newer")}</button><span className="soft small"><span className="num">{total ? offset + 1 : 0}–{Math.min(offset + list.length, total)} / {total}</span></span><button className="pill" type="button" disabled={offset + list.length >= total} onClick={() => setOffset(offset + 50)}>{t("ev.older")}</button></div>
     </>
   );
 }

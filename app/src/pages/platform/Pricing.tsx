@@ -28,8 +28,8 @@ export function Pricing() {
   return (
     <form className="glass pad stack" onSubmit={save} key={JSON.stringify(p)}>
       <h2>{t("pp.title")}</h2><p className="soft small">{t("pp.lead")}</p>
-      <div className="two"><Field label={t("pp.ms")}><input className="input" name="ms" inputMode="numeric" defaultValue={p.monthly_standard_mmk ?? ""} /></Field><Field label={t("pp.as")}><input className="input" name="as" inputMode="numeric" defaultValue={p.annual_standard_mmk ?? ""} /></Field></div>
-      <div className="two"><Field label={t("pp.mp")}><input className="input" name="mp" inputMode="numeric" defaultValue={p.monthly_promo_mmk ?? ""} /></Field><Field label={t("pp.ap")}><input className="input" name="ap" inputMode="numeric" defaultValue={p.annual_promo_mmk ?? ""} /></Field></div>
+      <div className="two"><Field label={t("pp.ms")}><input className="input num" name="ms" inputMode="numeric" defaultValue={p.monthly_standard_mmk ?? ""} /></Field><Field label={t("pp.as")}><input className="input num" name="as" inputMode="numeric" defaultValue={p.annual_standard_mmk ?? ""} /></Field></div>
+      <div className="two"><Field label={t("pp.mp")}><input className="input num" name="mp" inputMode="numeric" defaultValue={p.monthly_promo_mmk ?? ""} /></Field><Field label={t("pp.ap")}><input className="input num" name="ap" inputMode="numeric" defaultValue={p.annual_promo_mmk ?? ""} /></Field></div>
       <div className="two"><Field label={t("pp.starts")}><input className="input" name="starts" type="date" defaultValue={p.starts_on ?? ""} /></Field><Field label={t("pp.ends")}><input className="input" name="ends" type="date" defaultValue={p.ends_on ?? ""} /></Field></div>
       <Field label={t("pp.label")}><input className="input" name="label" maxLength={120} defaultValue={p.label ?? ""} placeholder="Launch offer" /></Field>
       <label className="check"><span>{t("pp.active")}</span><input type="checkbox" name="active" defaultChecked={!!p.active} /></label>

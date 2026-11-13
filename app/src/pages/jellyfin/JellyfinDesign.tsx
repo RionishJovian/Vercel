@@ -16,7 +16,7 @@ function Picture({ label, value, onChange, onError }: { label: string; value: st
   return (
     <div className="stack">
       <label className="field"><span>{label}</span><input className="input" type="file" accept="image/jpeg,image/png,image/webp" onChange={async (e) => { const f = e.target.files?.[0]; e.target.value = ""; if (!f) return; try { onChange(await prepareImage(f)); } catch (err) { onError(errorText(err, t("jd.pictureFail"))); } }} /></label>
-      {value && <div className="row" style={{ justifyContent: "flex-start" }}><img src={value} alt="" width={64} height={64} style={{ objectFit: "cover", borderRadius: 10 }} /><button className="pill" type="button" onClick={() => onChange("")}>{t("jd.removePicture")}</button></div>}
+      {value && <div className="row" style={{ justifyContent: "flex-start" }}><img src={value} alt="" width={64} height={64} className="thumb" /><button className="pill" type="button" onClick={() => onChange("")}>{t("jd.removePicture")}</button></div>}
     </div>
   );
 }
@@ -146,12 +146,12 @@ export function JellyfinDesign({ me }: { me: Me }) {
         <Section title={t("jd.sales")}>
           <p className="soft small">{t("jd.salesHelp")}</p>
           <div className="two">
-            <Field label={t("jd.price")}><input className="input" type="number" min={1} max={1000000} step={1} inputMode="numeric" value={d.price} onChange={(e) => set({ price: e.target.value })} /></Field>
-            <Field label={t("jd.duration")}><input className="input" type="number" min={1} max={720} step={1} inputMode="numeric" value={d.duration} onChange={(e) => set({ duration: e.target.value })} /></Field>
+            <Field label={t("jd.price")}><input className="input num" type="number" min={1} max={1000000} step={1} inputMode="numeric" value={d.price} onChange={(e) => set({ price: e.target.value })} /></Field>
+            <Field label={t("jd.duration")}><input className="input num" type="number" min={1} max={720} step={1} inputMode="numeric" value={d.duration} onChange={(e) => set({ duration: e.target.value })} /></Field>
           </div>
           <SectionHead level={3} title={t("jd.payment")} help={t("jd.paymentHelp")} />
           <Field label={t("g.bank")}><input className="input" maxLength={100} value={pay.bank_name} onChange={(e) => setPay({ bank_name: e.target.value })} /></Field>
-          <Field label={t("g.acc")}><input className="input" maxLength={100} value={pay.bank_account} onChange={(e) => setPay({ bank_account: e.target.value })} /></Field>
+          <Field label={t("g.acc")}><input className="input num" maxLength={100} value={pay.bank_account} onChange={(e) => setPay({ bank_account: e.target.value })} /></Field>
           <Field label={t("g.holder")}><input className="input" maxLength={160} value={pay.bank_holder} onChange={(e) => setPay({ bank_holder: e.target.value })} /></Field>
           <Picture label={t("jd.mmqr")} value={pay.mmqr} onChange={(v) => setPay({ mmqr: v })} onError={pictureErr} />
         </Section>

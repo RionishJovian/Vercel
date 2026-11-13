@@ -19,7 +19,7 @@ function Pending({ r, onDone }: { r: PReq; onDone: () => void }) {
   return (
     <div className="stack rq">
       <div className="row"><b>{r.company_name || r.business_id}</b><span className="chip">{r.name_en}</span></div>
-      <div className="row small"><span className="soft num">{r.bank_reference}</span><span>{mmk(r.price_mmk)} {t("c.mmk")}</span></div>
+      <div className="row small"><span className="soft num">{r.bank_reference}</span><span><span className="num">{mmk(r.price_mmk)}</span> {t("c.mmk")}</span></div>
       <input className="input" maxLength={500} aria-label={t("pf.note")} placeholder={t("pf.note")} value={note} onChange={(e) => setNote(e.target.value)} />
       <div className="row" style={{ justifyContent: "flex-start" }}>
         <button className="pill on" type="button" disabled={busy} onClick={() => void decide("approve")}>{t("pf.approve")}</button>

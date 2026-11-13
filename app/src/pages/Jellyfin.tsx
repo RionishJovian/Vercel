@@ -12,6 +12,7 @@ const PARTS = ["dash", "vouchers", "guest"] as const;
 type Part = (typeof PARTS)[number];
 const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v.toLocaleString("en-US") : "—");
 const Kv = ({ k, v }: { k: string; v: string }) => <div className="row small"><span className="soft">{k}</span><b className="num">{v}</b></div>;
+const Ledger = ({ children }: { children: React.ReactNode }) => <div className="kv-list">{children}</div>;
 
 interface Job { state?: string; result?: Record<string, unknown>; error_code?: string }
 /** Queue one job and poll it until the owner's PC has answered (or about 60 s pass). */
@@ -51,13 +52,15 @@ function Live() {
       {state.kind === "ok" && (() => {
         const { d, libs } = state, c = d.counts ?? {};
         return (<>
-          <Kv k={t("j.server")} v={(d.server?.ServerName ?? "—") + (d.server?.Version ? " " + d.server.Version : "")} />
-          <Kv k={t("j.watching")} v={n(d.active_sessions)} />
-          <Kv k={t("j.movies")} v={n(c.MovieCount ?? c.movies)} />
-          <Kv k={t("j.series")} v={n(c.SeriesCount ?? c.series)} />
+          <Ledger>
+            <Kv k={t("j.server")} v={(d.server?.ServerName ?? "—") + (d.server?.Version ? " " + d.server.Version : "")} />
+            <Kv k={t("j.watching")} v={n(d.active_sessions)} />
+            <Kv k={t("j.movies")} v={n(c.MovieCount ?? c.movies)} />
+            <Kv k={t("j.series")} v={n(c.SeriesCount ?? c.series)} />
+          </Ledger>
           <h3>{t("j.libraries")}</h3>
           {!libs.length && <p className="soft">{t("j.noLibraries")}</p>}
-          {libs.map((l, i) => <div className="row" key={i}><span>{l.Name || "—"} <span className="chip">{l.CollectionType || "—"}</span></span><span className="soft small">{l.Locations?.[0] ?? ""}</span></div>)}
+          {libs.length > 0 && <div className="kv-list lib-list">{libs.map((l, i) => <div className="row" key={i}><span>{l.Name || "—"} <span className="chip">{l.CollectionType || "—"}</span></span><span className="mono lib-path">{l.Locations?.[0] ?? ""}</span></div>)}</div>}
           <button className="pill" type="button" disabled={scan === "busy" || scan === "done"} onClick={async () => {
             if (!window.confirm(t("j.scanConfirm"))) return;
             setScan("busy");
@@ -98,7 +101,7 @@ function Dashboard() {
       <section className="glass pad stack">
         <div className="link-hero"><span className={"medal" + (linked ? " on" : "")}><Icon name="play" /></span><div className="stack" style={{ gap: 6 }}><h2>{t("j.link")}</h2><span className={"chip " + (linked ? "ok" : "warn")}>{linked ? t("j.linked") : t("j.notLinked")}</span></div></div>
         {linked ? (<>
-          <Kv k={t("j.server")} v={c?.server_name ?? "—"} /><Kv k={t("j.lastSeen")} v={c?.last_seen_at ? new Date(c.last_seen_at).toLocaleString() : "—"} />
+          <Ledger><Kv k={t("j.server")} v={c?.server_name ?? "—"} /><Kv k={t("j.lastSeen")} v={c?.last_seen_at ? new Date(c.last_seen_at).toLocaleString() : "—"} /></Ledger>
           <button className="pill danger" type="button" onClick={async () => { if (!window.confirm(t("j.unlinkConfirm"))) return; try { await api.del("/media/connection"); } catch { /* shown on refresh */ } void mutate(); }}>{t("j.unlink")}</button>
         </>) : (<>
           <p className="soft">{t("j.pairHelp")}</p>
