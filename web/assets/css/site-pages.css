@@ -25,6 +25,8 @@
 .notice.warn { color: var(--warn); background: var(--warn-soft); border-color: transparent; }
 .promo { padding: 14px 18px; border-radius: var(--r-control); border: 1px solid var(--accent); background: var(--accent-soft); }
 p.small { font-size: .9rem; color: var(--ink-mute); }
+.atmo p.small { color: var(--ink-soft); }
+.page.tight { padding-block: clamp(32px, 6vw, 72px); }
 
 /* Sign in and create account: one hairline panel, left-aligned. */
 .auth { min-height: calc(100dvh - 60px); display: grid; place-items: center; padding-block: clamp(20px, 6vw, 56px) calc(24px + env(safe-area-inset-bottom)); }

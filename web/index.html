@@ -29,9 +29,20 @@
   <link rel="manifest" href="/site.webmanifest?v=20261113">
   <link rel="preload" as="font" type="font/woff2" crossorigin href="/assets/fonts/instrument-sans-latin-wght-normal-BbzFLZTg.woff2">
   <script src="/assets/js/index-theme.js"></script>
-  <link rel="stylesheet" href="/assets/css/landing.css?v=20261114">
+  <link rel="stylesheet" href="/assets/css/landing.css?v=20261114b">
 </head>
 <body>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+    <symbol id="i-router" viewBox="0 0 24 24"><rect x="3" y="12" width="18" height="7" rx="1.5"/><path d="M7 12V6M17 12V6M7 6h.01M17 6h.01M7 15.5h.01M10 15.5h.01M17 15.5h-3"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l7 3v5.5c0 4.4-2.9 7.9-7 9.5-4.1-1.6-7-5.1-7-9.5V6z"/><path d="M9 12l2 2 4-4"/></symbol>
+    <symbol id="i-voucher" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 9.5v5M9.5 9.5v5M12 9.5v5M14 9.5v5M17 9.5v5"/></symbol>
+    <symbol id="i-signal" viewBox="0 0 24 24"><path d="M4 9.5a11.5 11.5 0 0 1 16 0M7 12.6a7.2 7.2 0 0 1 10 0M9.8 15.6a3 3 0 0 1 4.4 0M12 18.8h.01"/></symbol>
+    <symbol id="i-wifi" viewBox="0 0 24 24"><path d="M2.5 9a14 14 0 0 1 19 0M5.5 12.3a9.5 9.5 0 0 1 13 0M8.6 15.4a5 5 0 0 1 6.8 0"/><circle cx="12" cy="18.6" r=".6"/></symbol>
+    <symbol id="i-server" viewBox="0 0 24 24"><rect x="3.5" y="4" width="17" height="6.5" rx="1.5"/><rect x="3.5" y="13.5" width="17" height="6.5" rx="1.5"/><path d="M7 7.25h.01M7 16.75h.01M12 7.25h5M12 16.75h5"/></symbol>
+    <symbol id="i-monitor" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="12" rx="1.5"/><path d="M8 20h8M12 16.5V20"/></symbol>
+    <symbol id="i-port" viewBox="0 0 24 24"><path d="M9 7V4.5h6V7"/><rect x="5" y="7" width="14" height="10" rx="1.5"/><path d="M9 17v3M12 17v3M15 17v3"/></symbol>
+    <symbol id="i-receipt" viewBox="0 0 24 24"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/></symbol>
+  </svg>
   <a class="skip" href="#main"><span lang="en">Skip to content</span><span lang="my">အကြောင်းအရာသို့ ကျော်မည်</span></a>
   <header class="nav">
     <div class="wrap">
@@ -50,55 +61,105 @@
   </header>
 
   <main id="main">
-    <section class="wrap hero">
-      <div>
-        <h1><span lang="en">Run your Wi‑Fi business from your phone</span><span lang="my">သင့် Wi-Fi လုပ်ငန်းကို ဖုန်းမှ စီမံပါ</span></h1>
-        <p class="lead"><span lang="en">MegaMagic connects to your MikroTik router through Magic Hub. Sell Hotspot vouchers, manage PPPoE subscribers and see what your network is doing, in English or Burmese.</span><span lang="my">MegaMagic သည် Magic Hub မှတစ်ဆင့် သင့် MikroTik router နှင့် ချိတ်ဆက်သည်။ Hotspot ဗောက်ချာ ရောင်းရန်၊ PPPoE အသုံးပြုသူ စီမံရန်နှင့် ကွန်ရက်အခြေအနေ ကြည့်ရန် မြန်မာ သို့မဟုတ် အင်္ဂလိပ်ဖြင့်။</span></p>
-        <div class="cta">
-          <a class="btn primary" href="/signin?register=1"><span lang="en">Create an account</span><span lang="my">အကောင့် ဖွင့်မည်</span></a>
-          <a class="btn" href="/signin"><span lang="en">Sign in</span><span lang="my">ဝင်မည်</span></a>
+    <section class="atmo atmo-teal first">
+      <div class="wrap hero">
+        <div>
+          <h1><span lang="en">Run your Wi‑Fi business from your phone</span><span lang="my">သင့် Wi-Fi လုပ်ငန်းကို ဖုန်းမှ စီမံပါ</span></h1>
+          <p class="lead"><span lang="en">MegaMagic connects to your MikroTik router through Magic Hub. Sell Hotspot vouchers, manage PPPoE subscribers and see what your network is doing, in English or Burmese.</span><span lang="my">MegaMagic သည် Magic Hub မှတစ်ဆင့် သင့် MikroTik router နှင့် ချိတ်ဆက်သည်။ Hotspot ဗောက်ချာ ရောင်းရန်၊ PPPoE အသုံးပြုသူ စီမံရန်နှင့် ကွန်ရက်အခြေအနေ ကြည့်ရန် မြန်မာ သို့မဟုတ် အင်္ဂလိပ်ဖြင့်။</span></p>
+          <div class="cta">
+            <a class="btn primary" href="/signin?register=1"><span lang="en">Create an account</span><span lang="my">အကောင့် ဖွင့်မည်</span></a>
+            <a class="btn bracket" href="#setup"><span lang="en">Setup guide</span><span lang="my">စတင်ပုံ လမ်းညွှန်</span></a>
+            <a class="btn bracket" href="/pricing"><span lang="en">Pricing</span><span lang="my">စျေးနှုန်း</span></a>
+          </div>
         </div>
-      </div>
-      <div class="card rig" role="img" aria-label="Sample router panel: a hAP ax² router connected through Magic Hub with a tunnel address and 240 Hotspot codes ready. Sample data.">
-        <div class="rig-bar" aria-hidden="true">
-          <span><span class="mono">hAP ax²</span> <span class="place">· <span lang="en">Yangon café</span><span lang="my">ရန်ကုန် ကော်ဖီဆိုင်</span></span></span>
-          <span class="rig-state">
-            <span class="rig-wait"><i></i><span lang="en">Waiting for router</span><span lang="my">router ကို စောင့်နေသည်</span></span>
-            <span class="rig-live"><i></i><span lang="en">Connected</span><span lang="my">ချိတ်ဆက်ပြီး</span></span>
-          </span>
+        <div>
+          <div class="showcase" role="img" aria-label="Sample screens, not a live router: the MegaMagic console for a hAP ax² router connected through Magic Hub with a tunnel address and 240 Hotspot codes ready, and a guest's phone showing the voucher login page.">
+            <div class="win" aria-hidden="true">
+              <div class="win-bar">
+                <span class="win-title"><span class="win-dots"><i></i><i></i><i></i></span><span class="mono">hAP ax²</span><span class="place">· <span lang="en">Yangon café</span><span lang="my">ရန်ကုန် ကော်ဖီဆိုင်</span></span></span>
+                <span class="rig-state">
+                  <span class="rig-wait"><i></i><span lang="en">Waiting for router</span><span lang="my">router ကို စောင့်နေသည်</span></span>
+                  <span class="rig-live"><i></i><span lang="en">Connected</span><span lang="my">ချိတ်ဆက်ပြီး</span></span>
+                </span>
+              </div>
+              <div class="win-body">
+                <ul class="win-rail"><li aria-current="true"><span lang="en">Overview</span><span lang="my">အနှစ်ချုပ်</span></li><li>Hotspot</li><li><span lang="en">Vouchers</span><span lang="my">ဗောက်ချာ</span></li><li>PPPoE</li><li><span lang="en">Topology</span><span lang="my">ကွန်ရက်ပုံ</span></li></ul>
+                <dl class="rig-rows">
+                  <div><dt><span lang="en">Tunnel address</span><span lang="my">Tunnel လိပ်စာ</span></dt><dd class="mono tunnel">10.99.0.14<b>/32</b></dd></div>
+                  <div><dt><span lang="en">Hotspot codes ready</span><span lang="my">ရောင်းရန်အသင့် ကုဒ်</span></dt><dd class="mono">240</dd></div>
+                  <div><dt><span lang="en">Next code</span><span lang="my">နောက်ကုဒ်</span></dt><dd class="mono">HKTMPQXZ</dd></div>
+                  <div><dt><span lang="en">PPPoE subscribers</span><span lang="my">PPPoE အသုံးပြုသူ</span></dt><dd class="mono">42</dd></div>
+                </dl>
+              </div>
+            </div>
+            <div class="phone" aria-hidden="true">
+              <div class="phone-screen">
+                <div class="phone-name"><span lang="en">Yangon café Wi‑Fi</span><span lang="my">ရန်ကုန် ကော်ဖီဆိုင် Wi-Fi</span></div>
+                <div class="phone-field mono">HKTMPQXZ</div>
+                <div class="phone-go"><span lang="en">Connect</span><span lang="my">ချိတ်ဆက်မည်</span></div>
+                <div class="phone-cap"><span lang="en">1 h · 1 GB voucher</span><span lang="my">၁ နာရီ · 1 GB ဗောက်ချာ</span></div>
+              </div>
+            </div>
+          </div>
+          <p class="rig-note"><span lang="en">Sample data, not a live router.</span><span lang="my">နမူနာ ဒေတာ၊ တကယ့် router မဟုတ်ပါ။</span></p>
         </div>
-        <dl class="rig-rows" aria-hidden="true">
-          <div><dt><span lang="en">Tunnel address</span><span lang="my">Tunnel လိပ်စာ</span></dt><dd class="mono tunnel">10.99.0.14/32</dd></div>
-          <div><dt><span lang="en">Hotspot codes ready</span><span lang="my">ရောင်းရန်အသင့် ကုဒ်</span></dt><dd class="mono">240</dd></div>
-          <div><dt><span lang="en">Next code</span><span lang="my">နောက်ကုဒ်</span></dt><dd class="mono">HKTMPQXZ · 1 h · 1 GB</dd></div>
-          <div><dt><span lang="en">PPPoE subscribers</span><span lang="my">PPPoE အသုံးပြုသူ</span></dt><dd class="mono">42</dd></div>
-        </dl>
-        <p class="rig-note"><span lang="en">Sample data, not a live router.</span><span lang="my">နမူနာ ဒေတာ၊ တကယ့် router မဟုတ်ပါ။</span></p>
       </div>
     </section>
 
-    <section class="wrap band" id="services" aria-labelledby="services-title">
-      <header>
-        <h2 id="services-title"><span lang="en">Hotspot and PPPoE, kept clearly apart</span><span lang="my">Hotspot နှင့် PPPoE ကို ရှင်းရှင်းလင်းလင်း ခွဲထားသည်</span></h2></header>
-      <div class="spec">
-        <article>
-          <h3><span class="tile-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 9.5a11.5 11.5 0 0 1 16 0M7 12.6a7.2 7.2 0 0 1 10 0M9.8 15.6a3 3 0 0 1 4.4 0M12 18.6h.01"/></svg></span>Hotspot</h3>
-          <p><span lang="en">Guests buy a voucher code and sign in on your router's login page.</span><span lang="my">ဧည့်သည်များ ဗောက်ချာကုဒ် ဝယ်ပြီး router ၏ ဝင်ရောက်စာမျက်နှာတွင် ဝင်သည်။</span></p>
-          <ul class="points">
-            <li><span lang="en">Create voucher plans by time, data and price, and print the codes</span><span lang="my">အချိန်၊ ဒေတာ၊ ဈေးနှုန်းအလိုက် ဗောက်ချာ ဖန်တီးပြီး ကုဒ်များကို ပုံနှိပ်</span></li>
-            <li><span lang="en">Design the guest login page in English or Burmese</span><span lang="my">ဧည့်သည် ဝင်ရောက်စာမျက်နှာကို မြန်မာ/အင်္ဂလိပ်ဖြင့် ဒီဇိုင်းဆွဲ</span></li>
-            <li><span lang="en">See live sessions; disconnect, block or unblock a guest</span><span lang="my">လက်ရှိချိတ်ဆက်မှု ကြည့်ရန်၊ ဖြုတ်ရန်၊ ပိတ်ရန်/ဖွင့်ရန်</span></li>
-          </ul>
-        </article>
-        <article>
-          <h3><span class="tile-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v4M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 16v4M4 12h4M16 12h4M6.3 6.3l2.4 2.4M15.3 15.3l2.4 2.4"/></svg></span>PPPoE ISP</h3>
-          <p><span lang="en">Subscribers connect to your router's PPPoE server with their own account and plan.</span><span lang="my">အသုံးပြုသူများ router ၏ PPPoE ဆာဗာသို့ ကိုယ်ပိုင်အကောင့်နှင့် အစီအစဉ်ဖြင့် ချိတ်ဆက်သည်။</span></p>
-          <ul class="points">
-            <li><span lang="en">Keep subscriber accounts, plans and service dates in one list</span><span lang="my">အသုံးပြုသူအကောင့်၊ အစီအစဉ်နှင့် ဝန်ဆောင်မှုရက်များကို စာရင်းတစ်ခုတည်းတွင်</span></li>
-            <li><span lang="en">See who has a recorded session and who is suspended or expired</span><span lang="my">session မှတ်တမ်းရှိသူ၊ ဆိုင်းငံ့/သက်တမ်းကုန်သူကို ကြည့်ရန်</span></li>
-            <li><span lang="en">Record payments you receive. There is no payment gateway</span><span lang="my">လက်ခံရရှိသော ငွေကို မှတ်တမ်းတင်ရန်။ payment gateway မပါပါ</span></li>
-          </ul>
-        </article>
+    <section class="atmo atmo-green" id="services" aria-labelledby="services-title">
+      <div class="wrap band">
+        <header>
+          <h2 id="services-title"><span lang="en">Hotspot and PPPoE, kept clearly apart</span><span lang="my">Hotspot နှင့် PPPoE ကို ရှင်းရှင်းလင်းလင်း ခွဲထားသည်</span></h2></header>
+        <div class="spec">
+          <article>
+            <h3>Hotspot</h3>
+            <p><span lang="en">Guests buy a voucher code and sign in on your router's login page.</span><span lang="my">ဧည့်သည်များ ဗောက်ချာကုဒ် ဝယ်ပြီး router ၏ ဝင်ရောက်စာမျက်နှာတွင် ဝင်သည်။</span></p>
+            <ul class="rows-spec">
+              <li><svg class="ico" aria-hidden="true"><use href="#i-voucher"/></svg><b><span lang="en">Voucher plans</span><span lang="my">ဗောက်ချာ အစီအစဉ်</span></b><span class="d"><span lang="en">Create plans by time, data and price, and print the codes</span><span lang="my">အချိန်၊ ဒေတာ၊ ဈေးနှုန်းအလိုက် ဗောက်ချာ ဖန်တီးပြီး ကုဒ်များကို ပုံနှိပ်</span></span><span class="mono">58 mm · 80 mm · A4</span></li>
+              <li><svg class="ico" aria-hidden="true"><use href="#i-signal"/></svg><b><span lang="en">Guest login page</span><span lang="my">ဧည့်သည် ဝင်ရောက်စာမျက်နှာ</span></b><span class="d"><span lang="en">Design it in English or Burmese</span><span lang="my">မြန်မာ/အင်္ဂလိပ်ဖြင့် ဒီဇိုင်းဆွဲ</span></span><span class="mono">CHAP · PAP</span></li>
+              <li><svg class="ico" aria-hidden="true"><use href="#i-monitor"/></svg><b><span lang="en">Live sessions</span><span lang="my">လက်ရှိ ချိတ်ဆက်မှု</span></b><span class="d"><span lang="en">Disconnect, block or unblock a guest</span><span lang="my">ဖြုတ်ရန်၊ ပိတ်ရန်/ဖွင့်ရန်</span></span></li>
+            </ul>
+          </article>
+          <article>
+            <h3>PPPoE ISP</h3>
+            <p><span lang="en">Subscribers connect to your router's PPPoE server with their own account and plan.</span><span lang="my">အသုံးပြုသူများ router ၏ PPPoE ဆာဗာသို့ ကိုယ်ပိုင်အကောင့်နှင့် အစီအစဉ်ဖြင့် ချိတ်ဆက်သည်။</span></p>
+            <ul class="rows-spec">
+              <li><svg class="ico" aria-hidden="true"><use href="#i-port"/></svg><b><span lang="en">Subscribers and plans</span><span lang="my">အသုံးပြုသူနှင့် အစီအစဉ်</span></b><span class="d"><span lang="en">Keep accounts, plans and service dates in one list</span><span lang="my">အကောင့်၊ အစီအစဉ်နှင့် ဝန်ဆောင်မှုရက်များကို စာရင်းတစ်ခုတည်းတွင်</span></span><span class="mono">PPPoE server</span></li>
+              <li><svg class="ico" aria-hidden="true"><use href="#i-monitor"/></svg><b><span lang="en">Session status</span><span lang="my">session အခြေအနေ</span></b><span class="d"><span lang="en">See who has a recorded session and who is suspended or expired</span><span lang="my">session မှတ်တမ်းရှိသူ၊ ဆိုင်းငံ့/သက်တမ်းကုန်သူကို ကြည့်ရန်</span></span></li>
+              <li><svg class="ico" aria-hidden="true"><use href="#i-receipt"/></svg><b><span lang="en">Payments you record</span><span lang="my">မှတ်တမ်းတင်သော ငွေလက်ခံမှု</span></b><span class="d"><span lang="en">Record payments you receive. There is no payment gateway</span><span lang="my">လက်ခံရရှိသော ငွေကို မှတ်တမ်းတင်ရန်။ payment gateway မပါပါ</span></span></li>
+            </ul>
+          </article>
+        </div>
+        <div class="link-row">
+          <svg class="ico" aria-hidden="true"><use href="#i-shield"/></svg>
+          <span><b><span lang="en">Magic Hub tunnel</span><span lang="my">Magic Hub tunnel</span></b> <span class="d"><span lang="en">One pasted command gives each router its own private tunnel address.</span><span lang="my">command တစ်ကြောင်း ကူးထည့်ရုံဖြင့် router တစ်လုံးစီအတွက် ကိုယ်ပိုင် tunnel လိပ်စာ ရသည်။</span></span></span>
+          <span class="mono">WireGuard /32</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="atmo atmo-indigo" id="media" aria-labelledby="media-title">
+      <div class="wrap band">
+        <header>
+          <h2 id="media-title"><span lang="en">Guest media and Wi‑Fi on your own network</span><span lang="my">ကိုယ့်ကွန်ရက်ပေါ်က ဧည့်သည်မီဒီယာနှင့် Wi-Fi</span></h2></header>
+        <div class="spec">
+          <article>
+            <h3><span lang="en">Local Jellyfin</span><span lang="my">Local Jellyfin</span></h3>
+            <p><span lang="en">Guests open a separate media page for your own Jellyfin library. It is not the Internet voucher page.</span><span lang="my">ဧည့်သည်များသည် သင့် Jellyfin library အတွက် သီးသန့် မီဒီယာစာမျက်နှာကို ဖွင့်သည်။ အင်တာနက် ဗောက်ချာစာမျက်နှာ မဟုတ်ပါ။</span></p>
+            <ul class="rows-spec">
+              <li><svg class="ico" aria-hidden="true"><use href="#i-server"/></svg><b><span lang="en">Your library, your server</span><span lang="my">သင့်ကိုယ်ပိုင် library နှင့် ဆာဗာ</span></b><span class="d"><span lang="en">MegaMagic talks to Jellyfin for you, so guests never see a second login</span><span lang="my">MegaMagic က Jellyfin နှင့် ဆက်သွယ်ပေးသဖြင့် ဧည့်သည်များ ဒုတိယ login မမြင်ရပါ</span></span><span class="mono">Jellyfin API</span></li>
+              <li><svg class="ico" aria-hidden="true"><use href="#i-monitor"/></svg><b><span lang="en">Media dashboard</span><span lang="my">မီဒီယာ dashboard</span></b><span class="d"><span lang="en">See Jellyfin activity beside your Hotspot figures</span><span lang="my">Hotspot ကိန်းဂဏန်းများနှင့်အတူ Jellyfin လှုပ်ရှားမှုကို ကြည့်ရန်</span></span></li>
+            </ul>
+          </article>
+          <article>
+            <h3><span lang="en">Wi‑Fi and devices</span><span lang="my">Wi-Fi နှင့် ကိရိယာများ</span></h3>
+            <p><span lang="en">See the devices and Wi‑Fi networks your router reports.</span><span lang="my">သင့် router က ပို့သော ကိရိယာများနှင့် Wi-Fi ကွန်ရက်များကို ကြည့်ပါ။</span></p>
+            <ul class="rows-spec">
+              <li><svg class="ico" aria-hidden="true"><use href="#i-wifi"/></svg><b><span lang="en">Connected devices</span><span lang="my">ချိတ်ဆက်ထားသော ကိရိယာများ</span></b><span class="d"><span lang="en">The topology shows what your router has observed. It never invents a switch or an online status</span><span lang="my">ကွန်ရက်ပုံက router မြင်ရသည့်အရာကိုသာ ပြသည်။ switch သို့မဟုတ် online အခြေအနေကို မဖန်တီးပါ</span></span></li>
+              <li><svg class="ico" aria-hidden="true"><use href="#i-router"/></svg><b><span lang="en">One router status</span><span lang="my">router အခြေအနေ တစ်ခုတည်း</span></b><span class="d"><span lang="en">The same status everywhere in the app, from the router's latest signal</span><span lang="my">router ၏ နောက်ဆုံးအချက်ပြမှုမှ app တစ်ခုလုံးတွင် အခြေအနေတူ ပြသည်</span></span></li>
+            </ul>
+          </article>
+        </div>
       </div>
     </section>
 
@@ -118,8 +179,9 @@
         <h2><span lang="en">Start with one router</span><span lang="my">Router တစ်လုံးဖြင့် စတင်ပါ</span></h2>
         <div class="cta">
           <a class="btn primary" href="/signin?register=1"><span lang="en">Create an account</span><span lang="my">အကောင့် ဖွင့်မည်</span></a>
-          <a class="btn" href="/pricing"><span lang="en">See pricing</span><span lang="my">စျေးနှုန်း ကြည့်မည်</span></a>
-          <a class="btn tg" href="https://t.me/nish2769" target="_blank" rel="noopener noreferrer"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.5.71L12.6 16.3l-1.99 1.93c-.23.23-.42.42-.83.42z"/></svg><span lang="en">Ask on Telegram</span><span lang="my">Telegram တွင် မေးရန်</span></a>
+          <a class="btn bracket" href="/signin"><span lang="en">Sign in</span><span lang="my">ဝင်မည်</span></a>
+          <a class="btn bracket" href="/pricing"><span lang="en">See pricing</span><span lang="my">စျေးနှုန်း ကြည့်မည်</span></a>
+          <a class="btn bracket tg" href="https://t.me/nish2769" target="_blank" rel="noopener noreferrer"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.5.71L12.6 16.3l-1.99 1.93c-.23.23-.42.42-.83.42z"/></svg><span lang="en">Ask on Telegram</span><span lang="my">Telegram တွင် မေးရန်</span></a>
         </div>
       </div>
     </section>

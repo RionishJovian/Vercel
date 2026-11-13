@@ -28,6 +28,12 @@
   --mesh: rgba(56, 189, 248, .09);
   --card-shadow: inset 0 1px 0 rgba(255, 255, 255, .06), 0 20px 40px -15px rgba(0, 0, 0, .6);
   --focus-glow: 0 0 0 3px rgba(56, 189, 248, .18);
+  /* Section atmospheres (2026-11-14): three radial stops per section. Only --ink, --ink-soft and --accent-text sit directly on them
+     (checked at 4.5:1 against every stop); --ink-mute stays on solid surfaces. */
+  --atmo-teal-0: #0e3442; --atmo-teal-1: #091820; --atmo-teal-2: #070b10;
+  --atmo-green-0: #0a2e24; --atmo-green-1: #071915; --atmo-green-2: #070b10;
+  --atmo-indigo-0: #171d3b; --atmo-indigo-1: #0c1020; --atmo-indigo-2: #070b10;
+  --contour: #ffffff; --contour-alpha: .045; --tick: #94a3b8; --horizon: rgba(56, 189, 248, .2);
 }
 :root[data-theme="day"] {
   color-scheme: light;
@@ -41,6 +47,10 @@
   --mesh: rgba(56, 189, 248, .12);
   --card-shadow: 0 1px 3px rgba(15, 23, 42, .06), 0 8px 24px -8px rgba(15, 23, 42, .08);
   --focus-glow: 0 0 0 3px rgba(3, 105, 161, .16);
+  --atmo-teal-0: #d4eaf2; --atmo-teal-1: #e6f1f6; --atmo-teal-2: #f8fafc;
+  --atmo-green-0: #d3ede3; --atmo-green-1: #e5f2ec; --atmo-green-2: #f8fafc;
+  --atmo-indigo-0: #dde1f6; --atmo-indigo-1: #eaecf8; --atmo-indigo-2: #f8fafc;
+  --contour: #0f172a; --contour-alpha: .05; --tick: #475569; --horizon: rgba(3, 105, 161, .16);
 }
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -101,6 +111,17 @@ img, svg { display: block; }
 .btn:active { transform: translateY(1px); }
 .btn.primary { border-color: transparent; color: var(--on-accent); background: linear-gradient(180deg, var(--accent), var(--accent-deep)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .28), 0 8px 20px -10px var(--accent-deep); }
 .btn.primary:hover { filter: brightness(1.07); background: linear-gradient(180deg, var(--accent), var(--accent-deep)); }
+@property --t { syntax: "<length>"; inherits: false; initial-value: 10px; }
+/* Secondary actions: architectural corner brackets, like the registration marks on a hardware spec sheet. The ticks are the control edge (3:1+). */
+.btn.bracket { border: 0; border-radius: 0; padding: 0 26px; color: var(--ink); --t: 10px;
+  background:
+    linear-gradient(var(--tick), var(--tick)) top left / var(--t) 1.5px no-repeat, linear-gradient(var(--tick), var(--tick)) top left / 1.5px var(--t) no-repeat,
+    linear-gradient(var(--tick), var(--tick)) top right / var(--t) 1.5px no-repeat, linear-gradient(var(--tick), var(--tick)) top right / 1.5px var(--t) no-repeat,
+    linear-gradient(var(--tick), var(--tick)) bottom left / var(--t) 1.5px no-repeat, linear-gradient(var(--tick), var(--tick)) bottom left / 1.5px var(--t) no-repeat,
+    linear-gradient(var(--tick), var(--tick)) bottom right / var(--t) 1.5px no-repeat, linear-gradient(var(--tick), var(--tick)) bottom right / 1.5px var(--t) no-repeat,
+    color-mix(in srgb, var(--ink) 4%, transparent); transition: --t .2s var(--ease-out), background-color .16s, color .16s; }
+.btn.bracket:hover { --t: 16px; --tick: var(--accent); background-color: var(--accent-soft); }
+.btn.bracket:focus-visible { outline-offset: 4px; border-radius: 2px; }
 .btn.small { min-height: 44px; padding: 0 16px; font-size: .94rem; }
 .btn[disabled], .btn[aria-disabled="true"] { opacity: .6; cursor: not-allowed; transform: none; }
 .btn.tg svg { width: 20px; height: 20px; fill: currentColor; }
@@ -112,55 +133,100 @@ img, svg { display: block; }
 .card, .glass { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-panel); box-shadow: var(--card-shadow); }
 .chip { display: inline-flex; align-items: center; gap: 6px; min-height: 26px; padding: 0 10px; border-radius: var(--r-chip); font: 600 .8rem var(--font); background: var(--accent-soft); color: var(--accent-text); }
 
+/* Section atmospheres: a deep radial wash plus a topographic contour tile (3–5% ink) masked into the section.
+   Contour colour follows the theme (white in Night, slate in Day) so the overlay never changes contrast by more than a few percent. */
+.atmo { position: relative; isolation: isolate; overflow: clip; background: var(--atmo); border-top: 1px solid var(--line); }
+.atmo::before { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: var(--contour); opacity: var(--contour-alpha);
+  -webkit-mask: url(/assets/images/contour-topo.svg) var(--contour-pos, 60% 50%) / cover no-repeat; mask: url(/assets/images/contour-topo.svg) var(--contour-pos, 60% 50%) / cover no-repeat; }
+.atmo-teal { --atmo: radial-gradient(ellipse 85% 65% at 25% 20%, var(--atmo-teal-0) 0%, var(--atmo-teal-1) 55%, var(--atmo-teal-2) 100%); }
+.atmo-green { --atmo: radial-gradient(ellipse 80% 60% at 75% 30%, var(--atmo-green-0) 0%, var(--atmo-green-1) 60%, var(--atmo-green-2) 100%); --contour-pos: 20% 40%; }
+.atmo-indigo { --atmo: radial-gradient(ellipse 80% 60% at 20% 40%, var(--atmo-indigo-0) 0%, var(--atmo-indigo-1) 60%, var(--atmo-indigo-2) 100%); --contour-pos: 80% 60%; }
+.atmo.first { border-top: 0; }
+
 /* Hero */
-.hero { padding-block: clamp(40px, 9vw, 120px) clamp(40px, 7vw, 96px); display: grid; gap: clamp(32px, 6vw, 64px); align-items: center; }
-@media (min-width: 900px) { .hero { grid-template-columns: 1fr 1fr; } }
+.hero { padding-block: clamp(40px, 9vw, 112px) clamp(48px, 8vw, 104px); display: grid; gap: clamp(36px, 6vw, 64px); align-items: center; }
+@media (min-width: 900px) { .hero { grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); } }
 .hero h1 { font-size: clamp(2.1rem, 6.4vw, 3.5rem); max-width: 16ch; }
 [data-lang="my"] .hero h1 { font-size: clamp(1.75rem, 5.2vw, 2.7rem); max-width: 20ch; }
 .hero .lead { margin-top: 20px; font-size: clamp(1.02rem, 2.4vw, 1.18rem); line-height: 1.65; color: var(--ink-soft); max-width: 52ch; }
 .hero .cta { margin-top: 32px; }
 
-/* The router panel: the one memorable thing. A router appears, its tunnel address is assigned, codes are ready.
-   One sequence on load (about 1.4 s); with reduced motion, or without CSS animation, it shows the final state. */
-.rig { overflow: hidden; }
-.rig-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--line); background: var(--sunken); font-size: .9rem; }
-.rig-bar .mono { font-weight: 600; }
-.rig-bar .place { color: var(--ink-mute); }
-.rig-state { position: relative; display: inline-grid; justify-items: end; font-size: .82rem; font-weight: 600; }
+/* The showcase: the one memorable thing. A console window sits behind a guest's phone, over a soft horizon glow.
+   On load a router appears, its tunnel address is assigned and codes are ready (about 1.4 s, once). Reduced motion shows the final state.
+   Everything inside is sample data and says so. */
+.showcase { position: relative; padding: 0 0 clamp(36px, 7vw, 56px); isolation: isolate; }
+.showcase::before { content: ""; position: absolute; z-index: -1; left: -8%; right: -8%; bottom: 4%; height: 62%; pointer-events: none; background: radial-gradient(ellipse 60% 55% at 50% 100%, var(--horizon), transparent 72%); }
+.showcase::after { content: ""; position: absolute; z-index: -1; left: -4%; right: -4%; bottom: calc(clamp(36px, 7vw, 56px) + 6px); height: 1px; pointer-events: none; background: linear-gradient(90deg, transparent, var(--line-strong) 20%, var(--line-strong) 80%, transparent); }
+.win { width: 88%; overflow: hidden; background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-panel); box-shadow: var(--card-shadow); }
+.win-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px; background: var(--sunken); border-bottom: 1px solid var(--line); font-size: .85rem; }
+.win-title { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.win-dots { display: flex; gap: 5px; flex: none; }
+.win-dots i { width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid var(--control-edge); }
+.win-title .mono { font-weight: 600; }
+.win-title .place { color: var(--ink-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.win-body { display: grid; grid-template-columns: 1fr; }
+.win-rail { display: none; margin: 0; padding: 12px 8px; list-style: none; border-right: 1px solid var(--line); background: var(--sunken); font-size: .85rem; color: var(--ink-mute); }
+.win-rail li { padding: 7px 12px; border-radius: var(--r-chip); white-space: nowrap; }
+.win-rail li[aria-current] { color: var(--accent-text); background: var(--accent-soft); font-weight: 600; }
+@media (min-width: 560px) { .win-body { grid-template-columns: 124px 1fr; } .win-rail { display: block; } }
+.rig-state { position: relative; display: inline-grid; justify-items: end; font-size: .8rem; font-weight: 600; flex: none; }
 .rig-state > span { display: inline-flex; align-items: center; gap: 7px; grid-area: 1 / 1; white-space: nowrap; }
 .rig-state i { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
 .rig-wait { color: var(--warn); animation: rig-wait .01s 1.2s both; }
 .rig-live { color: var(--ok); animation: rig-live .01s 1.2s both; }
 @keyframes rig-wait { to { visibility: hidden; opacity: 0; } }
 @keyframes rig-live { from { visibility: hidden; opacity: 0; } to { visibility: visible; opacity: 1; } }
+/* Rows read like a spec sheet: label above, value below, left-aligned, so the phone never covers a figure. */
 .rig-rows { display: grid; margin: 0; padding: 0; }
-.rig-rows > div { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding: 16px 18px; border-bottom: 1px solid var(--line); }
+.rig-rows > div { display: grid; gap: 3px; padding: 14px 16px; border-bottom: 1px solid var(--line); min-width: 0; }
 .rig-rows > div:last-child { border-bottom: 0; }
-.rig-rows dt { color: var(--ink-mute); font-size: .9rem; }
-.rig-rows dd { margin: 0; font-size: .95rem; text-align: right; min-width: 0; overflow-wrap: anywhere; }
+.rig-rows dt { color: var(--ink-mute); font-size: .82rem; }
+.rig-rows dd { margin: 0; font-size: .95rem; font-weight: 600; overflow-wrap: anywhere; }
 .rig-rows .tunnel { animation: rig-fill .01s 1.2s both; }
-@keyframes rig-fill { from { opacity: .0; } to { opacity: 1; } }
-.rig-note { padding: 12px 18px; border-top: 1px solid var(--line); font-size: .8rem; color: var(--ink-mute); }
+.rig-rows .tunnel b { color: var(--accent-text); font-weight: 600; }
+@keyframes rig-fill { from { opacity: 0; } to { opacity: 1; } }
+.rig-note { margin-top: 12px; font-size: .8rem; color: var(--ink-soft); }
+.phone { position: absolute; right: 0; bottom: 0; width: clamp(150px, 34%, 210px); padding: 9px; border-radius: 26px; background: var(--surface); border: 1.5px solid var(--ink-soft); box-shadow: var(--card-shadow), 0 30px 50px -20px rgba(0, 0, 0, .55); }
+.phone-screen { display: grid; gap: 10px; padding: 18px 12px 14px; border-radius: 18px; background: var(--sunken); border: 1px solid var(--line); }
+.phone-screen::before { content: ""; justify-self: center; width: 38px; height: 4px; border-radius: 2px; background: var(--line-strong); margin-top: -8px; }
+.phone-name { font-size: .8rem; font-weight: 650; text-align: center; line-height: 1.35; }
+.phone-field { padding: 9px 8px; border-radius: var(--r-chip); border: 1px solid var(--control-edge); background: var(--bg); font-size: .78rem; text-align: center; letter-spacing: .06em; }
+.phone-go { padding: 9px 8px; border-radius: var(--r-chip); text-align: center; font-size: .78rem; font-weight: 700; color: var(--on-accent); background: linear-gradient(180deg, var(--accent), var(--accent-deep)); }
+.phone-cap { font-size: .7rem; text-align: center; color: var(--ink-mute); line-height: 1.35; }
+[data-lang="my"] .phone-name, [data-lang="my"] .phone-cap, [data-lang="my"] .phone-go { line-height: 1.75; }
 
 /* Sections */
 .band { padding-block: clamp(40px, 7vw, 96px); border-top: 1px solid var(--line); display: grid; gap: clamp(24px, 4vw, 40px); }
 .band > header { display: grid; gap: 8px; max-width: 60ch; }
 .band h2 { font-size: clamp(1.5rem, 4vw, 2.1rem); }
 
-/* Services: two ruled columns instead of cards. */
-.spec { display: grid; border: 1px solid var(--line); border-radius: var(--r-panel); background: var(--surface); box-shadow: var(--card-shadow); }
+/* Capability matrix: two ruled columns on one solid surface so the text stays on #121620 rather than on the atmosphere.
+   Each row is an icon, a plain title, a sentence, and a data value in JetBrains Mono. */
+.spec { display: grid; border: 1px solid var(--line-strong); border-radius: var(--r-panel); background: var(--surface); box-shadow: var(--card-shadow); }
 @media (min-width: 760px) { .spec { grid-template-columns: 1fr 1fr; } .spec > article + article { border-left: 1px solid var(--line); border-top: 0; } }
-.spec > article { padding: clamp(22px, 3.5vw, 36px); display: grid; gap: 12px; align-content: start; }
+.spec > article { padding: clamp(20px, 3.5vw, 32px); display: grid; gap: 4px; align-content: start; }
 .spec > article + article { border-top: 1px solid var(--line); }
 @media (min-width: 760px) { .spec > article + article { border-top: 0; } }
-.spec h3 { display: flex; align-items: center; gap: 10px; font-size: 1.2rem; }
-.spec p { color: var(--ink-soft); }
-.tile-ico { width: 36px; height: 36px; flex: none; display: grid; place-items: center; border-radius: var(--r-control); background: var(--accent-soft); color: var(--accent-text); }
-.tile-ico svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.spec h3 { font-size: 1.2rem; }
+.spec > article > p { color: var(--ink-soft); margin-top: 6px; }
+.rows-spec { list-style: none; padding: 0; margin: 18px 0 0; display: grid; border-top: 1px solid var(--line); }
+.rows-spec li { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 4px 14px; padding: 16px 0; border-bottom: 1px solid var(--line); }
+.rows-spec li:last-child { border-bottom: 0; padding-bottom: 0; }
+.rows-spec .ico { grid-row: 1 / span 3; margin-top: 2px; }
+.rows-spec b { font-weight: 650; font-size: 1rem; }
+.rows-spec span.d { color: var(--ink-soft); }
+.rows-spec .mono { justify-self: start; margin-top: 4px; padding: 3px 8px; border-radius: var(--r-chip); background: var(--sunken); border: 1px solid var(--line); color: var(--ink-soft); font-size: .8rem; }
+.ico { width: 28px; height: 28px; flex: none; fill: none; stroke: var(--ink); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 .points { list-style: none; padding: 0; display: grid; gap: 0; border-top: 1px solid var(--line); }
 .points li { padding: 14px 0; border-bottom: 1px solid var(--line); color: var(--ink-soft); }
 .points li:last-child { border-bottom: 0; }
-
+/* A full-width row below the matrix for the connection itself. */
+.link-row { display: grid; gap: 4px 18px; padding: 18px clamp(20px, 3.5vw, 32px); border: 1px solid var(--line-strong); border-radius: var(--r-panel); background: var(--surface); box-shadow: var(--card-shadow); grid-template-columns: 28px minmax(0, 1fr); align-items: start; }
+.link-row .ico { grid-row: 1 / span 2; margin-top: 2px; }
+.link-row b { display: block; font-weight: 650; }
+.link-row span.d { color: var(--ink-soft); }
+.link-row .mono { grid-column: 2; justify-self: start; margin-top: 4px; padding: 3px 8px; border-radius: var(--r-chip); background: var(--sunken); border: 1px solid var(--line); color: var(--ink-soft); font-size: .8rem; }
+.band .spec + .link-row { margin-top: -8px; }
 /* Setup is a real sequence, so it is numbered, on a vertical rail. */
 .steps { list-style: none; padding: 0; display: grid; gap: 0; max-width: 64ch; counter-reset: s; }
 .steps li { counter-increment: s; position: relative; padding: 0 0 32px 54px; display: grid; gap: 4px; }

@@ -161,3 +161,36 @@ test('links are controls, not raw browser underlines', () => {
   const tsx = readFileSync(new URL('../app/src/pages/SignIn.tsx', import.meta.url), 'utf8');
   assert.doesNotMatch(tsx, /className="link"/);
 });
+
+// Section atmospheres (2026-11-14): text that sits straight on a gradient is checked against every stop of every wash, in both themes.
+// --ink-mute is excluded on purpose: it is only used on solid surfaces (cards, the console window), never on a wash.
+for (const [name, t] of Object.entries(themes)) {
+  test(`${name}: text on section atmospheres reaches 4.5:1 at every gradient stop`, () => {
+    const stops = Object.keys(t).filter((k) => /^atmo-(teal|green|indigo)-[012]$/.test(k));
+    assert.equal(stops.length, 9, 'three washes with three stops each');
+    for (const s of stops) for (const fg of ['ink', 'ink-soft', 'accent-text', 'warn']) {
+      assert.ok(ratio(t[fg], t[s]) >= 4.5, `${fg} ${t[fg]} on ${s} ${t[s]} is ${ratio(t[fg], t[s]).toFixed(2)}`);
+    }
+  });
+  test(`${name}: corner-bracket ticks reach 3:1 on the canvas and on every atmosphere stop`, () => {
+    for (const bg of ['bg', ...Object.keys(t).filter((k) => /^atmo-/.test(k))]) assert.ok(ratio(t.tick, t[bg]) >= 3, `tick ${t.tick} on ${bg} ${t[bg]} is ${ratio(t.tick, t[bg]).toFixed(2)}`);
+  });
+}
+test('contour texture stays between 3% and 5% opacity in both themes', () => {
+  const alphas = [...css.matchAll(/--contour-alpha:\s*(\.\d+)/g)].map((m) => Number(m[1]));
+  assert.equal(alphas.length, 2);
+  for (const a of alphas) assert.ok(a >= 0.03 && a <= 0.05, `contour alpha ${a}`);
+  assert.match(css, /mask: url\(\/assets\/images\/contour-topo\.svg\)/);
+});
+test('landing and pricing use the three atmospheres, 1.5px outline icons and bracket buttons, and label the showcase as sample data', () => {
+  const index = readFileSync(new URL('../web/index.html', import.meta.url), 'utf8');
+  const pricing = readFileSync(new URL('../web/pricing.html', import.meta.url), 'utf8');
+  for (const cls of ['atmo-teal', 'atmo-green', 'atmo-indigo']) assert.match(index, new RegExp(`class="atmo ${cls}`), `index.html lacks ${cls}`);
+  assert.match(pricing, /class="atmo atmo-teal/);
+  assert.match(pricing, /class="atmo atmo-green/);
+  assert.match(css, /\.ico \{[^}]*stroke-width:\s*1\.5;/);
+  assert.match(css, /\.btn\.bracket/);
+  assert.match(index, /class="btn bracket"/);
+  assert.match(index, /class="showcase" role="img" aria-label="Sample screens, not a live router/);
+  assert.match(index, /class="rig-note"><span lang="en">Sample data, not a live router\./);
+});
