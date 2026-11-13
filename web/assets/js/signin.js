@@ -5,7 +5,8 @@
   var loginForm = document.getElementById("login-form");
   var registerForm = document.getElementById("register-form");
   var title = document.getElementById("title");
-  var swap = document.getElementById("swap");
+  var tabLogin = document.getElementById("tab-login");
+  var tabRegister = document.getElementById("tab-register");
 
   /* Return path: a console page such as /app/vouchers/create?x=1 (or an older /v2/#/vouchers/create link).
      Only route characters are accepted, and the URL is always built as the fixed "/app/#/" plus that route; the console
@@ -45,14 +46,15 @@
   function setMode(register, keepAlert) {
     loginForm.hidden = register; registerForm.hidden = !register;
     if (!keepAlert) quiet();
-    swap.querySelector(".to-register").hidden = register; swap.querySelector(".to-login").hidden = !register;
+    tabLogin.setAttribute("aria-pressed", register ? "false" : "true"); tabRegister.setAttribute("aria-pressed", register ? "true" : "false");
     title.innerHTML = register ? '<span lang="en">Create account</span><span lang="my">အကောင့် ဖွင့်မည်</span>' : '<span lang="en">Sign in</span><span lang="my">ဝင်မည်</span>';
     var q = new URLSearchParams(location.search);
     if (register) q.set("register", "1"); else q.delete("register");
     try { history.replaceState(null, "", location.pathname + (q.toString() ? "?" + q : "")); } catch (e) {}
     (register ? document.getElementById("r-company") : document.getElementById("email")).focus();
   }
-  swap.addEventListener("click", function () { setMode(registerForm.hidden); });
+  tabLogin.addEventListener("click", function () { if (loginForm.hidden) setMode(false); });
+  tabRegister.addEventListener("click", function () { if (registerForm.hidden) setMode(true); });
   if (/[?&]register=1/.test(location.search)) setMode(true);
 
   /* Show or hide a password without losing the cursor position. */
