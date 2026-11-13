@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -79,6 +80,14 @@ func (h *VoucherHandler) CreateVoucher(c *gin.Context) {
 	businessID := auth.GetBusinessID(c)
 	if businessID == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	// RouterBOARD HotSpot Internet Access Vouchers must be installed and
+	// verified on the selected gateway. This legacy business-pass API cannot
+	// provision RouterOS logins, so refuse unusable HotSpot code issuance.
+	if strings.EqualFold(strings.TrimSpace(req.PlanKey), "guest-internet") {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Internet Access Vouchers must be issued through /api/v1/guest-vouchers with a verified gateway"})
 		return
 	}
 
