@@ -3,6 +3,8 @@ import { api, isUnauthorized } from "../../lib/api";
 import { useI18n } from "../../i18n";
 import { Note } from "../../components/ui";
 import { errorText } from "../../lib/errors";
+import { AP_CAPABILITY_NAMES, apCapabilityEvidence } from "./apCapabilityEvidence";
+import { vendorIntegrationHint } from "./vendorIntegrationHint";
 
 interface Capability { name: string; status: string; evidence?: string }
 interface DiscoveredDevice {
@@ -78,13 +80,34 @@ export function UniversalDiscoveryPanel({ gatewayId }: { gatewayId: string }) {
         <p className="soft small">{d.reported_vendor || (my ? "Brand မသိသေး" : "Vendor unknown")}
           {d.reported_model ? " · " + d.reported_model : ""}
           {" · "}{d.kind !== "unknown" ? d.kind + " (" + d.kind_evidence + ")" : (my ? "အမျိုးအစားမသိ" : "Type unknown")}</p>
+        <p className="soft small">
+          {my ? "ထုတ်လုပ်သူ API အခြေအနေ" : "Vendor integration"}: {vendorIntegrationHint(d.reported_vendor).label} · {vendorIntegrationHint(d.reported_vendor).inventory === "enrollment_required"
+            ? (my ? "Omada controller ကို သီးခြားချိတ်ဆက်မှ စာရင်းဖတ်နိုင်သည်" : "Read-only inventory requires separately enrolled Omada controller")
+            : (my ? "တိုက်ရိုက်စီမံရန် adapter မချိတ်ဆက်ရသေး" : "No verified vendor controller adapter connected")}
+          {" · "}{my ? "ရေးသားပြင်ဆင်ခွင့် မအတည်ပြုရသေး" : "Configuration writes unverified"}
+        </p>
         <p className="soft small">{my ? "အချက်အလက်ရင်းမြစ်" : "Sources"}: {d.sources.join(", ")}</p>
         {d.attachments.map(a => <p key={a.source + a.gateway_interface} className="soft small">
           {a.source}: {a.gateway_interface} · {my ? "တိုက်ရိုက်ချိတ်ဆက်မှု မအတည်ပြုနိုင်" : "physical hop unverified"}
         </p>)}
-        <p className="soft small">{my ? "စီမံခန့်ခွဲနိုင်မှု" : "Management"}: {d.capabilities.find(c => c.name === "third_party_management")?.status || "unknown"}
-          {" · "}{my ? "Wi-Fi ပြင်ဆင်နိုင်မှု" : "Radio optimization"}: {d.capabilities.find(c => c.name === "radio_optimization")?.status || "unknown"}
-          {d.possibly_randomized_mac ? " · " + (my ? "MAC ပြောင်းနိုင်" : "Possibly randomized MAC") : ""}</p>
+        <div className="stack" style={{ gap: 3 }} aria-label={my ? "AP လုပ်ဆောင်နိုင်မှု အထောက်အထား" : "AP capability evidence"}>
+          {AP_CAPABILITY_NAMES.map(name => {
+            const result = apCapabilityEvidence(d.capabilities, name);
+            const label = ({
+              third_party_management: my ? "AP စီမံခန့်ခွဲမှု" : "Device management",
+              ap_clients: my ? "AP client စာရင်း" : "AP client inventory",
+              ssid_configuration: my ? "SSID ပြင်ဆင်မှု" : "SSID configuration",
+              radio_optimization: my ? "Radio စနစ်ကောင်းမွန်ရေး" : "Radio optimization",
+            } as const)[name];
+            return <p key={name} className="soft small">
+              {label}: {result.verified
+                ? (my ? "အထောက်အထားရှိ" : "Evidence observed")
+                : (my ? "မအတည်ပြုရသေး" : "Not verified")}
+              {result.evidence ? " · " + result.evidence : ""}
+            </p>;
+          })}
+        </div>
+        {d.possibly_randomized_mac && <p className="soft small">{my ? "MAC လိပ်စာ ပြောင်းနိုင်သည်" : "Possibly randomized MAC; identity may change"}</p>}
       </article>)}
     </>}
   </section>;
