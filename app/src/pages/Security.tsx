@@ -66,7 +66,7 @@ function Row({ d, controls }: { d: Dev; controls: boolean }) {
 export function Security() {
   const { t } = useI18n();
   const { data, error, isLoading } = useSWR<Posture>("/security/posture", fetcher);
-  const back = <BackLink href="#/more">{t("tab.more")}</BackLink>;
+  const back = <BackLink href="/app/more">{t("tab.more")}</BackLink>;
   if (isLoading) return <>{back}<Skeleton h={260} /></>;
   if (error || !data) return <>{back}<Note kind="bad">{t("c.loadFailed")}</Note></>;
   const devices = asArray<Dev>(data.devices).slice().sort((a, b) => rank(a) - rank(b));

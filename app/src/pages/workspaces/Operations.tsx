@@ -1,4 +1,5 @@
 import { lazy, Suspense, useState } from "react";
+import { PageBoundary } from "../../components/PageBoundary";
 import useSWR from "swr";
 import { fetcher } from "../../lib/api";
 import { asArray, type Me } from "../../lib/types";
@@ -35,13 +36,13 @@ export function NetworkHub({ routerId }: { me: Me; routerId?: string | null }) {
         <div className="toolbar">{health.fleet.isLoading ? null : <StatePill tone={health.tone}>{t(health.key)}</StatePill>}{health.checkedAt ? <Ago at={health.checkedAt} prefix={t("ws.checked")} /> : null}</div>
       </header>
       <section className="glass pad stack" aria-labelledby="nh-routers">
-        <div className="row"><h2 id="nh-routers">{t("nh.routers")}</h2><a className="link small" href="#/hub">{t("hub.title")}</a></div>
+        <div className="row"><h2 id="nh-routers">{t("nh.routers")}</h2><a className="link small" href="/app/hub">{t("hub.title")}</a></div>
         {routers.isLoading ? <Loading><SkRows n={1} pill /></Loading> : routers.error ? <Recovery title={t("nh.routersUnavailable")} onRetry={() => void routers.mutate()} /> : !list?.length ? (
-          <Recovery title={t("nh.noRouters")} detail={t("nh.noRoutersHelp")} action={{ href: "#/setup", label: t("su.continue") }} />
+          <Recovery title={t("nh.noRouters")} detail={t("nh.noRoutersHelp")} action={{ href: "/app/setup", label: t("su.continue") }} />
         ) : (
           <div className="linklist">
             {list.map((r) => { const p = peers.get(r.device_id); return (
-              <a key={r.device_id} className="linkrow" href={"#/router/" + encodeURIComponent(r.device_id)}>
+              <a key={r.device_id} className="linkrow" href={"/app/router/" + encodeURIComponent(r.device_id)}>
                 <IconTile name="router" tone={peerTone(p?.state) === "idle" ? "" : peerTone(p?.state)} />
                 <span className="linkrow-text"><b>{r.hardware_name || r.device_id}</b><span className="soft small">{r.deployment_layer === "MAIN_GATEWAY" ? t("nh.gateway") : t("nh.device")} · <Ago at={p?.checked_at ?? p?.last_contact_at ?? r.last_seen_at} prefix={t("ws.checked")} /></span><span><StatePill tone={peerTone(p?.state)}>{t(peerKey(p?.state))}</StatePill></span></span>
               </a>
@@ -64,21 +65,21 @@ export function NetworkHub({ routerId }: { me: Me; routerId?: string | null }) {
       <section className="stack" aria-label={t("nh.tools")}>
         <h2 className="group-title">{t("nh.tools")}</h2>
         <div className="linklist">
-          <LinkRow href="#/setup" icon="rocket" title={t("nav.setup")} detail={t("nh.setupHelp")} />
-          <LinkRow href="#/network" icon="globe" title={t("nh.internet")} detail={t("nh.internetHelp")} />
-          <LinkRow href="#/topology" icon="grid" title={t("nav.topology")} detail={t("nh.topologyHelp")} />
-          <LinkRow href="#/managed-devices" icon="device" title={t("nav.devices")} detail={t("nh.devicesHelp")} />
-          <LinkRow href="#/hub" icon="link" title={t("hub.title")} detail={t("nh.hubHelp")} />
-          <LinkRow href="#/sites" icon="pin" title={t("title.sites")} detail={t("nh.sitesHelp")} />
-          <LinkRow href="#/approvals" icon="approve" title={t("nav.approvals")} detail={t("nh.approvalsHelp")} />
-          <LinkRow href="#/backups" icon="save" title={t("bk.title")} detail={t("nh.backupsHelp")} />
+          <LinkRow href="/app/setup" icon="rocket" title={t("nav.setup")} detail={t("nh.setupHelp")} />
+          <LinkRow href="/app/network" icon="globe" title={t("nh.internet")} detail={t("nh.internetHelp")} />
+          <LinkRow href="/app/topology" icon="grid" title={t("nav.topology")} detail={t("nh.topologyHelp")} />
+          <LinkRow href="/app/managed-devices" icon="device" title={t("nav.devices")} detail={t("nh.devicesHelp")} />
+          <LinkRow href="/app/hub" icon="link" title={t("hub.title")} detail={t("nh.hubHelp")} />
+          <LinkRow href="/app/sites" icon="pin" title={t("title.sites")} detail={t("nh.sitesHelp")} />
+          <LinkRow href="/app/approvals" icon="approve" title={t("nav.approvals")} detail={t("nh.approvalsHelp")} />
+          <LinkRow href="/app/backups" icon="save" title={t("bk.title")} detail={t("nh.backupsHelp")} />
         </div>
       </section>
       <section className="stack" aria-label={t("home.map")}>
         <h2 className="group-title">{t("home.map")}</h2>
-        <Suspense fallback={<Loading><div className="site-map skeleton" /></Loading>}>
+        <PageBoundary inline><Suspense fallback={<Loading><div className="site-map skeleton" /></Loading>}>
           <SiteMap home sites={sites} states={Object.fromEntries(sites.map((s) => [s.site_id, stateOf(s, connList)]))} selected={site} onSelect={(id) => setSite(id === site ? "" : id)} />
-        </Suspense>
+        </Suspense></PageBoundary>
       </section>
     </>
   );
@@ -108,13 +109,13 @@ export function Activity() {
         <p className="soft small">{t("ac.interval")} {health.checkedAt ? <Ago at={health.checkedAt} prefix={t("ws.checked")} /> : null}</p>
       </section>
       <section className="glass pad stack" aria-labelledby="ac-alerts">
-        <div className="row"><h2 id="ac-alerts">{t("nav.alerts")}</h2><a className="link small" href="#/incidents">{t("hm.open")}</a></div>
+        <div className="row"><h2 id="ac-alerts">{t("nav.alerts")}</h2><a className="link small" href="/app/incidents">{t("hm.open")}</a></div>
         {incidents.isLoading ? <Loading><SkRows n={1} /></Loading> : incidents.error ? <Recovery title={t("ac.alertsUnavailable")} onRetry={() => void incidents.mutate()} /> : open.length === 0 ? (
           <p className="note ok small" role="status">{t("ac.noAlerts")}</p>
         ) : (
           <div className="linklist">
             {open.slice(0, 5).map((i) => (
-              <a key={i.id} className="linkrow" href="#/incidents">
+              <a key={i.id} className="linkrow" href="/app/incidents">
                 <IconTile name="alert" tone={incidentTone(i.severity) === "bad" ? "bad" : "warn"} />
                 <span className="linkrow-text"><b>{i.subject_label || i.kind || t("al.issue")}</b><span className="soft small">{i.detail || t("al.openForDetail")}</span></span>
                 <Ago at={i.opened_at} />
@@ -125,7 +126,7 @@ export function Activity() {
         <p className="soft small">{t("ac.recoveryNote")}</p>
       </section>
       <section className="glass pad stack" aria-labelledby="ac-events">
-        <div className="row"><h2 id="ac-events">{t("ac.events")}</h2><a className="link small" href="#/events">{t("hm.open")}</a></div>
+        <div className="row"><h2 id="ac-events">{t("ac.events")}</h2><a className="link small" href="/app/events">{t("hm.open")}</a></div>
         {events.isLoading ? <Loading><SkList n={3} /></Loading> : events.error ? <p className="note warn small">{t("ac.eventsUnavailable")}</p> : evs.length === 0 ? <p className="soft small">{t("ac.noEvents")}</p> : (
           <ul className="list-table">
             {evs.map((e, i) => <li key={i} className="sub-row"><span className="small" style={{ overflowWrap: "anywhere" }}>{e.message}</span><span className="chip">{e.severity || "info"}</span><span className="meta"><span>{e.program || t("ac.router")}</span><Ago at={e.received_at} /></span></li>)}
@@ -135,9 +136,9 @@ export function Activity() {
       <section className="stack" aria-label={t("ac.more")}>
         <h2 className="group-title">{t("ac.more")}</h2>
         <div className="linklist">
-          <LinkRow href="#/guests" icon="users" title={t("ac.traffic")} detail={t("ac.trafficHelp")} />
-          <LinkRow href="#/fleet" icon="pulse" title={t("fl.title")} detail={t("ac.fleetHelp")} />
-          <LinkRow href="#/security" icon="shield" title={t("sec.title")} detail={t("ac.securityHelp")} />
+          <LinkRow href="/app/guests" icon="users" title={t("ac.traffic")} detail={t("ac.trafficHelp")} />
+          <LinkRow href="/app/fleet" icon="pulse" title={t("fl.title")} detail={t("ac.fleetHelp")} />
+          <LinkRow href="/app/security" icon="shield" title={t("sec.title")} detail={t("ac.securityHelp")} />
         </div>
       </section>
     </>
@@ -166,10 +167,10 @@ export function Approvals() {
       <section className="stack" aria-label={t("cfg.where")}>
         <h2 className="group-title">{t("cfg.where")}</h2>
         <div className="linklist">
-          <LinkRow href="#/network" icon="globe" title={t("nh.internet")} detail={t("cfg.internetHelp")} />
-          <LinkRow href="#/managed-devices" icon="device" title={t("cfg.apOpt")} detail={t("cfg.apOptHelp")} badge={pendingAp ? <span className="chip warn">{pendingAp}</span> : undefined} />
-          <LinkRow href="#/topology" icon="grid" title={t("cfg.deviceControls")} detail={t("cfg.deviceControlsHelp")} />
-          <LinkRow href="#/backups" icon="save" title={t("cfg.rollback")} detail={t("cfg.rollbackHelp")} />
+          <LinkRow href="/app/network" icon="globe" title={t("nh.internet")} detail={t("cfg.internetHelp")} />
+          <LinkRow href="/app/managed-devices" icon="device" title={t("cfg.apOpt")} detail={t("cfg.apOptHelp")} badge={pendingAp ? <span className="chip warn">{pendingAp}</span> : undefined} />
+          <LinkRow href="/app/topology" icon="grid" title={t("cfg.deviceControls")} detail={t("cfg.deviceControlsHelp")} />
+          <LinkRow href="/app/backups" icon="save" title={t("cfg.rollback")} detail={t("cfg.rollbackHelp")} />
         </div>
       </section>
       <section className="glass pad stack" aria-labelledby="ap-recent">

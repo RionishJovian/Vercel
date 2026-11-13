@@ -32,7 +32,7 @@ export function ManagedDevices({ me }: { me: Me }) {
   const al = useSWR<{ allowance?: Allowance | null; kinds?: string[] }>(capacity ? "/device-allowances" : null, fetcher, { shouldRetryOnError: false });
   const rq = useSWR<{ requests?: Request[] }>(capacity ? "/device-requests" : null, fetcher, { shouldRetryOnError: false });
   const [form, setForm] = useState<{ rec?: DeviceRec } | null>(null), [confirmId, setConfirmId] = useState(""), [err, setErr] = useState(""), [reqOpen, setReqOpen] = useState(false), [reqMsg, setReqMsg] = useState("");
-  const back = <BackLink href="#/more">{t("tab.more")}</BackLink>;
+  const back = <BackLink href="/app/more">{t("tab.more")}</BackLink>;
   if (routers.isLoading) return <>{back}<Skeleton h={260} /></>;
   if (routers.error) return <>{back}<Note kind="bad">{t("c.loadFailed")}</Note></>;
   const list = asArray<DeviceRec>(routers.data?.routers).filter((r) => r.deployment_layer !== "MAIN_GATEWAY");

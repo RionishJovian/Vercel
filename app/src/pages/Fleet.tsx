@@ -21,7 +21,7 @@ export function Fleet() {
   const pulse = useSWR<{ open_incidents_head?: unknown[] }>("/fleet/pulse", fetcher, { shouldRetryOnError: false });
   const availNow = (() => { const tp = num(fleet.data?.total_peers) ?? asArray(fleet.data?.peers).length; return tp ? Math.round(((num(fleet.data?.up) ?? 0) / tp) * 100) : 0; })();
   const shownAvail = useCountUp(availNow);
-  const back = <BackLink href="#/more">{t("tab.more")}</BackLink>;
+  const back = <BackLink href="/app/more">{t("tab.more")}</BackLink>;
   if (fleet.isLoading) return <>{back}<Skeleton h={320} /></>;
   if (fleet.error || !fleet.data) return <>{back}<Note kind="bad">{t("h.fleetFailed")}</Note></>;
   const f = fleet.data, peers = asArray<Peer>(f.peers);

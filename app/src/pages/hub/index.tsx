@@ -74,7 +74,7 @@ function Card({ r, state, canEdit, cap, openId, setOpen, onChanged }: { r: GW; s
         </>
       ) : <Note>{t(enrollmentUnavailableKey(cap.code))}</Note>)}
       <div className="row" style={{ justifyContent: "flex-start", flexWrap: "wrap" }}>
-        <a className="pill" href={"#/router/" + encodeURIComponent(r.device_id)}>{t("hub.health")}</a>
+        <a className="pill" href={"/app/router/" + encodeURIComponent(r.device_id)}>{t("hub.health")}</a>
         <button className="pill" type="button" aria-expanded={maint} onClick={() => setMaint((v) => !v)}>{t("mt.title")}</button>
         {canEdit && !editing && <button className="pill" type="button" onClick={() => setEditing(true)}>{t("dm.edit")}</button>}
         {canEdit && !del.confirm && <button className="pill danger" type="button" onClick={() => setDel({ confirm: true, busy: false })}>{t("hub.delete")}</button>}
@@ -117,7 +117,7 @@ function AddGateway({ sites, onDone }: { sites: Array<{ site_id: string; name: s
   return (
     <form className="glass pad stack" onSubmit={add}>
       <h2>{t("hub.add")}</h2>
-      {!sites.length ? <Note kind="warn">{t("hub.needSite")} <a className="link" href="#/sites">{t("title.sites")}</a></Note> : (
+      {!sites.length ? <Note kind="warn">{t("hub.needSite")} <a className="link" href="/app/sites">{t("title.sites")}</a></Note> : (
         <>
           <Field label={t("hub.rbName")} htmlFor="gw-name"><input className="input" id="gw-name" name="name" maxLength={120} required /></Field>
           <Field label={t("hub.site")} htmlFor="gw-site"><select className="input" id="gw-site" name="site" required defaultValue=""><option value="" disabled>{t("hub.chooseSite")}</option>{sites.map((s) => <option key={s.site_id} value={s.site_id}>{s.name}</option>)}</select></Field>
@@ -138,7 +138,7 @@ export function Hub({ me }: { me: Me }) {
   const sitesRes = useSWR<{ sites?: Array<{ site_id: string; name: string }> }>("/sites", fetcher, { shouldRetryOnError: false });
   const cap = useSWR<Capability>(canEdit ? "/vps/enrollment-capability" : null, fetcher, { shouldRetryOnError: false });
   const [openId, setOpen] = useState("");
-  const back = <BackLink href="#/more">{t("tab.more")}</BackLink>;
+  const back = <BackLink href="/app/more">{t("tab.more")}</BackLink>;
   if (routers.isLoading) return <>{back}<Skeleton h={300} /></>;
   if (routers.error) return <>{back}<Note kind="bad">{t("c.loadFailed")}</Note></>;
   const gateways = asArray<GW>(routers.data?.routers).filter((r) => r.deployment_layer === "MAIN_GATEWAY");

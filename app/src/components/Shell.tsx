@@ -49,7 +49,7 @@ export function Shell({ route, business, children }: { route: string; business?:
     <div className="shell">
       <a className="skip" href="#view" onClick={(e) => { e.preventDefault(); document.getElementById("view")?.focus(); }}>{t("nav.skip")}</a>
       <aside className="rail" aria-label={t("nav.main")}>
-        <a className="rail-brand" href="#/home" aria-label="MegaMagic"><BrandMark size={36} /><span><Wordmark />{business ? <small>{business}</small> : null}</span></a>
+        <a className="rail-brand" href="/app/home" aria-label="MegaMagic"><BrandMark size={36} /><span><Wordmark />{business ? <small>{business}</small> : null}</span></a>
         <nav className="rail-nav">
           {RAIL.map((g) => (
             <div className="rail-group" key={g.label}>
@@ -65,7 +65,7 @@ export function Shell({ route, business, children }: { route: string; business?:
         <div className="rail-foot"><ThemeToggle /><LangSwitch /></div>
       </aside>
       <header className="topbar">
-        <a className="brand" href="#/home" aria-label="MegaMagic"><BrandMark size={32} /><Wordmark /></a>
+        <a className="brand" href="/app/home" aria-label="MegaMagic"><BrandMark size={32} /><Wordmark /></a>
         <div className="tools"><MagicDude /><span className="only-phone"><LangSwitch /></span></div>
       </header>
       <main className="view" id="view" tabIndex={-1}>{children}</main>

@@ -280,7 +280,7 @@ export function NetworkEditor({ workspace, router, canEdit, reason, prefill }: {
         <div className="stack">
           <Note kind={loading ? "warn" : "bad"}>{banner}</Note>
           <div className="row" style={{ justifyContent: "flex-start" }}>
-            {needsHub && <a className="pill on" href="#/hub">{t("hub.title")}</a>}
+            {needsHub && <a className="pill on" href="/app/hub">{t("hub.title")}</a>}
             {router && !loading && <button className="pill" type="button" onClick={() => void reload()}>{t("net.refresh")}</button>}
           </div>
         </div>

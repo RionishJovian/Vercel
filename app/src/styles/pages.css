@@ -501,3 +501,15 @@ details.adv summary { cursor: pointer; min-height: 36px; display: flex; align-it
 .sk-only-wide { display: none; }
 @media (min-width: 960px) { .sk-only-wide { display: block; } }
 .progress:empty { display: block; }
+
+/* Console sign-in: password reveal, Caps Lock note, busy spinner (2026-11-12). */
+.signin-card .pw { position: relative; }
+.signin-card .pw .input { padding-right: 56px; }
+.signin-card .pw-toggle { position: absolute; right: 4px; top: 4px; width: 44px; height: 44px; display: grid; place-items: center; border: 0; border-radius: 10px; background: transparent; color: var(--ink-mute); cursor: pointer; }
+.signin-card .pw-toggle:hover { color: var(--ink); background: var(--jade-soft); }
+.signin-card .pw-toggle svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.signin-card .field label { font-size: .875rem; font-weight: 600; color: var(--ink-soft); }
+.caps-note { font-size: .85rem; font-weight: 600; color: var(--warn); text-align: left; }
+.signin-card .btn .spin { width: 18px; height: 18px; margin-right: 8px; border-radius: 50%; border: 2.5px solid currentColor; border-right-color: transparent; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.signin-help { text-align: center; }

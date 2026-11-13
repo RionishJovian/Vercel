@@ -1,0 +1,7 @@
+# Optional rollback image: the exact previous web image plus only clean-URL compatibility.
+# Pass a recorded immutable digest, never an unverified mutable tag.
+ARG PREVIOUS_WEB_IMAGE
+FROM ${PREVIOUS_WEB_IMAGE}
+COPY deploy/compat/Caddyfile.rollback /etc/caddy/Caddyfile
+COPY deploy/compat/rollback-route.js /srv/rollback-route.js
+RUN sed -i 's|</head>|<script src="/rollback-route.js"></script></head>|' /srv/v2/index.html

@@ -24,7 +24,7 @@ export function Hotspot() {
       <section className="glass pad svc-card" aria-labelledby="hs-status">
         <header><h2 id="hs-status">{t("hs.status")}</h2>{health.fleet.isLoading ? null : <StatePill tone={health.tone}>{t(health.key)}</StatePill>}</header>
         {gw && gw.length === 0 ? (
-          <Recovery title={t("isp.noGateway")} detail={t("hs.noGatewayHelp")} action={{ href: "#/setup", label: t("su.continue") }} />
+          <Recovery title={t("isp.noGateway")} detail={t("hs.noGatewayHelp")} action={{ href: "/app/setup", label: t("su.continue") }} />
         ) : (
           <dl className="kv">
             <dt>{t("hs.gateway")}</dt><dd>{gw === null ? "…" : gw.map((g) => g.hardware_name || g.device_id).join(", ")}</dd>
@@ -48,11 +48,11 @@ export function Hotspot() {
       <section className="stack" aria-label={t("hs.manage")}>
         <h2 className="group-title">{t("hs.manage")}</h2>
         <div className="linklist">
-          <LinkRow href="#/guests" icon="users" title={t("hs.sessions")} detail={t("hs.sessionsHelp")} />
-          <LinkRow href="#/vouchers" icon="ticket" title={t("nav.vouchers")} detail={t("hs.vouchersHelp")} />
-          <LinkRow href="#/vouchers/guest" icon="globe" title={t("hs.portal")} detail={t("hs.portalHelp")} />
-          <LinkRow href="#/vouchers/vip" icon="shield" title={t("hs.policies")} detail={t("hs.policiesHelp")} />
-          <LinkRow href="#/network" icon="gear" title={t("hs.serverSettings")} detail={t("hs.serverSettingsHelp")} />
+          <LinkRow href="/app/guests" icon="users" title={t("hs.sessions")} detail={t("hs.sessionsHelp")} />
+          <LinkRow href="/app/vouchers" icon="ticket" title={t("nav.vouchers")} detail={t("hs.vouchersHelp")} />
+          <LinkRow href="/app/vouchers/guest" icon="globe" title={t("hs.portal")} detail={t("hs.portalHelp")} />
+          <LinkRow href="/app/vouchers/vip" icon="shield" title={t("hs.policies")} detail={t("hs.policiesHelp")} />
+          <LinkRow href="/app/network" icon="gear" title={t("hs.serverSettings")} detail={t("hs.serverSettingsHelp")} />
         </div>
       </section>
     </>
@@ -73,11 +73,11 @@ export function Isp({ me }: { me: Me }) {
         <h1>{t("isp.title")}</h1>
         <p className="ws-lead">{t("isp.lead")}</p>
       </header>
-      <div className="note small">{t("isp.notWan")} <a className="link" href="#/network/wan?task=pppoe_client">{t("isp.wanLink")}</a></div>
+      <div className="note small">{t("isp.notWan")} <a className="link" href="/app/network/wan?task=pppoe_client">{t("isp.wanLink")}</a></div>
       <section className="glass pad stack" aria-labelledby="isp-overview">
         <div className="row"><h2 id="isp-overview">{t("isp.overview")}</h2>{s?.newestObservation ? <Ago at={s.newestObservation} prefix={t("ws.reported")} /> : null}</div>
         {routers.gateways && routers.gateways.length === 0 ? (
-          <Recovery title={t("isp.noGateway")} detail={t("isp.noGatewayHelp")} action={{ href: "#/setup", label: t("su.continue") }} />
+          <Recovery title={t("isp.noGateway")} detail={t("isp.noGatewayHelp")} action={{ href: "/app/setup", label: t("su.continue") }} />
         ) : pppoe.isLoading || routers.isLoading ? <Loading><SkMetrics n={4} cols="four" /></Loading> : pppoe.error ? <Recovery title={t("isp.unavailable")} onRetry={() => void pppoe.mutate()} /> : (
           <>
             <div className="metrics four">
@@ -86,7 +86,7 @@ export function Isp({ me }: { me: Me }) {
               <Metric label={t("isp.suspended")} value={s ? mmk(s.suspended) : null} tone={s?.suspended ? "warn" : undefined} />
               <Metric label={t("isp.expired")} value={s ? mmk(s.expired) : null} tone={s?.expired ? "bad" : undefined} />
             </div>
-            {s?.failed.map((f) => <Recovery key={f.routerName} title={t("isp.routerFailed").replace("{router}", f.routerName)} detail={t("isp.routerFailedHelp")} action={{ href: "#/hub", label: t("su.a.hub") }} onRetry={() => void pppoe.mutate()} advanced={f.reason} />)}
+            {s?.failed.map((f) => <Recovery key={f.routerName} title={t("isp.routerFailed").replace("{router}", f.routerName)} detail={t("isp.routerFailedHelp")} action={{ href: "/app/hub", label: t("su.a.hub") }} onRetry={() => void pppoe.mutate()} advanced={f.reason} />)}
             {s && s.writeEnabled === false ? <p className="note warn small">{t("isp.writesLocked")}</p> : null}
           </>
         )}
@@ -105,10 +105,10 @@ export function Isp({ me }: { me: Me }) {
       <section className="stack" aria-label={t("isp.manageTitle")}>
         <h2 className="group-title">{t("isp.manageTitle")}</h2>
         <div className="linklist">
-          {staff ? <LinkRow href="#/pppoe" icon="users" title={t("isp.l.subs")} detail={t("isp.l.subsHelp")} /> : null}
-          <LinkRow href="#/customers?type=pppoe" icon="list" title={t("isp.l.list")} detail={t("isp.l.listHelp")} />
-          {staff ? <LinkRow href="#/network/pppoe" icon="gear" title={t("isp.l.server")} detail={t("isp.l.serverHelp")} /> : null}
-          <LinkRow href="#/revenue" icon="cash" title={t("isp.l.revenue")} detail={t("isp.l.revenueHelp")} />
+          {staff ? <LinkRow href="/app/pppoe" icon="users" title={t("isp.l.subs")} detail={t("isp.l.subsHelp")} /> : null}
+          <LinkRow href="/app/customers?type=pppoe" icon="list" title={t("isp.l.list")} detail={t("isp.l.listHelp")} />
+          {staff ? <LinkRow href="/app/network/pppoe" icon="gear" title={t("isp.l.server")} detail={t("isp.l.serverHelp")} /> : null}
+          <LinkRow href="/app/revenue" icon="cash" title={t("isp.l.revenue")} detail={t("isp.l.revenueHelp")} />
         </div>
       </section>
       <section className="stack" aria-label={t("isp.planned")}>
@@ -153,7 +153,7 @@ export function Customers({ params }: { params: URLSearchParams }) {
           <div className="row"><h2 id="cu-hs">{t("cu.hotspotUsers")}</h2><span className="chip">{t("cu.hotspot")}</span></div>
           <p className="soft small">{t("cu.hotspotHelp")}</p>
           {report.data ? <div className="metrics"><Metric label={t("cu.activeCodes")} value={mmk(report.data.activated_count)} sub={t("cu.activeCodesHint")} /><Metric label={t("hm.startedToday")} value={mmk(report.data.activation_today)} /></div> : report.isLoading ? <Loading><SkMetrics n={2} /></Loading> : null}
-          <div className="actions-row"><a className="btn small" href="#/guests">{t("cu.openSessions")}</a><a className="btn small quiet" href="#/vouchers">{t("cu.findCode")}</a></div>
+          <div className="actions-row"><a className="btn small" href="/app/guests">{t("cu.openSessions")}</a><a className="btn small quiet" href="/app/vouchers">{t("cu.findCode")}</a></div>
         </section>
       )}
       {type !== "hotspot" && (
@@ -188,7 +188,7 @@ export function Customers({ params }: { params: URLSearchParams }) {
             </ul>
           )}
           {rows.length > 200 ? <p className="soft small">{t("cu.more")}</p> : null}
-          <div className="actions-row"><a className="btn small" href="#/pppoe">{t("cu.manageSubs")}</a></div>
+          <div className="actions-row"><a className="btn small" href="/app/pppoe">{t("cu.manageSubs")}</a></div>
         </section>
       )}
       {asArray(pppoe.data?.failed).length ? <p className="note warn small">{t("isp.partial").replace("{n}", String(pppoe.data?.failed.length))}</p> : null}

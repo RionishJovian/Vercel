@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import useSWR from "swr";
 import { fetcher } from "../lib/api";
+import { navigate } from "../lib/route";
 import { asArray, mmk, num, type Me } from "../lib/types";
 import { useI18n } from "../i18n";
 import { Ago, IconTile, Metric, Recovery, Segmented, StatePill } from "../components/ui";
@@ -18,7 +19,7 @@ const readService = (): Service => { try { return sessionStorage.getItem(KEY) ==
 export function Home({ me, routerId }: { me: Me; routerId?: string | null }) {
   const { t } = useI18n();
   // Older links opened router ports on Home; ports now live on Network.
-  useEffect(() => { if (routerId) location.replace("#/net?router=" + encodeURIComponent(routerId)); }, [routerId]);
+  useEffect(() => { if (routerId) navigate("/app/net?router=" + encodeURIComponent(routerId), true); }, [routerId]);
   const name = me.user?.full_name || (me.user?.email ?? "").split("@")[0];
   const [service, setServiceState] = useState<Service>(readService);
   const setService = (s: Service) => { setServiceState(s); try { sessionStorage.setItem(KEY, s); } catch { /* ignore */ } };
@@ -43,7 +44,7 @@ export function Home({ me, routerId }: { me: Me; routerId?: string | null }) {
       {setup.loading ? (
         <Loading><div className="glass pad stack setup-card"><div className="row"><Bar w="55%" /><Bar w="12%" size=".875rem" /></div><span className="progress" /><Bar w="50%" size=".875rem" /></div></Loading>
       ) : !setup.complete && (
-        <a className="glass pad stack setup-card" href="#/setup">
+        <a className="glass pad stack setup-card" href="/app/setup">
           <div className="row"><b>{t("su.homeTitle")}</b><span className="soft small num">{setup.done}/{setup.total}</span></div>
           <div className="progress" role="progressbar" aria-valuemin={0} aria-valuemax={setup.total} aria-valuenow={setup.done} aria-label={t("su.title")}><i style={{ width: `${(setup.done / Math.max(1, setup.total)) * 100}%` }} /></div>
           <span className="row" style={{ justifyContent: "flex-start" }}><span className="soft small">{t("su.next")}: {setup.next ? t(setup.next.title) : ""}</span><Icon name="chevron" className="linkrow-chev" /></span>
@@ -52,10 +53,10 @@ export function Home({ me, routerId }: { me: Me; routerId?: string | null }) {
 
       {open.length > 0 && (
         <section className="glass pad stack" aria-labelledby="hm-alerts">
-          <div className="row"><h2 id="hm-alerts">{t("hm.attention")}</h2><a className="link small" href="#/incidents">{t("hm.allAlerts")} ({open.length})</a></div>
+          <div className="row"><h2 id="hm-alerts">{t("hm.attention")}</h2><a className="link small" href="/app/incidents">{t("hm.allAlerts")} ({open.length})</a></div>
           <div className="linklist">
             {open.slice(0, 2).map((i) => (
-              <a key={i.id} className="linkrow" href="#/incidents">
+              <a key={i.id} className="linkrow" href="/app/incidents">
                 <IconTile name="alert" tone={incidentTone(i.severity) === "bad" ? "bad" : "warn"} />
                 <span className="linkrow-text"><b>{i.subject_label || i.kind || t("al.issue")}</b><span className="soft small">{i.detail || t("al.openForDetail")}</span></span>
                 <Ago at={i.opened_at} />
@@ -74,17 +75,17 @@ export function Home({ me, routerId }: { me: Me; routerId?: string | null }) {
       </div>
 
       <section className="glass pad stack" aria-labelledby="hm-network">
-        <div className="row"><h2 id="hm-network">{t("nav.network")}</h2><a className="link small" href="#/net">{t("hm.open")}</a></div>
+        <div className="row"><h2 id="hm-network">{t("nav.network")}</h2><a className="link small" href="/app/net">{t("hm.open")}</a></div>
         <NetworkStrip />
       </section>
 
       <section className="stack" aria-label={t("hm.quick")}>
         <h2 className="group-title">{t("hm.quick")}</h2>
         <nav className="tiles">
-          <a className="tile" href="#/vouchers/create"><span className="tile-ico"><Icon name="ticket" /></span><b>{t("hm.qCreate")}</b></a>
-          <a className="tile" href="#/guests"><span className="tile-ico"><Icon name="users" /></span><b>{t("hm.qGuests")}</b></a>
-          <a className="tile" href="#/pppoe"><span className="tile-ico"><Icon name="isp" /></span><b>{t("hm.qSubscriber")}</b></a>
-          <a className="tile" href="#/hub"><span className="tile-ico"><Icon name="router" /></span><b>{t("hm.qRouter")}</b></a>
+          <a className="tile" href="/app/vouchers/create"><span className="tile-ico"><Icon name="ticket" /></span><b>{t("hm.qCreate")}</b></a>
+          <a className="tile" href="/app/guests"><span className="tile-ico"><Icon name="users" /></span><b>{t("hm.qGuests")}</b></a>
+          <a className="tile" href="/app/pppoe"><span className="tile-ico"><Icon name="isp" /></span><b>{t("hm.qSubscriber")}</b></a>
+          <a className="tile" href="/app/hub"><span className="tile-ico"><Icon name="router" /></span><b>{t("hm.qRouter")}</b></a>
         </nav>
       </section>
     </>
@@ -97,7 +98,7 @@ function HotspotCard() {
   const rep = report.data;
   return (
     <section className="glass pad svc-card" aria-labelledby="hm-hotspot">
-      <header><h2 id="hm-hotspot"><IconTile name="wifi" />{t("nav.hotspot")}</h2><a className="link small" href="#/hotspot">{t("hm.open")}</a></header>
+      <header><h2 id="hm-hotspot"><IconTile name="wifi" />{t("nav.hotspot")}</h2><a className="link small" href="/app/hotspot">{t("hm.open")}</a></header>
       {report.isLoading ? <Loading><SkMetrics n={4} /></Loading> : report.error ? (
         <Recovery title={t("hm.vouchersUnavailable")} detail={t("hm.vouchersUnavailableHelp")} onRetry={() => void report.mutate()} />
       ) : (
@@ -109,8 +110,8 @@ function HotspotCard() {
         </div>
       )}
       <div className="actions-row">
-        <a className="btn small" href="#/vouchers/create">{t("hm.qCreate")}</a>
-        <a className="btn small quiet" href="#/guests">{t("hm.liveSessions")}</a>
+        <a className="btn small" href="/app/vouchers/create">{t("hm.qCreate")}</a>
+        <a className="btn small quiet" href="/app/guests">{t("hm.liveSessions")}</a>
       </div>
     </section>
   );
@@ -124,9 +125,9 @@ function PppoeCard({ gateways }: { gateways: ReturnType<typeof useRouters>["gate
   const noRouter = gateways !== null && gateways.length === 0;
   return (
     <section className="glass pad svc-card" aria-labelledby="hm-pppoe">
-      <header><h2 id="hm-pppoe"><IconTile name="isp" />{t("nav.isp")}</h2><a className="link small" href="#/isp">{t("hm.open")}</a></header>
+      <header><h2 id="hm-pppoe"><IconTile name="isp" />{t("nav.isp")}</h2><a className="link small" href="/app/isp">{t("hm.open")}</a></header>
       {noRouter ? (
-        <Recovery title={t("isp.noGateway")} detail={t("isp.noGatewayHelp")} action={{ href: "#/setup", label: t("su.continue") }} />
+        <Recovery title={t("isp.noGateway")} detail={t("isp.noGatewayHelp")} action={{ href: "/app/setup", label: t("su.continue") }} />
       ) : gateways === null || pppoe.isLoading ? <Loading><SkMetrics n={4} /></Loading> : pppoe.error ? (
         <Recovery title={t("isp.unavailable")} onRetry={() => void pppoe.mutate()} />
       ) : (
@@ -142,8 +143,8 @@ function PppoeCard({ gateways }: { gateways: ReturnType<typeof useRouters>["gate
         </>
       )}
       <div className="actions-row">
-        <a className="btn small" href="#/pppoe">{t("isp.manage")}</a>
-        <a className="btn small quiet" href="#/customers?type=pppoe">{t("isp.viewList")}</a>
+        <a className="btn small" href="/app/pppoe">{t("isp.manage")}</a>
+        <a className="btn small quiet" href="/app/customers?type=pppoe">{t("isp.viewList")}</a>
       </div>
     </section>
   );

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import useSWR from "swr";
 import { fetcher } from "../../lib/api";
+import { navigate } from "../../lib/route";
 import { asArray } from "../../lib/types";
 import { useI18n } from "../../i18n";
 import { Note } from "../../components/ui";
@@ -53,7 +54,7 @@ export function NetworkMap({ gateways, selected, hub }: { gateways: RouterRow[];
   return (
     <div className="map-layout">
       <div className="stack">
-        {gateways.length > 1 && <select className="input" aria-label={t("v.f.gateway")} value={gw.device_id} onChange={(e) => { location.hash = "#/router/map?id=" + encodeURIComponent(e.target.value); }}>{gateways.map((g) => <option key={g.device_id} value={g.device_id}>{g.hardware_name || g.device_id}</option>)}</select>}
+        {gateways.length > 1 && <select className="input" aria-label={t("v.f.gateway")} value={gw.device_id} onChange={(e) => { navigate("/app/router/map?id=" + encodeURIComponent(e.target.value)); }}>{gateways.map((g) => <option key={g.device_id} value={g.device_id}>{g.hardware_name || g.device_id}</option>)}</select>}
         <section className="glass pad stack">
           <div className="mapnode router">
             <div><b>{gw.hardware_name || "RouterBOARD"}</b><div className="soft small">{m.total} {t("map.devices")}</div></div>

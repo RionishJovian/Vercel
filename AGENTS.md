@@ -17,8 +17,8 @@ means no check was made. Dated notes are evidence of that day, not live state.
 | Path | What it is |
 |---|---|
 | `cmd/server`, `internal/`, `pkg/` | Go API (module `mega-magic`) |
-| `app/` | React console, built with Vite and served at `/v2/` |
-| `web/` | Landing, pricing, sign-in, media and guest portal pages plus shared assets. The old `web/app.html`, vanilla `web/v2` and their tests are gone; `/app.html` redirects (302) to `/v2/` |
+| `app/` | React console, built with Vite and served at `/app/` (path routes such as `/app/net`; moved from `/v2/#/…` on 2026-11-12, old links redirect) |
+| `web/` | Landing, pricing, sign-in, media and guest portal pages plus shared assets. Clean URLs `/signin` and `/pricing` (old `.html` links 301 with the query kept). The old `web/app.html`, vanilla `web/v2` and their tests are gone; `/app.html` redirects (302) to `/app/home` |
 | `deploy/`, `Dockerfile.prod`, `Dockerfile.web.prod` | Release scripts, Caddy config, container images |
 | `vercel.json`, `proxy.js`, `vercel-public/` | Vercel frontend; `/api/v1` is proxied to `https://megamagic.tech` |
 | `src/`, `worker/`, `.openai/hosting.json`, `scripts/prepare-sites-build.mjs`, `tests/sites-worker.test.mjs` | Separate Sites prototype and historical Python/prototype material. Keep intact; it is not the production app and its build is not proof the app works |
@@ -29,7 +29,7 @@ Older notes that name `web/app.html` or ask for UI in `src/` are obsolete: new c
 
 - CI is `.github/workflows/deploy.yml` ("Validate and release Mega Magic") plus `codeql.yml`.
 - `validate` (every push and PR) runs: Go toolchain check, `npm run test:deployment`, `test:vercel`, `npm run build`, `test:critical-ui`, `app/` lint/test/build, `go test -race ./internal/...`, `go build ./...`, a reachable-vulnerability scan, deploy/backup script syntax checks and the migration-runner test.
-- `npm run build` builds the Vercel frontend (`web/` plus `app/` at `/v2/`) via `scripts/prepare-vercel-build.mjs`. The Sites prototype uses `npm run build:sites` and `npm run test:sites`; run those only for a Sites handoff.
+- `npm run build` builds the Vercel frontend (`web/` plus `app/` at `/app/`) via `scripts/prepare-vercel-build.mjs`. The Sites prototype uses `npm run build:sites` and `npm run test:sites`; run those only for a Sites handoff.
 - **Deploy (owner decision 2026-11-06, PR 134):** every push to `main` that passes `validate` builds images and runs `deploy-vps` automatically. Manual dispatch with `deploy_vps` still re-releases. This replaced the manual-only gate from 2026-10-25. Consequence: merging any PR, including Dependabot bumps and PRs marked "needs a router test", goes live. Check write gates (section 5) before merging.
 - The deploy script backs up, applies migrations, verifies public `/ready` and security headers, keeps a rollback copy and rolls back on failure.
 - Production host: Vultr Singapore `magic-app` (`207.148.76.172`); `megamagic.tech` resolves there (verified). Hostinger (`srv2032937`, `156.67.216.128`) and the Z.com servers are discontinued; do not use or restore them. SSH uses the key recorded in the owner's SSH config, not a password. Never store credentials in this file.
@@ -43,6 +43,7 @@ Older notes that name `web/app.html` or ask for UI in `src/` are obsolete: new c
 - 2026-10-18: the revamp reuses the existing app, services, auth, tenant isolation and data; no rebuild or data reset. Navigation is business-task based: Overview; Business (Revenue, Internet Vouchers, Jellyfin dashboards); Operations; Guest Portals; Store; Management. Operations covers Sites (required before router onboarding), Magic Hub one-paste connection, Devices, Site Topology, Guests, Fleet Health and guided Internet Setup.
 - 2026-10-25: keep short task labels and minimal descriptions; group related screens into shared workspaces (Magic Hub owns site, connection, discovery, network and maintenance; Vouchers owns internet guest-page design; Jellyfin owns its dashboard and separate guest page). Preserve old deep links, API authorization, role boundaries and review/apply confirmations. Never hide errors, live status, limits or consequential warnings.
 - Internet Hotspot Portal (data/time sales and vouchers) stays separate from the Jellyfin Guest Portal.
+- 2026-11-12 (owner decision): public URLs are `/` (landing), `/signin` (sign-in and `?register=1`), `/pricing`; the console is `/app/<page>` (`/app/home`, `/app/net`, `/app/vouchers/create`, …). Old `/v2/#/…` bookmarks, `/v2/…`, `/app.html`, `signin.html` and `pricing.html` keep working through redirects that keep the query. `/api/v1` is unchanged. The sign-in `next=` return path accepts only console route characters and is rebuilt from a fixed `/app/#/` prefix. The Network tab is `/app/net`; `/app/network` remains Internet setup. Handoff: `docs/HANDOFF-PUBLIC-PAGES-URLS-20261112.md`.
 - 2026-10-22: third-party products are server-side API engines behind Mega Magic's own screens and accounts. No redirects, iframes, embedded dashboards or separate customer logins; keep service credentials out of browsers.
 
 **Visual design**
@@ -95,6 +96,8 @@ The owner asked for server-wide router read/write/edit/delete on 2026-11-06. The
 - Record durable design feedback and owner decisions here with a date.
 
 ## 7. Open items and known drift (as of 2026-11-06)
+
+- **2026-11-12 PR #201 continuation:** retain the exact 66 public console assets from `5931ed0` at `/v2/assets/*` during the clean-URL migration. Both builds verify the pinned archive and SHA-256 manifest. No automatic chunk-error reloads; map failures stay inline and explicit Reload confirms after editing. The optional rollback web layer serves new `/app/*` links in place to avoid cached-redirect loops. See `docs/HANDOFF-PUBLIC-PAGES-URLS-20261112.md` for evidence and the still-pending browser transition test. Claude's screenshot showed unpushed work; sync the branch before resuming that working tree. This checkpoint does not authorize a merge or deployment.
 
 - WebFig Cloud Access has never signed in to a real router. AGENTS section 4 (2026-10-22) bars embedded third-party dashboards and separate logins; the owner has not yet recorded whether WebFig, in its own tab with the router's own login, is an accepted exception.
 - Real-router results and open bugs: `docs/HARDWARE-TRIAL-RESULTS-20261106.md`. The owner's hAP ax2 is no longer at factory settings.

@@ -35,7 +35,7 @@ export function Incidents({ me }: { me: Me }) {
   const canManage = ADMIN.includes(me.user?.user_role ?? "");
   const { data, error, isLoading, mutate } = useSWR<{ incidents?: Incident[] }>("/incidents", fetcher);
   const [busy, setBusy] = useState(""), [err, setErr] = useState("");
-  const back = <BackLink href="#/more">{t("tab.more")}</BackLink>;
+  const back = <BackLink href="/app/more">{t("tab.more")}</BackLink>;
   if (isLoading) return <>{back}<Skeleton h={260} /></>;
   if (error) return <>{back}<Note kind="bad">{t("c.loadFailed")}</Note></>;
   const list = asArray<Incident>(data?.incidents);

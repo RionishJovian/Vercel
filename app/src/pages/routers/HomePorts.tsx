@@ -30,7 +30,7 @@ export function HomePorts({ router }: { router: Router }) {
   const words = { full: t("r.full"), half: t("r.half"), updateAvail: t("r.updateAvail"), noNewer: t("r.noNewer"), fwUpgrade: t("r.fwUpgrade") };
   const measuring = stillMeasuring(ports, reads) ? t("r.measuring") : null;
   const settings = router.deployment_layer === "MAIN_GATEWAY"
-    ? (port: string) => "#/network/ip?" + new URLSearchParams({ router: router.device_id, task: "ip_address", interface: port })
+    ? (port: string) => "/app/network/ip?" + new URLSearchParams({ router: router.device_id, task: "ip_address", interface: port })
     : undefined;
   return (
     <div className="home-port-grid">

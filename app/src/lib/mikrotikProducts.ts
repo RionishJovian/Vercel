@@ -40,7 +40,7 @@ export const mikrotikProducts: readonly MikroTikProductPhoto[] = [
   { id: "wap-ac", name: "wAP ac", category: "ap", image: "models/wap-ac.jpg", alt: "MikroTik wAP ac", match: /\bwap ?ac(?![0-9a-z])/, productUrl: "https://mikrotik.com/product/wap_ac", sourceImageUrl: "https://cdn.mikrotik.com/web-assets/rb_images/1988_lg.webp" },
 ];
 
-/** Pass the deployment base, e.g. "/v2/", when assets are served under a subpath. */
+/** Pass the deployment base, e.g. "/app/", when assets are served under a subpath. */
 export const productPhotoUrl = (product: MikroTikProductPhoto, base = "/"): string => base.replace(/\/$/, "") + "/" + product.image;
 export const findProductPhoto = (id: string) => mikrotikProducts.find((product) => product.id === id);
 

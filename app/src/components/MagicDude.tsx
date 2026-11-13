@@ -49,13 +49,13 @@ export function MagicDude() {
   return (
     <>
       <button type="button" className="md-fab" aria-expanded={open} aria-controls="md-panel" aria-label="Magic Dude" title="Magic Dude" onClick={() => setOpen(o => !o)}>
-        <img src="/v2/magic-dude.png" alt="" width={30} height={30} /><span className="md-fab-label">Magic Dude</span>
+        <img src={import.meta.env.BASE_URL + "magic-dude.png"} alt="" width={30} height={30} /><span className="md-fab-label">Magic Dude</span>
       </button>
       {open && (
         <section id="md-panel" className="md-panel glass" role="dialog" aria-label="Magic Dude">
           <header className="row">
             <div className="row" style={{ justifyContent: "flex-start" }}>
-              <img src="/v2/magic-dude.png" alt="" width={40} height={40} />
+              <img src={import.meta.env.BASE_URL + "magic-dude.png"} alt="" width={40} height={40} />
               <div><h2>Magic Dude</h2><p className="small soft">{t("md.sub")}</p></div>
             </div>
             <button type="button" className="iconbtn" aria-label={t("md.close")} onClick={() => setOpen(false)}>×</button>

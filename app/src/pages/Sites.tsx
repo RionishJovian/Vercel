@@ -5,6 +5,7 @@ import { asArray, num, type Me } from "../lib/types";
 import { useI18n } from "../i18n";
 import { BackLink, Field, Note, PageHead } from "../components/ui";
 import { Skeleton } from "../components/Skeleton";
+import { PageBoundary } from "../components/PageBoundary";
 import { connectionIsFresh, stateOf, type Site, type Conn } from "../lib/siteState";
 export { connectionIsFresh } from "../lib/siteState";
 import { errorText } from "../lib/errors";
@@ -59,7 +60,7 @@ export function Sites({ me }: { me: Me }) {
   const [selected, setSelected] = useState(() => { try { return localStorage.getItem(SELECTED) ?? ""; } catch { return ""; } });
   const [err, setErr] = useState("");
   const [confirmDel, setConfirmDel] = useState("");
-  const back = <BackLink href="#/more">{t("tab.more")}</BackLink>;
+  const back = <BackLink href="/app/more">{t("tab.more")}</BackLink>;
   if (sitesRes.isLoading) return <>{back}<Skeleton h={300} /></>;
   if (sitesRes.error) return <>{back}<Note kind="bad">{t("c.loadFailed")}</Note></>;
   const sites = asArray<Site>(sitesRes.data?.sites), conns = asArray<Conn>(connRes.data?.connections);
@@ -80,10 +81,10 @@ export function Sites({ me }: { me: Me }) {
       {err && <Note kind="bad">{err}</Note>}
       {canEdit && !form && <button className="btn" type="button" onClick={() => { setCoords({ lat: "", lng: "" }); setForm({ site: null }); }}>{t("site.add")}</button>}
       {(sites.some((x) => x.latitude != null) || form) && (
-        <Suspense fallback={<Skeleton h={280} />}>
+        <PageBoundary inline><Suspense fallback={<Skeleton h={280} />}>
           <SiteMap sites={sites} states={Object.fromEntries(sites.map((x) => [x.site_id, stateOf(x, conns)]))} selected={selected} onSelect={(id) => pick(id === selected ? "" : id)} pick={form ? { lat: coords.lat, lng: coords.lng, onPick: (la, lo) => setCoords({ lat: la.toFixed(6), lng: lo.toFixed(6) }) } : undefined} />
           <p className="soft small">{t("site.mapCredit")}</p>
-        </Suspense>
+        </Suspense></PageBoundary>
       )}
       {form && <SiteForm site={form.site} coords={coords} setCoords={setCoords} onDone={done} onCancel={() => setForm(null)} />}
       {!sites.length ? <Note>{t("site.none")}</Note> : (
@@ -115,7 +116,7 @@ export function Sites({ me }: { me: Me }) {
         <section className="glass pad stack" aria-label={t("site.ready")}>
           <h2>{t("site.ready")}: {sel.name}</h2>
           <ul className="legend">{checks.map(([ok, key]) => <li key={key}><i className={ok ? "s-available" : "s-expired"} /><span>{t(key)}</span><b className={ok ? "tone-ok" : "mute"}>{ok ? t("site.ok") : t("site.missing")}</b></li>)}</ul>
-          <a className="btn quiet" href="#/hub">{t("hub.title")}</a>
+          <a className="btn quiet" href="/app/hub">{t("hub.title")}</a>
         </section>
       )}
     </>

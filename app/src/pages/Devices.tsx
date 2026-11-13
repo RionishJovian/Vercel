@@ -88,14 +88,14 @@ export function Devices({ me }: { me: Me }) {
   }, [t]);
   useEffect(() => { if (selected) void read(selected.device_id); else setState({ kind: "idle" }); }, [selected?.device_id, read]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const back = <BackLink href="#/more">{t("tab.more")}</BackLink>;
+  const back = <BackLink href="/app/more">{t("tab.more")}</BackLink>;
   if (routers.isLoading) return <>{back}<Skeleton h={260} /></>;
   const byMac = new Map(state.kind === "ready" ? state.labels.map((l) => [l.mac, l]) : []);
   return (
     <>
       {back}<PageHead title={t("dv.title")} help={t("dv.lead")} />
       {gateways.length > 1 && <label className="field"><span>{t("net.working")}</span><select className="input" value={selected?.device_id ?? ""} onChange={(e) => { setId(e.target.value); try { sessionStorage.setItem("mm_selected_router", e.target.value); } catch { /* ignore */ } }}><option value="">{t("net.chooseRouter")}</option>{gateways.map((g) => <option key={g.device_id} value={g.device_id}>{g.hardware_name}</option>)}</select></label>}
-      {!gateways.length ? <Note>{t("net.noRouter")} <a className="link" href="#/hub">{t("hub.title")}</a></Note> : !selected ? <Note>{t("net.pickOnce")}</Note> : (
+      {!gateways.length ? <Note>{t("net.noRouter")} <a className="link" href="/app/hub">{t("hub.title")}</a></Note> : !selected ? <Note>{t("net.pickOnce")}</Note> : (
         <>
           <UniversalDiscoveryPanel gatewayId={selected.device_id} />
           <button className="pill" type="button" disabled={state.kind === "loading"} onClick={() => void read(selected.device_id)}>{t("gu.refresh")}</button>

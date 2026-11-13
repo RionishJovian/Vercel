@@ -50,4 +50,31 @@ describe("Sign in", () => {
     expect((await screen.findByRole("alert")).textContent).toContain("Could not reach the server");
     expect((screen.getByRole("button", { name: "Sign in" }) as HTMLButtonElement).disabled).toBe(false);
   });
+  it("accepts older logins without a domain suffix (no browser email validation)", async () => {
+    reply = () => json(200, {});
+    const onDone = vi.fn();
+    const { container } = render(<ThemeProvider><I18nProvider><SignIn onDone={onDone} /></I18nProvider></ThemeProvider>);
+    const email = screen.getByLabelText("Email") as HTMLInputElement;
+    expect(email.type).toBe("text");
+    expect(email.autocomplete).toBe("username");
+    fireEvent.change(email, { target: { value: "kyaw@mikromagic" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "pw" } });
+    fireEvent.submit(container.querySelector("form")!);
+    await waitFor(() => expect(onDone).toHaveBeenCalled());
+    expect(bodies[0]).toEqual({ email: "kyaw@mikromagic", password: "pw" });
+  });
+  it("explains a suspended business separately", async () => {
+    reply = () => json(403, { error: "this business account is suspended" });
+    submit();
+    expect((await screen.findByRole("alert")).textContent).toContain("suspended");
+  });
+  it("can show the password without losing autofill hints", () => {
+    render(<ThemeProvider><I18nProvider><SignIn onDone={vi.fn()} /></I18nProvider></ThemeProvider>);
+    const pw = screen.getByLabelText("Password") as HTMLInputElement;
+    expect(pw.autocomplete).toBe("current-password");
+    fireEvent.click(screen.getByRole("button", { name: "Show password" }));
+    expect(pw.type).toBe("text");
+    fireEvent.click(screen.getByRole("button", { name: "Hide password" }));
+    expect(pw.type).toBe("password");
+  });
 });

@@ -90,7 +90,7 @@ it("keeps unknown observations distinct from unused accounts and prevents viewer
 it("guides missing management setup to Magic Hub and prevents a new installation", async () => {
   inventoryStatus = 409; inventoryBody = { code: "router_management_required", error: "setup required" };
   open();
-  expect((await screen.findByRole("link", { name: "Connect Magic Hub" })).getAttribute("href")).toBe("#/hub");
+  expect((await screen.findByRole("link", { name: "Connect Magic Hub" })).getAttribute("href")).toBe("/app/hub");
   fireEvent.click(screen.getByText("New account", { exact: true }));
   expect(screen.getByRole("button", { name: "Install account" }).matches(":disabled")).toBe(true);
   expect(calls).toEqual([]);

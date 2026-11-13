@@ -1,7 +1,7 @@
 import { Suspense, lazy, useCallback, useEffect, useState } from "react";
 import { useSWRConfig } from "swr";
 import { api } from "./lib/api";
-import { useRoute } from "./lib/route";
+import { APP_BASE, navigate, normalizeLocation, useRoute } from "./lib/route";
 import type { Me } from "./lib/types";
 import { useI18n } from "./i18n";
 import { Shell } from "./components/Shell";
@@ -70,6 +70,8 @@ export function App() {
     try { setAuth({ state: "in", me: await api.get<Me>("/me") }); } catch { setAuth({ state: "out" }); }
   }, []);
   useEffect(() => { void boot(); }, [boot]);
+  // Old #/… links become /app/… paths; the bare /app/ opens Home.
+  useEffect(() => { normalizeLocation(); if (/^\/app\/?$/.test(location.pathname) && !location.hash) navigate(APP_BASE + "home", true); }, []);
   const key = auth.state === "out" ? "title.signin" : auth.state === "in" ? titleKey(route.name, route.sub) : undefined;
   const pageTitle = key ? t(key) : "";
   useEffect(() => { document.title = pageTitle ? pageTitle + " · MegaMagic" : "MegaMagic"; }, [pageTitle]);
@@ -117,10 +119,10 @@ export function App() {
     case "net": page = <NetworkHub me={me} routerId={route.params.get("router")} />; break;
     case "activity": page = <Activity />; break;
     case "approvals": page = <Approvals />; break;
-    case "portal": location.replace("#/vouchers/guest"); page = null; break;
+    case "portal": queueMicrotask(() => navigate(APP_BASE + "vouchers/guest", true)); page = null; break;
     case "more": page = <More me={me} onSignedOut={signedOut} />; break;
     case "home": page = <Home key={route.params.get("router")} me={me} routerId={route.params.get("router")} />; break;
-    default: location.replace("#/home"); page = null;
+    default: queueMicrotask(() => navigate(APP_BASE + "home", true)); page = null;
   }
   return <Shell route={route.name} business={me.business?.company_name}><PageBoundary key={route.name + "/" + route.sub}><Suspense fallback={<PageSkeleton variant={skeletonFor(route.name)} />}>{page}</Suspense></PageBoundary></Shell>;
 }

@@ -35,13 +35,13 @@ export function useSetupProgress() {
   const firstUse = rep ? (num(rep.activated_count) ?? 0) > 0 : false;
 
   const steps: Step[] = [
-    { id: "site", title: "su.s.site", help: "su.h.site", href: "#/sites", action: "su.a.site", state: siteList.length ? "done" : "todo", evidence: siteList[0]?.name },
-    { id: "hub", title: "su.s.hub", help: "su.h.hub", href: "#/hub", action: "su.a.hub", state: fresh ? "done" : !siteList.length ? "blocked" : "todo", at: fresh?.cloud_last_seen_at },
-    { id: "router", title: "su.s.router", help: "su.h.router", href: "#/hub", action: "su.a.router", state: gateways.length && fleet.tone === "ok" ? "done" : !fresh && !gateways.length ? "blocked" : "todo", evidence: gateways[0]?.hardware_name },
-    { id: "internet", title: "su.s.internet", help: "su.h.internet", href: "#/network/new", action: "su.a.internet", state: gateways.length ? "manual" : "blocked" },
-    { id: "plan", title: "su.s.plan", help: "su.h.plan", href: "#/vouchers/create", action: "su.a.plan", state: codes > 0 ? "done" : "todo", evidence: codes ? String(codes) : undefined },
-    { id: "portal", title: "su.s.portal", help: "su.h.portal", href: "#/vouchers/guest", action: "su.a.portal", state: portalSaved ? "manual" : "todo" },
-    { id: "test", title: "su.s.test", help: "su.h.test", href: "#/guests", action: "su.a.test", state: firstUse ? "done" : codes ? "todo" : "blocked" },
+    { id: "site", title: "su.s.site", help: "su.h.site", href: "/app/sites", action: "su.a.site", state: siteList.length ? "done" : "todo", evidence: siteList[0]?.name },
+    { id: "hub", title: "su.s.hub", help: "su.h.hub", href: "/app/hub", action: "su.a.hub", state: fresh ? "done" : !siteList.length ? "blocked" : "todo", at: fresh?.cloud_last_seen_at },
+    { id: "router", title: "su.s.router", help: "su.h.router", href: "/app/hub", action: "su.a.router", state: gateways.length && fleet.tone === "ok" ? "done" : !fresh && !gateways.length ? "blocked" : "todo", evidence: gateways[0]?.hardware_name },
+    { id: "internet", title: "su.s.internet", help: "su.h.internet", href: "/app/network/new", action: "su.a.internet", state: gateways.length ? "manual" : "blocked" },
+    { id: "plan", title: "su.s.plan", help: "su.h.plan", href: "/app/vouchers/create", action: "su.a.plan", state: codes > 0 ? "done" : "todo", evidence: codes ? String(codes) : undefined },
+    { id: "portal", title: "su.s.portal", help: "su.h.portal", href: "/app/vouchers/guest", action: "su.a.portal", state: portalSaved ? "manual" : "todo" },
+    { id: "test", title: "su.s.test", help: "su.h.test", href: "/app/guests", action: "su.a.test", state: firstUse ? "done" : codes ? "todo" : "blocked" },
   ];
   // Internet and the guest page on the router cannot be observed from the cloud, so they never count toward progress.
   const checkable = steps.filter((s) => s.id !== "internet" && s.id !== "portal");
@@ -68,7 +68,7 @@ export function Setup() {
             <div className="row"><b>{p.complete ? t("su.ready") : t("su.progress").replace("{done}", String(p.done)).replace("{total}", String(p.total))}</b>{p.complete ? <StatePill tone="ok">{t("su.siteReady")}</StatePill> : null}</div>
             <div className="progress" role="progressbar" aria-valuemin={0} aria-valuemax={p.total} aria-valuenow={p.done} aria-label={t("su.title")}><i style={{ width: `${(p.done / Math.max(1, p.total)) * 100}%` }} /></div>
             {p.failed ? <p className="note warn small">{t("su.partial")}</p> : null}
-            <div className="dude-tip"><img src="/v2/magic-dude.png" alt="" width={40} height={40} /><p className="small">{t("su.dude")}</p></div>
+            <div className="dude-tip"><img src={import.meta.env.BASE_URL + "magic-dude.png"} alt="" width={40} height={40} /><p className="small">{t("su.dude")}</p></div>
           </section>
           <ol className="steps">
             {p.steps.map((s, i) => {

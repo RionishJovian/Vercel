@@ -1,6 +1,8 @@
 User-agent: *
 Allow: /
+Disallow: /app/
 Disallow: /v2/
 Disallow: /portal.html
+Disallow: /signin
 Disallow: /signin.html
 Disallow: /api/

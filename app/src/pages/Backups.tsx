@@ -21,7 +21,7 @@ export function Backups() {
   const ch = useSWR<{ changes?: Change[] }>(id ? `/devices/${encodeURIComponent(id)}/changes` : null, fetcher, { shouldRetryOnError: false });
   const [busy, setBusy] = useState(false), [msg, setMsg] = useState<{ bad: boolean; text: string } | null>(null);
   const [restoring, setRestoring] = useState<{ id: string; otp: string } | null>(null);
-  const back = <BackLink href="#/more">{t("tab.more")}</BackLink>;
+  const back = <BackLink href="/app/more">{t("tab.more")}</BackLink>;
   if (routers.isLoading) return <>{back}<Skeleton h={260} /></>;
   if (!list.length) return <>{back}<h1>{t("bk.title")}</h1><Note>{t("bk.noDevices")}</Note></>;
   const backups = asArray<Backup>(bk.data?.backups), changes = asArray<Change>(ch.data?.changes);

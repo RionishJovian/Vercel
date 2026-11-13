@@ -119,7 +119,7 @@ export function Jellyfin({ sub, me }: { sub: string; me: Me }) {
   return (
     <>
       <h1>{t("title.jellyfin")}</h1>
-      <WorkspaceTabs items={PARTS.map((p) => ({ href: "#/jellyfin/" + p, label: t("j.ws." + p), current: p === part }))} />
+      <WorkspaceTabs items={PARTS.map((p) => ({ href: "/app/jellyfin/" + p, label: t("j.ws." + p), current: p === part }))} />
       {part === "dash" ? <Dashboard /> : part === "vouchers" ? (
         <section className="glass pad stack"><h2>{t("j.notReady")}</h2><p className="soft">{t("j.notReadyBody")}</p></section>
       ) : (

@@ -1,6 +1,6 @@
 import {existsSync,readFileSync} from 'node:fs';
 import path from 'node:path';
-// The console is the React app in app/, built into the web image (and the Vercel build) at /v2/.
+// The console is the React app in app/, built into the web image (and the Vercel build) at /app/.
 // These are the static pages and shared assets that ship from web/.
 export const requiredFrontendFiles = ['index.html','signin.html','pricing.html','portal.html',
  'assets/js/api.js','assets/js/site.js',

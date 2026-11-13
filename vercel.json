@@ -11,6 +11,48 @@
       "/api/v1/:path*"
     ]
   },
+  "redirects": [
+    {
+      "source": "/signin.html",
+      "destination": "/signin",
+      "permanent": true
+    },
+    {
+      "source": "/pricing.html",
+      "destination": "/pricing",
+      "permanent": true
+    },
+    {
+      "source": "/v2",
+      "destination": "/app/",
+      "permanent": true
+    },
+    {
+      "source": "/v2/",
+      "destination": "/app/",
+      "permanent": true
+    },
+    {
+      "source": "/v2/index.html",
+      "destination": "/app/",
+      "permanent": true
+    },
+    {
+      "source": "/v2/:path((?!assets/).+)",
+      "destination": "/app/:path",
+      "permanent": true
+    },
+    {
+      "source": "/app.html",
+      "destination": "/app/home",
+      "permanent": false
+    },
+    {
+      "source": "/app",
+      "destination": "/app/",
+      "permanent": true
+    }
+  ],
   "rewrites": [
     {
       "source": "/api/v1",
@@ -19,6 +61,18 @@
     {
       "source": "/api/v1/:path*",
       "destination": "https://megamagic.tech/api/v1/:path*"
+    },
+    {
+      "source": "/signin",
+      "destination": "/signin.html"
+    },
+    {
+      "source": "/pricing",
+      "destination": "/pricing.html"
+    },
+    {
+      "source": "/app/:path((?!assets/).*)",
+      "destination": "/app/index.html"
     }
   ],
   "headers": [

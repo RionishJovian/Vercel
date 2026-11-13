@@ -31,7 +31,7 @@ describe("Router page navigation", () => {
     open();
     await screen.findByText("Shop gateway");
     expect(screen.getAllByRole("link", { name: /Magic Hub/ })).toHaveLength(1);
-    expect(document.querySelectorAll('a[href="#/managed-devices"]')).toHaveLength(1);
-    expect(document.querySelectorAll('a[href="#/topology"]')).toHaveLength(1);
+    expect(document.querySelectorAll('a[href="/app/managed-devices"]')).toHaveLength(1);
+    expect(document.querySelectorAll('a[href="/app/topology"]')).toHaveLength(1);
   });
 });

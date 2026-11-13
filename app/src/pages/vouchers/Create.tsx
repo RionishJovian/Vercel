@@ -86,7 +86,7 @@ export function Create() {
   return (
     <div className="stack">
       {profiles.error && <Note kind="warn">{errorText(profiles.error, t("c.loadFailed"))}</Note>}
-      {profiles.data && !ready && <Note kind="warn">{t("v.hotspotRequired")} <a className="link" href={"#/network/new?router=" + encodeURIComponent(gateway.device_id)}>{t("nw.title")}</a></Note>}
+      {profiles.data && !ready && <Note kind="warn">{t("v.hotspotRequired")} <a className="link" href={"/app/network/new?router=" + encodeURIComponent(gateway.device_id)}>{t("nw.title")}</a></Note>}
       {(!profiles.data || !ready) && <button className="pill" type="button" disabled={profiles.isValidating} onClick={() => void profiles.mutate()}>{t(profiles.isValidating ? "r.checking" : "c.retry")}</button>}
       {saved?.batch_id && <Note kind="warn">{t("v.pendingFirst")} <button type="button" className="pill" disabled={busy} onClick={() => void retry(saved.batch_id!)}>{t("v.retrySavedBatch")}</button></Note>}
       <form className="glass pad stack" onSubmit={submit}>
