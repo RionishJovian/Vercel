@@ -21,9 +21,34 @@ interface GW extends RouterRow { site_id?: string | null; management_ip?: string
 interface Capability { available?: boolean; lookup_enabled?: boolean; code?: string }
 const EDITORS = ["OWNER", "ADMIN", "DEVELOPER"];
 
-function Card({ r, state, canEdit, cap, openId, setOpen, onChanged, onDeleted }: { r: GW; state: string; canEdit: boolean; cap: Capability; openId: string; setOpen: (id: string) => void; onChanged: () => void; onDeleted: (id: string) => void }) {
+// Platform Admin only. Erases the history that normally keeps a record, so the exact name must
+// be typed. The server checks the role and the name again; this form only asks.
+function ForceDelete({ r, onDone }: { r: GW; onDone: (res: { router_cleanup_script?: string } | null) => void }) {
   const { t } = useI18n();
-  const [del, setDel] = useState<{ confirm: boolean; busy: boolean; err?: string; kept?: boolean }>({ confirm: false, busy: false });
+  const word = (r.hardware_name ?? "").trim() || r.device_id;
+  const [typed, setTyped] = useState(""), [busy, setBusy] = useState(false), [err, setErr] = useState("");
+  async function go() {
+    setBusy(true); setErr("");
+    try {
+      onDone(await api.del<{ router_cleanup_script?: string }>(`/routers/${encodeURIComponent(r.device_id)}?force=true&confirm=${encodeURIComponent(word)}`, AbortSignal.timeout(60_000)));
+    } catch (e) {
+      setBusy(false);
+      setErr(isUnauthorized(e) ? t("hub.delSignedOut") : errorText(e, t("hub.delFail")));
+    }
+  }
+  return (
+    <div className="note bad stack" role="group" aria-label={t("hub.forceTitle")}>
+      <b>{t("hub.forceTitle")}</b><p className="small">{t("hub.forceBody")}</p>
+      <Field label={`${t("hub.forceType")} ${word}`} htmlFor={"force-" + r.device_id}><input className="input" id={"force-" + r.device_id} value={typed} autoComplete="off" spellCheck={false} onChange={(e) => setTyped(e.target.value)} /></Field>
+      <div className="row" style={{ justifyContent: "flex-start" }}><button className="pill danger" type="button" disabled={busy || typed !== word} aria-busy={busy} onClick={() => void go()}>{busy ? t("hub.deleting") : t("hub.forceDelete")}</button></div>
+      {err && <Note kind="bad">{err}</Note>}
+    </div>
+  );
+}
+
+function Card({ r, state, canEdit, platform, cap, openId, setOpen, onChanged, onDeleted }: { r: GW; state: string; canEdit: boolean; platform: boolean; cap: Capability; openId: string; setOpen: (id: string) => void; onChanged: () => void; onDeleted: (id: string) => void }) {
+  const { t } = useI18n();
+  const [del, setDel] = useState<{ confirm: boolean; busy: boolean; err?: string; kept?: boolean; conflict?: boolean }>({ confirm: false, busy: false });
   const [editing, setEditing] = useState(false), [maint, setMaint] = useState(false);
   const [cleanup, setCleanup] = useState(""), [kept, setKept] = useState(false), [partial, setPartial] = useState("");
   async function remove() {
@@ -49,9 +74,14 @@ function Card({ r, state, canEdit, cap, openId, setOpen, onChanged, onDeleted }:
       // Keep the confirmation open so the reason shows next to the button that was pressed.
       // The connection ended but the record did not change. This is the only copy of the script.
       const script = e instanceof ApiError ? (e.data as { router_cleanup_script?: string } | null)?.router_cleanup_script : undefined;
-      setDel({ confirm: !script, busy: false, err: errorText(e, t("hub.delFail")) });
+      setDel({ confirm: !script, busy: false, err: errorText(e, t("hub.delFail")), conflict: e instanceof ApiError && e.status === 409 });
       if (script) { setPartial(script); onChanged(); }
     }
+  }
+  function forced(res: { router_cleanup_script?: string } | null) {
+    setDel({ confirm: false, busy: false });
+    setKept(false);
+    if (res?.router_cleanup_script) setCleanup(res.router_cleanup_script); else onDeleted(r.device_id);
   }
   const tone = state === "up" ? "ok" : state === "stale" ? "warn" : state === "offline" ? "bad" : "";
   if (partial) return (
@@ -99,6 +129,7 @@ function Card({ r, state, canEdit, cap, openId, setOpen, onChanged, onDeleted }:
         <div className="note ok stack" role="status" aria-label={t("hub.keptNowTitle")}>
           <b>{t("hub.keptNowTitle")}</b><p className="small">{t("hub.keptNote")}</p>
           <div className="row" style={{ justifyContent: "flex-start" }}><button className="pill" type="button" onClick={() => setDel({ confirm: false, busy: false })}>{t("hub.delDone")}</button></div>
+          {platform && <ForceDelete r={r} onDone={forced} />}
         </div>
       )}
       {del.confirm && !del.kept && (
@@ -109,6 +140,7 @@ function Card({ r, state, canEdit, cap, openId, setOpen, onChanged, onDeleted }:
             <button className="pill danger" type="button" disabled={del.busy} aria-busy={del.busy} onClick={() => void remove()}>{del.busy ? t("hub.deleting") : t("hub.delete")}</button>
           </div>
           {del.err && <Note kind="bad">{del.err}</Note>}
+          {platform && del.conflict && <ForceDelete r={r} onDone={forced} />}
         </div>
       )}
       {!del.confirm && del.err && <Note kind="bad">{del.err}</Note>}
@@ -152,7 +184,7 @@ function AddGateway({ sites, onDone }: { sites: Array<{ site_id: string; name: s
 
 export function Hub({ me }: { me: Me }) {
   const { t } = useI18n();
-  const canEdit = EDITORS.includes(me.user?.user_role ?? "");
+  const canEdit = EDITORS.includes(me.user?.user_role ?? ""), platform = me.user?.user_role === "DEVELOPER";
   const routers = useSWR<{ routers?: GW[] }>("/routers", fetcher);
   const fleet = useFleet({ shouldRetryOnError: false });
   const sitesRes = useSWR<{ sites?: Array<{ site_id: string; name: string }> }>("/sites", fetcher, { shouldRetryOnError: false });
@@ -172,7 +204,7 @@ export function Hub({ me }: { me: Me }) {
     <>
       {back}<PageHead title={t("hub.title")} help={t("hub.lead")} />
       {!gateways.length && <Note>{t("hub.none")}</Note>}
-      <div className="router-grid workspace-main">{gateways.map((r) => <Card key={r.device_id} r={r} state={states.get(r.device_id) ?? "unknown"} canEdit={canEdit} cap={capability} openId={openId} setOpen={setOpen} onChanged={refresh} onDeleted={removed} />)}</div>
+      <div className="router-grid workspace-main">{gateways.map((r) => <Card key={r.device_id} r={r} state={states.get(r.device_id) ?? "unknown"} canEdit={canEdit} platform={platform} cap={capability} openId={openId} setOpen={setOpen} onChanged={refresh} onDeleted={removed} />)}</div>
       {canEdit && <div className="workspace-rail"><AddGateway sites={sites} onDone={(id) => { refresh(); if (id) setOpen(id); }} /></div>}
     </>
   );

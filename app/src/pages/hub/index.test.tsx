@@ -135,6 +135,47 @@ describe("Magic Hub card", () => {
     expect((call[1].headers as Record<string, string>)["X-MM-CSRF"]).toBe("1");
     expect(screen.getByText("26d").className).toContain("num");
   });
+  it("offers permanent delete to the Platform Admin only, and only after the exact name is typed", async () => {
+    deleteAnswer = { status: 200, body: { message: "kept", record_kept: true } };
+    routers = [{ ...CONNECTED, management_connected: false }];
+    const view = open("OWNER");
+    await startDelete();
+    await screen.findByRole("status", { name: "Record not deleted. Connection ended." });
+    expect(screen.queryByRole("group", { name: "Delete this record and its history for good" })).toBeNull();
+    view.unmount();
+
+    open("DEVELOPER");
+    await startDelete();
+    const group = await screen.findByRole("group", { name: "Delete this record and its history for good" });
+    const button = [...group.querySelectorAll("button")].find((b) => b.textContent === "Delete permanently") as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    const input = group.querySelector("input")!;
+    fireEvent.change(input, { target: { value: "shop router" } });
+    expect(button.disabled).toBe(true);
+    fireEvent.change(input, { target: { value: "Shop router" } });
+    expect(button.disabled).toBe(false);
+
+    deleteAnswer = { status: 200, body: { message: "router deleted", forced: true } };
+    routers = [];
+    fireEvent.click(button);
+    await waitFor(() => expect(screen.queryByText("Shop router")).toBeNull());
+    const forcedCall = (fetch as unknown as { mock: { calls: Array<[string, RequestInit]> } }).mock.calls.find(([url, init]) => init?.method === "DELETE" && String(url).includes("force=true"))!;
+    expect(String(forcedCall[0])).toContain(`/routers/${CONNECTED.device_id}?force=true&confirm=Shop%20router`);
+    expect(forcedCall[1].credentials).toBe("include");
+    expect((forcedCall[1].headers as Record<string, string>)["X-MM-CSRF"]).toBe("1");
+  });
+  it("shows why a permanent delete was refused and keeps the card", async () => {
+    deleteAnswer = { status: 200, body: { message: "kept", record_kept: true } };
+    routers = [{ ...CONNECTED, management_connected: false }];
+    open("DEVELOPER");
+    await startDelete();
+    const group = await screen.findByRole("group", { name: "Delete this record and its history for good" });
+    fireEvent.change(group.querySelector("input")!, { target: { value: "Shop router" } });
+    deleteAnswer = { status: 409, body: { error: "This record is still linked to other history, so nothing was deleted." } };
+    fireEvent.click([...group.querySelectorAll("button")].find((b) => b.textContent === "Delete permanently")!);
+    await waitFor(() => expect(group.textContent).toContain("so nothing was deleted"));
+    expect(screen.getAllByText("Shop router").length).toBeGreaterThan(0);
+  });
   it("says so when the session ended instead of doing nothing", async () => {
     deleteAnswer = { status: 401, body: { error: "unauthorized" } };
     open("DEVELOPER");

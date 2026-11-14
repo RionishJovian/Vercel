@@ -350,6 +350,11 @@ func (h *RouterHandler) UpdateRouter(c *gin.Context) {
 
 // DeleteRouter removes a router
 func (h *RouterHandler) DeleteRouter(c *gin.Context) {
+	// Only the Platform Admin may erase the history that normally keeps a record.
+	if c.Query("force") == "true" {
+		h.forceDeleteRouter(c)
+		return
+	}
 	deviceID := c.Param("id")
 	businessID := auth.GetBusinessID(c)
 
