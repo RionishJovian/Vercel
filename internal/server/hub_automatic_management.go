@@ -294,8 +294,12 @@ func automaticManagementScript(id string, p pendingManagement) string {
 	// /ip/service also lists live SSH connections, so the service is the first match.
 	return fmt.Sprintf(`{
 # Dedicated Magic Hub management.
-:local mmSSH [:pick [/ip/service find where name="ssh"] 0]
-:local mmPort [/ip/service get $mmSSH port]
+:local mmSSH
+:do { :set mmSSH [:pick [/ip/service find where name="ssh"] 0] } on-error={}
+# The port is never empty: an empty dst-port/to-ports makes RouterOS reject the firewall and NAT rules.
+:local mmPort 22
+:do { :set mmPort [/ip/service get $mmSSH port] } on-error={}
+:if ([:typeof $mmPort] != "num") do={ :set mmPort 22 }
 :local account [/user find where name="%[1]s"]
 :if ([:len $account] = 1) do={
   :if ([:pick [/user get $account comment] 0 %[2]d] != "%[3]s:") do={ :error "STOP: a user named %[1]s exists and is not from Magic Hub; management unchanged" }
@@ -324,19 +328,22 @@ func automaticManagementScript(id string, p pendingManagement) string {
 # is parsed only when it runs, so a current router never reads the deprecated one.
 :local mmSetAllowed do={ :do { [[:parse ("/ip/service set " . $1 . " available-from=" . $2)]] } on-error={ [[:parse ("/ip/service set " . $1 . " address=" . $2)]] } }
 :local mmGetAllowed do={ :local mmValue ""; :do { :set mmValue [[:parse (":return [/ip/service get " . $1 . " available-from]")]] } on-error={ :do { :set mmValue [[:parse (":return [/ip/service get " . $1 . " address]")]] } on-error={} }; :return $mmValue }
-:local mmAllowed [$mmGetAllowed $mmSSH]
-:if ([/ip/service get $mmSSH disabled]) do={
-  $mmSetAllowed $mmSSH "10.77.0.9/32"
-  /ip/service set $mmSSH disabled=no
-} else={
-  :if ([:len $mmAllowed] > 0) do={
-    :local mmHas false
-    :local mmList "10.77.0.9/32"
-    :foreach mmEntry in=$mmAllowed do={
-      :if ([:tostr $mmEntry] = "10.77.0.9/32" || [:tostr $mmEntry] = "10.77.0.9") do={ :set mmHas true }
-      :set mmList ($mmList . "," . [:tostr $mmEntry])
+# The service row can be missing on a stripped router; skip it with a warning instead of stopping.
+:if ([:typeof $mmSSH] = "nothing") do={ :put "WARNING: no SSH service row found; SSH access was not changed" } else={
+  :local mmAllowed [$mmGetAllowed $mmSSH]
+  :if ([/ip/service get $mmSSH disabled]) do={
+    $mmSetAllowed $mmSSH "10.77.0.9/32"
+    /ip/service set $mmSSH disabled=no
+  } else={
+    :if ([:len $mmAllowed] > 0) do={
+      :local mmHas false
+      :local mmList "10.77.0.9/32"
+      :foreach mmEntry in=$mmAllowed do={
+        :if ([:tostr $mmEntry] = "10.77.0.9/32" || [:tostr $mmEntry] = "10.77.0.9") do={ :set mmHas true }
+        :set mmList ($mmList . "," . [:tostr $mmEntry])
+      }
+      :if (!$mmHas) do={ $mmSetAllowed $mmSSH $mmList }
     }
-    :if (!$mmHas) do={ $mmSetAllowed $mmSSH $mmList }
   }
 }
 /ip/firewall/filter remove [find where comment="%[3]s"]
@@ -355,7 +362,9 @@ func automaticManagementScript(id string, p pendingManagement) string {
   :for mmTry from=1 to=30 do={
     :if (!$mmReached) do={
       :delay 1s
-      :do { :if ([:tonum [/interface/wireguard/peers get $mmPeer rx]] > 0) do={ :set mmReached true } } on-error={}
+      # value-name= is required to read a single peer property on RouterOS 7.
+      :do { :if ([:tonum [/interface/wireguard/peers get $mmPeer value-name=rx]] > 0) do={ :set mmReached true } } on-error={}
+      :do { :if ([:len [/interface/wireguard/peers get $mmPeer value-name=last-handshake]] > 0) do={ :set mmReached true } } on-error={}
     }
   }
 }

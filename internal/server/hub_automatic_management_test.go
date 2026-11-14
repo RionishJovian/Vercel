@@ -116,7 +116,7 @@ func TestAutomaticManagementScriptAndOutputBounds(t *testing.T) {
 		t.Fatal("the deprecated SSH allow-list name must be the fallback only")
 	}
 	// Finishing the script must not claim the router reached the Hub.
-	checked := strings.Index(script, "get $mmPeer rx")
+	checked := strings.Index(script, "get $mmPeer value-name=rx")
 	complete := strings.Index(script, `:if ($mmReached) do={ :put "Setup complete.`)
 	if checked < 0 || complete < checked || !strings.Contains(script, "NOT CONNECTED YET") {
 		t.Fatal("setup must check the connection before saying it is complete")
@@ -127,6 +127,32 @@ func TestAutomaticManagementScriptAndOutputBounds(t *testing.T) {
 	}
 	if _, err := b.Write([]byte("x")); err == nil {
 		t.Fatal("unbounded router response")
+	}
+}
+
+// A hAP ax3 on RouterOS 7.12.2 rejected the pasted script: the SSH port read failed, which
+// left dst-port/to-ports empty, and the peer counter read was not valid syntax.
+func TestAutomaticManagementScriptRouterOS7Safety(t *testing.T) {
+	p := pendingManagement{user: "mm-123", public: "ssh-rsa public", private: "PRIVATE", proof: strings.Repeat("b", 64)}
+	script := automaticManagementScript("router", p)
+	port := strings.Index(script, ":local mmPort 22\n")
+	read := strings.Index(script, ":do { :set mmPort [/ip/service get $mmSSH port] } on-error={}")
+	guard := strings.Index(script, `:if ([:typeof $mmPort] != "num") do={ :set mmPort 22 }`)
+	filter := strings.Index(script, "dst-port=$mmPort")
+	if port < 0 || read < port || guard < read || filter < guard {
+		t.Fatal("the SSH port must default to 22, be read safely, and be settled before the firewall and NAT rules use it")
+	}
+	if !strings.Contains(script, `:do { :set mmSSH [:pick [/ip/service find where name="ssh"] 0] } on-error={}`) {
+		t.Fatal("a missing SSH service row must not stop the script")
+	}
+	if strings.Contains(script, ":local mmPort [/ip/service get") {
+		t.Fatal("the unguarded SSH port read is back")
+	}
+	if !strings.Contains(script, "get $mmPeer value-name=rx") || !strings.Contains(script, "get $mmPeer value-name=last-handshake") {
+		t.Fatal("peer counters must be read with value-name=")
+	}
+	if strings.Contains(script, "get $mmPeer rx") || strings.Contains(script, "get $mmPeer last-handshake") {
+		t.Fatal("bare peer property reads are rejected by RouterOS 7.12")
 	}
 }
 
