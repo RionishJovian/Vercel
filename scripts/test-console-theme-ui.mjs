@@ -33,6 +33,11 @@ for (const theme of ['night', 'day']) {
       check(t[fg], t[bg], 4.5, `${fg} on ${bg}`);
     }
   });
+  test(`console ${theme}: the teal atmosphere wash keeps text at 4.5:1 and edges at 3:1`, () => {
+    const wash = over(t['atmo-core'], t['bg-0']);
+    for (const fg of ['ink', 'ink-soft', 'ink-mute', 'jade', 'ok', 'warn', 'bad', 'idle']) check(t[fg], wash, 4.5, `${fg} on wash`);
+    for (const fg of ['edge', 'jade']) check(t[fg], wash, 3, `${fg} on wash`);
+  });
   test(`console ${theme}: status chips and notes reach 4.5:1 on composited fills`, () => {
     for (const bg of surfaces) for (const status of ['ok', 'warn', 'bad', 'idle']) {
       check(t[status], over(t[status + '-soft'], t[bg]), 4.5, `${status} on ${status}-soft over ${bg}`);
@@ -45,6 +50,13 @@ for (const theme of ['night', 'day']) {
     for (const bg of surfaces) for (const fg of ['edge', 'jade']) check(t[fg], t[bg], 3, `${fg} on ${bg}`);
   });
 }
+
+test('console canvas carries the radial teal wash and a 3% contour while cards stay opaque', () => {
+  const base = read('src/styles/base.css');
+  assert.match(base, /radial-gradient\(ellipse 85% 65% at 25% 15%, var\(--atmo-core\), transparent 70%\)/);
+  assert.match(base, /body::after \{[^}]*opacity: \.03;/);
+  assert.equal(readFileSync(new URL('../app/public/contour-topo.svg', import.meta.url), 'utf8').startsWith('<svg'), true);
+});
 
 test('console Burmese body and headings keep the owner-specified leading', () => {
   const base = read('src/styles/base.css');
