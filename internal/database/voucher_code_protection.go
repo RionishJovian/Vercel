@@ -10,7 +10,7 @@ import (
 	"mega-magic/internal/vouchercode"
 )
 
-// Voucher codes at rest (migration 20261114090000_voucher_code_protection.sql, internal/vouchercode).
+// Voucher codes at rest (migration 20261114130000_voucher_code_protection.sql, internal/vouchercode).
 //
 // A row is in one of two forms. Legacy: code holds the plaintext. Protected: code is NULL and code_enc/code_hmac hold
 // the sealed code and its blind index. Every read path below understands both, so the flag

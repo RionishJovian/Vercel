@@ -61,9 +61,11 @@ README section.
    (`docs/VOUCHER-CODE-PROTECTION.md`). Nothing changes in production until the key is configured, the flag
    `security.protect_voucher_codes` is turned on, and `voucher-code-protect` has been run. Existing plaintext stays
    until that rollout is done.
-2. The one-paste WireGuard flow generates the router private key on the server and keeps it, encrypted, for up to 30
-   days. The two-step bootstrap flow keeps the key on the router.
-3. `DecideGuest` calls the router inside an open database transaction with no timeout.
+2. **B2, addressed by Wave 3 (below), off by default.** The one-paste WireGuard flow generates the router private key
+   on the server. It is now held for 1 hour (was 30 days) and deleted at the first verified handshake; the new
+   router-generated flow never holds one. Until a router first handshakes, the legacy flow still holds its key.
+3. **B4, fixed by Wave 3 (below).** `DecideGuest` called the router inside an open database transaction with no
+   timeout. The router call now has a 30 s deadline and a timeout leaves the request pending.
 4. Rate limits key on the client IP; whether the production proxy chain presents real client addresses was **not
    verified** on the live server.
 5. **B6, fixed.** The public Go portal config returned `business_id` and `updated_at` to anonymous callers. It now

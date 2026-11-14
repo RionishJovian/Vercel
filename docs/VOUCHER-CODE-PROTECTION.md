@@ -2,7 +2,7 @@
 
 Added 2026-11-14 (audit blocker B1). Code: `internal/vouchercode`, `internal/database/voucher_code_protection.go`,
 `internal/database/voucher_code_backfill.go`, `cmd/voucher-code-protect`. Migration:
-`db/migrations/20261114090000_voucher_code_protection.sql`.
+`db/migrations/20261114130000_voucher_code_protection.sql`.
 
 ## What it protects, and what it does not
 
