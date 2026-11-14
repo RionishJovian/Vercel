@@ -21,7 +21,7 @@ interface GW extends RouterRow { site_id?: string | null; management_ip?: string
 interface Capability { available?: boolean; lookup_enabled?: boolean; code?: string }
 const EDITORS = ["OWNER", "ADMIN", "DEVELOPER"];
 
-function Card({ r, state, canEdit, cap, openId, setOpen, onChanged }: { r: GW; state: string; canEdit: boolean; cap: Capability; openId: string; setOpen: (id: string) => void; onChanged: () => void }) {
+function Card({ r, state, canEdit, cap, openId, setOpen, onChanged, onDeleted }: { r: GW; state: string; canEdit: boolean; cap: Capability; openId: string; setOpen: (id: string) => void; onChanged: () => void; onDeleted: (id: string) => void }) {
   const { t } = useI18n();
   const [del, setDel] = useState<{ confirm: boolean; busy: boolean; err?: string }>({ confirm: false, busy: false });
   const [editing, setEditing] = useState(false), [maint, setMaint] = useState(false);
@@ -29,15 +29,21 @@ function Card({ r, state, canEdit, cap, openId, setOpen, onChanged }: { r: GW; s
   async function remove() {
     setDel({ confirm: true, busy: true });
     try {
-      const res = await api.del<{ router_cleanup_script?: string; record_kept?: boolean }>(`/routers/${encodeURIComponent(r.device_id)}`);
-      if (res?.record_kept) { setKept(true); setDel({ confirm: false, busy: false }); }
-      if (res?.router_cleanup_script) setCleanup(res.router_cleanup_script); else onChanged();
+      // A Hub that never answers must not leave the button spinning for good.
+      const res = await api.del<{ router_cleanup_script?: string; record_kept?: boolean }>(`/routers/${encodeURIComponent(r.device_id)}`, AbortSignal.timeout(60_000));
+      setDel({ confirm: false, busy: false });
+      if (res?.record_kept) setKept(true);
+      // The cleanup script lives in this card, so the card stays until Done is pressed.
+      if (res?.router_cleanup_script) setCleanup(res.router_cleanup_script);
+      else if (res?.record_kept) onChanged();
+      else onDeleted(r.device_id);
     }
     catch (e) {
       if (isUnauthorized(e)) throw e;
-      setDel({ confirm: false, busy: false, err: errorText(e, t("hub.delFail")) });
+      // Keep the confirmation open so the reason shows next to the button that was pressed.
       // The connection ended but the record did not change. This is the only copy of the script.
       const script = e instanceof ApiError ? (e.data as { router_cleanup_script?: string } | null)?.router_cleanup_script : undefined;
+      setDel({ confirm: !script, busy: false, err: errorText(e, t("hub.delFail")) });
       if (script) { setPartial(script); onChanged(); }
     }
   }
@@ -55,7 +61,7 @@ function Card({ r, state, canEdit, cap, openId, setOpen, onChanged }: { r: GW; s
       <h3>{t(kept ? "hub.keptTitle" : "hub.delDoneTitle")}</h3>
       <p className="soft small">{t(kept ? "hub.keptBody" : "hub.delDoneBody")}</p>
       <Script title={t("hub.setupTitle")} text={cleanup} />
-      <button className="btn" type="button" onClick={() => { setCleanup(""); onChanged(); }}>{t("hub.delDone")}</button>
+      <button className="btn" type="button" onClick={() => { setCleanup(""); if (kept) onChanged(); else onDeleted(r.device_id); }}>{t("hub.delDone")}</button>
     </article>
   );
   return (
@@ -88,11 +94,12 @@ function Card({ r, state, canEdit, cap, openId, setOpen, onChanged }: { r: GW; s
           <b>{t("hub.delTitle")}</b><p className="small"><b>{r.hardware_name || t("hub.unnamed")}</b></p><p className="small">{t("hub.delBody")}</p><p className="small">{t("hub.delNoReset")}</p><p className="small"><b>{t("hub.delPermanent")}</b></p>
           <div className="row" style={{ justifyContent: "flex-start" }}>
             <button className="pill" type="button" disabled={del.busy} onClick={() => setDel({ confirm: false, busy: false })}>{t("c.cancel")}</button>
-            <button className="pill danger" type="button" disabled={del.busy} onClick={() => void remove()}>{t("hub.delete")}</button>
+            <button className="pill danger" type="button" disabled={del.busy} aria-busy={del.busy} onClick={() => void remove()}>{del.busy ? t("hub.deleting") : t("hub.delete")}</button>
           </div>
+          {del.err && <Note kind="bad">{del.err}</Note>}
         </div>
       )}
-      {del.err && <Note kind="bad">{del.err}</Note>}
+      {!del.confirm && del.err && <Note kind="bad">{del.err}</Note>}
     </article>
   );
 }
@@ -147,11 +154,13 @@ export function Hub({ me }: { me: Me }) {
   const sites = asArray<{ site_id: string; name: string }>(sitesRes.data?.sites);
   const capability: Capability = cap.data ?? { available: false, lookup_enabled: false, code: "capability_unavailable" };
   const refresh = () => { void routers.mutate(); void fleet.mutate(); };
+  // Drop the deleted card at once, then confirm against the server.
+  const removed = (id: string) => { void routers.mutate((cur) => cur && { ...cur, routers: asArray<GW>(cur.routers).filter((x) => x.device_id !== id) }, { revalidate: true }); void fleet.mutate(); };
   return (
     <>
       {back}<PageHead title={t("hub.title")} help={t("hub.lead")} />
       {!gateways.length && <Note>{t("hub.none")}</Note>}
-      <div className="router-grid workspace-main">{gateways.map((r) => <Card key={r.device_id} r={r} state={states.get(r.device_id) ?? "unknown"} canEdit={canEdit} cap={capability} openId={openId} setOpen={setOpen} onChanged={refresh} />)}</div>
+      <div className="router-grid workspace-main">{gateways.map((r) => <Card key={r.device_id} r={r} state={states.get(r.device_id) ?? "unknown"} canEdit={canEdit} cap={capability} openId={openId} setOpen={setOpen} onChanged={refresh} onDeleted={removed} />)}</div>
       {canEdit && <div className="workspace-rail"><AddGateway sites={sites} onDone={(id) => { refresh(); if (id) setOpen(id); }} /></div>}
     </>
   );

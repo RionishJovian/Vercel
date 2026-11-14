@@ -43,6 +43,17 @@ class HubTests(unittest.TestCase):
   self.assertEqual(len(self.client.get('/v1/router-plans',headers=platform).json()),1)
   fleet=self.client.get('/v1/routers',headers=owner).json()[0];self.assertEqual(fleet['hub_id'],hub);self.assertEqual(fleet['connection_state'],'unverified');self.assertIsNone(fleet['last_handshake'])
   with self.app.state.factory() as s:self.assertEqual(s.get(MagicHub,hub).next_host,3);self.assertEqual(len(list(s.scalars(select(Audit).where(Audit.action=='router_plan_reviewed')))),1)
+ def test_delete_router_removes_plan_and_stays_in_tenant(self):
+  platform,owner,hub,site,tenant=self.setup_hub();clean=self.router(owner,site,'Clean');planned=self.router(owner,site,'Planned')
+  self.assertEqual(self.plan(owner,hub,planned).status_code,201)
+  other=self.login('other');self.assertEqual(self.client.delete('/v1/routers/'+planned,headers=other).status_code,404)
+  self.assertEqual(self.client.delete('/v1/routers/'+planned,headers=self.login('guest')).status_code,403)
+  self.assertEqual(len(self.client.get('/v1/routers',headers=owner).json()),2)
+  for id in (clean,planned):
+   r=self.client.delete('/v1/routers/'+id,headers=owner);self.assertEqual(r.status_code,200,r.text);self.assertTrue(r.json()['deleted'])
+  self.assertEqual(self.client.get('/v1/routers',headers=owner).json(),[]);self.assertEqual(self.client.delete('/v1/routers/'+clean,headers=owner).status_code,404)
+  with self.app.state.factory() as s:
+   self.assertEqual(list(s.scalars(select(RouterPlan))),[]);self.assertEqual(len(list(s.scalars(select(Audit).where(Audit.action=='router_deleted')))),2)
  def test_validation_duplicates_and_secret_fields(self):
   platform=self.login('platform');body={'name':'Valid','endpoint':'hub.example.com','pool':'10.90.1.0/24','public_key':key(1)}
   for changed in [{'endpoint':'https://hub.example.com/path'},{'endpoint':'127.0.0.1'},{'endpoint':'10.0.0.1'},{'endpoint':'hub.local'},{'pool':'10.90.1.0/25'},{'pool':'10.90.1.1/24'},{'pool':'8.8.8.0/24'},{'port':0},{'public_key':key(0)},{'public_key':'invalid'},{'private_key':key(5)},{'operational_state':'online'}]:

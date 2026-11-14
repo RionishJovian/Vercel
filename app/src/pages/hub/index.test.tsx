@@ -58,6 +58,32 @@ describe("Magic Hub card", () => {
     await waitFor(() => expect(deleted).toHaveLength(1));
     expect(screen.queryByRole("button", { name: "Done" })).toBeNull();
   });
+  it("removes the card at once, and sends the session cookie and CSRF header, when nothing needs cleaning up", async () => {
+    deleteAnswer = { status: 200, body: { message: "router deleted" } };
+    open();
+    await startDelete();
+    await waitFor(() => expect(screen.queryByText("Shop router")).toBeNull());
+    const call = (fetch as unknown as { mock: { calls: Array<[string, RequestInit]> } }).mock.calls.find(([, init]) => init?.method === "DELETE")!;
+    expect(call[1].credentials).toBe("include");
+    expect((call[1].headers as Record<string, string>)["X-MM-CSRF"]).toBe("1");
+  });
+  it("shows the server's reason next to the button, and lets the owner try again", async () => {
+    deleteAnswer = { status: 409, body: { error: "Recover or cancel this router's management migration before deleting its record" } };
+    open();
+    await startDelete();
+    const dialog = await screen.findByRole("alertdialog");
+    await waitFor(() => expect(dialog.textContent).toContain("Recover or cancel this router's management migration"));
+    const confirm = [...dialog.querySelectorAll("button")].find((b) => b.textContent === "Delete record")!;
+    expect((confirm as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.getAllByText("Shop router").length).toBeGreaterThan(0);
+  });
+  it("says so when the server gives no reason", async () => {
+    deleteAnswer = { status: 500, body: null };
+    open();
+    await startDelete();
+    const dialog = await screen.findByRole("alertdialog");
+    await waitFor(() => expect(dialog.querySelector(".note.bad, [class*='bad']")).toBeTruthy());
+  });
   it("names the router in the delete question", async () => {
     open();
     await screen.findByText("Shop router");
@@ -101,6 +127,6 @@ describe("Magic Hub card", () => {
     open();
     await startDelete();
     await screen.findByText(/nothing was deleted/);
-    expect(screen.getByText("Shop router")).toBeTruthy();
+    expect(screen.getAllByText("Shop router").length).toBeGreaterThan(0);
   });
 });

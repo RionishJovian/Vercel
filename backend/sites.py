@@ -37,3 +37,13 @@ def register_sites(app,current,db,owner,log):
   try:s.flush();log(s,u,'router_registered',x.id);s.commit()
   except IntegrityError:s.rollback();raise HTTPException(409,'Router name already registered at this site')
   return {'id':x.id,'connection_state':'unverified','hub_id':None}
+ @app.delete('/v1/routers/{id}')
+ def delete_router(id:str,u=Depends(current),s=Depends(db)):
+  owner(u);x=s.get(RouterDevice,id)
+  if not x or x.tenant_id!=u.tenant_id:raise HTTPException(404,'Router not found')
+  # The Hub plan holds a foreign key to the router, so it goes first. The Hub address counter only moves forward.
+  for plan in s.scalars(select(RouterPlan).where(RouterPlan.router_id==id)):s.delete(plan)
+  s.flush();s.delete(x)
+  try:log(s,u,'router_deleted',id);s.commit()
+  except IntegrityError:s.rollback();raise HTTPException(409,'This router is still referenced and cannot be deleted')
+  return {'deleted':True,'id':id}
