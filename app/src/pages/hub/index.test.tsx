@@ -22,7 +22,7 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
-const open = () => render(<I18nProvider><SWRConfig value={{ provider: () => new Map(), shouldRetryOnError: false }}><Hub me={{ user: { user_role: "OWNER" } } as never} /></SWRConfig></I18nProvider>);
+const open = (role = "OWNER") => render(<I18nProvider><SWRConfig value={{ provider: () => new Map(), shouldRetryOnError: false }}><Hub me={{ user: { user_role: role } } as never} /></SWRConfig></I18nProvider>);
 const startDelete = async () => {
   await screen.findByText("Shop router");
   fireEvent.click(screen.getByRole("button", { name: "Delete record" }));
@@ -109,8 +109,38 @@ describe("Magic Hub card", () => {
     routers = [{ ...CONNECTED, management_connected: false }];
     open();
     await startDelete();
-    await screen.findByText(/stay on its record/);
-    expect(screen.queryByRole("button", { name: "Done" })).toBeNull();
+    const result = await screen.findByRole("status", { name: "Record not deleted. Connection ended." });
+    expect(result.textContent).toMatch(/stay on its record/);
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    expect(screen.queryByRole("status", { name: "Record not deleted. Connection ended." })).toBeNull();
+  });
+  it("answers a Platform Admin's second Delete on a router whose connection already ended", async () => {
+    deleteAnswer = { status: 200, body: { message: "kept", record_kept: true } };
+    routers = [{ ...CONNECTED, management_connected: false, last_seen_at: new Date(Date.now() - 26 * 86_400_000).toISOString() }];
+    open("DEVELOPER");
+    for (let press = 0; press < 2; press++) {
+      await screen.findByText("Shop router");
+      if (press === 0) await startDelete();
+      else {
+        fireEvent.click(screen.getByRole("button", { name: "Delete record" }));
+        const dialog = await screen.findByRole("alertdialog");
+        fireEvent.click([...dialog.querySelectorAll("button")].find((b) => b.textContent === "Delete record")!);
+      }
+      await screen.findByRole("status", { name: "Record not deleted. Connection ended." });
+      fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    }
+    expect(deleted).toHaveLength(2);
+    const call = (fetch as unknown as { mock: { calls: Array<[string, RequestInit]> } }).mock.calls.find(([, init]) => init?.method === "DELETE")!;
+    expect(call[1].credentials).toBe("include");
+    expect((call[1].headers as Record<string, string>)["X-MM-CSRF"]).toBe("1");
+    expect(screen.getByText("26d").className).toContain("num");
+  });
+  it("says so when the session ended instead of doing nothing", async () => {
+    deleteAnswer = { status: 401, body: { error: "unauthorized" } };
+    open("DEVELOPER");
+    await startDelete();
+    const dialog = await screen.findByRole("alertdialog");
+    await waitFor(() => expect(dialog.textContent).toContain("Your session ended"));
   });
   it("keeps the cleanup script when the connection ended but the record did not change", async () => {
     deleteAnswer = { status: 503, body: { error: "Press Delete again to finish.", code: "hub_ended_record_unchanged", router_cleanup_script: "# remove the setup" } };

@@ -23,7 +23,7 @@ const EDITORS = ["OWNER", "ADMIN", "DEVELOPER"];
 
 function Card({ r, state, canEdit, cap, openId, setOpen, onChanged, onDeleted }: { r: GW; state: string; canEdit: boolean; cap: Capability; openId: string; setOpen: (id: string) => void; onChanged: () => void; onDeleted: (id: string) => void }) {
   const { t } = useI18n();
-  const [del, setDel] = useState<{ confirm: boolean; busy: boolean; err?: string }>({ confirm: false, busy: false });
+  const [del, setDel] = useState<{ confirm: boolean; busy: boolean; err?: string; kept?: boolean }>({ confirm: false, busy: false });
   const [editing, setEditing] = useState(false), [maint, setMaint] = useState(false);
   const [cleanup, setCleanup] = useState(""), [kept, setKept] = useState(false), [partial, setPartial] = useState("");
   async function remove() {
@@ -35,11 +35,17 @@ function Card({ r, state, canEdit, cap, openId, setOpen, onChanged, onDeleted }:
       if (res?.record_kept) setKept(true);
       // The cleanup script lives in this card, so the card stays until Done is pressed.
       if (res?.router_cleanup_script) setCleanup(res.router_cleanup_script);
-      else if (res?.record_kept) onChanged();
+      else if (res?.record_kept) {
+        // Nothing to paste, but the press must still answer: the record stays because of its
+        // history. A second press on an already ended router changes nothing else on the card.
+        setDel({ confirm: true, busy: false, kept: true });
+        onChanged();
+      }
       else onDeleted(r.device_id);
     }
     catch (e) {
-      if (isUnauthorized(e)) throw e;
+      // A throw here would vanish: this runs from a click handler, so nothing would show.
+      if (isUnauthorized(e)) { setDel({ confirm: true, busy: false, err: t("hub.delSignedOut") }); return; }
       // Keep the confirmation open so the reason shows next to the button that was pressed.
       // The connection ended but the record did not change. This is the only copy of the script.
       const script = e instanceof ApiError ? (e.data as { router_cleanup_script?: string } | null)?.router_cleanup_script : undefined;
@@ -73,7 +79,7 @@ function Card({ r, state, canEdit, cap, openId, setOpen, onChanged, onDeleted }:
         <dt>{t("hub.lastSignal")}</dt><dd>{r.last_seen_at ? <><span className="num">{ageShort(r.last_seen_at) ?? "—"}</span><span className="soft small" title={new Date(r.last_seen_at).toLocaleString()}>{new Date(r.last_seen_at).toLocaleString()}</span></> : <span className="nil">{t("hub.noSignal")}</span>}</dd>
       </dl>
       {canEdit && cap.lookup_enabled && <ConnectionCheck id={r.device_id} />}
-      {kept && <Note kind="ok">{t("hub.keptNote")}</Note>}
+      {kept && !del.kept && <Note kind="ok">{t("hub.keptNote")}</Note>}
       {r.management_connected ? <Note kind="ok">{t("hub.connected")}</Note> : canEdit && (cap.available ? (
         <>
           <button className="btn" type="button" aria-expanded={openId === r.device_id} onClick={() => setOpen(openId === r.device_id ? "" : r.device_id)}>{t("hub.connect")}</button>
@@ -89,7 +95,13 @@ function Card({ r, state, canEdit, cap, openId, setOpen, onChanged, onDeleted }:
       {canEdit && r.management_connected && <WebFig id={r.device_id} />}
       {maint && <Maintenance id={r.device_id} name={r.hardware_name ?? ""} canEdit={canEdit} />}
       {editing && <DeviceForm rec={r} layers={LAYERS} onDone={() => { setEditing(false); onChanged(); }} onCancel={() => setEditing(false)} />}
-      {del.confirm && (
+      {del.confirm && del.kept && (
+        <div className="note ok stack" role="status" aria-label={t("hub.keptNowTitle")}>
+          <b>{t("hub.keptNowTitle")}</b><p className="small">{t("hub.keptNote")}</p>
+          <div className="row" style={{ justifyContent: "flex-start" }}><button className="pill" type="button" onClick={() => setDel({ confirm: false, busy: false })}>{t("hub.delDone")}</button></div>
+        </div>
+      )}
+      {del.confirm && !del.kept && (
         <div className="note warn stack" role="alertdialog" aria-label={t("hub.delTitle")}>
           <b>{t("hub.delTitle")}</b><p className="small"><b>{r.hardware_name || t("hub.unnamed")}</b></p><p className="small">{t("hub.delBody")}</p><p className="small">{t("hub.delNoReset")}</p><p className="small"><b>{t("hub.delPermanent")}</b></p>
           <div className="row" style={{ justifyContent: "flex-start" }}>

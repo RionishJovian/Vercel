@@ -130,7 +130,7 @@
 
 /* Hub and Sites */
 .facts { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0; }
-.facts dt { color: var(--ink-mute); font-size: .875rem; } .facts dd { margin: 0; word-break: break-all; font-size: .9375rem; }
+.facts dt { color: var(--ink-mute); font-size: .875rem; word-break: normal; overflow-wrap: break-word; } .facts dd { margin: 0; word-break: normal; overflow-wrap: break-word; font-size: .9375rem; }
 .facts code { font-family: var(--font-body); font-size: .875rem; }
 .script { font-family: ui-monospace, Menlo, monospace; font-size: .8125rem; line-height: 1.5; padding: 12px 14px; min-height: 180px; }
 .enroll { padding-top: 6px; border-top: 1px solid var(--edge-soft); }
