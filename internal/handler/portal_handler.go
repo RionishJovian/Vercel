@@ -3,6 +3,7 @@ package handler
 import (
 	"database/sql"
 	"errors"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -608,7 +609,7 @@ func (h *PortalHandler) StaffUpdateConfig(c *gin.Context) {
 		}
 		if req.TemplateID != nil {
 			// Keeping the stored template is always allowed; changing to a premium one needs the Store add-on.
-			if *req.TemplateID != existing.TemplateID {
+			if *req.TemplateID != existing.TemplateID && portalTemplatePremium(*req.TemplateID) && auth.GetUserRole(c) != string(model.RoleDeveloper) {
 				owned, e := ownedPortalAddons(tx, businessID)
 				if e != nil {
 					return e
@@ -689,6 +690,7 @@ func (h *PortalHandler) StaffUpdateConfig(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "enable voucher login or mobile payment"})
 			return
 		}
+		log.Printf("portal config update failed: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update portal config"})
 		return
 	}

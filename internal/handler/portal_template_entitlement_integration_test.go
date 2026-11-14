@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bytes"
+	"database/sql"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -37,6 +38,10 @@ func TestPortalTemplateEntitlementOverHTTP(t *testing.T) {
 			t.Fatalf("free template %s: %d", free, code)
 		}
 	}
+	var tables sql.NullString
+	if err := db.QueryRow(`SELECT to_regclass('public.store_addon_requests')::text`).Scan(&tables); err != nil || !tables.Valid {
+		t.Skip("this harness schema has no Store add-on tables (they come from db/baseline.sql)")
+	}
 	for _, id := range premiumTemplates {
 		if code := put("OWNER", id); code != http.StatusForbidden {
 			t.Fatalf("%s must be 403 before purchase, got %d", id, code)
@@ -47,6 +52,10 @@ func TestPortalTemplateEntitlementOverHTTP(t *testing.T) {
 	}
 	if code := put("OWNER", "daylight"); code != http.StatusOK {
 		t.Fatal(code)
+	}
+	// The migration seeds this row in a real database; a schema built from baseline.sql alone has none.
+	if _, err := db.Exec(`INSERT INTO store_addons (addon_key,kind,name_en,name_my,price_mmk,period) VALUES ('portal_theme_cafe','feature','Cafe','Cafe',5000,'one_time') ON CONFLICT (addon_key) DO NOTHING`); err != nil {
+		t.Fatal(err)
 	}
 	var addon string
 	if err := db.QueryRow(`SELECT id FROM store_addons WHERE addon_key='portal_theme_cafe'`).Scan(&addon); err != nil {

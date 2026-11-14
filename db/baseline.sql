@@ -1404,6 +1404,7 @@ CREATE TABLE public.portal_configs (
     media_host text,
     media_port text DEFAULT '8096'::text NOT NULL,
     payment_instructions text,
+    template_id text DEFAULT ''::text NOT NULL,
     CONSTRAINT portal_configs_access_method_check CHECK ((voucher_login_enabled OR mobile_payment_enabled)),
     CONSTRAINT portal_configs_guest_grace_data_mb_check CHECK (((guest_grace_data_mb >= 1) AND (guest_grace_data_mb <= 10240))),
     CONSTRAINT portal_configs_media_host_check CHECK (((media_host IS NULL) OR ((media_host ~ '^([0-9]{1,3}\.){3}[0-9]{1,3}$'::text) AND (((split_part(media_host, '.'::text, 1))::integer >= 1) AND ((split_part(media_host, '.'::text, 1))::integer <= 255)) AND (((split_part(media_host, '.'::text, 2))::integer >= 0) AND ((split_part(media_host, '.'::text, 2))::integer <= 255)) AND (((split_part(media_host, '.'::text, 3))::integer >= 0) AND ((split_part(media_host, '.'::text, 3))::integer <= 255)) AND (((split_part(media_host, '.'::text, 4))::integer >= 1) AND ((split_part(media_host, '.'::text, 4))::integer <= 254)) AND ((split_part(media_host, '.'::text, 1))::integer < 224) AND (((split_part(media_host, '.'::text, 1))::integer = 10) OR (((split_part(media_host, '.'::text, 1))::integer = 192) AND ((split_part(media_host, '.'::text, 2))::integer = 168)) OR (((split_part(media_host, '.'::text, 1))::integer = 172) AND (((split_part(media_host, '.'::text, 2))::integer >= 16) AND ((split_part(media_host, '.'::text, 2))::integer <= 31))))))),
