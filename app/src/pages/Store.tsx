@@ -7,7 +7,7 @@ import { BackLink, Field, Note, IconTile, SectionHead } from "../components/ui";
 import { Skeleton } from "../components/Skeleton";
 import { AccountPass, type Pass } from "./store/AccountPass";
 
-interface Addon { id: string; kind: string; period: string; price_mmk: number; name_en?: string; name_my?: string; description_en?: string; description_my?: string }
+interface Addon { id: string; addon_key?: string; kind: string; period: string; price_mmk: number; name_en?: string; name_my?: string; description_en?: string; description_my?: string }
 interface Req { id: string; addon_id: string; status: "pending" | "approved" | "rejected"; bank_reference: string; price_mmk: number; decision_note?: string; name_en?: string; name_my?: string }
 interface Bank { bank_name?: string; holder_name?: string; account_number?: string }
 
@@ -20,7 +20,7 @@ export function useLocalized() {
 }
 const statusChip = (s: Req["status"]) => (s === "approved" ? "ok" : s === "rejected" ? "bad" : "warn");
 
-function AddonCard({ a, pending, canBuy, onDone }: { a: Addon; pending: boolean; canBuy: boolean; onDone: () => void }) {
+function AddonCard({ a, pending, canBuy, badge, onDone }: { a: Addon; pending: boolean; canBuy: boolean; badge?: "owned" | "unlocked" | "exempt"; onDone: () => void }) {
   const { t } = useI18n();
   const loc = useLocalized();
   const [open, setOpen] = useState(false), [msg, setMsg] = useState<{ kind: "warn" | "bad"; text: string } | null>(null), [busy, setBusy] = useState(false);
@@ -34,11 +34,11 @@ function AddonCard({ a, pending, canBuy, onDone }: { a: Addon; pending: boolean;
   const desc = loc(a, "description");
   return (
     <section className="glass pad stack">
-      <div className="row"><div className="who"><IconTile name="bag" /><h2>{loc(a, "name")}</h2></div><span className="chip">{t("st.kind." + a.kind)}</span></div>
+      <div className="row"><div className="who"><IconTile name="bag" /><h2>{loc(a, "name")}</h2></div><span className={"chip" + (badge ? " ok" : "")}>{badge === "exempt" ? t("st.exempt") : badge === "owned" ? t("st.owned") : badge === "unlocked" ? t("st.unlockedBadge") : t("st.kind." + a.kind)}</span></div>
       {desc && <p className="soft small">{desc}</p>}
       <div className="row"><b className="num price">{mmk(a.price_mmk)} {t("c.mmk")}</b><span className="soft small">{t("st.period." + a.period)}</span></div>
-      <button className="btn" type="button" disabled={!canBuy || pending} onClick={() => setOpen((v) => !v)}>{pending ? t("st.status.pending") : t("st.request")}</button>
-      {open && !pending && (
+      {!badge && <button className="btn" type="button" disabled={!canBuy || pending} onClick={() => setOpen((v) => !v)}>{pending ? t("st.status.pending") : t("st.request")}</button>}
+      {open && !pending && !badge && (
         <form className="stack" onSubmit={send}>
           <Field label={t("st.ref")} htmlFor={"ref-" + a.id}><input className="input" id={"ref-" + a.id} name="ref" minLength={4} maxLength={80} required placeholder={t("st.refHint")} /></Field>
           {msg && <Note kind={msg.kind}>{msg.text}</Note>}
@@ -53,18 +53,27 @@ function AddonSection({ me }: { me: Me }) {
   const { t } = useI18n();
   const loc = useLocalized();
   const store = useSWR<{ addons?: Addon[]; requests?: Req[] }>("/store/addons", fetcher, { shouldRetryOnError: false });
+  const access = useSWR<{ exempt?: boolean; bundle?: boolean; unlocked?: string[] }>("/portal/template-access", fetcher, { shouldRetryOnError: false });
   const banks = useSWR<{ bank_accounts?: Bank[] }>("/me/app-pass/checkout-options", fetcher, { shouldRetryOnError: false });
   if (store.isLoading) return <Skeleton h={300} />;
   if (store.error) return <Note kind="warn">{t("st.unavailable")}</Note>;
   const addons = asArray<Addon>(store.data?.addons), requests = asArray<Req>(store.data?.requests), bankList = asArray<Bank>(banks.data?.bank_accounts);
   const canBuy = ["OWNER", "ADMIN", "DEVELOPER"].includes(me.user?.user_role ?? "");
+  // Login page themes: an approved Store request is the entitlement; platform administrators are exempt.
+  const badgeFor = (a: Addon): "owned" | "unlocked" | "exempt" | undefined => {
+    const key = a.addon_key ?? "";
+    if (!key.startsWith("portal_theme")) return requests.some((r) => r.addon_id === a.id && r.status === "approved") ? "owned" : undefined;
+    if (access.data?.exempt) return "exempt";
+    if (key === "portal_themes_bundle") return access.data?.bundle ? "owned" : undefined;
+    return access.data?.unlocked?.includes(key.slice("portal_theme_".length)) ? (requests.some((r) => r.addon_id === a.id && r.status === "approved") ? "owned" : "unlocked") : undefined;
+  };
   const pendingIds = new Set(requests.filter((r) => r.status === "pending").map((r) => r.addon_id));
   return (
     <>
       <SectionHead title={t("st.addons")} help={t("st.help")} />
       {bankList.length > 0 && <section className="glass pad stack"><h2>{t("st.pay")}</h2>{bankList.map((b, i) => <div className="row small" key={i}><span className="soft">{b.bank_name} {b.holder_name}</span><b className="num">{b.account_number}</b></div>)}</section>}
       {!addons.length && <Note>{t("st.empty")}</Note>}
-      <div className="store-grid">{addons.map((a) => <AddonCard key={a.id} a={a} pending={pendingIds.has(a.id)} canBuy={canBuy} onDone={() => void store.mutate()} />)}</div>
+      <div className="store-grid">{addons.map((a) => <AddonCard key={a.id} a={a} pending={pendingIds.has(a.id)} canBuy={canBuy} badge={badgeFor(a)} onDone={() => void store.mutate()} />)}</div>
       {requests.length > 0 && (
         <section className="glass pad stack"><h2>{t("st.requests")}</h2>
           {requests.map((r) => (

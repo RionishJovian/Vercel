@@ -898,6 +898,7 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 			portalStaff := protected.Group("/portal")
 			{
 				portalStaff.GET("/config", portalHandler.StaffGetConfig)
+				portalStaff.GET("/template-access", portalHandler.TemplateAccess)
 				portalStaff.POST("/router-preview", auth.RequireMinRole(model.RoleAdmin), portalHandler.RouterPreview)
 				portalStaff.PUT("/config", auth.RequireMinRole(model.RoleAdmin), portalHandler.StaffUpdateConfig)
 			}

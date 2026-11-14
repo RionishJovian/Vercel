@@ -2,6 +2,10 @@
 // Burmese is a first draft for native-speaker review, like the other string files.
 const workspaces = {
   en: {
+    "gt.title": "Login page theme", "gt.help": "Preview every theme. Free themes save instantly; Add-on themes unlock in the Store.", "gt.group.myanmar": "Myanmar ISP & regional hotspot themes", "gt.group.commercial": "Commercial & hospitality themes",
+    "gt.addon": "Add-on", "gt.unlocked": "Unlocked", "gt.lockedNote": "This theme is a Store add-on. You can preview it here; unlock it to save or publish.", "gt.unlock": "Unlock in Store →",
+    "gt.tabLogin": "Login page", "gt.tabPay": "Pay page", "gt.previewNote": "The page your router shows before guests have internet. Draft preview; nothing is saved until you press Save.",
+    "st.owned": "Owned", "st.unlockedBadge": "Unlocked", "st.exempt": "Administrator exempt", "st.themeBundleNote": "Includes all 7 premium portal themes.",
     "tel.codeRule": "Codes are 8 characters. I, L, O and U are never used.", "tel.sum": "Creates", "tel.codes": "codes", "tel.last": "Last signal", "tel.coords": "Coordinates", "tel.tz": "Time zone", 
     "nav.main": "Main", "nav.skip": "Skip to content", "nav.home": "Home", "nav.network": "Network", "nav.vouchers": "Vouchers", "nav.activity": "Activity", "nav.more": "More",
     "nav.setup": "Quick setup", "nav.hotspot": "Hotspot", "nav.isp": "PPPoE ISP", "nav.customers": "Customers", "nav.topology": "Topology", "nav.devices": "Managed devices",
@@ -78,6 +82,10 @@ const workspaces = {
     "cfg.rollback": "Backups and rollback", "cfg.rollbackHelp": "Take a backup or restore an earlier one.", "cfg.recent": "Recent change record", "cfg.recentUnavailable": "The change record could not be read.", "cfg.noChanges": "No changes recorded yet.", "cfg.change": "Change",
   },
   my: {
+    "gt.title": "Login စာမျက်နှာ ပုံစံ", "gt.help": "ပုံစံအားလုံးကို ကြိုကြည့်နိုင်သည်။ အခမဲ့ပုံစံများ ချက်ချင်းသိမ်းနိုင်ပြီး Add-on ပုံစံများကို Store တွင် ဖွင့်ပါ။", "gt.group.myanmar": "မြန်မာ ISP နှင့် ဒေသဆိုင်ရာ hotspot ပုံစံများ", "gt.group.commercial": "စီးပွားရေးနှင့် ဧည့်ဝတ်ပြုလုပ်ငန်း ပုံစံများ",
+    "gt.addon": "Add-on", "gt.unlocked": "ဖွင့်ထားသည်", "gt.lockedNote": "ဤပုံစံသည် Store add-on ဖြစ်သည်။ ဤနေရာတွင် ကြိုကြည့်နိုင်သည်၊ သိမ်းရန် သို့မဟုတ် ထုတ်ပြန်ရန် ဖွင့်ပါ။", "gt.unlock": "Store တွင် ဖွင့်မည် →",
+    "gt.tabLogin": "Login စာမျက်နှာ", "gt.tabPay": "ငွေပေးချေ စာမျက်နှာ", "gt.previewNote": "ဧည့်သည်တွင် အင်တာနက် မရှိမီ သင့် router ပြသသော စာမျက်နှာ။ နမူနာသာ၊ သိမ်းမည်ကို မနှိပ်မချင်း မသိမ်းပါ။",
+    "st.owned": "ပိုင်ဆိုင်သည်", "st.unlockedBadge": "ဖွင့်ထားသည်", "st.exempt": "စီမံခန့်ခွဲသူ ကင်းလွတ်ခွင့်", "st.themeBundleNote": "ပရီမီယံ ပေါ်တယ်ပုံစံ ၇ မျိုးလုံး ပါဝင်သည်။",
     "tel.codeRule": "ကုဒ်တစ်ခုတွင် စာလုံး ၈ လုံးရှိသည်။ I, L, O, U ကို မသုံးပါ။", "tel.sum": "ဖန်တီးမည်", "tel.codes": "ကုဒ်", "tel.last": "နောက်ဆုံး signal", "tel.coords": "တည်နေရာ ကိုဩဒိနိတ်", "tel.tz": "အချိန်ဇုန်", 
     "nav.main": "ပင်မ", "nav.skip": "အကြောင်းအရာသို့ ကျော်ရန်", "nav.home": "ပင်မ", "nav.network": "ကွန်ရက်", "nav.vouchers": "ဗောက်ချာ", "nav.activity": "လှုပ်ရှားမှု", "nav.more": "နောက်ထပ်",
     "nav.setup": "အမြန်စတင်", "nav.hotspot": "Hotspot", "nav.isp": "PPPoE ISP", "nav.customers": "ဖောက်သည်များ", "nav.topology": "ကွန်ရက်ပုံ", "nav.devices": "စီမံသော စက်များ",

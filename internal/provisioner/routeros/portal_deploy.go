@@ -145,11 +145,17 @@ a.alt{display:flex;align-items:center;justify-content:center;min-height:48px;mar
 .err{margin:12px 0;padding:10px 12px;border-radius:8px;background:var(--bad-soft);border:1px solid var(--bad);color:var(--bad);font-size:14px;line-height:1.5;text-align:left}
 .consent{display:flex;align-items:flex-start;gap:10px;text-align:left;font-size:14px;line-height:1.5;margin:16px 0 0;color:var(--ink-soft)}.consent input{width:22px;min-height:22px;height:22px;padding:0;margin:0;flex-shrink:0;accent-color:var(--accent)}
 details{margin:0 0 16px;font-size:14px;line-height:1.6;color:var(--ink-soft);text-align:left}details p{white-space:pre-wrap;margin:10px 0;font-size:14px}summary{cursor:pointer;min-height:44px;display:flex;align-items:center}
+.card{position:relative;z-index:1}.bg-art{position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;opacity:.22}
+.sb{stroke:var(--portal-brand);fill:none}.fb{fill:var(--portal-brand);stroke:none}
+.lang{display:flex;justify-content:flex-end;gap:6px;margin:0 0 14px;order:-3}
+.lang button{width:auto;min-height:44px;margin:0;padding:0 14px;border:1px solid var(--edge);border-radius:999px;background:none;box-shadow:none;color:var(--ink);font-size:14px;font-weight:600}
+.lang button[aria-pressed=true]{background:var(--portal-brand);border-color:var(--portal-brand);color:var(--portal-on-brand)}.lang button:hover{filter:none}
+html[lang=my] p,html[lang=my] label,html[lang=my] summary,html[lang=my] button,html[lang=my] a.alt,html[lang=my] .consent{line-height:1.75}html[lang=my] h1{line-height:1.6}
 @media(max-height:560px){body{align-items:flex-start;padding-top:24px}}
 @media(prefers-reduced-motion:reduce){button{transition:none}}
 </style></head><body><main class="card">
-<h1>Wi-Fi Access</h1>
-<p>Enter voucher code to connect</p>
+<h1 data-t="title">Wi-Fi Access</h1>
+<p data-t="welcome">Enter voucher code to connect</p>
 $(if error)<p class="err">$(error)</p>$(endif)
 <form id="sendin" name="sendin" action="$(link-login-only)" method="post" hidden>
 <input name="username" autocomplete="off">
@@ -158,23 +164,44 @@ $(if error)<p class="err">$(error)</p>$(endif)
 <input type="hidden" name="popup" value="true">
 </form>
 <form id="voucher-login" action="$(link-login-only)" method="post" onsubmit="return doLogin()" novalidate>
-<label class="field-label" for="voucher">Voucher code</label>
+<label class="field-label" for="voucher" data-t="voucher">Voucher code</label>
 <input id="voucher" name="voucher" type="text" placeholder="••••••••" autocapitalize="characters" autocorrect="off" autocomplete="off" spellcheck="false" aria-describedby="login-error">
 <p id="login-error" class="err" role="alert" hidden></p>
-<button id="connect" type="submit">Connect to Wi-Fi</button>
+<button id="connect" type="submit" data-t="connect">Connect to Wi-Fi</button>
 </form>
 </main>
 $(if chap-id)<script src="md5.js"></script>$(endif)
 <script>
 var loginPending=false;
 var loginTimer;
+var BI=false,PREF='';
+var T={en:{title:'Wi-Fi Access',welcome:'Enter voucher code to connect',voucher:'Voucher code',connect:'Connect to Wi-Fi',connecting:'Connecting\u2026',terms:'Internet access terms',pay:'Pay by bank transfer',consent:'I agree to the internet access terms.',s1:'Type your voucher code',s2:'Tap Connect',s3:'You are online',link:'Fast satellite link',passes:'Guest passes',badCode:'Enter the complete voucher code as printed.',needConsent:'Accept the internet access terms before connecting.',preview:'Preview only. No voucher was used and no internet access was granted.',noLoader:'WiFi login could not load. Reload this page and try again.',noResponse:'No login response received. Check your WiFi connection and try again.',sendFail:'Could not send your code. Check your WiFi connection and try again.'},
+my:{title:'Wi-Fi အသုံးပြုရန်',welcome:'ဘောက်ချာကုဒ် ထည့်ပြီး ချိတ်ဆက်ပါ',voucher:'ဘောက်ချာကုဒ်',connect:'Wi-Fi ချိတ်ဆက်မည်',connecting:'ချိတ်ဆက်နေသည်\u2026',terms:'အင်တာနက် အသုံးပြုမှု စည်းကမ်းချက်များ',pay:'ဘဏ်လွှဲ၍ ပေးချေမည်',consent:'အင်တာနက် အသုံးပြုမှု စည်းကမ်းချက်များကို သဘောတူပါသည်။',s1:'ဘောက်ချာကုဒ် ရိုက်ထည့်ပါ',s2:'ချိတ်ဆက်မည် ကို နှိပ်ပါ',s3:'အင်တာနက် သုံးနိုင်ပါပြီ',link:'ဂြိုဟ်တုလင့်ခ် မြန်နှုန်းမြင့်',passes:'ဧည့်သည် အသုံးပြုခွင့်များ',badCode:'စာရွက်ပေါ်ပါအတိုင်း ကုဒ်အပြည့်အစုံ ထည့်ပါ။',needConsent:'ချိတ်ဆက်မီ စည်းကမ်းချက်များကို လက်ခံပါ။',preview:'နမူနာကြည့်ရန်သာ ဖြစ်သည်။ ဘောက်ချာ မသုံးရသေးပါ၊ အင်တာနက်လည်း မရပါ။',noLoader:'Wi-Fi ဝင်ရောက်မှု မတင်နိုင်ပါ။ စာမျက်နှာကို ပြန်ဖွင့်ပြီး ထပ်ကြိုးစားပါ။',noResponse:'ဖြေကြားချက် မရရှိပါ။ Wi-Fi ချိတ်ဆက်မှုကို စစ်ပြီး ထပ်ကြိုးစားပါ။',sendFail:'ကုဒ်ကို မပို့နိုင်ပါ။ Wi-Fi ချိတ်ဆက်မှုကို စစ်ပြီး ထပ်ကြိုးစားပါ။'}};
+var lang=PREF||((typeof navigator!=='undefined'&&/^my/i.test(navigator.language||''))?'my':'en');
+function tr(k){
+  if(BI&&(k==='connect'||k==='pay')){return T.my[k]+' / '+T.en[k];}
+  return (T[lang]&&T[lang][k])||T.en[k]||'';
+}
+function setLang(l){
+  lang=l;
+  if(!document.querySelectorAll){return;}
+  if(document.documentElement&&document.documentElement.setAttribute){document.documentElement.setAttribute('lang',l);}
+  var nodes=document.querySelectorAll('[data-t]');
+  for(var i=0;i<nodes.length;i++){
+    if(nodes[i].id==='connect'&&loginPending){continue;}
+    nodes[i].textContent=tr(nodes[i].getAttribute('data-t'));
+  }
+  var my=document.getElementById('lang-my'),en=document.getElementById('lang-en');
+  if(my){my.setAttribute('aria-pressed',l==='my'?'true':'false');}
+  if(en){en.setAttribute('aria-pressed',l==='en'?'true':'false');}
+}
 function resetLogin(message){
   window.clearTimeout(loginTimer);
   loginPending=false;
   document.getElementById('voucher').disabled=false;
   var button=document.getElementById('connect');
   button.disabled=false;
-  button.textContent='Connect to Wi-Fi';
+  button.textContent=tr('connect');
   var error=document.getElementById('login-error');
   error.textContent=message||'';
   error.hidden=!message;
@@ -185,23 +212,23 @@ function doLogin(){
   var code=input.value.trim().toUpperCase();
   input.value=code;
   if(!/^[A-Z0-9][A-Z0-9_-]{3,31}$/.test(code)){
-    resetLogin('Enter the complete voucher code as printed.');
+    resetLogin(tr('badCode'));
     input.focus();
     return false;
   }
   var consent=document.getElementById('voucher-consent');
-  if(consent && !consent.checked){resetLogin('Accept the internet access terms before connecting.');return false;}
-  if(document.body && document.body.getAttribute('data-preview')==='true'){resetLogin('Preview only. No voucher was used and no internet access was granted.');return false;}
+  if(consent && !consent.checked){resetLogin(tr('needConsent'));return false;}
+  if(document.body && document.body.getAttribute('data-preview')==='true'){resetLogin(tr('preview'));return false;}
   var chapId='$(chap-id)';
   var password=code;
   if(chapId!==''){
     if(typeof hexMD5!=='function'){
-      resetLogin('WiFi login could not load. Reload this page and try again.');
+      resetLogin(tr('noLoader'));
       return false;
     }
     try{password=hexMD5(chapId+code+'$(chap-challenge)');}
     catch(error){
-      resetLogin('WiFi login could not load. Reload this page and try again.');
+      resetLogin(tr('noLoader'));
       return false;
     }
   }
@@ -212,16 +239,17 @@ function doLogin(){
   input.disabled=true;
   var button=document.getElementById('connect');
   button.disabled=true;
-  button.textContent='Connecting…';
+  button.textContent=tr('connecting');
   document.getElementById('login-error').hidden=true;
   loginTimer=window.setTimeout(function(){
-    resetLogin('No login response received. Check your WiFi connection and try again.');
+    resetLogin(tr('noResponse'));
   },15000);
   try{sendin.submit();}
-  catch(error){resetLogin('Could not send your code. Check your WiFi connection and try again.');}
+  catch(error){resetLogin(tr('sendFail'));}
   return false;
 }
 window.addEventListener('pageshow',function(){resetLogin();});
+setLang(lang);
 </script>
 </body></html>`
 }

@@ -216,9 +216,12 @@ type PortalConfig struct {
 	// Guest entry methods are independently selectable. At least one must stay
 	// enabled; when both are enabled the portal opens on voucher login and links
 	// to mobile payment as a separate screen.
-	VoucherLoginEnabled  bool      `json:"voucher_login_enabled"`
-	MobilePaymentEnabled bool      `json:"mobile_payment_enabled"`
-	UpdatedAt            time.Time `json:"updated_at"`
+	VoucherLoginEnabled  bool `json:"voucher_login_enabled"`
+	MobilePaymentEnabled bool `json:"mobile_payment_enabled"`
+	// TemplateID is the router login page look (see routeros.PortalTemplates). Empty or unset means "obsidian",
+	// which keeps portals saved before templates existed unchanged.
+	TemplateID string    `json:"template_id"`
+	UpdatedAt  time.Time `json:"updated_at"`
 }
 
 // IsHexColor reports whether s is a literal CSS hex colour — `#rgb`, `#rgba`,

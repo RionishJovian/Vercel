@@ -29,13 +29,53 @@ type PortalLoginDesign struct {
 	// the gateway being deployed (never from a request body) and must be a UUID.
 	BankTransfer bool   `json:"mobile_payment_enabled"`
 	DeviceID     string `json:"-"`
+	// TemplateID picks one of the PortalTemplates. Empty means DefaultPortalTemplate.
+	TemplateID string `json:"template_id"`
+	// Plans feeds the guest-pass tier cards of the hotel template. It is display text only.
+	Plans []PortalLoginPlan `json:"plans,omitempty"`
 }
+
+// PortalLoginPlan is the display-only part of a guest plan (never a key, price rule or limit).
+type PortalLoginPlan struct {
+	Label   string `json:"label"`
+	Minutes int    `json:"minutes"`
+	Amount  int    `json:"amount"`
+}
+
+const portalLoginMaxPlans = 4
 
 func RouterPortalDesign(c *model.PortalConfig) *PortalLoginDesign {
 	if c == nil {
 		return nil
 	}
-	return &PortalLoginDesign{BusinessName: c.BusinessName, WelcomeText: c.WelcomeText, TermsText: c.TermsText, PrimaryHex: c.PrimaryHex, GlassTintHex: c.GlassTintHex, ConsentRequired: c.ConsentRequired, ConsentText: c.ConsentText}
+	d := &PortalLoginDesign{BusinessName: c.BusinessName, WelcomeText: c.WelcomeText, TermsText: c.TermsText, PrimaryHex: c.PrimaryHex, GlassTintHex: c.GlassTintHex, ConsentRequired: c.ConsentRequired, ConsentText: c.ConsentText, TemplateID: c.TemplateID}
+	for _, p := range c.GuestPlans {
+		if len(d.Plans) == portalLoginMaxPlans {
+			break
+		}
+		d.Plans = append(d.Plans, PortalLoginPlan{Label: p.Label, Minutes: p.Minutes, Amount: p.Amount})
+	}
+	return d
+}
+
+func portalTiersHTML(plans []PortalLoginPlan) string {
+	var b strings.Builder
+	b.WriteString(`<ul class="tiers" aria-label="Guest passes">`)
+	for i, p := range plans {
+		if i == portalLoginMaxPlans {
+			break
+		}
+		label := strings.TrimSpace(p.Label)
+		if label == "" || p.Amount < 0 || p.Minutes < 0 {
+			continue
+		}
+		if r := []rune(label); len(r) > 40 {
+			label = string(r[:40])
+		}
+		b.WriteString(`<li><b>` + portalDesignText(label) + `</b><span class="amt">` + portalAmount(p.Amount) + ` Ks</span><span>` + portalDuration(p.Minutes) + `</span></li>`)
+	}
+	b.WriteString(`</ul>`)
+	return b.String()
 }
 
 // Escape both HTML and RouterOS macro openers: owner text must never turn into
@@ -66,12 +106,39 @@ func RenderPortalLogin(design *PortalLoginDesign, preview bool) (string, error) 
 	if !model.IsHexColor(d.PrimaryHex) || !model.IsHexColor(d.GlassTintHex) {
 		return "", fmt.Errorf("portal colours must be literal hex colours")
 	}
+	if !ValidPortalTemplate(d.TemplateID) {
+		return "", fmt.Errorf("unknown portal template")
+	}
 	if utf8.RuneCountInString(d.BusinessName) > 200 || utf8.RuneCountInString(d.WelcomeText) > 1000 || utf8.RuneCountInString(d.TermsText) > 2000 || utf8.RuneCountInString(d.ConsentText) > 300 {
 		return "", fmt.Errorf("portal branding is too long for a router login page")
 	}
+	tpl := portalTemplateByID(d.TemplateID)
 	page := portalLoginHTML()
-	page = strings.Replace(page, `<main class="card">`, `<main class="card">`+portalWiFiMarkSVG, 1)
-	page = strings.Replace(page, "<p>Enter voucher code to connect</p>", "<p>"+portalDesignText(d.WelcomeText)+"</p>", 1)
+	toggle := `<div class="lang" role="group" aria-label="Language"><button type="button" id="lang-my" lang="my" aria-pressed="false" onclick="setLang('my')">မြန်မာ</button><button type="button" id="lang-en" lang="en" aria-pressed="true" onclick="setLang('en')">EN</button></div>`
+	page = strings.Replace(page, `<main class="card">`, `<main class="card t-`+tpl.ID+`">`+toggle+tpl.Art, 1)
+	if tpl.BG != "" {
+		page = strings.Replace(page, "<body>", "<body>"+tpl.BG, 1)
+	}
+	tplCSS := ""
+	if tpl.Pal != nil {
+		tplCSS = tpl.Pal.css() + portalTemplateBaseCSS
+	}
+	page = strings.Replace(page, "</head>", "<style>"+tplCSS+tpl.CSS+"</style></head>", 1)
+	if tpl.Bilingual {
+		page = strings.Replace(page, "var BI=false", "var BI=true", 1)
+	}
+	if tpl.PreferMy {
+		page = strings.Replace(page, "PREF=''", "PREF='my'", 1)
+	}
+	if d.WelcomeText != "Enter voucher code to connect" {
+		page = strings.Replace(page, `<p data-t="welcome">Enter voucher code to connect</p>`, "<p>"+portalDesignText(d.WelcomeText)+"</p>", 1)
+	}
+	if tpl.Steps {
+		page = strings.Replace(page, "<form id=\"voucher-login\"", `<ol class="steps"><li data-t="s1">Type your voucher code</li><li data-t="s2">Tap Connect</li><li data-t="s3">You are online</li></ol><form id="voucher-login"`, 1)
+	}
+	if tpl.Tiers && d.BankTransfer && len(d.Plans) > 0 {
+		page = strings.Replace(page, "<form id=\"voucher-login\"", portalTiersHTML(d.Plans)+`<form id="voucher-login"`, 1)
+	}
 	if d.BankTransfer {
 		href := "#"
 		if !preview {
@@ -80,22 +147,25 @@ func RenderPortalLogin(design *PortalLoginDesign, preview bool) (string, error) 
 			}
 			href = "https://" + portalHost + "/portal.html?deviceId=" + d.DeviceID + "&amp;start=pay&amp;ip=$(ip)"
 		}
-		page = strings.Replace(page, "</form>\n</main>", "</form>\n<a class=\"alt\" id=\"bank-transfer\" href=\""+href+"\">Pay by bank transfer</a>\n</main>", 1)
+		page = strings.Replace(page, "</form>\n</main>", "</form>\n<a class=\"alt\" id=\"bank-transfer\" href=\""+href+"\" data-t=\"pay\">Pay by bank transfer</a>\n</main>", 1)
 	}
 	if d.BusinessName != "WiFi Voucher" {
 		page = strings.Replace(page, "</main>", `<span class="brand">`+portalDesignText(d.BusinessName)+`</span></main>`, 1)
 	}
+	if tpl.Foot != "" {
+		page = strings.Replace(page, "</main>", tpl.Foot+"</main>", 1)
+	}
 	css := `<style>:root{--portal-brand:` + d.PrimaryHex + `;--portal-tint:` + d.GlassTintHex + `;--portal-on-brand:` + portalBrandText(d.PrimaryHex) + `}</style>`
 	page = strings.Replace(page, "</head>", css+"</head>", 1)
 	if d.TermsText != "" {
-		page = strings.Replace(page, "<form id=\"voucher-login\"", `<details><summary>Internet access terms</summary><p>`+portalDesignText(d.TermsText)+`</p></details><form id="voucher-login"`, 1)
+		page = strings.Replace(page, "<form id=\"voucher-login\"", `<details><summary data-t="terms">Internet access terms</summary><p>`+portalDesignText(d.TermsText)+`</p></details><form id="voucher-login"`, 1)
 	}
 	if d.ConsentRequired {
-		text := d.ConsentText
+		text, attr := d.ConsentText, ""
 		if text == "" {
-			text = "I agree to the internet access terms."
+			text, attr = "I agree to the internet access terms.", ` data-t="consent"`
 		}
-		page = strings.Replace(page, `<button id="connect"`, `<label class="consent"><input id="voucher-consent" type="checkbox" required><span>`+portalDesignText(text)+`</span></label><button id="connect"`, 1)
+		page = strings.Replace(page, `<button id="connect"`, `<label class="consent"><input id="voucher-consent" type="checkbox" required><span`+attr+`>`+portalDesignText(text)+`</span></label><button id="connect"`, 1)
 	}
 	if preview {
 		page = strings.Replace(page, "<body>", `<body data-preview="true">`, 1)

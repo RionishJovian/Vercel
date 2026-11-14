@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -44,6 +45,10 @@ func (h *SecurityHandler) PortalDeployment(c *gin.Context) {
 		return
 	}
 	design, err := h.savedRouterPortalDesign(c, businessID, deviceID)
+	if errors.Is(err, errPortalTemplateLocked) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "this login page theme is a Store add-on; unlock it in the Store or choose a free theme", "code": "template_locked"})
+		return
+	}
 	if err != nil {
 		c.JSON(http.StatusConflict, gin.H{"error": "save or publish this gateway site’s voucher portal before deployment"})
 		return
@@ -84,6 +89,13 @@ func (h *SecurityHandler) savedRouterPortalDesign(c *gin.Context, businessID, de
 	err := runInTenant(c, h.db, businessID, func(tx *sql.Tx) error {
 		var err error
 		cfg, err = database.NewPortalConfigRepository(h.db).GetByDeviceTXN(tx, businessID, deviceID)
+		if err != nil || cfg == nil || !portalTemplatePremium(cfg.TemplateID) {
+			return err
+		}
+		owned, err := ownedPortalAddons(tx, businessID)
+		if err == nil && !portalTemplateAllowed(cfg.TemplateID, auth.GetUserRole(c), owned) {
+			err = errPortalTemplateLocked
+		}
 		return err
 	})
 	if err != nil {

@@ -64,7 +64,8 @@ func TestPublicPortalViewOmitsTenantAndBookkeeping(t *testing.T) {
 // Fails when a field is added to model.PortalConfig without deciding whether guests may see it: either copy it into
 // publicPortalConfig, or add it to the withheld list here, deliberately.
 func TestPublicPortalViewCoversEveryModelField(t *testing.T) {
-	withheld := map[string]bool{"business_id": true, "updated_at": true}
+	// template_id only styles the router login page; the hosted guest portal does not use it.
+	withheld := map[string]bool{"business_id": true, "updated_at": true, "template_id": true}
 	var wantKeys []string
 	for _, k := range jsonKeys(t, fullPortalConfig()) {
 		if !withheld[k] {

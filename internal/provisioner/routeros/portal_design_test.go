@@ -12,7 +12,7 @@ func TestRouterPortalOfflineArtworkAndReferenceDesign(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{`<h1>Wi-Fi Access</h1>`, `Enter voucher code to connect`, `Connect to Wi-Fi`, `class="wifi-mark"`, `--portal-brand:#38bdf8`, `data-preview="true"`, `prefers-color-scheme:light`, `prefers-reduced-motion`} {
+	for _, want := range []string{`<h1 data-t="title">Wi-Fi Access</h1>`, `Enter voucher code to connect`, `Connect to Wi-Fi`, `class="wifi-mark"`, `--portal-brand:#38bdf8`, `data-preview="true"`, `prefers-color-scheme:light`, `prefers-reduced-motion`} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("reference portal missing %q", want)
 		}
