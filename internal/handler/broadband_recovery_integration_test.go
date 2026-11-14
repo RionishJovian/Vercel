@@ -12,7 +12,6 @@ import (
 	"mega-magic/internal/provisioner/routeros"
 	"mega-magic/internal/secretbox"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -55,13 +54,7 @@ func (r *bbTestRouter) ApplyBroadband(ctx context.Context, b, d string, s broadb
 func TestBroadbandRecoversLostReplyWithoutDuplicatePayment(t *testing.T) {
 	db := harness_testdb(t)
 	biz, device := loginFixture(t, db)
-	source, e := os.ReadFile("../../db/migrations/20261104000000_broadband.sql")
-	if e != nil {
-		t.Fatal(e)
-	}
-	if _, e = db.Exec(string(source)); e != nil {
-		t.Fatal(e)
-	}
+	ensureBroadbandSchema(t, db)
 	t.Setenv("MM_NETWORK_CONTROLS_ENABLED", "true")
 	t.Setenv("MM_BROADBAND_WRITES_ENABLED", "true")
 	h := NewSecurityHandler(db, database.NewDeviceRepository(db))
