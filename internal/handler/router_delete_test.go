@@ -205,6 +205,36 @@ func TestDBRouterDeletionEndsHubConnection(t *testing.T) {
 			t.Fatalf("second delete: status %d body %s", w.Code, w.Body.String())
 		}
 	})
+	// A Platform Admin (DEVELOPER) presses Delete on a router whose Hub connection already
+	// ended. The Hub has nothing left to end, and the history keeps the record: the answer
+	// must be the same explicit "kept" every time, never an error and never a bare success.
+	t.Run("a Platform Admin deleting an already ended router with history gets an explicit kept answer", func(t *testing.T) {
+		device := withHistory(t)
+		h.ConfigureHubRemoval(func(context.Context, string, string, string) (string, error) { return "", nil })
+		h.ConfigureHubForget(func(context.Context, string, string) error { return nil })
+		defer h.ConfigureHubForget(nil)
+		asPlatformAdmin := func() *httptest.ResponseRecorder {
+			r := gin.New()
+			r.Use(func(c *gin.Context) {
+				c.Set(auth.ContextKeyBusinessID, business)
+				c.Set(auth.ContextKeyUserID, "platform")
+				c.Set(auth.ContextKeyUserRole, string(model.RoleDeveloper))
+			})
+			r.DELETE("/routers/:id", auth.RequireMinRole(model.RoleAdmin), h.DeleteRouter)
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, httptest.NewRequest(http.MethodDelete, "/routers/"+device, nil))
+			return w
+		}
+		for press := 1; press <= 2; press++ {
+			w := asPlatformAdmin()
+			if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"record_kept":true`) || strings.Contains(w.Body.String(), "router_cleanup_script") {
+				t.Fatalf("press %d: status %d body %s", press, w.Code, w.Body.String())
+			}
+			if !exists(device) || history(t, device) != 1 {
+				t.Fatalf("press %d: the record and its history must stay", press)
+			}
+		}
+	})
 	t.Run("Hub unavailable changes nothing on a record with history", func(t *testing.T) {
 		device := withHistory(t)
 		h.ConfigureHubRemoval(func(context.Context, string, string, string) (string, error) { return "", errors.New("hub down") })

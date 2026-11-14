@@ -9,6 +9,9 @@
 .spec > dt:first-of-type, .spec > dt:first-of-type + dd { border-top: 0; }
 .spec > dt { color: var(--ink-mute); font-size: .8125rem; display: flex; align-items: center; padding-right: 20px; }
 .spec > dd { text-align: right; font-size: .875rem; overflow-wrap: anywhere; display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+/* "26d" must stay on one line: the row's overflow-wrap: anywhere would otherwise stack its characters. */
+.spec > dd .num { white-space: nowrap; font-variant-numeric: tabular-nums; flex: none; }
+.spec > dd .soft { min-width: 0; overflow-wrap: break-word; word-break: normal; }
 .spec > dd.is-key { justify-content: flex-start; text-align: left; }
 .spec .cidr { color: var(--jade); font-weight: 600; }
 .spec .nil { color: var(--ink-mute); font-family: var(--font-body); font-size: .8125rem; letter-spacing: 0; }
