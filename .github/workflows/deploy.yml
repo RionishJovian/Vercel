@@ -119,6 +119,7 @@ jobs:
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -buildvcs=false -o restore-bin/mega-magic ./cmd/server
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -buildvcs=false -o restore-bin/config-check ./cmd/config-check
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -buildvcs=false -o restore-bin/rotate-credential-key ./cmd/rotate-credential-key
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -buildvcs=false -o restore-bin/voucher-code-protect ./cmd/voucher-code-protect
       - id: images
         run: |
           repo=${GITHUB_REPOSITORY,,}

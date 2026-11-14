@@ -58,6 +58,25 @@ Each step is safe to stop after. Nothing here is automatic, and the migration do
    removed; a mismatch is reported and left alone.
 6. **Take a fresh backup.** Older backups still contain plaintext codes. Expire or secure them accordingly.
 
+### Running the tool on the server
+
+The tool ships in the API image at `/app/voucher-code-protect` (dormant unless run), next to `rotate-credential-key`.
+Run it as a one-off container, the same way as `docs/SECRET-ROTATION.md`:
+
+```bash
+app=/opt/mega-magic-go-restored-20261018T100554Z
+img=$(docker inspect mega-magic-go-restored-api-1 --format '{{.Config.Image}}')
+protect() { docker run --rm --network mega-magic-go-restored_default -e ENVIRONMENT=production \
+  --env-file "$app/.env.production" \
+  --mount type=bind,source=$app/config.go-production.yaml,target=/app/config.yaml,readonly \
+  --entrypoint /app/voucher-code-protect "$img" -config /app/config.yaml "$@"; }
+protect                      # dry run
+protect -apply               # seal
+protect -apply -clear-plaintext
+```
+
+Images built before this change do not contain the tool. The release that carries it must be the one running.
+
 ## Rollback
 
 - Before step 5: set `protect_voucher_codes` off. Protected rows stay readable while the key is loaded.
