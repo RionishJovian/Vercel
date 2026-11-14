@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	mrand "math/rand"
 	"net/http"
 	"net/netip"
 	"net/url"
@@ -35,7 +36,23 @@ type Options struct {
 	SigningKey string
 	// Transport is optional for isolated tests. Production defaults to verified TLS.
 	Transport http.RoundTripper
+	// Retries bounds extra attempts for idempotent calls (GET, DELETE) only. Zero
+	// means DefaultRetries; negative disables retries. A create (POST) is never
+	// retried here: a timeout may still have reserved the key, and the caller
+	// recovers by retrying with the same key and an InspectRouter first.
+	Retries int
+	// Sleep waits between retries; tests replace it. Nil sleeps for real.
+	Sleep func(context.Context, time.Duration) error
 }
+
+// DefaultRetries is the number of extra attempts for an idempotent Hub call.
+const DefaultRetries = 2
+
+// retryBudget stops retrying once this much time has passed since the first
+// attempt, so an unreachable Hub cannot hold a request worker for long.
+const retryBudget = 25 * time.Second
+
+const retryBase = 200 * time.Millisecond
 
 type Client struct {
 	base  string
@@ -43,6 +60,9 @@ type Client struct {
 	key   []byte
 	http  *http.Client
 	now   func() time.Time
+
+	retries int
+	sleep   func(context.Context, time.Duration) error
 }
 
 type Peer struct {
@@ -77,7 +97,17 @@ func New(o Options) (*Client, error) {
 	if transport == nil {
 		transport = http.DefaultTransport.(*http.Transport).Clone()
 	}
-	return &Client{base: strings.TrimSuffix(o.URL, "/"), keyID: o.KeyID, key: key, now: time.Now,
+	retries := o.Retries
+	if retries == 0 {
+		retries = DefaultRetries
+	} else if retries < 0 {
+		retries = 0
+	}
+	sleep := o.Sleep
+	if sleep == nil {
+		sleep = sleepContext
+	}
+	return &Client{base: strings.TrimSuffix(o.URL, "/"), keyID: o.KeyID, key: key, now: time.Now, retries: retries, sleep: sleep,
 		http: &http.Client{Transport: transport, Timeout: 15 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}, nil
 }
 
@@ -181,7 +211,11 @@ func (c *Client) requestPeer(ctx context.Context, id Identity, method, path, sco
 	return peer, nil
 }
 
-// send signs and sends one request. The caller closes the response body.
+// send signs and sends one request. Idempotent calls (GET, DELETE) are retried a
+// bounded number of times on a transport failure or a 502/503/504 answer, each
+// attempt freshly signed so the Hub's replay protection never sees a reused
+// request identifier. Other methods get exactly one attempt. The caller closes
+// the response body.
 func (c *Client) send(ctx context.Context, id Identity, method, path, scope string, body any) (*http.Response, error) {
 	if !identifier.MatchString(id.TenantID) || !identifier.MatchString(id.RouterID) || !identifier.MatchString(id.RequestedBy) {
 		return nil, errors.New("invalid Hub request identity")
@@ -194,6 +228,57 @@ func (c *Client) send(ctx context.Context, id Identity, method, path, scope stri
 			return nil, errors.New("invalid Hub request body")
 		}
 	}
+	attempts := 1
+	if method == http.MethodGet || method == http.MethodDelete {
+		attempts += c.retries
+	}
+	started := c.now()
+	lastErr := errors.New("Hub request failed")
+	for attempt := 0; attempt < attempts; attempt++ {
+		if attempt > 0 {
+			if c.now().Sub(started) > retryBudget || c.sleep(ctx, retryDelay(attempt)) != nil {
+				break
+			}
+		}
+		res, err := c.once(ctx, id, method, path, scope, payload)
+		if err != nil {
+			lastErr = err
+			if ctx.Err() != nil {
+				break
+			}
+			continue
+		}
+		if retryableStatus(res.StatusCode) && attempt < attempts-1 {
+			res.Body.Close()
+			continue
+		}
+		return res, nil
+	}
+	return nil, lastErr
+}
+
+func retryableStatus(code int) bool {
+	return code == http.StatusBadGateway || code == http.StatusServiceUnavailable || code == http.StatusGatewayTimeout
+}
+
+// retryDelay is exponential with jitter (half to full of the step).
+func retryDelay(attempt int) time.Duration {
+	step := retryBase << (attempt - 1)
+	return step/2 + time.Duration(mrand.Int63n(int64(step/2)+1))
+}
+
+func sleepContext(ctx context.Context, d time.Duration) error {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
+func (c *Client) once(ctx context.Context, id Identity, method, path, scope string, payload []byte) (*http.Response, error) {
 	random := make([]byte, 16)
 	if _, err := rand.Read(random); err != nil {
 		return nil, errors.New("cannot generate Hub request identifier")

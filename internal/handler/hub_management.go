@@ -81,6 +81,7 @@ func (h *VPSHandler) completeConnection(parent context.Context, biz, requester, 
 	if err != nil || p.TenantID != biz || p.RouterID != id || p.State != "active" || p.LastHandshakeAt == nil || time.Since(*p.LastHandshakeAt) < 0 || time.Since(*p.LastHandshakeAt) > 5*time.Minute {
 		return errHubNoRecentHandshake
 	}
+	h.observeVerifiedHandshake(ctx, biz, id, p)
 	addr, err := netip.ParsePrefix(p.TunnelAddress)
 	if err != nil || !addr.Addr().Is4() || !addr.Addr().IsPrivate() || addr.Bits() != 32 {
 		return errHubInvalidAddress

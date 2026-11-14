@@ -267,6 +267,9 @@ func automaticEnrollmentScript(id string, p pendingManagement) (string, error) {
 		return "", errors.New("management source must be a single host")
 	}
 	tunnel := strings.TrimSpace(p.tunnelScript)
+	if strings.Contains(tunnel, redactedRouterKey) {
+		return "", errors.New("the router already connected and its setup key was removed; no script is reissued")
+	}
 	management := strings.TrimSpace(automaticManagementScript(id, p))
 	if !strings.HasPrefix(tunnel, "{\n") || !strings.HasSuffix(tunnel, "\n}") {
 		return "", errors.New("invalid tunnel execution block")

@@ -183,6 +183,11 @@ type VPSConfig struct {
 	EndpointHost         string `mapstructure:"endpoint_host"`
 	HubLookupEnabled     bool   `mapstructure:"hub_lookup_enabled"`
 	HubEnrollmentEnabled bool   `mapstructure:"hub_enrollment_enabled"`
+	// HubCallbackEnrollmentEnabled turns on router-generated-key enrolment: the
+	// router makes its own WireGuard key and calls back with the public half.
+	// Off by default; PublicBaseURL is the https origin routers can reach.
+	HubCallbackEnrollmentEnabled bool   `mapstructure:"hub_callback_enrollment_enabled"`
+	PublicBaseURL                string `mapstructure:"public_base_url"`
 	HubURL               string `mapstructure:"hub_url"`
 	HubKeyID             string `mapstructure:"hub_key_id"`
 	HubSigningKey        string `mapstructure:"hub_signing_key" json:"-"`
@@ -439,6 +444,14 @@ func (cfg *Config) Validate() error {
 	if cfg.VPS.HubEnrollmentEnabled && !cfg.VPS.HubLookupEnabled {
 		problems = append(problems, "Hub enrollment requires Hub lookup configuration")
 	}
+	if cfg.VPS.HubCallbackEnrollmentEnabled {
+		if !cfg.VPS.HubEnrollmentEnabled {
+			problems = append(problems, "Hub callback enrollment requires Hub enrollment")
+		}
+		if _, err := hub.CallbackURL(cfg.VPS.PublicBaseURL); err != nil {
+			problems = append(problems, "vps.public_base_url must be the https origin routers use to reach this app when Hub callback enrollment is on")
+		}
+	}
 	if cfg.VPS.HubLookupEnabled {
 		if _, err := hub.New(hub.Options{URL: cfg.VPS.HubURL, KeyID: cfg.VPS.HubKeyID, SigningKey: cfg.VPS.HubSigningKey}); err != nil {
 			problems = append(problems, "vps Hub lookup requires a valid HTTPS endpoint, key identifier and 32-byte hex signing key")
@@ -546,6 +559,8 @@ func weakSecret(value, knownDefault string, minLength int) bool {
 func setDefaults(v *viper.Viper) {
 	v.SetDefault("vps.hub_lookup_enabled", false)
 	v.SetDefault("vps.hub_enrollment_enabled", false)
+	v.SetDefault("vps.hub_callback_enrollment_enabled", false)
+	v.SetDefault("vps.public_base_url", "")
 	v.SetDefault("vps.hub_url", "")
 	v.SetDefault("vps.hub_key_id", "")
 	v.SetDefault("vps.hub_signing_key", "")

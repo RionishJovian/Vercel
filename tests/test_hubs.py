@@ -71,3 +71,13 @@ class HubTests(unittest.TestCase):
   with ThreadPoolExecutor(2) as pool:results=list(pool.map(lambda _:self.plan(owner,hub,router),range(2)))
   self.assertEqual([r.status_code for r in results],[201,201]);self.assertEqual(len({r.json()['id'] for r in results}),1)
   with self.app.state.factory() as s:self.assertEqual(s.get(MagicHub,hub).next_host,3)
+ def test_many_concurrent_plans_never_share_an_address(self):
+  # Wave 3: the same invariant the Go peer-state table enforces with a unique index.
+  platform,owner,hub,site,tenant=self.setup_hub();routers=[self.router(owner,site,'R%d'%i) for i in range(8)]
+  with ThreadPoolExecutor(4) as pool:results=list(pool.map(lambda a:self.plan(owner,hub,a[1],a[0]+2),enumerate(routers)))
+  self.assertEqual([r.status_code for r in results],[201]*8)
+  addresses=[r.json()['address'] for r in results]
+  self.assertEqual(len(set(addresses)),8);self.assertEqual(sorted(addresses),sorted('10.90.1.%d'%n for n in range(2,10)))
+  for r in results:
+   snapshot=r.json()['snapshot'];self.assertEqual(snapshot['private_key_location'],'router_only');self.assertEqual(snapshot['dispatch'],'not_implemented');self.assertEqual(r.json()['connection_state'],'unverified')
+  with self.app.state.factory() as s:self.assertEqual(s.get(MagicHub,hub).next_host,10)

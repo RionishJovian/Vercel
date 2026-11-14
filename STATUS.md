@@ -62,6 +62,25 @@ README section.
 5. The public Go portal config returns `business_id`, `media_host` and `updated_at` to anonymous callers.
 6. Whether the production server has a credential encryption key set was **not verified**.
 
+## Wave 3: router key custody and bounded Hub calls (2026-11-14)
+
+Addresses open items 2, 3 and part of 4 above. Details, rollout and the hardware checklist are in
+`docs/HUB-CALLBACK-ENROLLMENT.md`. Tested against fakes and a disposable PostgreSQL; **no real router was used**.
+
+- New, **off by default**: router-generated WireGuard keys. The router makes its own key and posts only the public half
+  to a single-use, 15-minute callback. Needs `vps.hub_callback_enrollment_enabled` and `vps.public_base_url`. The console
+  does not call it yet.
+- Legacy one-paste: the server-held router key now lives 1 hour (was 30 days) and is deleted, including the copy inside
+  the management envelope, at the first verified handshake. Until a router first handshakes the key is still held; the
+  management envelope copy can last up to 30 days. Only the new flow removes it entirely.
+- Hub calls: bounded retries for GET and DELETE only; a 60 s deadline per enrolment; a per-router lock; durable peer
+  state with unique `/32` and key per Hub endpoint (`hub_peer_state`, migration `20261114120000`).
+- `DecideGuest`: the router call inside the open transaction now has a 30 s deadline; on timeout the request stays pending.
+- RouterOS 6 cannot run WireGuard: refused in the script and on the server.
+- Python prototype: no behaviour change; one more concurrency test. Still planning only.
+- Not verified: the Hub's own allocator and its handling of a repeated enrolment; the router-side script on RouterOS;
+  certificate trust on a router; production client addresses for rate limiting.
+
 ## Not verified
 
 Anything about the live server, a physical router, Telegram approver checks, the Hub service's own address
