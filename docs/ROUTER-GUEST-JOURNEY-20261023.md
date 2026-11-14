@@ -28,7 +28,7 @@ The frozen source, per-file SHA256 manifest and evidence are in `/Users/aces/Doc
 - Production-web audit: all six surfaces pass; whitespace check passes.
 - Linux AMD64 static Go artifact SHA256: `fc70bf18dc1eb87386771f11166d76fb503d4462824ae4b56d329b34934024e2` (`megamagic-linux-amd64`).
 - Actual browser: phone layout, 320 px no-overflow, desktop layout, image decode, preview non-consumption and console checks. Screenshots retained alongside the test evidence.
-- RouterOS behavioral/model tests are simulations; they do not execute the scripts on RouterOS. Formal reference-image QA remains pending as recorded in root `design-qa.md`.
+- RouterOS behavioral/model tests are simulations; they do not execute the scripts on RouterOS. Formal reference-image QA remains pending as recorded in `docs/archive/design-qa.md`.
 
 An earlier isolated run encountered a stopped disposable PostgreSQL fixture and an unprivileged UI fixture listener. Neither run is treated as passing. After confirming/restarting the local fixture and granting the required loopback access, the final runs above passed. One new test's duplicate policy setup was fixed; production schema was not changed.
 

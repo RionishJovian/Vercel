@@ -7,7 +7,7 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// Manual approve-gate (DESIGN-provisioner.md section 2) + OTP gate
+// Manual approve-gate (docs/archive/DESIGN-provisioner.md section 2) + OTP gate
 // ---------------------------------------------------------------------------
 
 // highRiskActions require a one-time OTP on top of the manual approval. LOW and
