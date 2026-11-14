@@ -55,9 +55,17 @@ describe("one-paste connection", () => {
     await screen.findByRole("button", { name: "Selected: copy it manually" });
     expect(script.value.slice(script.selectionStart, script.selectionEnd)).toBe(PASTE);
   });
-  it.each(["ethernet", "wifi1", "wifi2"])("previews and includes %s setup without posting Wi-Fi details", async uplink => {
+  it.each([
+    ["hap-ax2", "ethernet", "ether1", "C52iG-5HaxD2HaxD"],
+    ["hap-ax2", "5ghz", "wifi1", "C52iG-5HaxD2HaxD"],
+    ["hap-ax2", "2ghz", "wifi2", "C52iG-5HaxD2HaxD"],
+    ["hap-ax3", "ethernet", "ether1", "C53UiG+5HPaxD2HPaxD"],
+    ["hap-ax3", "5ghz", "wifi1", "C53UiG+5HPaxD2HPaxD"],
+    ["hap-ax3", "2ghz", "wifi2", "C53UiG+5HPaxD2HPaxD"],
+  ])("previews and includes %s %s setup without posting Wi-Fi details", async (model, uplink, iface, board) => {
     open();
     fireEvent.change(screen.getByLabelText("Router network setup"), { target: { value: uplink } });
+    fireEvent.change(screen.getByLabelText("Router model"), { target: { value: model } });
     expect(screen.getByText(/Requires factory defaults/)).toBeTruthy();
     if (uplink !== "ethernet") {
       fireEvent.change(screen.getByLabelText(/Upstream Wi-Fi name/), { target: { value: 'Fixture "$&"' } });
@@ -66,10 +74,37 @@ describe("one-paste connection", () => {
     await generate();
     const { value } = screen.getByRole<HTMLTextAreaElement>("textbox", { name: "Connection script" });
     expect(value).toMatch(/^\n\{\n/);
-    expect(value).toContain(`:local mmUplink "${uplink === "ethernet" ? "ether1" : uplink}"`);
+    expect(value).toContain(`:if ([/system routerboard get model] != "${board}")`);
+    expect(value).toContain(`:local mmUplink "${iface}"`);
     expect(value.indexOf("add-default-route=yes")).toBeLessThan(value.indexOf(':put "probe"'));
     expect(value.includes("security.passphrase=")).toBe(uplink !== "ethernet");
     expect(calls[0].body).toEqual({ management_rest_port: 443, confirm_enrollment: true });
+    expect(JSON.stringify(calls)).not.toContain("test-password");
+  });
+  it("lists the supported models, with no free-text model entry", () => {
+    open();
+    expect(screen.queryByLabelText("Router model")).toBeNull();
+    fireEvent.change(screen.getByLabelText("Router network setup"), { target: { value: "ethernet" } });
+    const model = screen.getByLabelText<HTMLSelectElement>("Router model");
+    expect(model.tagName).toBe("SELECT");
+    expect([...model.options].map(o => o.text)).toEqual(["Choose your router model", "hAP ax²", "hAP ax³"]);
+    fireEvent.change(model, { target: { value: "hap-ax3" } });
+    expect(screen.getByText("C53UiG+5HPaxD2HPaxD")).toBeTruthy();
+  });
+  it("needs a model for a new router and creates nothing without one", async () => {
+    open();
+    fireEvent.change(screen.getByLabelText("Router network setup"), { target: { value: "ethernet" } });
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.submit(screen.getByRole("button", { name: "Generate one-paste script" }).closest("form")!);
+    await screen.findByText("Choose your router model.");
+    expect(calls).toHaveLength(0);
+  });
+  it("keeps existing network settings by default, with no model and no network prelude", async () => {
+    open();
+    expect((screen.getByLabelText("Router network setup") as HTMLSelectElement).value).toBe("existing");
+    expect(screen.queryByLabelText("Router model")).toBeNull();
+    await generate();
+    expect(screen.getByRole<HTMLTextAreaElement>("textbox", { name: "Connection script" }).value).toBe(PASTE);
   });
   it("needs authorization before generating", () => {
     open();

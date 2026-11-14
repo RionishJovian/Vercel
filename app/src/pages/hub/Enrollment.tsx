@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { Fragment, useEffect, useRef, useState, type FormEvent } from "react";
 import { api, ApiError, isUnauthorized } from "../../lib/api";
 import { useI18n } from "../../i18n";
 import { Note } from "../../components/ui";
 import { enrollError } from "./messages";
 import { splitCidr } from "../../lib/age";
-import { validWifi, withNewRouterNetwork, type Uplink } from "./newRouterNetwork";
+import { isWifiUplink, validWifi, withNewRouterNetwork, type Uplink } from "./newRouterNetwork";
+import { findProfile, radioFor, routerProfiles, type WifiBand } from "./routerProfiles";
 
 interface Enrolled { state?: string; router_configuration_required?: boolean; one_paste?: boolean; automatic_management?: boolean; router_script?: string; tunnel_address?: string; hub_public_key?: string; endpoint?: string; allowed_ips?: string[] }
 interface Live { handshake_status?: string; connection?: { management?: string } }
@@ -58,10 +59,21 @@ function Where() {
   return <details className="wiz-where"><summary>{t("hub.w.where")}</summary><p className="soft small">{t("hub.w.whereBody")}</p></details>;
 }
 
+/** Keep existing settings (default), or prepare a factory-default router of a listed model. The model list is routerProfiles.ts. */
 function NetworkSetup() {
   const { t } = useI18n();
   const [uplink, setUplink] = useState<"existing" | Uplink>("existing");
-  const wifi = uplink === "wifi1" || uplink === "wifi2";
+  const [modelId, setModelId] = useState("");
+  const profile = findProfile(modelId);
+  const fresh = uplink !== "existing";
+  const wifi = uplink === "5ghz" || uplink === "2ghz";
+  // A model without a radio on a band cannot use that Wi-Fi option.
+  const bandOk = (band: WifiBand) => !profile || radioFor(profile, band) !== undefined;
+  function pickModel(id: string) {
+    setModelId(id);
+    const next = findProfile(id);
+    if (next && (uplink === "5ghz" || uplink === "2ghz") && !radioFor(next, uplink)) setUplink("ethernet");
+  }
   return (
     <div className="stack">
       <label className="stack">
@@ -69,16 +81,31 @@ function NetworkSetup() {
         <select className="input" name="uplink" value={uplink} onChange={e => setUplink(e.target.value as typeof uplink)}>
           <option value="existing">{t("hub.net.existing")}</option>
           <option value="ethernet">{t("hub.net.ethernet")}</option>
-          <option value="wifi1">{t("hub.net.wifi5")}</option>
-          <option value="wifi2">{t("hub.net.wifi24")}</option>
+          <option value="5ghz" disabled={!bandOk("5ghz")}>{t("hub.net.wifi5")}</option>
+          <option value="2ghz" disabled={!bandOk("2ghz")}>{t("hub.net.wifi24")}</option>
         </select>
       </label>
-      {uplink !== "existing" && <>
+      {fresh && <>
+        <label className="stack">
+          <span>{t("hub.net.model")}</span>
+          <select className="input" name="model" value={modelId} onChange={e => pickModel(e.target.value)} required>
+            <option value="">{t("hub.net.modelPick")}</option>
+            {routerProfiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        </label>
+        {profile && (
+          <dl className="spec">
+            <dt>{t("hub.net.wanPort")}</dt><dd><code className="num">{profile.wan}</code></dd>
+            {profile.radios.map(r => <Fragment key={r.name}><dt>{t(r.band === "5ghz" ? "hub.net.radio5" : "hub.net.radio24")}</dt><dd><code className="num">{r.name}</code></dd></Fragment>)}
+            <dt>{t("hub.net.board")}</dt><dd><code className="num">{profile.boardModel}</code></dd>
+          </dl>
+        )}
+        <p className="soft small">{t("hub.net.modelCheck")}</p>
         <p className="soft small">{t("hub.net.preview")}</p>
         <p className="soft small">{t(wifi ? "hub.net.wifiPreview" : "hub.net.ethernetPreview")}</p>
         <Note kind="warn">{t("hub.net.safe")}</Note>
       </>}
-      {wifi && <>
+      {fresh && wifi && <>
         <label className="stack"><span>{t("hub.net.ssid")}</span><input className="input" name="ssid" maxLength={32} autoComplete="off" required /></label>
         <label className="stack"><span>{t("hub.net.password")}</span><input className="input" name="wifiPassphrase" type="password" minLength={8} maxLength={63} autoComplete="new-password" required /></label>
         <p className="soft small">{t("hub.net.private")}</p>
@@ -134,17 +161,20 @@ export function Enrollment({ id, onVerified }: { id: string; onVerified: () => v
     const form = new FormData(e.currentTarget);
     if (form.get("confirm") !== "on") { setResult({ ok: false, key: "hub.confirmNeeded" }); return; }
     const choice = form.get("uplink");
-    const uplink = choice === "ethernet" || choice === "wifi1" || choice === "wifi2" ? choice : null;
+    const uplink: Uplink | null = choice === "ethernet" || choice === "5ghz" || choice === "2ghz" ? choice : null;
+    const profile = findProfile(String(form.get("model") ?? ""));
     const ssid = String(form.get("ssid") ?? ""), passphrase = String(form.get("wifiPassphrase") ?? "");
-    if ((uplink === "wifi1" || uplink === "wifi2") && !validWifi(ssid, passphrase)) {
-      setResult({ ok: false, key: "hub.net.invalidWifi" });
-      return;
+    // Check everything before the enrollment request, so a refused choice creates nothing on the server.
+    if (uplink && !profile) { setResult({ ok: false, key: "hub.net.modelNeeded" }); return; }
+    if (uplink && profile && isWifiUplink(uplink)) {
+      if (!radioFor(profile, uplink)) { setResult({ ok: false, key: "hub.net.noRadio" }); return; }
+      if (!validWifi(ssid, passphrase)) { setResult({ ok: false, key: "hub.net.invalidWifi" }); return; }
     }
     pending.current = true; setBusy(true); setResult(null);
     try {
       const r = await api.post<Enrolled>(`/vps/peers/${eid}/quick-enroll`, { management_rest_port: 443, confirm_enrollment: true });
       if (r.state !== "hub_peer_enrolled" || r.router_configuration_required !== true || r.one_paste !== true || r.automatic_management !== true || !okScript(r.router_script)) throw new Error("unverified");
-      const router_script = uplink ? withNewRouterNetwork(r.router_script, uplink, ssid, passphrase) : r.router_script;
+      const router_script = uplink && profile ? withNewRouterNetwork(r.router_script, profile, uplink, ssid, passphrase) : r.router_script;
       setNetworkSetup(uplink !== null);
       setResult({ ok: true, data: { ...r, router_script } });
     } catch (err) {
