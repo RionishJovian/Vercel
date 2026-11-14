@@ -5,7 +5,9 @@ import { Note } from "../../components/ui";
 import { enrollError } from "./messages";
 import { splitCidr } from "../../lib/age";
 import { isWifiUplink, validWifi, withNewRouterNetwork, type Uplink } from "./newRouterNetwork";
-import { findProfile, profileName, radioFor, routerProfiles, type WifiBand } from "./routerProfiles";
+import { radioFor } from "./routerProfiles";
+import { findModel, modelGroups, uplinksFor } from "./modelCatalogue";
+import { productPhotoUrl } from "../../lib/mikrotikProducts";
 
 interface Enrolled { state?: string; router_configuration_required?: boolean; one_paste?: boolean; automatic_management?: boolean; router_script?: string; tunnel_address?: string; hub_public_key?: string; endpoint?: string; allowed_ips?: string[] }
 interface Live { handshake_status?: string; connection?: { management?: string } }
@@ -59,47 +61,68 @@ function Where() {
   return <details className="wiz-where"><summary>{t("hub.w.where")}</summary><p className="soft small">{t("hub.w.whereBody")}</p></details>;
 }
 
-/** Keep existing settings (default), or prepare a factory-default router of a listed model. The model list is routerProfiles.ts. */
+/**
+ * Pick any catalogue model; the setup choices that follow come from `modelCatalogue.ts`:
+ * "keep existing" always, Ethernet WAN and Wi-Fi WAN bands only for a model with a confirmed
+ * setup profile, and Wi-Fi only on the bands that profile has a radio for.
+ */
 function NetworkSetup() {
   const { t } = useI18n();
   const [uplink, setUplink] = useState<"existing" | Uplink>("existing");
   const [modelId, setModelId] = useState("");
-  const profile = findProfile(modelId);
+  const model = findModel(modelId);
+  const profile = model?.profile;
+  const choices = uplinksFor(model);
   const fresh = uplink !== "existing";
   const wifi = uplink === "5ghz" || uplink === "2ghz";
-  // A model without a radio on a band cannot use that Wi-Fi option.
-  const bandOk = (band: WifiBand) => !profile || radioFor(profile, band) !== undefined;
+  const base = import.meta.env.BASE_URL;
   function pickModel(id: string) {
     setModelId(id);
-    const next = findProfile(id);
-    if (next && (uplink === "5ghz" || uplink === "2ghz") && !radioFor(next, uplink)) setUplink("ethernet");
+    const next = uplinksFor(findModel(id));
+    // Keep a choice the new model supports; otherwise fall back to Ethernet, or to keeping the network as it is.
+    if (uplink !== "existing" && !next.includes(uplink)) setUplink(next.includes("ethernet") ? "ethernet" : "existing");
   }
   return (
     <div className="stack">
       <label className="stack">
+        <span>{t("hub.net.model")}</span>
+        <select className="input" name="model" value={modelId} onChange={e => pickModel(e.target.value)}>
+          <option value="">{t("hub.net.modelPick")}</option>
+          {modelGroups().map(g => (
+            <optgroup key={g.category} label={t("hub.net.group." + g.category)}>
+              {g.models.map(m => <option key={m.product.id} value={m.product.id}>{m.product.name}{m.profile ? "" : " · " + t("hub.net.keepOnly")}</option>)}
+            </optgroup>
+          ))}
+        </select>
+      </label>
+      {!model && <p className="soft small">{t("hub.net.modelHint")}</p>}
+      {model && (
+        <figure className="model-card">
+          <img src={productPhotoUrl(model.product, base)} alt={model.product.alt} width={160} height={120} loading="lazy" />
+          {model.panel && <img src={base + model.panel.image} alt={model.panel.alt} loading="lazy" />}
+        </figure>
+      )}
+      {model?.blocked && <p className="soft small">{t("hub.net.blocked." + model.blocked)}</p>}
+      <label className="stack">
         <span>{t("hub.net.setup")}</span>
         <select className="input" name="uplink" value={uplink} onChange={e => setUplink(e.target.value as typeof uplink)}>
           <option value="existing">{t("hub.net.existing")}</option>
-          <option value="ethernet">{t("hub.net.ethernet")}</option>
-          <option value="5ghz" disabled={!bandOk("5ghz")}>{t("hub.net.wifi5")}</option>
-          <option value="2ghz" disabled={!bandOk("2ghz")}>{t("hub.net.wifi24")}</option>
+          {choices.includes("ethernet") && <option value="ethernet">{t("hub.net.ethernet")}</option>}
+          {choices.includes("5ghz") && <option value="5ghz">{t("hub.net.wifi5")}</option>}
+          {choices.includes("2ghz") && <option value="2ghz">{t("hub.net.wifi24")}</option>}
         </select>
       </label>
-      {fresh && <>
-        <label className="stack">
-          <span>{t("hub.net.model")}</span>
-          <select className="input" name="model" value={modelId} onChange={e => pickModel(e.target.value)} required>
-            <option value="">{t("hub.net.modelPick")}</option>
-            {routerProfiles.map(p => <option key={p.id} value={p.id}>{profileName(p)}</option>)}
-          </select>
-        </label>
-        {profile && (
+      {profile && (
+        <>
           <dl className="spec">
             <dt>{t("hub.net.wanPort")}</dt><dd><code className="num">{profile.wan}</code></dd>
             {profile.radios.map(r => <Fragment key={r.name}><dt>{t(r.band === "5ghz" ? "hub.net.radio5" : "hub.net.radio24")}</dt><dd><code className="num">{r.name}</code></dd></Fragment>)}
             <dt>{t("hub.net.board")}</dt><dd><code className="num">{profile.boardModel}</code></dd>
           </dl>
-        )}
+          {profile.radios.length === 0 && <p className="soft small">{t("hub.net.wiredOnly")}</p>}
+        </>
+      )}
+      {fresh && <>
         <p className="soft small">{t("hub.net.modelCheck")}</p>
         <p className="soft small">{t("hub.net.preview")}</p>
         <p className="soft small">{t(wifi ? "hub.net.wifiPreview" : "hub.net.ethernetPreview")}</p>
@@ -162,7 +185,7 @@ export function Enrollment({ id, onVerified }: { id: string; onVerified: () => v
     if (form.get("confirm") !== "on") { setResult({ ok: false, key: "hub.confirmNeeded" }); return; }
     const choice = form.get("uplink");
     const uplink: Uplink | null = choice === "ethernet" || choice === "5ghz" || choice === "2ghz" ? choice : null;
-    const profile = findProfile(String(form.get("model") ?? ""));
+    const profile = findModel(String(form.get("model") ?? ""))?.profile;
     const ssid = String(form.get("ssid") ?? ""), passphrase = String(form.get("wifiPassphrase") ?? "");
     // Check everything before the enrollment request, so a refused choice creates nothing on the server.
     if (uplink && !profile) { setResult({ ok: false, key: "hub.net.modelNeeded" }); return; }

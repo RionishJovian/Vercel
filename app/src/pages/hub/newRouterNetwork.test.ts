@@ -18,7 +18,7 @@ describe("hAP ax2 network setup", () => {
 
 describe("model check", () => {
   it.each(routerProfiles.map(p => [p.id, p] as const))("%s: the board check is the first command and stops before anything changes", (_id, p) => {
-    for (const uplink of ["ethernet", "5ghz", "2ghz"] as const) {
+    for (const uplink of ["ethernet", ...p.radios.map(r => r.band)] as const) {
       const script = make(p, uplink);
       const check = `:if ([/system routerboard get model] != "${p.boardModel}") do={ :error "STOP: this network setup requires a factory-configured ${p.scriptName}" }`;
       const at = script.indexOf(check);
@@ -43,6 +43,46 @@ describe("model check", () => {
   });
 });
 
+describe("legacy wireless (ac models)", () => {
+  const ac2 = findProfile("hap-ac2")!;
+  it.each([["5ghz", "wlan2"], ["2ghz", "wlan1"]] as const)("%s uses %s as a station through its own security profile", (band, radio) => {
+    const script = make(ac2, band);
+    expect(script).toContain(`:local mmUplink "${radio}"`);
+    expect(script).toContain(":local mmRadio [/interface wireless find where default-name=$mmUplink and name=$mmUplink]");
+    expect(script).toContain('/interface wireless security-profiles add name=mm-wifi-wan mode=dynamic-keys authentication-types=wpa2-psk wpa2-pre-shared-key="test-password"');
+    expect(script).toContain('/interface wireless set $mmRadio mode=station ssid="Fixture \\"\\$&\\"" security-profile=mm-wifi-wan disabled=no');
+    expect(script).toContain("/interface bridge port disable $mmBridgePort");
+    expect(script).toContain("default-route-distance=2");
+  });
+  it("never uses the RouterOS 7 wifi menu, and never edits the shared default security profile", () => {
+    const script = make(ac2, "5ghz");
+    expect(script).not.toContain("/interface wifi");
+    expect(script).not.toContain("security-profiles set");
+    expect(script).not.toContain("configuration.mode");
+  });
+  it("refuses to run when the Wi-Fi profile name is already taken, before changing anything", () => {
+    const script = make(ac2, "5ghz");
+    const guard = script.indexOf('[/interface wireless security-profiles find where name="mm-wifi-wan"]');
+    expect(guard).toBeGreaterThan(-1);
+    expect(guard).toBeLessThan(script.indexOf("/interface bridge port disable"));
+    expect(guard).toBeLessThan(script.indexOf("/interface wireless security-profiles add"));
+  });
+  it("leaves the Ethernet script untouched for an ac model", () => {
+    const eth = make(ac2, "ethernet");
+    expect(eth).toContain(':local mmUplink "ether1"');
+    expect(eth).not.toContain("/interface wireless");
+  });
+});
+
+describe("wired models", () => {
+  it.each(["rb5009", "rb4011", "l009", "hex-s"])("%s only offers the Ethernet script and refuses Wi-Fi", id => {
+    const p = findProfile(id)!;
+    expect(make(p, "ethernet")).toContain(':local mmUplink "ether1"');
+    expect(() => make(p, "5ghz")).toThrow(/no 5ghz radio/);
+    expect(() => make(p, "2ghz")).toThrow(/no 2ghz radio/);
+  });
+});
+
 describe("generated from the profile", () => {
   it("uses the profile's WAN port and radios", () => {
     const profile: RouterProfile = { ...ax3, id: "test-model", wan: "ether3", radios: [{ name: "wifi7", band: "5ghz" }, { name: "wifi8", band: "2ghz" }], lan: { bridge: "bridge-lan", address: "10.9.0.1/24", network: "10.9.0.0/24" } };
@@ -60,12 +100,15 @@ describe("generated from the profile", () => {
     for (const r of p.radios) {
       const script = make(p, r.band);
       expect(script).toContain(`:local mmUplink "${r.name}"`);
-      expect(script).toContain("configuration.mode=station");
+      expect(script).toContain(p.wifiDriver === "wifi" ? "/interface wifi set $mmRadio configuration.mode=station" : "/interface wireless set $mmRadio mode=station");
       expect(script).toContain("default-route-distance=2");
+      // Every check runs before the first change, so a refused check leaves the router untouched.
+      expect(script.indexOf("STOP: an internet route is already active")).toBeLessThan(script.indexOf("/interface bridge port disable"));
+      expect(script.indexOf("STOP: Wi-Fi interface already configured or missing")).toBeLessThan(script.indexOf("/interface bridge port disable"));
     }
     const eth = make(p, "ethernet");
     expect(eth).toContain(`:local mmUplink "${p.wan}"`);
-    expect(eth).not.toContain("configuration.mode=station");
+    expect(eth).not.toContain("mode=station");
     expect(eth).toContain("default-route-distance=1");
   });
   it("refuses a band the model does not have", () => {
