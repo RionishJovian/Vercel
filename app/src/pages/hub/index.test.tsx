@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { SWRConfig } from "swr";
 import { I18nProvider } from "../../i18n";
 import { Hub } from "./index";
@@ -175,6 +175,45 @@ describe("Magic Hub card", () => {
     fireEvent.click([...group.querySelectorAll("button")].find((b) => b.textContent === "Delete permanently")!);
     await waitFor(() => expect(group.textContent).toContain("so nothing was deleted"));
     expect(screen.getAllByText("Shop router").length).toBeGreaterThan(0);
+  });
+  it("clicks through Delete, confirm and permanent delete, with the banner above the button, and drops the card only on a real deletion", async () => {
+    deleteAnswer = { status: 200, body: { message: "kept", record_kept: true } };
+    routers = [{ ...CONNECTED, management_connected: false }];
+    open("DEVELOPER");
+    await screen.findByText("Shop router");
+    // 1. the card's Delete record button opens the confirmation
+    fireEvent.click(screen.getByRole("button", { name: "Delete record" }));
+    const dialog = await screen.findByRole("alertdialog");
+    // 2. the red Delete record button sends a plain DELETE and answers "kept"
+    fireEvent.click([...dialog.querySelectorAll("button")].find((b) => b.textContent === "Delete record")!);
+    await screen.findByRole("status", { name: "Record not deleted. Connection ended." });
+    expect(deleted).toEqual([`/routers/${CONNECTED.device_id}`]);
+    // 3. the permanent delete asks for the exact name, then sends force=true
+    const group = screen.getByRole("group", { name: "Delete this record and its history for good" });
+    const button = [...group.querySelectorAll("button")].find((b) => b.textContent === "Delete permanently") as HTMLButtonElement;
+    fireEvent.change(group.querySelector("input")!, { target: { value: "Shop router" } });
+    // An API that is not updated yet ignores force=true and answers "kept" again: say so, keep the card.
+    fireEvent.click(button);
+    const banner = await within(group).findByRole("alert");
+    expect(banner.textContent).toContain("did not apply the permanent delete");
+    expect(banner.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getAllByText("Shop router").length).toBeGreaterThan(0);
+    expect(button.disabled).toBe(false);
+    // The updated API deletes it: the card goes at once.
+    deleteAnswer = { status: 200, body: { message: "router deleted", forced: true } };
+    routers = [];
+    fireEvent.click(button);
+    await waitFor(() => expect(screen.queryByText("Shop router")).toBeNull());
+    expect(deleted.filter((p) => p.includes("force=true"))).toHaveLength(2);
+  });
+  it("shows the refusal above the red Delete record button", async () => {
+    deleteAnswer = { status: 409, body: { error: "Recover or cancel this router's management migration before deleting its record" } };
+    open("OWNER");
+    await startDelete();
+    const dialog = await screen.findByRole("alertdialog");
+    const banner = await within(dialog).findByRole("alert");
+    const red = [...dialog.querySelectorAll("button")].find((b) => b.textContent === "Delete record")!;
+    expect(banner.compareDocumentPosition(red) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
   it("says so when the session ended instead of doing nothing", async () => {
     deleteAnswer = { status: 401, body: { error: "unauthorized" } };

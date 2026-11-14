@@ -30,7 +30,11 @@ function ForceDelete({ r, onDone }: { r: GW; onDone: (res: { router_cleanup_scri
   async function go() {
     setBusy(true); setErr("");
     try {
-      onDone(await api.del<{ router_cleanup_script?: string }>(`/routers/${encodeURIComponent(r.device_id)}?force=true&confirm=${encodeURIComponent(word)}`, AbortSignal.timeout(60_000)));
+      const res = await api.del<{ router_cleanup_script?: string; forced?: boolean }>(`/routers/${encodeURIComponent(r.device_id)}?force=true&confirm=${encodeURIComponent(word)}`, AbortSignal.timeout(60_000));
+      // A server that has not been updated yet ignores force=true and answers "kept" with a 200.
+      // That is not a deletion, so never drop the card on it.
+      if (res?.forced !== true) { setBusy(false); setErr(t("hub.forceNotApplied")); return; }
+      onDone(res);
     } catch (e) {
       setBusy(false);
       setErr(isUnauthorized(e) ? t("hub.delSignedOut") : errorText(e, t("hub.delFail")));
@@ -40,8 +44,8 @@ function ForceDelete({ r, onDone }: { r: GW; onDone: (res: { router_cleanup_scri
     <div className="note bad stack" role="group" aria-label={t("hub.forceTitle")}>
       <b>{t("hub.forceTitle")}</b><p className="small">{t("hub.forceBody")}</p>
       <Field label={`${t("hub.forceType")} ${word}`} htmlFor={"force-" + r.device_id}><input className="input" id={"force-" + r.device_id} value={typed} autoComplete="off" spellCheck={false} onChange={(e) => setTyped(e.target.value)} /></Field>
-      <div className="row" style={{ justifyContent: "flex-start" }}><button className="pill danger" type="button" disabled={busy || typed !== word} aria-busy={busy} onClick={() => void go()}>{busy ? t("hub.deleting") : t("hub.forceDelete")}</button></div>
       {err && <Note kind="bad">{err}</Note>}
+      <div className="row" style={{ justifyContent: "flex-start" }}><button className="pill danger" type="button" disabled={busy || typed !== word} aria-busy={busy} onClick={() => void go()}>{busy ? t("hub.deleting") : t("hub.forceDelete")}</button></div>
     </div>
   );
 }
@@ -135,11 +139,11 @@ function Card({ r, state, canEdit, platform, cap, openId, setOpen, onChanged, on
       {del.confirm && !del.kept && (
         <div className="note warn stack" role="alertdialog" aria-label={t("hub.delTitle")}>
           <b>{t("hub.delTitle")}</b><p className="small"><b>{r.hardware_name || t("hub.unnamed")}</b></p><p className="small">{t("hub.delBody")}</p><p className="small">{t("hub.delNoReset")}</p><p className="small"><b>{t("hub.delPermanent")}</b></p>
+          {del.err && <Note kind="bad">{del.err}</Note>}
           <div className="row" style={{ justifyContent: "flex-start" }}>
             <button className="pill" type="button" disabled={del.busy} onClick={() => setDel({ confirm: false, busy: false })}>{t("c.cancel")}</button>
             <button className="pill danger" type="button" disabled={del.busy} aria-busy={del.busy} onClick={() => void remove()}>{del.busy ? t("hub.deleting") : t("hub.delete")}</button>
           </div>
-          {del.err && <Note kind="bad">{del.err}</Note>}
           {platform && del.conflict && <ForceDelete r={r} onDone={forced} />}
         </div>
       )}
