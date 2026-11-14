@@ -206,7 +206,7 @@ func TestCHRLabOnePaste(t *testing.T) {
 	})
 	t.Run("custom SSH port gets a redirect and its own firewall port", func(t *testing.T) {
 		name, _ := labNames(a)
-		script := strings.ReplaceAll(scriptA, `:local mmPort [/ip/service get $mmSSH port]`, `:local mmPort 2222`)
+		script := strings.ReplaceAll(scriptA, `:do { :set mmPort [/ip/service get $mmSSH port] } on-error={}`, `:set mmPort 2222`)
 		mustComplete(t, r.paste(script))
 		// RouterOS does not match ports in "where", so read the values.
 		user := hub.ManagementUserName(labBusiness, a)
