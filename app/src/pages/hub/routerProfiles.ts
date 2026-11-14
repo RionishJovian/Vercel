@@ -12,6 +12,8 @@ import { portPanels, type PortPanel } from "../../lib/portPanels";
  *  2. Confirm from MikroTik's default configuration for the model: the WAN port, the factory LAN
  *     bridge, which `wifiN` radio is 5 GHz and which is 2.4 GHz.
  *  3. Add one row below and add the model to the tests in `routerProfiles.test.ts`.
+ * The model picker (`modelCatalogue.ts`) lists every catalogue model and offers setup only for the
+ * models that have a row here; a row with no `radios` is a wired-only model (no Wi-Fi WAN options).
  * Photos and back-panel diagrams are not repeated here: `productId` is the model's id in
  * `lib/mikrotikProducts.ts` (display name, photo) and the same id in `lib/portPanels.ts` (port
  * diagram), reached through `assetsFor`. Adding a diagram for a model is done there, not here.
@@ -47,6 +49,7 @@ export interface RouterProfile {
   ports: readonly RouterPort[];
   /** Factory WAN Ethernet port (not in the LAN bridge, DHCP client, WAN interface list). */
   wan: string;
+  /** Built-in Wi-Fi radios. Empty for a wired-only model: the picker then offers Ethernet WAN only. */
   radios: readonly RouterRadio[];
   /** Factory LAN: the bridge, the address on it and that address's subnet. */
   lan: { bridge: string; address: string; network: string };

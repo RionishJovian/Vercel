@@ -64,8 +64,8 @@ describe("one-paste connection", () => {
     ["hap-ax3", "2ghz", "wifi2", "C53UiG+5HPaxD2HPaxD"],
   ])("previews and includes %s %s setup without posting Wi-Fi details", async (model, uplink, iface, board) => {
     open();
-    fireEvent.change(screen.getByLabelText("Router network setup"), { target: { value: uplink } });
     fireEvent.change(screen.getByLabelText("Router model"), { target: { value: model } });
+    fireEvent.change(screen.getByLabelText("Router network setup"), { target: { value: uplink } });
     expect(screen.getByText(/Requires factory defaults/)).toBeTruthy();
     if (uplink !== "ethernet") {
       fireEvent.change(screen.getByLabelText(/Upstream Wi-Fi name/), { target: { value: 'Fixture "$&"' } });
@@ -81,28 +81,52 @@ describe("one-paste connection", () => {
     expect(calls[0].body).toEqual({ management_rest_port: 443, confirm_enrollment: true });
     expect(JSON.stringify(calls)).not.toContain("test-password");
   });
-  it("lists the supported models, with no free-text model entry", () => {
+  const setupOptions = () => [...screen.getByLabelText<HTMLSelectElement>("Router network setup").options].map(o => o.value);
+  it("lists every catalogue model, grouped, with no free-text model entry", () => {
     open();
-    expect(screen.queryByLabelText("Router model")).toBeNull();
-    fireEvent.change(screen.getByLabelText("Router network setup"), { target: { value: "ethernet" } });
     const model = screen.getByLabelText<HTMLSelectElement>("Router model");
     expect(model.tagName).toBe("SELECT");
-    expect([...model.options].map(o => o.text)).toEqual(["Choose your router model", "hAP ax²", "hAP ax³"]);
+    const names = [...model.options].map(o => o.text);
+    expect(names.slice(0, 3)).toEqual(["Choose your router model", "hAP ax²", "hAP ax³"]);
+    expect(names).toHaveLength(1 + 27);
+    expect([...model.querySelectorAll("optgroup")].map(g => g.label)).toEqual(["Routers", "Access points", "Switches"]);
+    expect(names).toContain("RB5009UG+S+IN · keep existing only");
     fireEvent.change(model, { target: { value: "hap-ax3" } });
     expect(screen.getByText("C53UiG+5HPaxD2HPaxD")).toBeTruthy();
+    expect(screen.getByAltText("MikroTik hAP ax³")).toBeTruthy();
+    expect(screen.getByAltText("Back panel of a MikroTik hAP ax³")).toBeTruthy();
   });
-  it("needs a model for a new router and creates nothing without one", async () => {
+  it("offers only keep-existing until a model with a confirmed profile is chosen", () => {
     open();
-    fireEvent.change(screen.getByLabelText("Router network setup"), { target: { value: "ethernet" } });
-    fireEvent.click(screen.getByRole("checkbox"));
-    fireEvent.submit(screen.getByRole("button", { name: "Generate one-paste script" }).closest("form")!);
-    await screen.findByText("Choose your router model.");
-    expect(calls).toHaveLength(0);
+    expect(setupOptions()).toEqual(["existing"]);
+    fireEvent.change(screen.getByLabelText("Router model"), { target: { value: "hap-ax2" } });
+    expect(setupOptions()).toEqual(["existing", "ethernet", "5ghz", "2ghz"]);
+  });
+  it.each([
+    ["rb5009", /board code has not been confirmed/],
+    ["crs310", /no WAN port/],
+    ["ccr2004", /IP-only default/],
+    ["chateau-pro-ax", /factory WAN is LTE/],
+  ])("%s: explains why only keep-existing is offered and still generates the plain script", async (model, reason) => {
+    open();
+    fireEvent.change(screen.getByLabelText("Router model"), { target: { value: model } });
+    expect(screen.getByText(reason)).toBeTruthy();
+    expect(setupOptions()).toEqual(["existing"]);
+    await generate();
+    expect(screen.getByRole<HTMLTextAreaElement>("textbox", { name: "Connection script" }).value).toBe(PASTE);
+  });
+  it("falls back to keep-existing when the chosen model cannot do the selected setup", () => {
+    open();
+    fireEvent.change(screen.getByLabelText("Router model"), { target: { value: "hap-ax2" } });
+    fireEvent.change(screen.getByLabelText("Router network setup"), { target: { value: "5ghz" } });
+    fireEvent.change(screen.getByLabelText("Router model"), { target: { value: "rb5009" } });
+    expect((screen.getByLabelText("Router network setup") as HTMLSelectElement).value).toBe("existing");
+    expect(screen.queryByLabelText(/Upstream Wi-Fi name/)).toBeNull();
   });
   it("keeps existing network settings by default, with no model and no network prelude", async () => {
     open();
     expect((screen.getByLabelText("Router network setup") as HTMLSelectElement).value).toBe("existing");
-    expect(screen.queryByLabelText("Router model")).toBeNull();
+    expect((screen.getByLabelText("Router model") as HTMLSelectElement).value).toBe("");
     await generate();
     expect(screen.getByRole<HTMLTextAreaElement>("textbox", { name: "Connection script" }).value).toBe(PASTE);
   });

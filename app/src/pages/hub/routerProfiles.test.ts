@@ -24,7 +24,6 @@ describe("router profile table", () => {
     expect(p.wan).toMatch(/^ether\d+$/);
     expect(p.lan.address.startsWith(p.lan.network.replace(/\.0\/24$/, "."))).toBe(true);
     expect(p.wifiDriver).toBe("wifi");
-    expect(p.radios.length).toBeGreaterThan(0);
     expect(new Set(p.radios.map(r => r.name)).size).toBe(p.radios.length);
     expect(new Set(p.radios.map(r => r.band)).size).toBe(p.radios.length);
     for (const r of p.radios) expect(r.name).toMatch(/^wifi\d+$/);

@@ -132,3 +132,7 @@
 .glass > .spec { margin-block: 2px; }
 .spec > dd.num { font-size: .8125rem; }
 :lang(my) .kv-list .row, :lang(my) .plan-card label, :lang(my) .spec > dt { line-height: 1.75; }
+
+/* Model picker preview: the catalogue photo and, when one exists, the back-panel diagram. */
+.model-card { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 0; }
+.model-card img { max-width: 100%; height: auto; max-height: 120px; border-radius: 8px; background: var(--panel, transparent); object-fit: contain; }
