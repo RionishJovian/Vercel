@@ -26,6 +26,37 @@ export function withNewRouterNetwork(script: string, profile: RouterProfile, upl
   if (wifi && !radio) throw new Error(`${profile.scriptName} has no ${uplink} radio`);
   const iface = radio ? radio.name : profile.wan;
   const { bridge, address, network: lanNet } = profile.lan;
+  // The three ways the uplink can be prepared. Each ends with a newline and leaves `$mmClient` set.
+  // Everything before the first change is a check, so a failed check changes nothing.
+  const wifiUplink = `:local mmRadio [/interface wifi find where default-name=$mmUplink and name=$mmUplink]
+:local mmBridgePort [/interface bridge port find where interface=$mmUplink and bridge=${bridge} and disabled=no]
+:if ([:len $mmRadio] != 1 || [:len $mmBridgePort] != 1 || [:len $mmClient] != 0 || [:len [/interface list member find where interface=$mmUplink]] != 0) do={ :error "STOP: Wi-Fi interface already configured or missing" }
+:if ([:len [/ip route find where dst-address="0.0.0.0/0" and active=yes]] != 0) do={ :error "STOP: an internet route is already active" }
+/interface bridge port disable $mmBridgePort
+/interface list member add list=WAN interface=$mmUplink comment="Magic Hub Wi-Fi WAN"
+/interface wifi set $mmRadio configuration.mode=station configuration.ssid=${quote(ssid)} security.authentication-types=wpa2-psk security.passphrase=${quote(passphrase)} disabled=no
+/ip dhcp-client add interface=$mmUplink add-default-route=no use-peer-dns=no use-peer-ntp=no disabled=no comment="Magic Hub Wi-Fi WAN"
+:set mmClient [/ip dhcp-client find where interface=$mmUplink]
+`;
+  // Legacy `/interface wireless` (the ac models). It has no per-radio security fields, so the
+  // passphrase lives in its own security profile; the factory "default" profile is shared with the
+  // radio that stays on the LAN and is never edited. A router without the legacy package has no
+  // `/interface wireless` menu, so this block cannot run at all and nothing is changed.
+  const wirelessUplink = `:local mmRadio [/interface wireless find where default-name=$mmUplink and name=$mmUplink]
+:local mmBridgePort [/interface bridge port find where interface=$mmUplink and bridge=${bridge} and disabled=no]
+:if ([:len $mmRadio] != 1 || [:len $mmBridgePort] != 1 || [:len $mmClient] != 0 || [:len [/interface list member find where interface=$mmUplink]] != 0 || [:len [/interface wireless security-profiles find where name="mm-wifi-wan"]] != 0) do={ :error "STOP: Wi-Fi interface already configured or missing" }
+:if ([:len [/ip route find where dst-address="0.0.0.0/0" and active=yes]] != 0) do={ :error "STOP: an internet route is already active" }
+/interface bridge port disable $mmBridgePort
+/interface list member add list=WAN interface=$mmUplink comment="Magic Hub Wi-Fi WAN"
+/interface wireless security-profiles add name=mm-wifi-wan mode=dynamic-keys authentication-types=wpa2-psk wpa2-pre-shared-key=${quote(passphrase)} comment="Magic Hub Wi-Fi WAN"
+/interface wireless set $mmRadio mode=station ssid=${quote(ssid)} security-profile=mm-wifi-wan disabled=no
+/ip dhcp-client add interface=$mmUplink add-default-route=no use-peer-dns=no use-peer-ntp=no disabled=no comment="Magic Hub Wi-Fi WAN"
+:set mmClient [/ip dhcp-client find where interface=$mmUplink]
+`;
+  const ethernetUplink = `:if ([:len $mmClient] != 1 || [:len [/interface list member find where list=WAN and interface=$mmUplink]] != 1 || [:len [/interface bridge port find where interface=$mmUplink and disabled=no]] != 0) do={ :error "STOP: factory Ethernet WAN or DHCP client is missing" }
+/ip dhcp-client set $mmClient disabled=no
+`;
+  const uplinkSetup = wifi ? (profile.wifiDriver === "wireless" ? wirelessUplink : wifiUplink) : ethernetUplink;
   const network = `
 # New ${profile.scriptName} with factory defaults. Run in Safe Mode over a LAN Ethernet port.
 :if ([/system routerboard get model] != ${quote(profile.boardModel)}) do={ :error ${quote("STOP: this network setup requires a factory-configured " + profile.scriptName)} }
@@ -41,18 +72,7 @@ export function withNewRouterNetwork(script: string, profile: RouterProfile, upl
 :if (!$mmWanNat || !$mmWanDrop) do={ :error "STOP: factory WAN firewall or NAT is missing" }
 :local mmUplink "${iface}"
 :local mmClient [/ip dhcp-client find where interface=$mmUplink]
-${wifi ? `:local mmRadio [/interface wifi find where default-name=$mmUplink and name=$mmUplink]
-:local mmBridgePort [/interface bridge port find where interface=$mmUplink and bridge=${bridge} and disabled=no]
-:if ([:len $mmRadio] != 1 || [:len $mmBridgePort] != 1 || [:len $mmClient] != 0 || [:len [/interface list member find where interface=$mmUplink]] != 0) do={ :error "STOP: Wi-Fi interface already configured or missing" }
-:if ([:len [/ip route find where dst-address="0.0.0.0/0" and active=yes]] != 0) do={ :error "STOP: an internet route is already active" }
-/interface bridge port disable $mmBridgePort
-/interface list member add list=WAN interface=$mmUplink comment="Magic Hub Wi-Fi WAN"
-/interface wifi set $mmRadio configuration.mode=station configuration.ssid=${quote(ssid)} security.authentication-types=wpa2-psk security.passphrase=${quote(passphrase)} disabled=no
-/ip dhcp-client add interface=$mmUplink add-default-route=no use-peer-dns=no use-peer-ntp=no disabled=no comment="Magic Hub Wi-Fi WAN"
-:set mmClient [/ip dhcp-client find where interface=$mmUplink]
-` : `:if ([:len $mmClient] != 1 || [:len [/interface list member find where list=WAN and interface=$mmUplink]] != 1 || [:len [/interface bridge port find where interface=$mmUplink and disabled=no]] != 0) do={ :error "STOP: factory Ethernet WAN or DHCP client is missing" }
-/ip dhcp-client set $mmClient disabled=no
-`}
+${uplinkSetup}
 :for mmWait from=1 to=30 do={
   :if ([/ip dhcp-client get $mmClient status] != "bound") do={ :delay 1s }
 }

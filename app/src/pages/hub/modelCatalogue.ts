@@ -16,16 +16,18 @@ import type { Uplink } from "./newRouterNetwork";
  *
  * Reasons come from MikroTik's default-configurations page
  * (https://manual.mikrotik.com/docs/getting-started/configuration-management/default-configurations/):
- * switches have no WAN, CCR and RB1100 ship an "IP only" default with no WAN DHCP client, and the
- * Chateau's factory WAN is LTE on a different LAN. That page gives no board codes, so the
- * remaining models stay "board-unverified" until a row is added from a real router's
- * `/system routerboard get model`.
+ * switches have no WAN and CCR and RB1100 ship an "IP only" default with no WAN DHCP client. Every
+ * other model uses the "AP Router" default (first Ethernet port is the WAN, the rest bridged on
+ * 192.168.88.1/24) and is ready once a row in `routerProfiles.ts` records its printed board string.
+ * The one model left without a row is a catalogue model whose printed board string is not
+ * documented apart from another model's, so it stays "board-unverified" instead of guessing.
+ * (The LTE default, 192.168.188.1/24 with an LTE WAN, belongs to the LTE Chateau models, not to
+ * the Chateau PRO ax in the catalogue, which has no modem.)
  */
-export type SetupBlock = "switch" | "ip-only" | "lte-wan" | "board-unverified";
+export type SetupBlock = "switch" | "ip-only" | "board-unverified";
 
 /** Factory defaults that do not fit the Ethernet or Wi-Fi WAN script, by catalogue id. */
 const IP_ONLY = new Set(["ccr2004", "ccr2116", "ccr2216", "rb1100"]);
-const LTE_WAN = new Set(["chateau-pro-ax"]);
 
 export interface ModelEntry {
   product: MikroTikProductPhoto;
@@ -40,7 +42,6 @@ export function setupBlockFor(product: MikroTikProductPhoto, hasProfile: boolean
   if (hasProfile) return undefined;
   if (product.category === "switch") return "switch";
   if (IP_ONLY.has(product.id)) return "ip-only";
-  if (LTE_WAN.has(product.id)) return "lte-wan";
   return "board-unverified";
 }
 
