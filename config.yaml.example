@@ -132,6 +132,9 @@ security:
   refresh_expiry: 168h  # 7 days
   bcrypt_cost: 12
   aes_gcm_key: "CHANGE_ME_32_BYTE_KEY_FOR_ENCRYPTION"
+  # Voucher codes at rest (docs/VOUCHER-CODE-PROTECTION.md). Off by default.
+  # voucher_code_key: ""            # 32 random bytes, base64 or hex. Back it up: lost key = unrecoverable codes.
+  # protect_voucher_codes: false    # true: new vouchers store only a sealed copy; needs voucher_code_key
   tls_cert_path: ""
   tls_key_path: ""
 

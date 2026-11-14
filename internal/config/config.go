@@ -10,6 +10,7 @@ import (
 
 	"mega-magic/internal/hub"
 	"mega-magic/internal/secretbox"
+	"mega-magic/internal/vouchercode"
 )
 
 type Config struct {
@@ -215,6 +216,11 @@ type SecurityConfig struct {
 	RefreshExpiry time.Duration `mapstructure:"refresh_expiry"`
 	BcryptCost    int           `mapstructure:"bcrypt_cost"`
 	AESGCMKey     string        `mapstructure:"aes_gcm_key"`
+	// VoucherCodeKey is the 32-byte (base64 or hex) master key for voucher codes at rest (internal/vouchercode).
+	// With a key the app can read protected codes; ProtectVoucherCodes also makes NEW codes protected.
+	// Back this key up: without it protected codes cannot be recovered. Keep it separate from the credential key.
+	VoucherCodeKey      string `mapstructure:"voucher_code_key"`
+	ProtectVoucherCodes bool   `mapstructure:"protect_voucher_codes"`
 	TLSCertPath   string        `mapstructure:"tls_cert_path"`
 	TLSKeyPath    string        `mapstructure:"tls_key_path"`
 }
@@ -545,6 +551,15 @@ func (cfg *Config) Validate() error {
 			problems = append(problems, "ai.gemini_model must be a Gemini model ID")
 		}
 	}
+	// Voucher code protection fails closed in every environment: a key that is set must be valid, and protecting new
+	// codes without a key would silently keep storing plaintext.
+	if strings.TrimSpace(cfg.Security.VoucherCodeKey) != "" {
+		if _, err := vouchercode.New(cfg.Security.VoucherCodeKey); err != nil {
+			problems = append(problems, "security.voucher_code_key must be a base64 or hex encoded 32-byte key")
+		}
+	} else if cfg.Security.ProtectVoucherCodes {
+		problems = append(problems, "security.protect_voucher_codes needs security.voucher_code_key")
+	}
 	if len(problems) > 0 {
 		return fmt.Errorf("unsafe %s configuration: %s", env, strings.Join(problems, "; "))
 	}
@@ -649,6 +664,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("security.refresh_expiry", "168h")
 	v.SetDefault("security.bcrypt_cost", 12)
 	v.SetDefault("security.aes_gcm_key", defaultAESGCMKey)
+	v.SetDefault("security.voucher_code_key", "")
+	v.SetDefault("security.protect_voucher_codes", false)
 	v.SetDefault("security.tls_cert_path", "")
 	v.SetDefault("security.tls_key_path", "")
 

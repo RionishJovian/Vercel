@@ -33,6 +33,7 @@ import (
 	"mega-magic/internal/recovery"
 	"mega-magic/internal/secretbox"
 	"mega-magic/internal/telegram"
+	"mega-magic/internal/vouchercode"
 	"mega-magic/pkg/logger"
 )
 
@@ -110,6 +111,20 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		}
 	} else {
 		sugar.Warn("No credential key configured: Telegram bot tokens and webhook secrets are stored in plaintext")
+	}
+
+	// Voucher codes at rest. A key lets the app read protected codes; protect_voucher_codes (default off) makes new
+	// codes protected. Without a key, protected rows fail closed instead of reading as empty.
+	if key := strings.TrimSpace(cfg.Security.VoucherCodeKey); key != "" {
+		protector, err := vouchercode.New(key)
+		if err == nil {
+			err = database.ConfigureVoucherCodes(protector, cfg.Security.ProtectVoucherCodes)
+		}
+		if err != nil {
+			_ = db.Close()
+			return nil, fmt.Errorf("voucher code key: %w", err)
+		}
+		sugar.Infow("Voucher code protection key loaded", "protect_new_codes", cfg.Security.ProtectVoucherCodes)
 	}
 
 	natsRepo := database.NewNATSSubjectRepository(db)

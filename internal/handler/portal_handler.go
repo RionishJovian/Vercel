@@ -274,7 +274,8 @@ func (h *PortalHandler) PublicConfig(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"config": cfg, "guest_voucher_access": h.GuestVoucherAccess})
+	// Anonymous callers get the allow-listed view, never the model (see publicPortalConfig).
+	c.JSON(http.StatusOK, gin.H{"config": publicPortalView(cfg), "guest_voucher_access": h.GuestVoucherAccess})
 }
 
 // PublicRedeem: POST /api/v1/portal/:deviceId/redeem

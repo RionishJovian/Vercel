@@ -48,18 +48,29 @@ README section.
   `not_implemented`; nothing contacts a router. Private WireGuard keys are never accepted.
 - Removed on 2026-11-14: `backend/radius.py` and the `mock_routeros_checks` / `onboarding_workflow` functions. No
   route used them, and the mock reported checks as "passed", which could have been mistaken for real verification.
-- Migrations 001 to 019. 003 to 019 refuse to downgrade when they hold data. **001 and 002 do not** (their
+- Migrations 001 to 020. 003 to 019 refuse to downgrade when they hold data. **001 and 002 do not** (their
   downgrade drops accounts, orders, audit events, tenants and portal settings). Not yet fixed.
+- 020 adds the composite `(tenant_id, occurred_at)` index on `financial_events` for the revenue and ledger reads. It
+  only adds an index; its downgrade drops only that index. `/v1/revenue` still aggregates in Python memory and the
+  ledger still uses `OFFSET`; those are separate, unfixed items.
 
 ## Open items from the 2026-11-14 backend audit (not fixed by this change)
 
-1. Go guest voucher codes are stored in plaintext in `vouchers.code`.
-2. The one-paste WireGuard flow generates the router private key on the server and keeps it, encrypted, for up to 30
-   days. The two-step bootstrap flow keeps the key on the router.
-3. `DecideGuest` calls the router inside an open database transaction with no timeout.
+1. **B1, code in place, off by default.** Go voucher codes were stored in plaintext in `vouchers.code`. The router user
+   name is the code, so it cannot be a one-way hash; the fix is a sealed copy plus HMAC blind index
+   (`docs/VOUCHER-CODE-PROTECTION.md`). Nothing changes in production until the key is configured, the flag
+   `security.protect_voucher_codes` is turned on, and `voucher-code-protect` has been run. Existing plaintext stays
+   until that rollout is done.
+2. **B2, addressed by Wave 3 (below), off by default.** The one-paste WireGuard flow generates the router private key
+   on the server. It is now held for 1 hour (was 30 days) and deleted at the first verified handshake; the new
+   router-generated flow never holds one. Until a router first handshakes, the legacy flow still holds its key.
+3. **B4, fixed by Wave 3 (below).** `DecideGuest` called the router inside an open database transaction with no
+   timeout. The router call now has a 30 s deadline and a timeout leaves the request pending.
 4. Rate limits key on the client IP; whether the production proxy chain presents real client addresses was **not
    verified** on the live server.
-5. The public Go portal config returns `business_id`, `media_host` and `updated_at` to anonymous callers.
+5. **B6, fixed.** The public Go portal config returned `business_id` and `updated_at` to anonymous callers. It now
+   returns an explicit allow-list (`internal/handler/portal_public_view.go`); a test fails if a model field is added
+   without a decision. `media_host` and `media_port` stay on purpose: the guest page builds the media link from them.
 6. Whether the production server has a credential encryption key set was **not verified**.
 
 ## Wave 3: router key custody and bounded Hub calls (2026-11-14)

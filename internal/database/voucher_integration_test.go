@@ -108,7 +108,7 @@ func setupHarness(base string) {
 		harnessFatal = fmt.Errorf("load schema into %s: %w", harnessName, err)
 		return
 	}
-	for _, name := range []string{"migrations/20261024020000_guest_purchase_terms.sql", "db/migrations/20261102120000_guest_plan_speed.sql"} {
+	for _, name := range []string{"migrations/20261024020000_guest_purchase_terms.sql", "db/migrations/20261102120000_guest_plan_speed.sql", "db/migrations/20261114130000_voucher_code_protection.sql"} {
 		migration, err := os.ReadFile("../../" + name)
 		if err != nil {
 			harnessFatal = err
