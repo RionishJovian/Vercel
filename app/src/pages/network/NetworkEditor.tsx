@@ -99,7 +99,16 @@ function TaskForm({ kind, inv, defaults, routerId, routerName, locked, setLocked
   // Reset only when the task, the chosen record or the default values actually change. Comparing by content keeps a
   // re-read of the same inventory (new objects, same data) from wiping what the owner has typed or the result shown.
   const defaultsKey = JSON.stringify(defaults);
-  useEffect(() => { setValues(start(selected)); setReview(null); setConsent(false); setStatus(""); setApplied(false); setRemoving(false); stamp.current++; }, [kind, recordId, selected?.id, defaultsKey]); // eslint-disable-line react-hooks/exhaustive-deps -- start() depends only on these
+  // The first run is skipped: useState already started from the same values, and a reset on mount would land after the
+  // owner's first keystroke whenever React flushes effects late, wiping what they just typed.
+  const resetKey = [kind, recordId, selected?.id ?? "", defaultsKey].join("\u0000"), lastReset = useRef<string | null>(null);
+  useEffect(() => {
+    if (lastReset.current === resetKey) return;
+    const first = lastReset.current === null;
+    lastReset.current = resetKey;
+    if (first) return;
+    setValues(start(selected)); setReview(null); setConsent(false); setStatus(""); setApplied(false); setRemoving(false); stamp.current++;
+  }, [resetKey]); // eslint-disable-line react-hooks/exhaustive-deps -- start() depends only on the parts of the key
 
   const portTypes = kind === "vlan" ? ["ether", "bridge", "bond"] : kind === "ip_address" ? ["ether", "bridge", "bond", "vlan"] : ["ether", "bridge", "vlan", "bond", "pppoe-out"];
   const eligible = (inv.interfaces ?? []).filter((i) => portTypes.includes(i.type));

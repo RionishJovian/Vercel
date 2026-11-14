@@ -96,4 +96,25 @@ describe("IP address and VLAN tasks", () => {
     await waitFor(() => expect(posts.length).toBe(1));
     expect(posts[0].body).toEqual({ kind: "vlan", id: "", values: { name: "guests200", interface: "ether3", "vlan-id": "200", disabled: "no" } });
   });
+  // Regression for a CI flake: the form reset itself in an effect that also ran on first mount. When that effect ran
+  // after the owner's first keystroke (React flushes passive effects later under load), the typed name vanished.
+  // This resumes the test the instant the DOM turns enabled, before React's scheduled effects have run, which is the
+  // worst-case ordering, so it fails every time if the mount reset comes back instead of only on a slow machine.
+  it("a name typed the instant the form turns usable is not wiped by the form's own start-up", async () => {
+    flags = { address_write_enabled: true };
+    const { container } = await open("vlan", /VLANs/);
+    const usable = () => (container.querySelector("fieldset.nolock") as HTMLFieldSetElement | null)?.disabled === false;
+    await new Promise<void>((resolve) => {
+      const watch = new MutationObserver(() => { if (usable()) { watch.disconnect(); resolve(); } });
+      watch.observe(container, { attributes: true, childList: true, subtree: true });
+      if (usable()) { watch.disconnect(); resolve(); }
+    });
+    fireEvent.change(container.querySelector('input[name="name"]')!, { target: { value: "guests200" } });
+    fireEvent.change(container.querySelector('select[name="interface"]')!, { target: { value: "ether3" } });
+    fireEvent.change(container.querySelector('input[name="vlan-id"]')!, { target: { value: "200" } });
+    expect((container.querySelector('input[name="name"]') as HTMLInputElement).value).toBe("guests200");
+    fireEvent.submit(container.querySelector("form")!);
+    await waitFor(() => expect(posts.length).toBe(1));
+    expect(posts[0].body.values.name).toBe("guests200");
+  });
 });
