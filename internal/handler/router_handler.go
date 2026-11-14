@@ -393,7 +393,7 @@ func (h *RouterHandler) DeleteRouter(c *gin.Context) {
 			case hasHistory && strings.HasPrefix(pending.Constraint, "broadband_"):
 				return &httpError{status: http.StatusConflict, msg: "This device record has paid PPPoE accounts and payment history, so it cannot be deleted."}
 			case hasHistory:
-				return &httpError{status: http.StatusConflict, msg: "This device record is linked to vouchers, issuance batches or guest recovery history and cannot be deleted. Keep the device record to preserve that history. No records were deleted."}
+				return &httpError{status: http.StatusConflict, msg: "This device record is linked to vouchers, issuance batches, guest recovery, VIP Wi-Fi code or access-point review history and cannot be deleted. Keep the device record to preserve that history. No records were deleted."}
 			default:
 				log.Printf("router delete: delete failed for %s: %v", deviceID, err)
 				return &httpError{status: http.StatusInternalServerError, msg: "failed to delete router"}

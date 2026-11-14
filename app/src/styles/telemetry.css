@@ -131,6 +131,8 @@
 /* Platform account cards use .spec; keep it tidy inside a card. */
 .glass > .spec { margin-block: 2px; }
 .spec > dd.num { font-size: .8125rem; }
+/* A signal age such as 26d must never break into one character per line inside the flex value cell. */
+.spec > dd > .num { white-space: nowrap; font-variant-numeric: tabular-nums; flex: 0 0 auto; overflow-wrap: normal; }
 :lang(my) .kv-list .row, :lang(my) .plan-card label, :lang(my) .spec > dt { line-height: 1.75; }
 
 /* Model picker preview: the catalogue photo and, when one exists, the back-panel diagram. */
