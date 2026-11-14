@@ -194,3 +194,9 @@ test('landing and pricing use the three atmospheres, 1.5px outline icons and bra
   assert.match(index, /class="showcase" role="img" aria-label="Sample screens, not a live router/);
   assert.match(index, /class="rig-note"><span lang="en">Sample data, not a live router\./);
 });
+
+// A single-column grid must not size to its widest child: at 320px the sample window's no-wrap title pushed the hero 25px past the screen.
+test('the hero column can shrink below its content on phones', () => {
+  assert.match(css, /\.hero \{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/);
+  assert.match(css, /\.win-title \.mono \{[^}]*white-space:\s*nowrap/);
+});
