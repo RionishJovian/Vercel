@@ -407,13 +407,24 @@ func (r *DeviceRepository) DeleteDeviceTXN(tx *sql.Tx, deviceID string) error {
 
 // ClearManagementTXN removes a router's saved login and tunnel address, keeping the
 // record and its history, so the same router or a replacement can connect again.
+//
+// A verified Hub router's address is protected by the guard_hub_management_address_move
+// trigger. This is the one explicit disconnect it recognises: the transaction-local
+// setting below names this device only, and the trigger then accepts nothing but clearing
+// the address (and login) to NULL. It is switched off again straight after the update.
 func (r *DeviceRepository) ClearManagementTXN(tx *sql.Tx, businessID, deviceID string) error {
+	if _, err := tx.Exec(`SELECT set_config('app.hub_disconnect_device', $1, true)`, deviceID); err != nil {
+		return fmt.Errorf("allow hub disconnect: %w", err)
+	}
 	result, err := tx.Exec(`UPDATE devices
 		   SET management_ip = NULL, ssh_port = 22, ssh_username = NULL, ssh_secret_ciphertext = NULL,
 		       ssh_secret_kind = NULL, ssh_host_key_fingerprint = NULL, is_online = false, updated_at = now()
 		 WHERE device_id = $1 AND business_id = $2`, deviceID, businessID)
 	if err != nil {
 		return fmt.Errorf("clear device management: %w", err)
+	}
+	if _, err := tx.Exec(`SELECT set_config('app.hub_disconnect_device', '', true)`); err != nil {
+		return fmt.Errorf("end hub disconnect: %w", err)
 	}
 	if rows, _ := result.RowsAffected(); rows == 0 {
 		return fmt.Errorf("device not found")

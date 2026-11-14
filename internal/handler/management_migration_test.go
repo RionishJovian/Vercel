@@ -258,3 +258,72 @@ func TestManagementMigrationGuardAllowsFirstAuthentication(t *testing.T) {
 		t.Fatal("configured connection rewrite accepted")
 	}
 }
+
+// The Hub disconnect exception (migration 20261114140000) lets one device's address be
+// cleared to NULL inside a transaction that names that device, and nothing else.
+func TestManagementMigrationGuardHubDisconnectIsNarrow(t *testing.T) {
+	db := harness_testdb(t)
+	biz := insertBusiness(db)
+	connected := func() string {
+		var device string
+		if e := db.QueryRow(`INSERT INTO devices(business_id,hardware_name,transport,management_ip,ssh_port,ssh_username,ssh_secret_kind,ssh_secret_ciphertext,ssh_host_key_fingerprint)VALUES($1,'Connected fixture','tunnel','10.77.0.80',22,'fixture','password','test-cipher','SHA256:'||repeat('A',43))RETURNING device_id`, biz).Scan(&device); e != nil {
+			t.Fatal(e)
+		}
+		return device
+	}
+	clear := `UPDATE devices SET management_ip=NULL,ssh_username=NULL,ssh_secret_kind=NULL,ssh_secret_ciphertext=NULL,ssh_host_key_fingerprint=NULL WHERE device_id=$1`
+	// try runs statement in a transaction that first names `named` as the disconnecting device.
+	try := func(named, statement string, args ...any) error {
+		tx, e := db.Begin()
+		if e != nil {
+			t.Fatal(e)
+		}
+		defer tx.Rollback()
+		if named != "" {
+			if _, e := tx.Exec(`SELECT set_config('app.hub_disconnect_device',$1,true)`, named); e != nil {
+				t.Fatal(e)
+			}
+		}
+		_, e = tx.Exec(statement, args...)
+		return e
+	}
+
+	device := connected()
+	if e := try("", clear, device); e == nil {
+		t.Fatal("clearing a verified Hub address without the disconnect setting was accepted")
+	}
+	if e := try(connected(), clear, device); e == nil {
+		t.Fatal("the disconnect setting for another device was accepted")
+	}
+	if e := try(device, `UPDATE devices SET management_ip='10.77.0.81' WHERE device_id=$1`, device); e == nil {
+		t.Fatal("moving to another address was accepted under the disconnect setting")
+	}
+	if e := try(device, `UPDATE devices SET management_ip=NULL WHERE device_id=$1`, device); e == nil {
+		t.Fatal("clearing the address but keeping the saved login was accepted under the disconnect setting")
+	}
+	if e := try(device, `UPDATE devices SET transport='direct',management_ip=NULL,ssh_username=NULL,ssh_secret_kind=NULL,ssh_secret_ciphertext=NULL,ssh_host_key_fingerprint=NULL WHERE device_id=$1`, device); e == nil {
+		t.Fatal("changing transport was accepted under the disconnect setting")
+	}
+	if e := try(device, clear, device); e != nil {
+		t.Fatal("the explicit disconnect was rejected", e)
+	}
+
+	// An address migration in progress blocks the disconnect as well.
+	pending := connected()
+	var user string
+	if e := db.QueryRow(`INSERT INTO users(business_id,email,full_name,password_hash,user_role)VALUES($1,$2,'Fixture','fixture','OWNER')RETURNING user_id`, biz, randHex(6)+"@example.test").Scan(&user); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := db.Exec(`INSERT INTO management_address_migrations(id,business_id,device_id,requested_by,old_address,new_address,interface_name,old_record,fingerprint,router_key,phase,expires_at)VALUES(uuid_generate_v4(),$1,$2,$3,'10.77.0.80','10.77.0.82','mm-hub','old','SHA256:'||repeat('A',43),'key','planned',now()+interval '1 hour')`, biz, pending, user); e != nil {
+		t.Fatal(e)
+	}
+	if e := try(pending, clear, pending); e == nil {
+		t.Fatal("disconnect was accepted while an address migration was pending")
+	}
+
+	// The setting is gone once the transaction ends.
+	var leaked string
+	if e := db.QueryRow(`SELECT coalesce(current_setting('app.hub_disconnect_device',true),'')`).Scan(&leaked); e != nil || leaked != "" {
+		t.Fatalf("the disconnect setting outlived its transaction: %q %v", leaked, e)
+	}
+}

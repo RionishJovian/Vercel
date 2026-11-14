@@ -1,10 +1,13 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -157,7 +160,7 @@ func TestDBRouterDeletionEndsHubConnection(t *testing.T) {
 		if _, err := db.Exec(`INSERT INTO guest_voucher_grants(voucher_id,business_id,device_id,minutes,data_mb) VALUES($1,$2,$3,60,1024)`, voucher, business, device); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := db.Exec(`UPDATE devices SET management_ip='10.77.0.50', ssh_port=2222, ssh_username='mm-test', ssh_secret_ciphertext='sealed', ssh_secret_kind='key', ssh_host_key_fingerprint='SHA256:'||repeat('A',43), is_online=true WHERE device_id=$1`, device); err != nil {
+		if _, err := db.Exec(`UPDATE devices SET transport='tunnel', management_ip='10.77.0.50', ssh_port=2222, ssh_username='mm-test', ssh_secret_ciphertext='sealed', ssh_secret_kind='key', ssh_host_key_fingerprint='SHA256:'||repeat('A',43), is_online=true WHERE device_id=$1`, device); err != nil {
 			t.Fatal(err)
 		}
 		return device
@@ -212,6 +215,74 @@ func TestDBRouterDeletionEndsHubConnection(t *testing.T) {
 			t.Fatalf("a failed delete changed the login: %v, port %d, online %v", saved, port, online)
 		}
 	})
+	// A connected router (verified tunnel address and saved login) that has no history
+	// is still deleted outright; the disconnect exception is not a way to keep records.
+	connected := func(t *testing.T) string {
+		t.Helper()
+		device := insertGatewayNoSite(db, business)
+		if _, err := db.Exec(`UPDATE devices SET transport='tunnel', management_ip='10.77.0.60', ssh_port=2222, ssh_username='mm-test', ssh_secret_ciphertext='sealed', ssh_secret_kind='key', ssh_host_key_fingerprint='SHA256:'||repeat('A',43) WHERE device_id=$1`, device); err != nil {
+			t.Fatal(err)
+		}
+		return device
+	}
+	t.Run("a connected router without history is deleted", func(t *testing.T) {
+		device := connected(t)
+		h.ConfigureHubRemoval(func(context.Context, string, string, string) (string, error) { return "cleanup-script", nil })
+		w := remove(h, device)
+		if w.Code != http.StatusOK || strings.Contains(w.Body.String(), "record_kept") || exists(device) {
+			t.Fatalf("status %d body %s, record exists %v", w.Code, w.Body.String(), exists(device))
+		}
+	})
+	t.Run("a pending management migration still blocks the delete", func(t *testing.T) {
+		device := withHistory(t)
+		var user string
+		if err := db.QueryRow(`INSERT INTO users(business_id,email,full_name,password_hash,user_role)VALUES($1,$2,'Fixture','fixture','OWNER')RETURNING user_id`, business, randHex(6)+"@example.test").Scan(&user); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec(`INSERT INTO management_address_migrations(id,business_id,device_id,requested_by,old_address,new_address,interface_name,old_record,fingerprint,router_key,phase,expires_at)
+VALUES(uuid_generate_v4(),$1,$2,$3,'10.77.0.50','10.77.0.51','mm-hub','old','SHA256:'||repeat('A',43),'key','planned',now()+interval '1 hour')`, business, device, user); err != nil {
+			t.Fatal(err)
+		}
+		hubCalled := false
+		h.ConfigureHubRemoval(func(context.Context, string, string, string) (string, error) { hubCalled = true; return "", nil })
+		w := remove(h, device)
+		if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "Recover or cancel this router's management migration") {
+			t.Fatalf("status %d body %s", w.Code, w.Body.String())
+		}
+		if hubCalled || !exists(device) || history(t, device) != 1 {
+			t.Fatal("a blocked delete must not touch the Hub, the record or its history")
+		}
+		if saved, port, online := login(t, device); !saved || port != 2222 || !online {
+			t.Fatalf("a blocked delete changed the login: %v, port %d, online %v", saved, port, online)
+		}
+	})
+	t.Run("an unexpected failure is logged and does not leak", func(t *testing.T) {
+		device := withHistory(t)
+		for _, statement := range []string{
+			`CREATE OR REPLACE FUNCTION test_fail_router_clear() RETURNS trigger LANGUAGE plpgsql AS $f$ BEGIN RAISE EXCEPTION 'clear refused for test'; END $f$`,
+			`DROP TRIGGER IF EXISTS test_fail_router_clear ON devices`,
+			`CREATE TRIGGER test_fail_router_clear AFTER UPDATE ON devices FOR EACH ROW WHEN (NEW.device_id = '` + device + `' AND NEW.management_ip IS NULL) EXECUTE FUNCTION test_fail_router_clear()`,
+		} {
+			if _, err := db.Exec(statement); err != nil {
+				t.Fatal(err)
+			}
+		}
+		defer db.Exec(`DROP TRIGGER IF EXISTS test_fail_router_clear ON devices`)
+		var logged bytes.Buffer
+		log.SetOutput(&logged)
+		defer log.SetOutput(os.Stderr)
+		h.ConfigureHubRemoval(func(context.Context, string, string, string) (string, error) { return "", nil })
+		w := remove(h, device)
+		if w.Code != http.StatusInternalServerError || strings.Contains(w.Body.String(), "clear refused") {
+			t.Fatalf("status %d body %s", w.Code, w.Body.String())
+		}
+		if !strings.Contains(logged.String(), device) || !strings.Contains(logged.String(), "clear refused for test") {
+			t.Fatalf("the underlying error was not logged: %q", logged.String())
+		}
+		if saved, _, _ := login(t, device); !saved {
+			t.Fatal("a failed delete changed the login")
+		}
+	})
 	t.Run("a failed setup clear does not undo the result", func(t *testing.T) {
 		device := withHistory(t)
 		h.ConfigureHubRemoval(func(context.Context, string, string, string) (string, error) { return "", nil })
@@ -221,6 +292,58 @@ func TestDBRouterDeletionEndsHubConnection(t *testing.T) {
 			t.Fatalf("status %d body %s", w.Code, w.Body.String())
 		}
 	})
+}
+
+// ensureBroadbandSchema loads the broadband ledger once per shared test database, whichever
+// test needs it first.
+func ensureBroadbandSchema(t *testing.T, db *database.DB) {
+	t.Helper()
+	var loaded bool
+	if err := db.QueryRow(`SELECT to_regclass('public.broadband_accounts') IS NOT NULL`).Scan(&loaded); err != nil {
+		t.Fatal(err)
+	}
+	if loaded {
+		return
+	}
+	source, err := os.ReadFile("../../db/migrations/20261104000000_broadband.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(string(source)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Paid PPPoE accounts and their payment history keep the record, with the PPPoE message.
+func TestDBRouterDeletionKeepsPaidPPPoEHistory(t *testing.T) {
+	db := harness_testdb(t)
+	ensureBroadbandSchema(t, db)
+	business := insertBusiness(db)
+	device := insertGatewayNoSite(db, business)
+	if _, err := db.Exec(`UPDATE devices SET transport='tunnel', management_ip='10.77.0.70', ssh_port=2222, ssh_username='mm-test', ssh_secret_ciphertext='sealed', ssh_secret_kind='key', ssh_host_key_fingerprint='SHA256:'||repeat('A',43) WHERE device_id=$1`, device); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO broadband_accounts(id,business_id,device_id,username,profile) VALUES(uuid_generate_v4(),$1,$2,'paid-customer','10M')`, business, device); err != nil {
+		t.Fatal(err)
+	}
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(func(c *gin.Context) {
+		c.Set(auth.ContextKeyBusinessID, business)
+		c.Set(auth.ContextKeyUserRole, "OWNER")
+	})
+	// No Hub removal is configured (as in the other history test), so the paid-account
+	// rule decides, not the disconnect-and-keep path.
+	r.DELETE("/routers/:id", NewRouterHandler(db, database.NewDeviceRepository(db), nil, nil).DeleteRouter)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodDelete, "/routers/"+device, nil))
+	if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "paid PPPoE accounts and payment history") {
+		t.Fatalf("status %d body %s", w.Code, w.Body.String())
+	}
+	var saved bool
+	if err := db.QueryRow(`SELECT management_ip IS NOT NULL AND ssh_secret_ciphertext IS NOT NULL FROM devices WHERE device_id=$1`, device).Scan(&saved); err != nil || !saved {
+		t.Fatal("a blocked delete changed the device", err)
+	}
 }
 
 // A commit that fails after the Hub has ended the connection must say so, keep the only

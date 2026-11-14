@@ -368,6 +368,7 @@ func (h *RouterHandler) DeleteRouter(c *gin.Context) {
 
 		// A blocked delete aborts the transaction, so a savepoint lets the same one go on.
 		if _, err := tx.Exec("SAVEPOINT router_delete"); err != nil {
+			log.Printf("router delete: savepoint failed for %s: %v", deviceID, err)
 			return &httpError{status: http.StatusInternalServerError, msg: "failed to delete router"}
 		}
 		if err := h.deviceRepo.DeleteDeviceTXN(tx, deviceID); err != nil {
@@ -381,9 +382,11 @@ func (h *RouterHandler) DeleteRouter(c *gin.Context) {
 				// Sales history must stay, but the owner still has to be able to reconnect
 				// this router or a replacement: end the connection and keep the record.
 				if _, err := tx.Exec("ROLLBACK TO SAVEPOINT router_delete"); err != nil {
+					log.Printf("router delete: could not roll back to savepoint for %s: %v", deviceID, err)
 					return &httpError{status: http.StatusInternalServerError, msg: "failed to delete router"}
 				}
 				if err := h.deviceRepo.ClearManagementTXN(tx, businessID, deviceID); err != nil {
+					log.Printf("router delete: could not end the connection and keep the record for %s: %v", deviceID, err)
 					return &httpError{status: http.StatusInternalServerError, msg: "failed to delete router"}
 				}
 				kept = true
@@ -392,6 +395,7 @@ func (h *RouterHandler) DeleteRouter(c *gin.Context) {
 			case hasHistory:
 				return &httpError{status: http.StatusConflict, msg: "This device record is linked to vouchers, issuance batches or guest recovery history and cannot be deleted. Keep the device record to preserve that history. No records were deleted."}
 			default:
+				log.Printf("router delete: delete failed for %s: %v", deviceID, err)
 				return &httpError{status: http.StatusInternalServerError, msg: "failed to delete router"}
 			}
 		}
