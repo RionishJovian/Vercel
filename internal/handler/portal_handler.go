@@ -3,6 +3,7 @@ package handler
 import (
 	"database/sql"
 	"errors"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -492,6 +493,7 @@ func (h *PortalHandler) StaffUpdateConfig(c *gin.Context) {
 		TermsText            *string            `json:"terms_text"`
 		PrimaryHex           *string            `json:"primary_hex"`
 		GlassTintHex         *string            `json:"glass_tint_hex"`
+		TemplateID           *string            `json:"template_id"`
 		ConsentRequired      *bool              `json:"consent_required"`
 		ConsentText          *string            `json:"consent_text"`
 		GraceMinutes         *int               `json:"guest_grace_minutes"`
@@ -544,6 +546,10 @@ func (h *PortalHandler) StaffUpdateConfig(c *gin.Context) {
 	}
 	if req.GlassTintHex != nil && !model.IsHexColor(*req.GlassTintHex) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "glass_tint_hex must be a hex colour like #7ad0ff"})
+		return
+	}
+	if req.TemplateID != nil && !routeros.ValidPortalTemplate(*req.TemplateID) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unknown login page template"})
 		return
 	}
 	if req.GuestPlans != nil {
@@ -600,6 +606,19 @@ func (h *PortalHandler) StaffUpdateConfig(c *gin.Context) {
 		}
 		if req.GlassTintHex != nil {
 			existing.GlassTintHex = *req.GlassTintHex
+		}
+		if req.TemplateID != nil {
+			// Keeping the stored template is always allowed; changing to a premium one needs the Store add-on.
+			if *req.TemplateID != existing.TemplateID && portalTemplatePremium(*req.TemplateID) && auth.GetUserRole(c) != string(model.RoleDeveloper) {
+				owned, e := ownedPortalAddons(tx, businessID)
+				if e != nil {
+					return e
+				}
+				if !portalTemplateAllowed(*req.TemplateID, auth.GetUserRole(c), owned) {
+					return errPortalTemplateLocked
+				}
+			}
+			existing.TemplateID = *req.TemplateID
 		}
 		if req.MMQRURL != nil {
 			existing.MMQRURL = *req.MMQRURL
@@ -659,6 +678,10 @@ func (h *PortalHandler) StaffUpdateConfig(c *gin.Context) {
 		return nil
 	})
 	if err != nil {
+		if errors.Is(err, errPortalTemplateLocked) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "this login page theme is a Store add-on; unlock it in the Store", "code": "template_locked"})
+			return
+		}
 		if errors.Is(err, errBusinessNameRequired) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "business_name is required"})
 			return
@@ -667,6 +690,7 @@ func (h *PortalHandler) StaffUpdateConfig(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "enable voucher login or mobile payment"})
 			return
 		}
+		log.Printf("portal config update failed: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update portal config"})
 		return
 	}

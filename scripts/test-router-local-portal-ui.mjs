@@ -3,6 +3,8 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
+import { spawnSync } from 'node:child_process';
+import { existsSync, readdirSync } from 'node:fs';
 
 // Go supplies the actual function output to this runner. The ordinary critical-UI
 // command reads the same raw HTML template without requiring a Go build.
@@ -22,7 +24,7 @@ const binaryID = '\xf9';
 const binaryChallenge = Buffer.from('ef0dd80b119c65a5c3ab62a65b7dfdce', 'hex').toString('latin1');
 const octal = text => [...text].map(char => '\\' + char.charCodeAt(0).toString(8).padStart(3, '0')).join('');
 
-function fixture({ chap = true, helper = md5, submitError = false, code = '  abcd-12_34  ', preview = false, consent } = {}) {
+function fixture({ chap = true, helper = md5, submitError = false, code = '  abcd-12_34  ', preview = false, consent, burmese = false } = {}) {
   const elements = new Map();
   for (const match of html.matchAll(/<(?:form|input|button|p)\b([^>]*)>/g)) {
     const attr = attributes(match[1]);
@@ -61,6 +63,8 @@ function fixture({ chap = true, helper = md5, submitError = false, code = '  abc
   for (const match of rendered.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script[^>]*>/gi)) {
     if (!attributes(match[1]).src) vm.runInContext(match[2], context, { filename: 'router-login.html' });
   }
+  // Templates such as the village one open in Burmese; the behaviour suite asserts the English strings.
+  if (!burmese) vm.runInContext("lang='en'", context);
   return {
     context, elements, timers, listeners, payloads,
     get submissions() { return submissions; },
@@ -183,4 +187,27 @@ test('router design preview cannot consume a code or submit a login', () => {
 
 test('required consent prevents router submission until accepted', () => {
  const f=fixture({consent:false});f.submit();assert.equal(f.submissions,0);assert.match(f.elements.get('login-error').textContent,/terms/);f.elements.get('voucher-consent').checked=true;f.submit();assert.equal(f.submissions,1);
+});
+
+test('language switch swaps every message to Burmese and back without touching the login form', () => {
+  const f = fixture({ code: '', burmese: true });
+  vm.runInContext("lang='my'", f.context);
+  f.submit();
+  assert.match(f.elements.get('login-error').textContent, /[\u1000-\u109f]/, 'Burmese error expected');
+  vm.runInContext("lang='en'", f.context);
+  f.submit();
+  assert.match(f.elements.get('login-error').textContent, /complete voucher code/);
+  assert.match(html, /function setLang\(/);
+});
+
+// Go renders every template (deploy form, with consent and bank transfer) into MM_PORTAL_TEMPLATES_DIR; each file
+// then runs through this same suite in its own process, so all nine are held to the identical login behaviour.
+const templatesDir = process.env.MM_PORTAL_TEMPLATES_DIR;
+test('all nine router templates pass the same login behaviour suite', { skip: process.argv.includes('--html-stdin') || !templatesDir || !existsSync(templatesDir) }, () => {
+  const files = readdirSync(templatesDir).filter(name => name.endsWith('.html')).sort();
+  assert.equal(files.length, 9, 'expected one rendered file per template');
+  for (const name of files) {
+    const run = spawnSync(process.execPath, ['--test', new URL(import.meta.url).pathname, '--html-stdin'], { input: readFileSync(`${templatesDir}/${name}`), encoding: 'utf8', env: { ...process.env, MM_PORTAL_TEMPLATES_DIR: '' } });
+    assert.equal(run.status, 0, `${name} failed the router login suite:\n${run.stdout}\n${run.stderr}`);
+  }
 });
