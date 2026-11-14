@@ -5,7 +5,7 @@ import { Note } from "../../components/ui";
 import { enrollError } from "./messages";
 import { splitCidr } from "../../lib/age";
 import { isWifiUplink, validWifi, withNewRouterNetwork, type Uplink } from "./newRouterNetwork";
-import { findProfile, radioFor, routerProfiles, type WifiBand } from "./routerProfiles";
+import { findProfile, profileName, radioFor, routerProfiles, type WifiBand } from "./routerProfiles";
 
 interface Enrolled { state?: string; router_configuration_required?: boolean; one_paste?: boolean; automatic_management?: boolean; router_script?: string; tunnel_address?: string; hub_public_key?: string; endpoint?: string; allowed_ips?: string[] }
 interface Live { handshake_status?: string; connection?: { management?: string } }
@@ -90,7 +90,7 @@ function NetworkSetup() {
           <span>{t("hub.net.model")}</span>
           <select className="input" name="model" value={modelId} onChange={e => pickModel(e.target.value)} required>
             <option value="">{t("hub.net.modelPick")}</option>
-            {routerProfiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            {routerProfiles.map(p => <option key={p.id} value={p.id}>{profileName(p)}</option>)}
           </select>
         </label>
         {profile && (

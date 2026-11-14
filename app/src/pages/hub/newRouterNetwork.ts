@@ -23,7 +23,7 @@ export function withNewRouterNetwork(script: string, profile: RouterProfile, upl
   const wifi = isWifiUplink(uplink);
   if (wifi && !validWifi(ssid, passphrase)) throw new Error("Invalid Wi-Fi credentials");
   const radio = wifi ? radioFor(profile, uplink) : undefined;
-  if (wifi && !radio) throw new Error(`${profile.name} has no ${uplink} radio`);
+  if (wifi && !radio) throw new Error(`${profile.scriptName} has no ${uplink} radio`);
   const iface = radio ? radio.name : profile.wan;
   const { bridge, address, network: lanNet } = profile.lan;
   const network = `
