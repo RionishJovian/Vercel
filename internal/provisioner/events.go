@@ -1,7 +1,7 @@
 package provisioner
 
 // NATS event subjects emitted and consumed by the apply/approve path
-// (DESIGN-provisioner.md sections 2-4). The recovery intent itself arrives on
+// (docs/archive/DESIGN-provisioner.md sections 2-4). The recovery intent itself arrives on
 // recovery's own `peer.recover` / `peer.recover.cmd` subjects.
 const (
 	// SubjectActionRequested carries the proposed plan to the Lead for approval.

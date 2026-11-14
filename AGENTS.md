@@ -114,3 +114,14 @@ The owner asked for server-wide router read/write/edit/delete on 2026-11-06. The
 - `/Users/aces/AGENTS.md` (workspace file outside this repo) still names the Hostinger host and `ssh mikromagic-hostinger`; it is out of date and not changed here.
 - Dependabot PRs 91, 92, 93 (Vite, `@vitejs/plugin-react`, TypeScript 7) fail `npm ci` on peer-dependency conflicts; PR 87 (Go modules) needs a rebase onto the `ENVIRONMENT` binding fix. PR 45 says it needs a router test before deploy. Each now deploys on merge.
 - Lint and tests for `app/` run in CI; the Go binary is tied to a commit only through the image label.
+
+## 8. Canonical backend, migrations and engineering principle
+
+- **Production backend:** Go (`cmd/` + `internal/`, module `mega-magic`). `backend/` (Python/FastAPI) and `src/`, `worker/` are historical prototypes, not what production runs.
+- **Migrations:** `db/baseline.sql` plus `db/migrations/<timestamp>_<name>.sql`, applied by `deploy/server/mm-migrate`, are the only canonical PostgreSQL source (`docs/MIGRATIONS.md`). `migrations/` is the retired Supabase-era history and `database/init.sql` seeds the local dev and staging compose files only. Never add new files to either.
+- **Archive:** superseded handoffs and design notes live in `docs/archive/`; they are not current specs.
+
+**MikroTik & RouterOS Engineering Principle**
+- All MikroTik RouterBOARD devices share one RouterOS CLI (`/interface/wireguard`, `/ip/hotspot`, `/ppp`, `/ip/dhcp-client`); do not block a SKU or demand per-model hardware testing when its board string and radio driver (`wifi` vs `wireless`) match official MikroTik documentation (mikrotik.com, help.mikrotik.com).
+- Prefer runtime capability checks (`/interface/wifi`, `/interface/wireless`, `/system/resource`) and documented model codes over per-SKU blocking.
+- Do not add "test on every physical model" disclaimers when unit tests and the official documentation verify the generated script.

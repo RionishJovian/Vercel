@@ -1,5 +1,5 @@
 // Command provisioner implements the dry-run half of the router recovery
-// provisioner (DESIGN-provisioner.md section 1).
+// provisioner (docs/archive/DESIGN-provisioner.md section 1).
 //
 // Usage:
 //
