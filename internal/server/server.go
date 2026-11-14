@@ -359,6 +359,16 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 			if err != nil {
 				return nil, errors.New("management credential encryption unavailable")
 			}
+			if err := database.CheckHubEnrollmentTables(db); err != nil {
+				return nil, err
+			}
+			vpsHandler.ConfigurePeerState(database.HubPeerStateStore{DB: db})
+			vpsHandler.ConfigureRouterKeyPurge(purgeRouterKeyMaterial(database.PendingEnrollmentStore{DB: db, Box: box}))
+			if cfg.VPS.HubCallbackEnrollmentEnabled {
+				if err := vpsHandler.ConfigureCallbackEnrollment(cfg.VPS.PublicBaseURL, database.HubCallbackTokenStore{DB: db}); err != nil {
+					return nil, err
+				}
+			}
 			go newHubAutoConnect(database.PendingEnrollmentStore{DB: db, Box: box}, vpsHandler).run(context.Background())
 			routerHandler.ConfigureHubForget(database.PendingEnrollmentStore{DB: db, Box: box}.Delete)
 			routerHandler.ConfigureHubRemoval(func(ctx context.Context, biz, requester, id string) (string, error) {
@@ -589,6 +599,10 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 			DeviceIndex: database.NewDeviceRepository(db),
 			Ready:       mediaCatalogueReady,
 		}
+		// Router-generated key enrolment: called by the router itself, authenticated
+		// only by a single-use token. It answers 503 until the feature is configured.
+		tv1.POST("/hub-callback/enroll", auth.BoundedPortalRateLimit(), vpsHandler.CallbackEnroll)
+
 		portalPublic := tv1.Group("/portal", auth.BoundedPortalRateLimit(), boundedPortalBody())
 		{
 			portalPublic.GET("/:deviceId/config", portalHandler.PublicConfig)

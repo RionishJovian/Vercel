@@ -41,5 +41,8 @@ func (h *VPSHandler) EnrollmentCapability(c *gin.Context) {
 		"enrollment_enabled":           enrollmentEnabled,
 		"automatic_management_enabled": automaticManagementEnabled,
 		"plan_active":                  planActive,
+		// Router-generated key setup (the router keeps its own private key). Additive:
+		// the console may offer it when true; false everywhere unless explicitly enabled.
+		"callback_enrollment_enabled": h.callbackReady(),
 	})
 }

@@ -9,7 +9,7 @@ import (
 	"mega-magic/internal/hub"
 )
 
-const quickEnrollmentKeyLifetime = database.PendingEnrollmentLifetime
+const quickEnrollmentKeyLifetime = database.RouterKeyLifetime
 const maxPendingQuickEnrollments = 256
 
 type quickEnrollmentKey struct {

@@ -30,6 +30,8 @@ func RegisterVPSRoutes(
 	// Enrollment requires a site assignment; guard enforces tenant/site match.
 	vpsg.POST("/peers/:deviceId/enroll", auth.RequireMinRole(model.RoleAdmin), vpsHandler.RequireGatewaySite, vpsHandler.EnrollGateway)
 	vpsg.POST("/peers/:deviceId/quick-enroll", auth.RequireMinRole(model.RoleAdmin), vpsHandler.RequireGatewaySite, vpsHandler.QuickEnrollGateway)
+	// Router-generated key setup: the app issues a single-use token and never holds a router key.
+	vpsg.POST("/peers/:deviceId/callback-enroll", auth.RequireMinRole(model.RoleAdmin), vpsHandler.RequireGatewaySite, vpsHandler.IssueCallbackScript)
 
 	// Connection completion and management authentication require site assignment.
 	vpsg.POST("/peers/:deviceId/finish", auth.RequireMinRole(model.RoleAdmin), vpsHandler.RequireGatewaySite, vpsHandler.FinishGatewayConnection)

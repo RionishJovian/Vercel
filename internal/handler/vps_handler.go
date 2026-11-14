@@ -43,6 +43,14 @@ type VPSHandler struct {
 	quickKeys          map[string]quickEnrollmentKey
 
 	liveConnectionState func(context.Context, string, string) (HubConnectionState, error)
+
+	// Wave 3: router-generated key enrolment, durable peer state, single-flight.
+	callbackBaseURL string
+	callbackTokens  callbackTokenStore
+	callbackDevice  func(context.Context, string, string) (*model.Device, error)
+	peerState       peerStateStore
+	purgeRouterKey  func(context.Context, string, string) error
+	enrollLocks     keyedLock
 }
 
 func NewVPSHandler(db *database.DB, deviceRepo *database.DeviceRepository, quotaRepo *database.BusinessMeteredQuotaRepository, mon *monitoring.MonitoringService, wg config.WireGuardConfig, endpointHost string) *VPSHandler {

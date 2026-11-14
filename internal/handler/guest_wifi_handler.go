@@ -688,6 +688,10 @@ func (h *GuestWifiHandler) ResolveRequestBusiness(requestID string) (string, err
 	return r.BusinessID, nil
 }
 
+// guestRouterDecisionTimeout caps the router call inside DecideGuest. It is a
+// variable only so tests can shorten it.
+var guestRouterDecisionTimeout = 30 * time.Second
+
 // DecideGuest approves (true) or rejects (false) a guest wifi purchase EXACTLY
 // ONCE (single-wind) under the owning business's tenant scope. Approve grants
 // the plan's data duration as a wifi time extension per the portal config.
@@ -698,6 +702,11 @@ func (h *GuestWifiHandler) DecideGuest(txSrc func() (*sql.Tx, error), businessID
 		return err
 	}
 	defer tx.Rollback()
+	// The router is called while this transaction holds the request row. Bound
+	// that call so an offline router cannot hold the lock or a worker open; on
+	// timeout the transaction rolls back and the request stays pending to retry.
+	routerCtx, cancelRouter := context.WithTimeout(context.Background(), guestRouterDecisionTimeout)
+	defer cancelRouter()
 
 	err = database.WithTenant(tx, businessID, func() error {
 		r, e := h.reqRepo.GetForDecisionTXN(tx, businessID, requestID)
@@ -715,7 +724,7 @@ func (h *GuestWifiHandler) DecideGuest(txSrc func() (*sql.Tx, error), businessID
 				if h.graceRouter == nil {
 					return &httpError{status: http.StatusServiceUnavailable, msg: "router access is unavailable"}
 				}
-				if e := h.graceRouter.DecideGuestAccess(context.Background(), businessID, *r.DeviceID, r.ID, r.ClientMAC, false, 0, 0, 0, 0); e != nil {
+				if e := h.graceRouter.DecideGuestAccess(routerCtx, businessID, *r.DeviceID, r.ID, r.ClientMAC, false, 0, 0, 0, 0); e != nil {
 					return e
 				}
 			}
@@ -745,7 +754,7 @@ func (h *GuestWifiHandler) DecideGuest(txSrc func() (*sql.Tx, error), businessID
 		if h.graceRouter == nil {
 			return &httpError{status: http.StatusServiceUnavailable, msg: "router access is unavailable"}
 		}
-		return h.graceRouter.DecideGuestAccess(context.Background(), businessID, *r.DeviceID, r.ID, r.ClientMAC, true, minutes, r.DataMB, r.SpeedDownMbps, r.SpeedUpMbps)
+		return h.graceRouter.DecideGuestAccess(routerCtx, businessID, *r.DeviceID, r.ID, r.ClientMAC, true, minutes, r.DataMB, r.SpeedDownMbps, r.SpeedUpMbps)
 	})
 	if err != nil {
 		return err

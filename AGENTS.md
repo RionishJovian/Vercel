@@ -72,6 +72,7 @@ Older notes that name `web/app.html` or ask for UI in `src/` are obsolete: new c
 - 2026-11-07 (owner decision): keep one Telegram setup page under Your profile. A platform-admin binding handles app-pass/platform purchase approvals and platform incident alerts; a customer binding handles only that business’s guest-payment/Jellyfin approvals. Reuse encrypted saved tokens, derive scope from server-side roles, and show receiver/token/approver/delivery evidence separately. Saving a token is not proof a receiver is running; never send a test notification automatically.
 - Site WAN/budget and topology editors share one revision; saving one must preserve the other.
 - SME sidebar guidance is named "Did you know?"; platform publishers manage sourced cards. Keep compatibility "unchecked" until trusted router discovery exists. VPN, HotSpot/portal and RADIUS are separate roles. Local User Manager is a proposed option only.
+- 2026-11-14 (owner decision): a router's WireGuard private key must be generated on the router and never held by the app. The router-generated callback flow (`docs/HUB-CALLBACK-ENROLLMENT.md`) implements this behind `vps.hub_callback_enrollment_enabled` (default off, never tested on hardware). The legacy server-keygen one-paste stays until that flow is proven; its key is purged at the first verified handshake. RouterOS 6 cannot run WireGuard.
 - Read-only router inventory is gated by `provisioner.inventory_enabled` and must not enable the applier, guest disconnection or network writes.
 
 ## 5. Write gates (state read from production on 2026-11-06)
@@ -88,6 +89,7 @@ Writes to routers are fail-closed: each needs an env var that is exactly `"true"
 | `MM_BROADBAND_WRITES_ENABLED` | off | paid PPPoE writes locked since the 2026-11-04 incident until a router trial |
 | `MM_FIRMWARE_UPGRADE_ENABLED` | off | |
 | `MM_NETWORK_WIFI_CONTROLS_ENABLED` | on (owner decision 2026-11-06) | physical-radio trial not run yet |
+| `VPS_HUB_CALLBACK_ENROLLMENT_ENABLED` (`vps.hub_callback_enrollment_enabled`) | off (new, 2026-11-14) | router-generated WireGuard keys; also needs `vps.public_base_url`. Defaults off; a PR that turns it on needs the hardware checklist in `docs/HUB-CALLBACK-ENROLLMENT.md` first |
 | `MM_WEBFIG_ACCESS` | off (unset) | Values `open` and `locked`. Also needs `MM_WEBFIG_HOST`; see `docs/WEBFIG-CLOUD-ACCESS.md` |
 
 The owner asked for server-wide router read/write/edit/delete on 2026-11-06. These gates apply to every customer on the server. Re-read the server environment before relying on this table; it is a dated observation. Because pushes to `main` deploy, a PR that adds or depends on a gate must default to off.

@@ -163,3 +163,52 @@ func (s PendingEnrollmentStore) Delete(ctx context.Context, biz, device string) 
 	_, e := s.DB.ExecContext(ctx, `DELETE FROM hub_pending_enrollments WHERE business_id=$1 AND device_id=$2`, biz, device)
 	return e
 }
+
+// Rewrite replaces the stored value of a live row through transform while keeping
+// its expiry and its binding to tenant, device and purpose. A missing or expired
+// row is left alone. It is how a secret is scrubbed from a row that must otherwise
+// stay (for example the management credentials of a router that has connected).
+func (s PendingEnrollmentStore) Rewrite(ctx context.Context, biz, device, purpose string, transform func(string) (string, error)) error {
+	if !uuidRe.MatchString(biz) || !uuidRe.MatchString(device) || (purpose != "router_key" && purpose != "management") || s.Box == nil || transform == nil {
+		return errors.New("invalid pending enrollment identity")
+	}
+	tx, e := s.DB.BeginTx(ctx, nil)
+	if e != nil {
+		return e
+	}
+	defer tx.Rollback()
+	if _, e = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, "hub-pending:"+biz+":"+device+":"+purpose); e != nil {
+		return e
+	}
+	var cipher string
+	var expiry time.Time
+	e = tx.QueryRowContext(ctx, `SELECT ciphertext,expires_at FROM hub_pending_enrollments WHERE business_id=$1 AND device_id=$2 AND purpose=$3 FOR UPDATE`, biz, device, purpose).Scan(&cipher, &expiry)
+	if errors.Is(e, sql.ErrNoRows) || (e == nil && !time.Now().Before(expiry)) {
+		return nil
+	}
+	if e != nil {
+		return e
+	}
+	raw, e := s.Box.Open(cipher)
+	if e != nil {
+		return errors.New("pending enrollment could not be decrypted")
+	}
+	var p pendingEnvelope
+	if json.Unmarshal([]byte(raw), &p) != nil || p.Business != biz || p.Device != device || p.Purpose != purpose || !p.Expires.Equal(expiry) {
+		return errors.New("pending enrollment identity mismatch")
+	}
+	if p.Value, e = transform(p.Value); e != nil {
+		return e
+	}
+	sealed, e := json.Marshal(p)
+	if e != nil {
+		return e
+	}
+	if cipher, e = s.Box.Seal(string(sealed)); e != nil {
+		return e
+	}
+	if _, e = tx.ExecContext(ctx, `UPDATE hub_pending_enrollments SET ciphertext=$4 WHERE business_id=$1 AND device_id=$2 AND purpose=$3`, biz, device, purpose, cipher); e != nil {
+		return e
+	}
+	return tx.Commit()
+}

@@ -239,6 +239,11 @@ vps:
   # /vps/peers/{id}/quick-enroll call fail with 503 "not enabled".
   hub_lookup_enabled: false
   hub_enrollment_enabled: false
+  # Router-generated key setup (Wave 3). The router creates its own WireGuard key
+  # and posts only the public half. Off by default; needs hub_enrollment_enabled
+  # and the https origin routers use to reach this app. Untested on real hardware.
+  hub_callback_enrollment_enabled: false
+  public_base_url: ""
   hub_url: "https://hub.example.com/internal/provisioner"
   hub_key_id: "v1"
   hub_signing_key: ""

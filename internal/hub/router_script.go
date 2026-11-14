@@ -22,9 +22,12 @@ type RouterScripts struct {
 	Disconnect string `json:"disconnect_script"`
 }
 
-// GenerateRouterKeypair creates a WireGuard keypair for the one-paste setup.
-// The private key is returned only to the authenticated operator as part of a
-// no-store script response; it is never persisted by the application.
+// GenerateRouterKeypair creates a WireGuard keypair for the legacy server-keygen
+// one-paste setup. The private key is returned to the authenticated operator in a
+// no-store script response, but the application also keeps it, encrypted and
+// time-limited, so a retry can reissue the same script (see
+// database.RouterKeyLifetime and docs/HUB-CALLBACK-ENROLLMENT.md). The router-
+// generated flow (BuildCallbackBootstrapScript) never creates or holds one.
 func GenerateRouterKeypair() (privateKey, publicKey string, err error) {
 	private := make([]byte, 32)
 	if _, err := rand.Read(private); err != nil {

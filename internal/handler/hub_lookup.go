@@ -81,6 +81,7 @@ func (h *VPSHandler) LivePeer(c *gin.Context) {
 		c.JSON(http.StatusBadGateway, gin.H{"error": "Magic Hub identity mismatch"})
 		return
 	}
+	h.observeVerifiedHandshake(c.Request.Context(), businessID, device.DeviceID, peer)
 	status := "no_recent_handshake"
 	if peer.State != "active" {
 		status = "inactive"
