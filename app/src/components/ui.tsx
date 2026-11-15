@@ -76,7 +76,8 @@ export function Ago({ at, prefix }: { at?: string | number | null; prefix?: stri
   if (!Number.isFinite(ms)) return <span className="mute small">{prefix ? prefix + " " : ""}{t("ws.never")}</span>;
   const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
   const rtf = new Intl.RelativeTimeFormat(lang === "my" ? "my" : "en", { numeric: "auto" });
-  const text = s < 45 ? rtf.format(-s, "second") : s < 3600 ? rtf.format(-Math.round(s / 60), "minute") : s < 86400 ? rtf.format(-Math.round(s / 3600), "hour") : rtf.format(-Math.round(s / 86400), "day");
+  // Under a minute reads "Just now": Intl gives a bare "now" at zero and a second count nobody needs.
+  const text = s < 45 ? t("ws.justNow") : s < 3600 ? rtf.format(-Math.round(s / 60), "minute") : s < 86400 ? rtf.format(-Math.round(s / 3600), "hour") : rtf.format(-Math.round(s / 86400), "day");
   const exact = new Date(ms).toLocaleString();
   return <time className="mute small num" dateTime={new Date(ms).toISOString()} title={exact}>{prefix ? prefix + " " : ""}{text}</time>;
 }

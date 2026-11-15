@@ -43,6 +43,31 @@ export function useFleetSummary() {
   return { fleet, total, up, stale, offline, unknown, tone, key, checkedAt: fleetCheckedAt(d) };
 }
 
+/**
+ * Hotspot service status from the gateways that still exist. The router list is fetched once while the status is
+ * polled, so a router deleted on the Hub page (or in another tab) can linger in one of them for a moment. Only a
+ * gateway present in both counts: a deleted router then drops out of the names, the status and the check time, and
+ * devices that are not gateways never colour the Hotspot status. `disagree` asks the caller to re-read the list.
+ */
+export function gatewayStatus(gateways: RouterRow[] | null, f: FleetData | undefined, failed = false) {
+  const peers = new Map((f?.peers ?? []).map((p) => [p.device_id, p]));
+  const listed = gateways && f?.peers ? gateways.filter((g) => peers.has(g.device_id)) : gateways;
+  let tone: Tone = "idle", key = "st.unknown", best = 0, checkedAt: string | undefined;
+  if (failed) key = "st.noEvidence";
+  else if (listed && listed.length === 0) key = "st.noRouters";
+  else if (listed && f?.peers) {
+    const states = listed.map((g) => String(peers.get(g.device_id)?.state ?? "unknown").toLowerCase());
+    if (states.includes("offline")) { tone = "bad"; key = "st.offline"; }
+    else if (states.includes("stale")) { tone = "warn"; key = "st.stale"; }
+    else if (states.every((s) => s === "up")) { tone = "ok"; key = "st.online"; }
+    for (const g of listed) {
+      const p = peers.get(g.device_id), at = p?.checked_at ?? p?.last_contact_at, v = Date.parse(at ?? "");
+      if (Number.isFinite(v) && v > best) { best = v; checkedAt = at; }
+    }
+  }
+  return { gateways: listed, tone, key, checkedAt, disagree: !!(gateways && listed && gateways.length !== listed.length) };
+}
+
 export interface BroadbandAccount {
   id: string; username: string; profile: string; pending_operation?: string; observed_at?: string;
   observation: { first_use: number; expires_at: number; suspended: boolean; last_clock: number } | null;
