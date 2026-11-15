@@ -1,4 +1,4 @@
-// The nine router login page templates. Ids match internal/provisioner/routeros/portal_templates.go; the server
+// The nine router page templates (login.html and the matching status.html). Ids match internal/provisioner/routeros/portal_templates.go; the server
 // renders every one of them, this list only drives the picker and says which are Store add-ons.
 export type TemplateGroup = "myanmar" | "commercial";
 export interface PortalTemplate { id: string; group: TemplateGroup; name: string; nameMy: string; bg: string; surface: string; ink: string; accent: string; primary: string; tint: string }
@@ -11,7 +11,7 @@ export const PORTAL_TEMPLATES: PortalTemplate[] = [
   { id: "obsidian", group: "commercial", name: "Obsidian Telemetry", nameMy: "Obsidian Telemetry", bg: "#0b0e14", surface: "#121620", ink: "#f8fafc", accent: "#38bdf8", primary: "#38bdf8", tint: "#121620" },
   { id: "cafe", group: "commercial", name: "Warm Café & Bistro", nameMy: "ကော်ဖီဆိုင်နှင့် ဘစ်စထရို", bg: "#f3e6d3", surface: "#fffaf2", ink: "#2b1a12", accent: "#8a4b24", primary: "#6f3b1e", tint: "#c98b4b" },
   { id: "hotel", group: "commercial", name: "Boutique Hotel & Lounge", nameMy: "ဟိုတယ်နှင့် လောင်းချ်", bg: "#ece7dc", surface: "#fbfaf6", ink: "#1a1a18", accent: "#7a5c1f", primary: "#1f2a44", tint: "#b08d3c" },
-  { id: "express", group: "commercial", name: "Express Retail & Transit", nameMy: "Express လက်လီနှင့် ခရီးသွား", bg: "#0a0a0a", surface: "#171717", ink: "#ffffff", accent: "#facc15", primary: "#facc15", tint: "#171717" },
+  { id: "express", group: "commercial", name: "Express Retail & Transit", nameMy: "Express လက်လီနှင့် ခရီးသွား", bg: "#eef4ff", surface: "#ffffff", ink: "#0b1b3a", accent: "#1d4ed8", primary: "#1d4ed8", tint: "#1d4ed8" },
   { id: "daylight", group: "commercial", name: "Clean Daylight", nameMy: "Clean Daylight", bg: "#f5f6f8", surface: "#ffffff", ink: "#0b1220", accent: "#0a58ca", primary: "#0a58ca", tint: "#0a58ca" },
 ];
 

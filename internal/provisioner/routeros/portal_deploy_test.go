@@ -36,6 +36,7 @@ type portalRunner struct {
 	host            string
 	mediaGarden     bool
 	failLogin       bool
+	failStatus      bool // The status.html write fails after the login page landed.
 	failMediaAdd    bool
 	failMediaRemove bool
 	copyTimesOut    bool // RouterOS finishes the files, then holds the command past the SSH timeout.
@@ -124,7 +125,7 @@ func (r *portalRunner) Run(_ context.Context, cmd string) (string, error) {
 		}
 		return "", nil
 	case strings.HasPrefix(cmd, "/file set"):
-		if r.failLogin {
+		if r.failLogin || (r.failStatus && strings.HasSuffix(q[0][1], "/status.html")) {
 			return "", errors.New("login write failed")
 		}
 		v := decodeRouterOSStringForTest(q[1][1])
@@ -283,6 +284,58 @@ func TestPortalDeploymentPreviewAndApply(t *testing.T) {
 	}
 	if !strings.HasPrefix(r.directory, "flash/mm-portal-") || r.files["hotspot/login.html"] != "<html>Original</html>" || r.files[result.Plan.File] != expected {
 		t.Fatal("isolation or persistent staging failed")
+	}
+}
+
+// The connected-session page is installed beside the login page, in the staged copy only, and only where the
+// profile already serves a status.html. A failed status write leaves the router on its original directory.
+func TestPortalDeploymentInstallsTheMatchingStatusPage(t *testing.T) {
+	ctx := context.Background()
+	want, err := RenderPortalStatus(nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := newPortalRunner()
+	r.files["hotspot/status.html"] = "<html>Router status</html>"
+	a := portalTestApplier(r)
+	plan, err := a.PreviewPortal(ctx, "biz", "device", PortalDeployment{Profile: "guest"})
+	if err != nil || !strings.HasSuffix(plan.StatusFile, "/status.html") || !strings.HasPrefix(plan.StatusFile, "flash/mm-portal-") || strings.Contains(plan.StatusPreviewHTML, "$(") || plan.StatusPreviewHTML == "" {
+		t.Fatalf("status page not planned: %+v %v", plan.StatusFile, err)
+	}
+	if portalHasWrites(r.commands) || !strings.Contains(strings.Join(plan.Steps, "\n"), "status.html") {
+		t.Fatal("preview wrote to the router or did not list the status step")
+	}
+	result, err := a.ApplyPortal(ctx, "biz", "device", PortalDeployment{Profile: "guest", Version: plan.Version, Confirmation: plan.Confirmation})
+	if err != nil || !result.Verified || r.files[plan.StatusFile] != want || r.files["hotspot/status.html"] != "<html>Router status</html>" {
+		t.Fatalf("status page not installed in the staged copy only: %+v %v", result, err)
+	}
+
+	none := newPortalRunner()
+	a = portalTestApplier(none)
+	plan, err = a.PreviewPortal(ctx, "biz", "device", PortalDeployment{Profile: "guest"})
+	if err != nil || plan.StatusFile != "" || plan.StatusPreviewHTML != "" || strings.Contains(strings.Join(plan.Steps, "\n"), "status.html") {
+		t.Fatalf("a profile without status.html must keep the router's own: %+v %v", plan, err)
+	}
+	if result, err = a.ApplyPortal(ctx, "biz", "device", PortalDeployment{Profile: "guest", Version: plan.Version, Confirmation: plan.Confirmation}); err != nil || !result.Verified {
+		t.Fatalf("%+v %v", result, err)
+	}
+	for name := range none.files {
+		if strings.HasSuffix(name, "/status.html") {
+			t.Fatalf("status page written where none existed: %s", name)
+		}
+	}
+
+	failing := newPortalRunner()
+	failing.files["hotspot/status.html"] = "<html>Router status</html>"
+	failing.failStatus = true
+	a = portalTestApplier(failing)
+	plan, err = a.PreviewPortal(ctx, "biz", "device", PortalDeployment{Profile: "guest"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err = a.ApplyPortal(ctx, "biz", "device", PortalDeployment{Profile: "guest", Version: plan.Version, Confirmation: plan.Confirmation})
+	if err == nil || result.Verified || !result.RolledBack || failing.directory != "hotspot" || failing.garden {
+		t.Fatalf("a failed status write must roll back and keep the original directory: %+v %v", result, err)
 	}
 }
 

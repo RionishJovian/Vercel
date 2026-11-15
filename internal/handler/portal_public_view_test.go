@@ -65,7 +65,7 @@ func TestPublicPortalViewOmitsTenantAndBookkeeping(t *testing.T) {
 // publicPortalConfig, or add it to the withheld list here, deliberately.
 func TestPublicPortalViewCoversEveryModelField(t *testing.T) {
 	// template_id only styles the router login page; the hosted guest portal does not use it.
-	withheld := map[string]bool{"business_id": true, "updated_at": true, "template_id": true}
+	withheld := map[string]bool{"business_id": true, "updated_at": true, "template_id": true, "support_phone": true, "support_telegram": true, "support_viber": true}
 	var wantKeys []string
 	for _, k := range jsonKeys(t, fullPortalConfig()) {
 		if !withheld[k] {

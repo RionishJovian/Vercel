@@ -9,15 +9,15 @@ const PLAN = { key: "hour", label: "1 hour", minutes: 60, amount: 1000, data_mb:
 const EDITOR = /Guests can't pay by bank transfer yet/;
 const INSTALL = /Bank transfer is on, but no plan is saved/;
 let config: Record<string, unknown>;
-let access: Record<string, unknown>, saved: Array<Record<string, unknown>>, forbidPremium = false;
+let access: Record<string, unknown>, saved: Array<Record<string, unknown>>, previews: Array<Record<string, unknown>>, forbidPremium = false;
 
 beforeEach(() => {
   localStorage.setItem("mm2_lang", "en");
-  access = { exempt: false, unlocked: ["starlink_mm", "daylight"] }; saved = []; forbidPremium = false;
+  access = { exempt: false, unlocked: ["starlink_mm", "daylight"] }; saved = []; previews = []; forbidPremium = false;
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
     const path = String(url).replace("/api/v1", "");
     if (path === "/portal/template-access") return json(200, access);
-    if (path === "/portal/router-preview") return json(200, { html: "<p>login preview</p>" });
+    if (path === "/portal/router-preview") { previews.push(JSON.parse(String(init?.body))); return json(200, { html: "<p>login preview</p>", status_html: "<p>status preview</p>" }); }
     if (path === "/portal/config" && init?.method === "PUT") { const b = JSON.parse(String(init.body)); saved.push(b); if (forbidPremium && b.template_id && !["starlink_mm", "daylight"].includes(b.template_id)) return json(403, { error: "locked" }); config = { ...config, ...JSON.parse(String(init.body)) }; return json(200, {}); }
     if (path === "/portal/config") return json(200, { config });
     if (path === "/routers") return json(200, { routers: [{ device_id: "d1", hardware_name: "Shop", deployment_layer: "MAIN_GATEWAY" }] });
@@ -145,5 +145,34 @@ describe("login page themes and the Store add-on lock", () => {
     pickCard("express");
     fireEvent.click(await screen.findByRole("button", { name: /^Save/ }));
     await screen.findAllByText(/Store add-on/);
+  });
+});
+
+describe("rich router pages", () => {
+  it("previews the connected-session page from the same renderer, on its own tab", async () => {
+    config = { voucher_login_enabled: true, mobile_payment_enabled: true, guest_plans: [{ ...PLAN, speed_down_mbps: 10, speed_up_mbps: 5 }] };
+    await open();
+    await waitFor(() => expect(screen.getByTitle("Login page").getAttribute("srcdoc")).toBe("<p>login preview</p>"));
+    fireEvent.click(screen.getByRole("tab", { name: "Connected page" }));
+    const frame = screen.getByTitle("Connected page");
+    expect(frame.getAttribute("srcdoc")).toBe("<p>status preview</p>");
+    expect(frame.getAttribute("sandbox")).toBe("allow-scripts");
+    // The packages grid needs each plan's speed and data, not only its price.
+    expect(previews.at(-1)!.plans).toEqual([{ label: "1 hour", minutes: 60, amount: 1000, data_mb: 1024, speed_down_mbps: 10 }]);
+  });
+  it("saves cleaned support contacts and refuses ones that cannot become a link", async () => {
+    config = { business_name: "Cafe", voucher_login_enabled: true, mobile_payment_enabled: false, guest_plans: [] };
+    await open();
+    fireEvent.change(screen.getByLabelText("Phone number"), { target: { value: "+95 9 123-456-789" } });
+    fireEvent.change(screen.getByLabelText("Telegram username"), { target: { value: "@magic_cafe" } });
+    fireEvent.change(screen.getByLabelText("Viber number"), { target: { value: "not a number" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Save/ }));
+    await screen.findByText(/Check the support contacts/);
+    expect(saved).toHaveLength(0);
+    fireEvent.change(screen.getByLabelText("Viber number"), { target: { value: "" } });
+    await waitFor(() => expect(previews.at(-1)).toMatchObject({ support_phone: "+959123456789", support_telegram: "magic_cafe", support_viber: "" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Save/ }));
+    await waitFor(() => expect(saved).toHaveLength(1));
+    expect(saved[0]).toMatchObject({ support_phone: "+959123456789", support_telegram: "magic_cafe", support_viber: "" });
   });
 });

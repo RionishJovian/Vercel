@@ -15,23 +15,31 @@ interface Config {
   bank_name?: string; bank_holder?: string; bank_account?: string; mmqr_url?: string; payment_instructions?: string;
   guest_grace_minutes?: number; guest_grace_data_mb?: number; guest_plans?: Plan[];
   voucher_login_enabled?: boolean; mobile_payment_enabled?: boolean; consent_required?: boolean; consent_text?: string; template_id?: string;
+  support_phone?: string; support_telegram?: string; support_viber?: string;
 }
 const HEX6 = /^#[0-9a-fA-F]{6}$/;
 const hexOr = (v: unknown, fallback: string) => (typeof v === "string" && HEX6.test(v.trim()) ? v.trim() : fallback);
 // Configs saved before access-method selection existed have no flags: treat as both enabled.
 const on = (v: boolean | undefined) => (typeof v === "boolean" ? v : true);
 const EMPTY: Config = {};
+// Same rules as the server (routeros.NormalizeSupportPhone / NormalizeSupportTelegram): each becomes a link on the router page.
+const cleanPhone = (v: string) => v.trim().replace(/[\s\-()]/g, "");
+const cleanTelegram = (v: string) => v.trim().replace(/^@/, "");
+const phoneOk = (v: string) => v === "" || /^\+?[0-9]{6,15}$/.test(v);
+const telegramOk = (v: string) => v === "" || /^[A-Za-z][A-Za-z0-9_]{4,31}$/.test(v);
 const blankPlan = (p: Plan) => !(p.key || p.label || p.minutes || p.amount || p.data_mb || p.speed_down_mbps || p.speed_up_mbps);
 
 interface Draft {
   name: string; welcome: string; terms: string; primary: string; tint: string;
   bankName: string; bankHolder: string; bankAcc: string; mmqr: string; instructions: string;
   graceMin: string; graceData: string; voucher: boolean; payment: boolean; plans: Plan[]; template: string;
+  supPhone: string; supTelegram: string; supViber: string;
 }
 const fromConfig = (c: Config): Draft => ({
   name: c.business_name ?? "", welcome: c.welcome_text ?? "", terms: c.terms_text ?? "", primary: hexOr(c.primary_hex, "#38bdf8"), tint: hexOr(c.glass_tint_hex, "#121620"),
   bankName: c.bank_name ?? "", bankHolder: c.bank_holder ?? "", bankAcc: c.bank_account ?? "", mmqr: c.mmqr_url ?? "", instructions: c.payment_instructions ?? "",
   graceMin: String(c.guest_grace_minutes ?? 10), graceData: String(c.guest_grace_data_mb ?? 50), voucher: on(c.voucher_login_enabled), payment: on(c.mobile_payment_enabled), template: c.template_id ?? "",
+  supPhone: c.support_phone ?? "", supTelegram: c.support_telegram ?? "", supViber: c.support_viber ?? "",
   plans: asArray<Plan>(c.guest_plans).map((p) => ({ key: p.key ?? "", label: p.label ?? "", minutes: p.minutes ?? 0, amount: p.amount ?? 0, data_mb: p.data_mb ?? 0, speed_down_mbps: p.speed_down_mbps ?? 0, speed_up_mbps: p.speed_up_mbps ?? 0 })),
 });
 
@@ -53,7 +61,10 @@ function routerPreviewBody(d: Draft, c: Config) {
   return {
     business_name: p.business_name, welcome_text: p.welcome_text, terms_text: p.terms_text, primary_hex: d.primary, glass_tint_hex: d.tint,
     consent_required: !!c.consent_required, consent_text: c.consent_text ?? "", mobile_payment_enabled: d.payment, template_id: d.template,
-    plans: p.guest_plans.slice(0, 4).map((x) => ({ label: x.label, minutes: x.minutes, amount: x.amount })),
+    plans: p.guest_plans.slice(0, 4).map((x: Partial<Plan>) => ({ label: x.label, minutes: x.minutes, amount: x.amount, data_mb: x.data_mb ?? 0, speed_down_mbps: x.speed_down_mbps ?? 0 })),
+    // Contacts that are not valid yet are simply left out of the preview; Save reports them.
+    support_phone: phoneOk(cleanPhone(d.supPhone)) ? cleanPhone(d.supPhone) : "", support_telegram: telegramOk(cleanTelegram(d.supTelegram)) ? cleanTelegram(d.supTelegram) : "",
+    support_viber: phoneOk(cleanPhone(d.supViber)) ? cleanPhone(d.supViber) : "",
   };
 }
 
@@ -65,8 +76,8 @@ export function GuestPage() {
   const [msg, setMsg] = useState<ReactNode>(null);
   const [busy, setBusy] = useState(false);
   const hosted = useRef<HTMLIFrameElement>(null);
-  const [tab, setTab] = useState<"login" | "pay">("login");
-  const [loginHtml, setLoginHtml] = useState<string | null>(null), [loginFailed, setLoginFailed] = useState(false);
+  const [tab, setTab] = useState<"login" | "status" | "pay">("login");
+  const [loginHtml, setLoginHtml] = useState<string | null>(null), [statusHtml, setStatusHtml] = useState<string | null>(null), [loginFailed, setLoginFailed] = useState(false);
   const access = useSWR<{ exempt?: boolean; unlocked?: string[] }>("/portal/template-access", fetcher, { shouldRetryOnError: false });
   const initial = useRef(false);
 
@@ -96,8 +107,8 @@ export function GuestPage() {
     if (!previewBody) return;
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
-      request<{ html?: string }>("POST", "/portal/router-preview", previewBody, false, controller.signal)
-        .then((r) => { if (!controller.signal.aborted) { setLoginHtml(r.html ?? ""); setLoginFailed(false); } })
+      request<{ html?: string; status_html?: string }>("POST", "/portal/router-preview", previewBody, false, controller.signal)
+        .then((r) => { if (!controller.signal.aborted) { setLoginHtml(r.html ?? ""); setStatusHtml(r.status_html ?? ""); setLoginFailed(false); } })
         .catch((e) => { if (isUnauthorized(e)) throw e; if (!controller.signal.aborted) setLoginFailed(true); });
     }, 250);
     return () => { window.clearTimeout(timer); controller.abort(); };
@@ -120,12 +131,15 @@ export function GuestPage() {
     const gm = Number(draft.graceMin), gd = Number(draft.graceData);
     if (!Number.isInteger(gm) || gm < 1 || gm > 1440 || !Number.isInteger(gd) || gd < 1 || gd > 10240) { setMsg(<Note kind="bad">{t("g.badGrace")}</Note>); return; }
     if (!draft.plans.filter((p) => !blankPlan(p)).every(speedOk)) { setMsg(<Note kind="bad">{t("g.plan.speedBad")}</Note>); return; }
+    const supPhone = cleanPhone(draft.supPhone), supTelegram = cleanTelegram(draft.supTelegram), supViber = cleanPhone(draft.supViber);
+    if (!phoneOk(supPhone) || !telegramOk(supTelegram) || !phoneOk(supViber)) { setMsg(<Note kind="bad">{t("gs.bad")}</Note>); return; }
     setBusy(true);
     // The server merges, so send only what this screen owns. Media (Jellyfin) and consent settings stay untouched.
     const body = {
       business_name: draft.name.trim(), welcome_text: draft.welcome.trim(), terms_text: draft.terms.trim(), primary_hex: draft.primary, glass_tint_hex: draft.tint,
       bank_name: draft.bankName.trim(), bank_holder: draft.bankHolder.trim(), bank_account: draft.bankAcc.trim(), mmqr_url: draft.mmqr.trim(), payment_instructions: draft.instructions.trim(),
       guest_grace_minutes: gm, guest_grace_data_mb: gd, voucher_login_enabled: draft.voucher, mobile_payment_enabled: draft.payment, guest_plans: draft.plans.filter((p) => !blankPlan(p)),
+      support_phone: supPhone, support_telegram: supTelegram, support_viber: supViber,
       // Only sent when changed, so saving other settings never touches (or trips the add-on check for) the template.
       ...(draft.template !== (cfg.template_id ?? "") ? { template_id: draft.template } : {}),
     };
@@ -140,15 +154,16 @@ export function GuestPage() {
         <h2 id="gp-prev">{t("g.guestPortal")}</h2>
         <div className="row" role="tablist" aria-label={t("g.guestPortal")}>
           <button type="button" role="tab" aria-selected={tab === "login"} className={"pill" + (tab === "login" ? " on" : "")} onClick={() => setTab("login")}>{t("gt.tabLogin")}</button>
+          <button type="button" role="tab" aria-selected={tab === "status"} className={"pill" + (tab === "status" ? " on" : "")} onClick={() => setTab("status")}>{t("gt.tabStatus")}</button>
           <button type="button" role="tab" aria-selected={tab === "pay"} className={"pill" + (tab === "pay" ? " on" : "")} onClick={() => setTab("pay")}>{t("gt.tabPay")}</button>
         </div>
         <div className="phone">
           {tab === "pay"
             ? <iframe className="gp-frame" ref={hosted} src="/portal.html?preview=1" title={t("g.guestPortal")} />
-            : loginHtml !== null ? <iframe className="gp-frame" sandbox="allow-scripts" title={t("gt.tabLogin")} srcDoc={loginHtml} /> : loginFailed ? <Note kind="warn">{t("g.previewFailed")}</Note> : <Skeleton h={420} />}
+            : loginHtml !== null ? <iframe className="gp-frame" sandbox="allow-scripts" title={t(tab === "status" ? "gt.tabStatus" : "gt.tabLogin")} srcDoc={(tab === "status" ? statusHtml : loginHtml) ?? ""} /> : loginFailed ? <Note kind="warn">{t("g.previewFailed")}</Note> : <Skeleton h={420} />}
         </div>
-        {tab === "login" && loginFailed && loginHtml !== null && <Note kind="warn">{t("g.previewFailed")}</Note>}
-        <p className="soft small">{tab === "pay" ? t("g.previewHostedNote") : t("gt.previewNote")}</p>
+        {tab !== "pay" && loginFailed && loginHtml !== null && <Note kind="warn">{t("g.previewFailed")}</Note>}
+        <p className="soft small">{tab === "pay" ? t("g.previewHostedNote") : tab === "status" ? t("gt.statusNote") : t("gt.previewNote")}</p>
         {draft.payment && !draft.plans.some((p) => !blankPlan(p)) && <Note kind="warn">{t("g.noPlansWarn")}</Note>}
       </section>
 
@@ -190,6 +205,11 @@ export function GuestPage() {
           {text("bankName", t("g.bank"), { maxLength: 120 })}{text("bankHolder", t("g.holder"), { maxLength: 120 })}{text("bankAcc", t("g.acc"), { maxLength: 60, inputMode: "numeric", className: "input num" })}{text("mmqr", t("g.mmqr"), { maxLength: 500, placeholder: "https://…/mmqr.jpg" })}
           <Field label={t("g.instr")} htmlFor="gp-instr"><textarea className="input" id="gp-instr" maxLength={600} rows={4} value={draft.instructions} onChange={(e) => set("instructions", e.target.value)} style={{ padding: "12px 16px", minHeight: 104 }} /></Field>
           <div className="two">{text("graceMin", t("g.graceMin"), { type: "number", min: 1, max: 1440, inputMode: "numeric", className: "input num" })}{text("graceData", t("g.graceData"), { type: "number", min: 1, max: 10240, inputMode: "numeric", className: "input num" })}</div>
+        </Section>
+        <Section title={t("gs.title")} help={t("gs.help")}>
+          {text("supPhone", t("gs.phone"), { maxLength: 24, inputMode: "tel", placeholder: "+959…", className: "input num" })}
+          {text("supTelegram", t("gs.telegram"), { maxLength: 33, placeholder: "@yourshop", autoCapitalize: "none", spellCheck: false })}
+          {text("supViber", t("gs.viber"), { maxLength: 24, inputMode: "tel", placeholder: "+959…", className: "input num" })}
         </Section>
         <section className="stack"><SectionHead title={t("g.plans")} help={t("g.plan.speedHint")} />
           {draft.plans.map((p, i) => (

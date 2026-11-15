@@ -16,7 +16,8 @@ func templateDesign(id string) *PortalLoginDesign {
 		BusinessName: "Magic Café", WelcomeText: "Welcome to our Wi-Fi", TermsText: "One voucher, one device.",
 		PrimaryHex: "#38bdf8", GlassTintHex: "#121620", TemplateID: id, ConsentRequired: true,
 		BankTransfer: true, DeviceID: testTemplateDevice,
-		Plans: []PortalLoginPlan{{Label: "1 Hour WiFi", Minutes: 60, Amount: 1000}, {Label: "Day Pass", Minutes: 1440, Amount: 3500}},
+		Plans:        []PortalLoginPlan{{Label: "1 Hour WiFi", Minutes: 60, Amount: 1000, DataMB: 1024}, {Label: "Day Pass", Minutes: 1440, Amount: 3500, SpeedDownMbps: 10}},
+		SupportPhone: "+959 123 456 789", SupportTelegram: "@magiccafe", SupportViber: "+959123456789",
 	}
 }
 
@@ -73,8 +74,8 @@ func TestPortalTemplateCatalogue(t *testing.T) {
 	}
 }
 
-// An unset template must render exactly like the obsidian template, so portals saved before templates existed
-// keep their look when the column default is applied.
+// An unset template renders as the obsidian template, so portals saved before templates existed keep their look
+// when the column default is applied. Only the chosen obsidian (gaming) template carries its low-ping badges.
 func TestPortalTemplateDefaultsToObsidian(t *testing.T) {
 	unset, err := RenderPortalLogin(&PortalLoginDesign{BusinessName: "A"}, true)
 	if err != nil {
@@ -84,8 +85,11 @@ func TestPortalTemplateDefaultsToObsidian(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if unset != chosen || !strings.Contains(unset, `class="card t-obsidian"`) {
-		t.Fatal("an unset template must render as obsidian")
+	if !strings.Contains(unset, `class="card t-obsidian"`) || strings.Contains(unset, `data-t="lp"`) || !strings.Contains(chosen, `data-t="lp"`) || !strings.Contains(chosen, `data-t="al"`) {
+		t.Fatal("an unset template must render as obsidian without the gaming badges")
+	}
+	if strings.Replace(chosen, `<div class="bdg"><span><i></i><b data-t="lp">Low ping</b></span><span data-t="al">Anti-lag</span></div>`, "", 1) != unset {
+		t.Fatal("the badges must be the only difference")
 	}
 }
 
@@ -100,11 +104,8 @@ func TestPortalTemplatesRenderSelfContainedRouterLogin(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(page) >= 24000 {
+			if len(page) > portalLoginMaxBytes {
 				t.Fatalf("%d bytes: over the router page budget", len(page))
-			}
-			if len(page) >= 32*1024 {
-				t.Fatalf("%d bytes: does not fit the 32 KB limit", len(page))
 			}
 			for _, want := range required {
 				if !strings.Contains(page, want) {
@@ -125,14 +126,17 @@ func TestPortalTemplatesRenderSelfContainedRouterLogin(t *testing.T) {
 					t.Errorf("only the router-local md5.js may be loaded, found src=%q", srcURL[1])
 				}
 			}
-			for _, tag := range []string{"main", "div", "svg", "g", "ul", "ol", "form", "details", "style", "script", "defs", "pattern"} {
+			for _, tag := range []string{"main", "header", "nav", "div", "svg", "g", "ul", "ol", "li", "a", "span", "button", "form", "details", "style", "script", "defs", "pattern"} {
 				open := len(regexp.MustCompile(`<`+tag+`[\s>]`).FindAllString(page, -1))
 				closed := strings.Count(page, "</"+tag+">")
 				if open != closed {
 					t.Errorf("<%s> opened %d times and closed %d", tag, open, closed)
 				}
 			}
-			for _, want := range []string{`class="card t-` + info.ID + `"`, `id="lang-my"`, `id="lang-en"`, `မြန်မာ`, `>EN<`, `function setLang(`, `id="voucher"`, `id="voucher-consent"`, `id="bank-transfer"`} {
+			for _, want := range []string{`class="card t-` + info.ID + `"`, `id="lang-my"`, `id="lang-en"`, `မြန်မာ`, `>EN<`, `function setLang(`, `id="voucher"`, `id="voucher-consent"`, `id="bank-transfer"`,
+				`<header class="hero">`, `class="sc"`, `id="tab-v"`, `id="tab-m"`, `id="mu"`, `id="mp"`, `type="password"`, `id="qr"`, `Scan QR Voucher`,
+				`<h2 data-t="pk">Internet Packages</h2>`, `class="pg"`, `<em data-t="bv">Best Value</em>`, `data-t="buy">Buy Now</a>`, `1,000 MMK`, `3,500 MMK`, `10 Mbps`, `1 GB`, `data-t="unl"`,
+				`class="sup"`, `href="tel:+959123456789"`, `href="tg://resolve?domain=magiccafe"`, `href="viber://chat?number=%2B959123456789"`, `class="tr"`, `Family Safe`} {
 				if !strings.Contains(page, want) {
 					t.Errorf("missing %q", want)
 				}
@@ -208,44 +212,140 @@ func TestPortalTemplateSpecifics(t *testing.T) {
 		}
 		return page
 	}
-	if p := render("starlink_mm", nil); !strings.Contains(p, "var BI=true") || !strings.Contains(p, `class="badge"`) {
-		t.Error("starlink needs bilingual buttons and the link badge")
-	}
-	if p := render("cafe", nil); strings.Contains(p, "var BI=true") || strings.Contains(p, `class="tiers"`) {
-		t.Error("only starlink is bilingual and only hotel shows tiers")
-	}
-	village := render("village_mm", nil)
-	for _, want := range []string{`class="steps"`, "PREF='my'", "min-height:68px", "line-height:1.75", "min-height:64px"} {
-		if !strings.Contains(village, want) {
-			t.Errorf("village missing %q", want)
+	has := func(id, page string, wants ...string) {
+		t.Helper()
+		for _, want := range wants {
+			if !strings.Contains(page, want) {
+				t.Errorf("%s missing %q", id, want)
+			}
 		}
 	}
-	hotel := render("hotel", nil)
-	for _, want := range []string{`class="tiers"`, `1,000 Ks`, `3,500 Ks`, `1 h`, `1 d`, `border-top:6px solid var(--portal-brand)`} {
-		if !strings.Contains(hotel, want) {
-			t.Errorf("hotel missing %q", want)
+	starlink := render("starlink_mm", nil)
+	has("starlink_mm", starlink, "var BI=true", `data-t="link">High-Speed Satellite Internet`, `data-t="st">Online · Stable Link`, "#070d19", "#0f1a2e")
+	if p := render("cafe", nil); strings.Contains(p, "var BI=true") {
+		t.Error("only starlink is bilingual")
+	}
+	has("cultural_mm", render("cultural_mm", nil), "#2a0e12", "#d4a338", `id="pgd"`, `class="foot"`, "::before")
+	has("mountain_mm", render("mountain_mm", nil), "#0a221e", "#13332c", `data-t="hl"`)
+	has("village_mm", render("village_mm", nil), `class="steps"`, "PREF='my'", "min-height:68px", "line-height:1.75", "min-height:64px", `data-t="s1"`)
+	has("obsidian", render("obsidian", nil), `class="bg-art"`, `data-t="lp">Low ping`, `data-t="al">Anti-lag`, `class="wifi-mark"`)
+	has("cafe", render("cafe", nil), "border-radius:28px", "#6f3b1e")
+	has("hotel", render("hotel", nil), `<span class="hw" data-t="wel">Welcome to</span><div class="hn brand">Magic Café</div>`, "#b08d3c", "#141b33")
+	has("express", render("express", nil), "calc(8*1.55ch)", `data-t="fr">Fast &amp; Reliable Internet`, "#1d4ed8", `data-t="f1">Fast Speed`, `data-t="f2">24/7 Stable`, `data-t="f3">Family Safe`, `data-t="f4">Best Signal`)
+	has("daylight", render("daylight", nil), "#bfdbfe", "#0a58ca")
+	// The packages grid and its Buy Now buttons need the owner's payment flow; without it there is nothing to buy.
+	if p := render("hotel", func(d *PortalLoginDesign) { d.BankTransfer = false }); strings.Contains(p, `class="pg"`) || strings.Contains(p, "Buy Now</a>") {
+		t.Error("packages must not appear when bank transfer is off")
+	}
+	if p := render("hotel", func(d *PortalLoginDesign) { d.Plans = nil }); strings.Contains(p, `class="pg"`) {
+		t.Error("no plans means no packages grid")
+	}
+	if p := render("daylight", func(d *PortalLoginDesign) { d.Plans = d.Plans[:1] }); strings.Contains(p, `data-t="bv"`) {
+		t.Error("Best Value needs at least two priced plans to compare")
+	}
+	// Day Pass is 3,500 for 1,440 minutes, cheaper per minute than 1,000 for 60: it carries the tag.
+	if p := render("daylight", nil); !strings.Contains(p, `<li class="bv"><em data-t="bv">Best Value</em><b>Day Pass</b>`) {
+		t.Error("Best Value must mark the lowest price per minute")
+	}
+	// Contacts become links, so anything that is not a plain number or username is left out.
+	bad := render("daylight", func(d *PortalLoginDesign) {
+		d.SupportPhone, d.SupportTelegram, d.SupportViber = `1"><script>`, `a b$(ip)`, "javascript:alert(1)"
+	})
+	if strings.Contains(bad, `class="sup"`) || strings.Contains(bad, "javascript:") {
+		t.Error("invalid support contacts must not be rendered")
+	}
+	if p := render("daylight", func(d *PortalLoginDesign) { d.SupportTelegram, d.SupportViber = "", "" }); !strings.Contains(p, `href="tel:+959123456789"`) || strings.Contains(p, "tg://") || strings.Contains(p, "viber://") {
+		t.Error("only the contacts the owner filled in may show")
+	}
+}
+
+// The hero text sits on the template's own gradient; HeroBg is the stop it is hardest to read on.
+func TestPortalTemplateHeroContrast(t *testing.T) {
+	for _, info := range PortalTemplates() {
+		tpl := portalTemplateByID(info.ID)
+		if tpl.Hero == "" {
+			continue // obsidian keeps the base tokens: ink on bg, checked by the public-pages contrast test
+		}
+		if got := contrast(tpl.HeroInk, tpl.HeroBg); got < 4.5 {
+			t.Errorf("%s: hero text is %.2f:1 on %s", info.ID, got, tpl.HeroBg)
+		}
+		if !strings.Contains(tpl.Hero, tpl.HeroBg) {
+			t.Errorf("%s: HeroBg %s is not a stop of the hero background", info.ID, tpl.HeroBg)
 		}
 	}
-	if p := render("hotel", func(d *PortalLoginDesign) { d.BankTransfer = false }); strings.Contains(p, `class="tiers"`) {
-		t.Error("tier cards must not appear when bank transfer is off")
+}
+
+func TestPortalStatusPageMatchesTheTemplate(t *testing.T) {
+	required := []string{`$(username)`, `$(ip)`, `$(mac)`, `$(bytes-in-nice)`, `$(bytes-out-nice)`, `$(session-time-left)`, `$(if session-time-left)`, `action="$(link-logout)"`, `Logout / Disconnect`, `$(if refresh-timeout)`}
+	for _, info := range PortalTemplates() {
+		info := info
+		t.Run(info.ID, func(t *testing.T) {
+			d := templateDesign(info.ID)
+			d.BusinessName = `Cafe <script>alert(1)</script> $(mac)`
+			page, err := RenderPortalStatus(d, false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			login, err := RenderPortalLogin(d, false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(page) > portalStatusMaxBytes || len(page)+len(login) >= 45*1024 {
+				t.Fatalf("status %d + login %d bytes: over the 45 KB pair budget", len(page), len(login))
+			}
+			for _, want := range append(required, `class="card t-`+info.ID+`"`, `<header class="hero">`, `class="tel"`, `id="lang-my"`, `class="tr"`, `href="tel:+959123456789"`) {
+				if !strings.Contains(page, want) {
+					t.Errorf("missing %q", want)
+				}
+			}
+			if m := assetPattern.FindString(page); m != "" {
+				t.Errorf("external or non-inline asset: %q", m)
+			}
+			if regexp.MustCompile(`https?://|\bsrc=`).MatchString(page) || strings.Contains(page, `Cafe <script>`) || strings.Contains(page, `</script> $(mac)`) {
+				t.Error("status page must load nothing and must escape owner text")
+			}
+			// Same palette and hero as the login page.
+			tpl := portalTemplateByID(info.ID)
+			if !strings.Contains(page, tpl.Art) || (tpl.Pal != nil && !strings.Contains(page, tpl.Pal.css())) {
+				t.Error("status page must use the login page's hero and palette")
+			}
+			for _, tag := range []string{"main", "header", "nav", "div", "svg", "g", "ul", "li", "dl", "dt", "dd", "form", "style", "script", "button"} {
+				if open, closed := len(regexp.MustCompile(`<`+tag+`[\s>]`).FindAllString(page, -1)), strings.Count(page, "</"+tag+">"); open != closed {
+					t.Errorf("<%s> opened %d times and closed %d", tag, open, closed)
+				}
+			}
+			preview, err := RenderPortalStatus(d, true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(preview, "$(") || !strings.Contains(preview, `data-t="smp"`) || !strings.Contains(preview, `onsubmit="return false"`) {
+				t.Error("status preview must have no live macros, must label its sample session and must not log anyone out")
+			}
+		})
 	}
-	if p := render("hotel", func(d *PortalLoginDesign) { d.Plans = nil }); strings.Contains(p, `class="tiers"`) {
-		t.Error("no plans means no tier cards")
-	}
-	if p := render("express", nil); !strings.Contains(p, "calc(8*1.55ch)") {
-		t.Error("express needs the 8-box segmented voucher field")
-	}
-	if p := render("obsidian", nil); !strings.Contains(p, `class="bg-art"`) {
-		t.Error("obsidian needs its contour background")
-	}
-	if p := render("cultural_mm", nil); !strings.Contains(p, "#2a0e12") || !strings.Contains(p, "#d4a338") {
-		t.Error("cultural template lost its lacquer and gold")
-	}
-	if p := render("mountain_mm", nil); !strings.Contains(p, "#0a221e") || !strings.Contains(p, "#13332c") {
-		t.Error("mountain template lost its pine palette")
-	}
-	if p := render("starlink_mm", nil); !strings.Contains(p, "#070d19") || !strings.Contains(p, "#0f1a2e") {
-		t.Error("starlink template lost its navy palette")
+}
+
+// What the editor lets an owner type, all in Burmese (three bytes a letter), must still fit the router.
+func TestPortalPagesFitWithTheLongestEditorText(t *testing.T) {
+	my := func(n int) string { return strings.Repeat("က", n) }
+	for _, info := range PortalTemplates() {
+		d := templateDesign(info.ID)
+		d.BusinessName, d.WelcomeText, d.TermsText, d.ConsentText = my(120), my(240), my(500), my(300)
+		d.Plans = nil
+		for i := 0; i < portalLoginMaxPlans; i++ {
+			d.Plans = append(d.Plans, PortalLoginPlan{Label: my(40), Minutes: 60 * (i + 1), Amount: 1000 * (i + 1), DataMB: 1536, SpeedDownMbps: 10})
+		}
+		login, err := RenderPortalLogin(d, false)
+		if err != nil {
+			t.Fatalf("%s login: %v", info.ID, err)
+		}
+		status, err := RenderPortalStatus(d, false)
+		if err != nil {
+			t.Fatalf("%s status: %v", info.ID, err)
+		}
+		if len(login)+len(status) >= 45*1024 {
+			t.Errorf("%s: %d + %d bytes is over 45 KB", info.ID, len(login), len(status))
+		}
 	}
 }
 
