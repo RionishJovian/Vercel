@@ -73,3 +73,9 @@ graphify-out/
 
 # Per-machine Claude Code settings (graphify hooks use local paths)
 .claude/settings.local.json
+
+# Agent worktrees and scratch space (per machine, never source)
+.claude/worktrees/
+.claude/scratch/
+.claude/scratchpad/
+.claude/tmp/

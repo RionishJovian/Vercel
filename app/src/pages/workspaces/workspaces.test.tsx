@@ -113,7 +113,7 @@ describe("Hotspot service status", () => {
     cleanup();
     localStorage.setItem("mm2_lang", "my");
     wrap(<Hotspot />);
-    expect(await screen.findByText(/ဘောက်ချာကုဒ်၊ အဖွဲ့ဝင်အကောင့် သို့မဟုတ် Wi-Fi ပက်ကေ့ချ်/)).toBeTruthy();
+    expect(await screen.findByText(/ဗောက်ချာကုဒ်၊ အဖွဲ့ဝင်အကောင့် သို့မဟုတ် Wi-Fi ပက်ကေ့ချ်/)).toBeTruthy();
   });
 
   it("leaves out a router that was deleted and judges status from the ones that remain", async () => {

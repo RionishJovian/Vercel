@@ -105,6 +105,16 @@ The owner asked for server-wide router read/write/edit/delete on 2026-11-06. The
 - Consolidation, docs and design notes are source changes. They do not deploy code, migrate a database, modify a router or certify live state. (Note: a merge to `main` now does deploy; see section 3.)
 - Record durable design feedback and owner decisions here with a date.
 
+## 6a. Full-App Copy & State Sync Rule (mandatory, owner decision 2026-11-15)
+
+Whenever a capability expands (a new login method, portal template, router model, payment path) or a device is deleted or removed, sweep the whole product before calling the work done, in **English and Burmese**:
+
+1. **Stale feature descriptions.** Search `app/` (every route and both i18n dictionaries), `web/` (landing, pricing, portal pages) and `internal/` (text the server sends) for sentences that still describe the old capability, and update both languages together. Claim only what the product does and shows.
+2. **Raw or unlocalized times.** No bare `now`, second counts or untranslated relative times; relative times go through the shared `Ago` component (`Just now` / `ယခုလေးတင်`). Compact data ages (`42s`, `5m`) stay as decided on 2026-11-13.
+3. **Deleted routers.** A deleted router must not appear in any gateway name list, dropdown, topology node or status count. Routers are hard-deleted (`devices` row removed), so check anything that outlives the row: lists read once in the browser, records whose router link is set to NULL (alerts, vouchers, purchases), and saved documents that hold router ids.
+
+Record what was checked in the PR description, including pages that needed no change.
+
 ## 7. Open items and known drift (as of 2026-11-06)
 
 - **2026-11-13 (verified): PR #201 is live.** Merge `7f63fbf` was deployed by run 672. The 66 served `/app/assets` files match a local build byte for byte, and the 66 retained `/v2/assets` files match the pinned manifest. `/ready` is ok. The clean URLs and old-link redirects are in place. Image digests, rollback copy and the remaining gaps (no signed-in production session; live PPPoE gate value not readable without SSH) are in `docs/HANDOFF-PUBLIC-PAGES-URLS-20261112.md`, section "Production release verification". Rollback branch: `rollback/pre-public-pages-20261112` (`5931ed0`).

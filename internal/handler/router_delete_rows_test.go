@@ -73,6 +73,33 @@ func TestDBRouterDeletionWithHubRowsAndHistory(t *testing.T) {
 				}
 			}
 		})
+		t.Run(role+" deleting a router closes its open alerts and leaves other routers' alerts open", func(t *testing.T) {
+			h := NewRouterHandler(db, database.NewDeviceRepository(db), nil, nil)
+			h.ConfigureHubRemoval(func(context.Context, string, string, string) (string, error) { return "", nil })
+			device, other := insertGatewayNoSite(db, business), insertGatewayNoSite(db, business)
+			alert := func(dev, subject string) string {
+				t.Helper()
+				var id string
+				if err := db.QueryRow(`INSERT INTO incidents(business_id,device_id,kind,severity,subject_id,subject_label) VALUES($1,$2,'router_offline','critical',$3,$3) RETURNING id`, business, dev, subject).Scan(&id); err != nil {
+					t.Fatalf("seed alert: %v", err)
+				}
+				return id
+			}
+			gone, kept := alert(device, "Deleted router "+role), alert(other, "Kept router "+role)
+			if w := remove(h, role, device); w.Code != http.StatusOK {
+				t.Fatalf("status %d: %s", w.Code, w.Body.String())
+			}
+			// The alert stays as history (its router link is cleared by the foreign key) but is no longer open.
+			if n := count(`SELECT count(*) FROM incidents WHERE id=$1 AND resolved_at IS NOT NULL AND device_id IS NULL`, gone); n != 1 {
+				t.Fatal("the deleted router's alert must be closed and kept as history")
+			}
+			if n := count(`SELECT count(*) FROM incidents WHERE id=$1 AND resolved_at IS NULL AND device_id=$2`, kept, other); n != 1 {
+				t.Fatal("another router's alert must stay open")
+			}
+			if n := count(`SELECT count(*) FROM incidents WHERE business_id=$1 AND resolved_at IS NULL AND subject_label=$2`, business, "Deleted router "+role); n != 0 {
+				t.Fatal("the open-alert list must not carry the deleted router")
+			}
+		})
 	}
 	t.Run("a router without Hub wiring and with Hub rows is deleted", func(t *testing.T) {
 		h := NewRouterHandler(db, database.NewDeviceRepository(db), nil, nil)
