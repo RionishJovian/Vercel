@@ -1,20 +1,25 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { asArray, mmk, num, type Me } from "../../lib/types";
 import { useI18n } from "../../i18n";
 import { Ago, IconTile, LinkRow, Metric, Recovery, Segmented, StatePill } from "../../components/ui";
 import { Loading, SkList, SkMetrics } from "../../components/Skeleton";
-import { bytes, duration, subscriberState, useBroadbandReport, useFleetSummary, usePppoe, useRouters, useVoucherReport } from "./data";
+import { useFleet } from "../../lib/useFleet";
+import { bytes, duration, gatewayStatus, subscriberState, useBroadbandReport, usePppoe, useRouters, useVoucherReport } from "./data";
 
 const STAFF = ["OWNER", "ADMIN", "DEVELOPER"];
 
 /** Hotspot service: the MikroTik captive portal, its vouchers and the people using it. */
 export function Hotspot() {
   const { t } = useI18n();
-  const health = useFleetSummary();
+  const fleet = useFleet();
   const routers = useRouters();
   const report = useVoucherReport();
   const rep = report.data;
-  const gw = routers.gateways;
+  // Only gateways that still exist: a router deleted on the Hub page leaves the names, the status and the check time.
+  const health = gatewayStatus(routers.gateways, fleet.data, !!fleet.error);
+  const gw = health.gateways;
+  const { disagree } = health, reread = routers.mutate;
+  useEffect(() => { if (disagree) void reread(); }, [disagree, reread]);
   return (
     <>
       <header className="ws-head">
@@ -22,7 +27,7 @@ export function Hotspot() {
         <p className="ws-lead">{t("hs.lead")}</p>
       </header>
       <section className="glass pad svc-card workspace-rail" aria-labelledby="hs-status">
-        <header><h2 id="hs-status">{t("hs.status")}</h2>{health.fleet.isLoading ? null : <StatePill tone={health.tone}>{t(health.key)}</StatePill>}</header>
+        <header><h2 id="hs-status">{t("hs.status")}</h2>{fleet.isLoading ? null : <StatePill tone={health.tone}>{t(health.key)}</StatePill>}</header>
         {gw && gw.length === 0 ? (
           <Recovery title={t("isp.noGateway")} detail={t("hs.noGatewayHelp")} action={{ href: "/app/setup", label: t("su.continue") }} />
         ) : (
