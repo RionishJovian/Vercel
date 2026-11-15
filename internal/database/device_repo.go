@@ -393,7 +393,14 @@ func (r *DeviceRepository) UpdateDeviceTXN(tx *sql.Tx, device *model.Device) (*m
 }
 
 // DeleteDeviceTXN is the transaction-scoped variant of DeleteDevice.
+//
+// It first closes the router's open alerts. incidents.device_id is ON DELETE SET NULL, so without this an
+// "offline" alert for the deleted router would stay open with no router behind it and keep counting on Home,
+// Alerts and Activity. Closed alerts stay as history. Same transaction: a failed delete reopens nothing.
 func (r *DeviceRepository) DeleteDeviceTXN(tx *sql.Tx, deviceID string) error {
+	if _, err := tx.Exec("UPDATE incidents SET resolved_at = now(), updated_at = now() WHERE device_id = $1 AND resolved_at IS NULL", deviceID); err != nil {
+		return fmt.Errorf("close alerts of deleted device: %w", err)
+	}
 	result, err := tx.Exec("DELETE FROM devices WHERE device_id = $1", deviceID)
 	if err != nil {
 		return fmt.Errorf("delete device: %w", err)
