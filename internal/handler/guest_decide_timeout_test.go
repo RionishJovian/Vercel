@@ -59,6 +59,11 @@ func TestDecideGuestDoesNotHangOnAnOfflineRouter(t *testing.T) {
 	if err == nil || !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("an offline router must end in a deadline error, got %v", err)
 	}
+	// The owner sees a retryable 503 in plain words, never the raw transport error.
+	var he *httpError
+	if !errors.As(err, &he) || he.status != 503 || !he.retryable || he.msg == context.DeadlineExceeded.Error() {
+		t.Fatalf("a router timeout must be a retryable 503, got %#v", err)
+	}
 	if time.Since(started) > 5*time.Second {
 		t.Fatal("the router call was not bounded")
 	}

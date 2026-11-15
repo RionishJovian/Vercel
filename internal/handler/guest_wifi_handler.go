@@ -257,7 +257,7 @@ func (h *GuestWifiHandler) PublicGuestPurchase(c *gin.Context) {
 				// Remove only this failed request's router user, never a paid or
 				// unrelated account. Close its pending decision before retrying.
 				if e := h.graceRouter.DecideGuestAccess(c.Request.Context(), dev.BusinessID, deviceID, previous.ID, clientMAC, false, 0, 0, 0, 0); e != nil {
-					return &httpError{status: http.StatusBadGateway, msg: "could not close the previous temporary session"}
+					return &httpError{status: http.StatusBadGateway, retryable: true, cause: e, msg: "could not close the previous temporary session"}
 				}
 				if previous.Status == "pending" {
 					if _, e := h.reqRepo.RejectRequestTXN(tx, dev.BusinessID, previous.ID, now); e != nil {
@@ -295,7 +295,7 @@ func (h *GuestWifiHandler) PublicGuestPurchase(c *gin.Context) {
 		// both router provisioning and the response, including future resumes.
 		graceExpires = *r.GraceExpiresAt
 		if e := h.graceRouter.ConfigureGuestGrace(c.Request.Context(), dev.BusinessID, deviceID, routeros.GuestGrace{RequestID: r.ID, ClientMAC: clientMAC, Minutes: graceMinutes, DataMB: r.GraceDataMB, ExpiresAt: graceExpires}); e != nil {
-			return &httpError{status: http.StatusBadGateway, msg: "temporary internet could not be configured; the hotspot owner should check router connectivity and MAC login settings"}
+			return &httpError{status: http.StatusBadGateway, retryable: true, cause: e, msg: "temporary internet could not be configured; the hotspot owner should check router connectivity and MAC login settings"}
 		}
 		createdGrace = true
 		return nil
@@ -405,7 +405,7 @@ func (h *GuestWifiHandler) PublicAttachReceipt(c *gin.Context) {
 			return err
 		}
 		if !updated {
-			return &httpError{http.StatusGone, "payment window expired or request already decided"}
+			return &httpError{status: http.StatusGone, msg: "payment window expired or request already decided"}
 		}
 		return nil
 	})
@@ -692,6 +692,19 @@ func (h *GuestWifiHandler) ResolveRequestBusiness(requestID string) (string, err
 // variable only so tests can shorten it.
 var guestRouterDecisionTimeout = 30 * time.Second
 
+// guestRouterRetry turns a router failure during a payment decision into a clear, retryable answer. The decision
+// runs in one transaction that rolls back on any error, so the request is still pending, and the router step is
+// keyed by the request id, so deciding again never grants the paid time twice. The raw transport error (which can
+// name the router's tunnel address) stays in the chain for logs and is not sent to the owner.
+func guestRouterRetry(err error) error {
+	var he *httpError
+	if err == nil || errors.As(err, &he) {
+		return err
+	}
+	return &httpError{status: http.StatusServiceUnavailable, retryable: true, cause: err,
+		msg: "The router did not answer in time. Nothing was changed and this payment is still waiting for your decision. Check the router is online, then try again."}
+}
+
 // DecideGuest approves (true) or rejects (false) a guest wifi purchase EXACTLY
 // ONCE (single-wind) under the owning business's tenant scope. Approve grants
 // the plan's data duration as a wifi time extension per the portal config.
@@ -725,7 +738,7 @@ func (h *GuestWifiHandler) DecideGuest(txSrc func() (*sql.Tx, error), businessID
 					return &httpError{status: http.StatusServiceUnavailable, msg: "router access is unavailable"}
 				}
 				if e := h.graceRouter.DecideGuestAccess(routerCtx, businessID, *r.DeviceID, r.ID, r.ClientMAC, false, 0, 0, 0, 0); e != nil {
-					return e
+					return guestRouterRetry(e)
 				}
 			}
 			_, e := h.reqRepo.RejectRequestTXN(tx, businessID, requestID, time.Now().UTC())
@@ -754,7 +767,7 @@ func (h *GuestWifiHandler) DecideGuest(txSrc func() (*sql.Tx, error), businessID
 		if h.graceRouter == nil {
 			return &httpError{status: http.StatusServiceUnavailable, msg: "router access is unavailable"}
 		}
-		return h.graceRouter.DecideGuestAccess(routerCtx, businessID, *r.DeviceID, r.ID, r.ClientMAC, true, minutes, r.DataMB, r.SpeedDownMbps, r.SpeedUpMbps)
+		return guestRouterRetry(h.graceRouter.DecideGuestAccess(routerCtx, businessID, *r.DeviceID, r.ID, r.ClientMAC, true, minutes, r.DataMB, r.SpeedDownMbps, r.SpeedUpMbps))
 	})
 	if err != nil {
 		return err

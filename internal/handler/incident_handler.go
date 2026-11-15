@@ -49,6 +49,11 @@ func respondErr(c *gin.Context, err error) {
 	}
 	var he *httpError
 	if errors.As(err, &he) {
+		if he.retryable {
+			c.Header("Retry-After", "5")
+			c.JSON(he.status, gin.H{"error": he.msg, "retryable": true})
+			return
+		}
 		c.JSON(he.status, gin.H{"error": he.msg})
 		return
 	}

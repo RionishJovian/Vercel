@@ -96,3 +96,44 @@ Addresses open items 2, 3 and part of 4 above. Details, rollout and the hardware
 
 Anything about the live server, a physical router, Telegram approver checks, the Hub service's own address
 allocator, and the Python modules not read in the audit (knowledge, deliveries, review API, staff, subscriptions).
+
+## Guest unlock path audit (2026-11-15)
+
+Read from the Go code on `main` at `297a53d`, with unit tests against fakes. **No real router was used.** PR 230
+(rich templates and `status.html`) was still open when this was written, so its pages are not part of this audit.
+
+What the path really is (two names in older notes do not exist in the Go API):
+
+- There is no `/v1/vouchers/redeem` and no `/api/hooks/payment-decision` in production. The second is the unported
+  demo webhook described under "Payment webhook" above. There are no KBZPay or Wave callbacks: guests pay the owner's
+  own account and the owner approves each payment.
+- **Voucher on the router page (`login.html`)**: the form posts to the router's own HotSpot login. The router checks
+  the code against its local user list. No API call and no WireGuard round trip, so tunnel latency cannot delay it.
+- **Voucher on the hosted page**: `POST /api/v1/portal/:deviceId/redeem` claims the voucher and records a session in
+  one database transaction. It makes no router call.
+- **Bank transfer**: `POST /api/v1/portal/:deviceId/guest-purchase` creates a pending request and asks the router for
+  the free payment window; the guest attaches a receipt; the owner approves in the console
+  (`POST /api/v1/guest-wifi/approve/:requestId`) or by Telegram; `DecideGuestAccess` turns the router's grace user
+  into the paid user.
+
+Findings:
+
+1. **Walled garden: no bypass found.** A portal install adds one rule, TCP 443 to `megamagic.tech`, scoped to the one
+   HotSpot server, and optionally one TCP port on a private media address. It never touches the HTTP walled garden,
+   IP bindings or the firewall. New test: `TestPortalInstallOpensNoInternetBypass`. Not checked: what else answers on
+   the production host's port 443, and the owner's `mmqr_url` image host, which is outside the garden and loads only
+   once the free payment window is running.
+2. **Double grant: not possible by retry.** The decision claims the request and calls the router in one transaction;
+   any error rolls it back and the request stays pending. The router step is keyed by the request id, so approving
+   again after a lost reply does not add the paid time twice. The platform takes no payment, so nothing can be
+   charged twice.
+3. **Fixed: a router timeout during approve or reject returned a raw 500** whose text was the transport error. It now
+   returns 503 with `"retryable": true`, a `Retry-After` header and a plain message; the cause stays in the error
+   chain. Tests: `guest_router_retry_test.go` (no database) and the existing database-backed timeout test, which is
+   **skipped without `MM_TEST_DB_URL`**.
+4. **Fixed: the guest pay page dead-ended** when the router did not answer while starting a purchase (a bare error,
+   no way back). The 502 is now marked retryable and the page shows a plain message with Try again; a dropped
+   connection gets the same. Test: `scripts/test-portal-purchase-retry-ui.mjs`.
+5. **Open, not changed:** `guest-purchase` holds a database transaction and an advisory lock while it waits for the
+   router (bounded by the applier's timeout). Each new client MAC can start one free payment window, so a guest who
+   changes MAC can repeat it; the limits are the owner's grace minutes and megabytes and the per-IP rate limit.
