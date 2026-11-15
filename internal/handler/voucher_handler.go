@@ -47,9 +47,15 @@ var (
 type httpError struct {
 	status int
 	msg    string
+	// retryable marks a failure that changed nothing and is worth trying again shortly (a router that did not
+	// answer in time). respondErr adds "retryable": true and a Retry-After header so a client can say so.
+	retryable bool
+	// cause keeps the underlying error for errors.Is / errors.As and for logs; it is never sent to the client.
+	cause error
 }
 
 func (e *httpError) Error() string { return e.msg }
+func (e *httpError) Unwrap() error { return e.cause }
 
 // withTenantTx runs fn inside a transaction with the tenant RLS context set via
 // database.WithTenant (SET LOCAL ROLE authenticated + app.current_business_id),

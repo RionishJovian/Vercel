@@ -56,6 +56,9 @@ var MM = {
   flowLabel: "အဆင့်များ",         // Steps  [native review]
   amountDue: "ပေးရမည့် ပမာဏ",     // Amount to pay  [native review]
   copy:      "ကူးယူရန်",          // Copy  [native review]
+  tryAgain:  "ထပ်ကြိုးစားမည်",    // Try again  [native review]
+  routerBusy:"Hotspot router က အချိန်မီ မဖြေကြားပါ။ တောင်းဆိုမှု မပြုလုပ်ရသေးပါ၊ ငွေလည်း မပေးရသေးပါ။ ခဏနေ၍ ထပ်ကြိုးစားပါ။", // [native review]
+  netFail:   "ဆာဗာသို့ မချိတ်ဆက်နိုင်ပါ။ Wi-Fi ချိတ်ဆက်မှုကို စစ်ပြီး ထပ်ကြိုးစားပါ။", // [native review]
   copied:    "ကူးပြီး",           // Copied  [native review]
   bankName:  "ဘဏ်",               // Bank  [native review]
   holderName:"အမည်",              // Name  [native review]
@@ -423,10 +426,21 @@ async function buy(cfg, key) {
   try {
     var res = await fetch(API + "/portal/" + DEVICE + "/guest-purchase", { method: "POST", headers: { "X-MM-CSRF": "1" }, body: fd });
     var d = await res.json();
-    if (!res.ok) throw new Error(d.error || ("http-" + res.status));
+    if (!res.ok) { var failed = new Error(d.error || ("http-" + res.status)); failed.retryable = d.retryable === true; throw failed; }
     renderPay(Object.assign({}, cfg, { guest_grace_data_mb: d.grace_data_mb, guest_grace_minutes: d.grace_minutes }), d.request_id, d.grace_expires_at, plan);
   } catch (e) {
-    root.innerHTML = '<p class="msg">' + esc(e.message) + '</p>';
+    // A router that lags, or a dropped connection, must not strand the guest on a bare error. The server marks a
+    // router timeout "retryable" (nothing was created); a network failure is retried too, and the server resumes
+    // the same pending request for this device instead of opening a second one. No payment is taken here: the
+    // guest pays the owner directly, so a retry can never charge twice.
+    var answered = "retryable" in e; // set only when the server answered; a dropped connection has no answer
+    var again = e.retryable === true || !answered;
+    root.innerHTML = '<p class="msg" role="alert">' + (e.retryable === true
+      ? t("The hotspot router did not respond in time. Nothing was requested and you have not paid anything. Try again in a moment.", "routerBusy")
+      : !answered ? t("Could not reach the server. Check the Wi-Fi connection and try again.", "netFail") : esc(e.message)) + '</p>' +
+      (again ? '<button class="btn" type="button" id="buy-retry">' + t("Try again", "tryAgain") + '</button>' : '');
+    var retry = document.getElementById("buy-retry");
+    if (retry) retry.addEventListener("click", function () { renderPlans(cfg); });
   }
 }
 
