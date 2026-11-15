@@ -200,6 +200,50 @@ test('language switch swaps every message to Burmese and back without touching t
   assert.match(html, /function setLang\(/);
 });
 
+test('member login submits the typed username with a CHAP hash of the password, never the voucher path', () => {
+  const f = fixture({ code: '' });
+  vm.runInContext("mode='m'", f.context);
+  f.submit();
+  assert.equal(f.submissions, 0);
+  assert.match(f.elements.get('login-error').textContent, /username and password/);
+  assert.equal(f.elements.get('mu').focused, true);
+  f.elements.get('mu').value = '  Somchai.01  ';
+  f.elements.get('mp').value = 'pa ss';
+  f.submit();
+  assert.equal(f.submissions, 1);
+  assert.equal(f.payloads[0].username, 'Somchai.01', 'usernames are trimmed, never upper-cased');
+  assert.equal(f.payloads[0].password, md5(binaryID + 'pa ss' + binaryChallenge));
+  const pap = fixture({ chap: false, helper: null, code: '' });
+  vm.runInContext("mode='m'", pap.context);
+  pap.elements.get('mu').value = 'member';
+  pap.elements.get('mp').value = 'secret';
+  pap.submit();
+  assert.deepEqual([pap.payloads[0].username, pap.payloads[0].password], ['member', 'secret']);
+  for (const [user, pass] of [['two words', 'x'], ['member', ''], ['a'.repeat(65), 'x']]) {
+    const bad = fixture({ code: '' });
+    vm.runInContext("mode='m'", bad.context);
+    bad.elements.get('mu').value = user;
+    bad.elements.get('mp').value = pass;
+    bad.submit();
+    assert.equal(bad.submissions, 0, `member login ${JSON.stringify([user, pass])} must not submit`);
+  }
+});
+
+test('login page offers both login modes and a QR action', () => {
+  assert.match(html, /<button\b[^>]*id="tab-v"[^>]*aria-selected="true"[^>]*onclick="setMode\('v'\)"/);
+  assert.match(html, /<button\b[^>]*id="tab-m"[^>]*onclick="setMode\('m'\)"/);
+  assert.match(visibleForm.body, /<input\b[^>]*id="mp"[^>]*type="password"/);
+  assert.match(visibleForm.body, /<button\b[^>]*type="button"[^>]*id="qr"[^>]*onclick="scanQR\(\)"/);
+});
+
+test('Scan QR Voucher explains the phone camera when the browser cannot scan, and never submits', () => {
+  const f = fixture({ code: '' });
+  vm.runInContext('scanQR()', f.context);
+  assert.equal(f.submissions, 0);
+  assert.equal(f.elements.get('qr-hint').hidden, false);
+  assert.match(f.elements.get('qr-hint').textContent, /phone camera/);
+});
+
 // Go renders every template (deploy form, with consent and bank transfer) into MM_PORTAL_TEMPLATES_DIR; each file
 // then runs through this same suite in its own process, so all nine are held to the identical login behaviour.
 const templatesDir = process.env.MM_PORTAL_TEMPLATES_DIR;

@@ -220,8 +220,13 @@ type PortalConfig struct {
 	MobilePaymentEnabled bool `json:"mobile_payment_enabled"`
 	// TemplateID is the router login page look (see routeros.PortalTemplates). Empty or unset means "obsidian",
 	// which keeps portals saved before templates existed unchanged.
-	TemplateID string    `json:"template_id"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	TemplateID string `json:"template_id"`
+	// Support contacts shown in the router login page's support bar: a dialable phone number, a Telegram
+	// username (no @) and a Viber phone number. Empty hides that button.
+	SupportPhone    string    `json:"support_phone"`
+	SupportTelegram string    `json:"support_telegram"`
+	SupportViber    string    `json:"support_viber"`
+	UpdatedAt       time.Time `json:"updated_at"`
 }
 
 // IsHexColor reports whether s is a literal CSS hex colour — `#rgb`, `#rgba`,

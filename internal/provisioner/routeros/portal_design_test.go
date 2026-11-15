@@ -17,7 +17,7 @@ func TestRouterPortalOfflineArtworkAndReferenceDesign(t *testing.T) {
 			t.Fatalf("reference portal missing %q", want)
 		}
 	}
-	if strings.Contains(page, "data:image/") || strings.Contains(page, "url(") || strings.Contains(page, "https://") || strings.Contains(page, "http://") || len(page) > 24000 {
+	if strings.Contains(page, "data:image/") || strings.Contains(page, "url(") || strings.Contains(page, "https://") || strings.Contains(page, "http://") || len(page) > portalLoginMaxBytes {
 		t.Fatalf("portal must carry no image or external asset and stay within its router budget: bytes=%d", len(page))
 	}
 	t.Logf("Complete offline deep-slate and sky-cyan portal: %d bytes", len(page))

@@ -74,13 +74,17 @@ type PortalDeployment struct {
 	MediaPort string `json:"media_port"`
 }
 type PortalDeploymentPlan struct {
-	PreviewHTML  string   `json:"preview_html,omitempty"`
-	Profile      string   `json:"profile"`
-	Version      string   `json:"version"`
-	Server       string   `json:"server"`
-	File         string   `json:"file"`
-	Steps        []string `json:"steps"`
-	Confirmation string   `json:"confirmation"`
+	PreviewHTML string `json:"preview_html,omitempty"`
+	// StatusFile is the connected-session page installed beside the login page, in the same template. It is empty
+	// when the profile's HTML directory has no status.html to replace; the router then keeps its own.
+	StatusFile        string   `json:"status_file,omitempty"`
+	StatusPreviewHTML string   `json:"status_preview_html,omitempty"`
+	Profile           string   `json:"profile"`
+	Version           string   `json:"version"`
+	Server            string   `json:"server"`
+	File              string   `json:"file"`
+	Steps             []string `json:"steps"`
+	Confirmation      string   `json:"confirmation"`
 	// MediaHost and MediaPort echo the reviewed target so the operator's apply
 	// call matches exactly what was previewed.
 	MediaHost string `json:"media_host,omitempty"`
@@ -124,36 +128,55 @@ func portalLoginHTML() string {
 <title>Connect to WiFi</title>
 <style>
 /* Layered deep-slate surfaces with a sky-cyan accent (owner direction 2026-11-13). The router serves this page before the guest has
-   internet, so it uses system fonts and no image: the budget is 24 KB and nothing may be fetched. Night by default; light phones get the Day twin. */
+   internet, so it uses system fonts and no image: the budget is 30 KB and nothing may be fetched. Night by default; light phones get the Day twin. */
 :root{color-scheme:dark;--bg:#0b0e14;--surface:#121620;--sunken:#0e121a;--ink:#f8fafc;--ink-soft:#94a3b8;--ink-mute:#7b8ba3;--line:#ffffff17;--edge:#64748b;--accent:#38bdf8;--bad:#f87171;--bad-soft:#f8717120;--mesh:#38bdf817;--glow:0 0 0 3px #38bdf82e;--shadow:inset 0 1px 0 #ffffff0f,0 20px 40px -15px #0009;--portal-brand:#38bdf8;--portal-tint:#121620;--portal-on-brand:#06131f}
 @media(prefers-color-scheme:light){:root{color-scheme:light;--bg:#f8fafc;--surface:#ffffff;--sunken:#f1f5f9;--ink:#0f172a;--ink-soft:#475569;--ink-mute:#5b6b80;--line:#e2e8f0;--edge:#64748b;--accent:#0369a1;--bad:#b91c1c;--bad-soft:#b91c1c14;--mesh:#38bdf81f;--glow:0 0 0 3px #0369a129;--shadow:0 1px 3px #0f172a0f,0 8px 24px -8px #0f172a14}}
-*{box-sizing:border-box}html{min-height:100%;background:var(--bg)}
-body{margin:0;min-height:100vh;min-height:100svh;display:flex;align-items:center;justify-content:center;padding:32px 20px;background:radial-gradient(ellipse 75% 45% at 50% -10%,var(--mesh),transparent) no-repeat,var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans Myanmar",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
-.card{width:100%;max-width:400px;padding:32px 28px;text-align:left;border-radius:12px;border:1px solid var(--line);background:color-mix(in srgb,var(--portal-tint) 6%,var(--surface));box-shadow:var(--shadow)}
-.wifi-mark{display:block;width:40px;height:40px;margin:0 0 16px;color:var(--accent)}
-h1{font-size:28px;line-height:1.15;font-weight:650;letter-spacing:-.028em;margin:0 0 8px;color:var(--ink)}
-p{color:var(--ink-soft);font-size:15px;line-height:1.6;margin:0 0 24px}
-label{display:block}.field-label{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
-input{display:block;width:100%;min-height:60px;padding:0 16px;border-radius:8px;border:1px solid var(--edge);background:var(--sunken);color:var(--ink);font:600 22px ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.14em;text-transform:uppercase}
-input::placeholder{color:var(--ink-mute);letter-spacing:.3em}
-input:focus{outline:none;border-color:var(--accent);box-shadow:var(--glow)}
-button:focus-visible,a.alt:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+*{box-sizing:border-box}[hidden]{display:none!important}html{min-height:100%;background:var(--bg)}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans Myanmar",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+.wrap{position:relative;z-index:1;max-width:460px;min-height:100vh;min-height:100svh;margin:0 auto;padding:0 0 28px}
+.hero{position:relative;min-height:240px;padding:72px 20px 58px;display:flex;flex-direction:column;justify-content:flex-end;gap:8px;overflow:hidden;color:var(--ink);background:radial-gradient(ellipse 90% 80% at 50% 0,var(--mesh),transparent)}
+.hero>*{position:relative}.hero>.sc{position:absolute;inset:0;width:100%;height:100%}
+.hn{font-size:21px;line-height:1.3;font-weight:700;overflow-wrap:anywhere}.hw{font-size:13px;font-weight:600}
+.bdg{display:flex;flex-wrap:wrap;gap:6px}.bdg span{display:inline-flex;align-items:center;gap:6px;min-height:28px;padding:3px 11px;border-radius:999px;border:1px solid var(--accent);background:var(--surface);color:var(--ink);font-size:12px;font-weight:650}.bdg i{width:8px;height:8px;border-radius:50%;background:#10b981}
+.card{position:relative;margin:-40px 16px 0;padding:24px 20px;text-align:left;border-radius:16px;border:1px solid var(--line);background:color-mix(in srgb,var(--portal-tint) 6%,var(--surface));box-shadow:var(--shadow)}
+.wifi-mark{display:block;width:40px;height:40px;color:var(--accent)}
+h1{font-size:26px;line-height:1.15;font-weight:650;letter-spacing:-.028em;margin:0 0 8px;color:var(--ink)}
+h2{font-size:17px;line-height:1.3;font-weight:700;margin:24px 16px 14px;color:var(--ink)}
+p{color:var(--ink-soft);font-size:15px;line-height:1.6;margin:0 0 18px}
+button:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 button{width:100%;min-height:52px;margin-top:16px;padding:0 16px;border:1px solid color-mix(in srgb,var(--portal-brand) 70%,var(--ink));border-radius:8px;background-color:var(--portal-brand);background-image:linear-gradient(180deg,#ffffff33,#fff0);box-shadow:inset 0 1px 0 #ffffff40;color:var(--portal-on-brand);font:inherit;font-size:16px;font-weight:650;cursor:pointer;transition:filter .16s}
 button:hover{filter:brightness(1.07)}button:disabled{cursor:wait;opacity:.7}
-.brand{display:block;margin:24px 0 0;font-size:13px;line-height:1.5;color:var(--ink-mute);overflow-wrap:anywhere}
-a.alt{display:flex;align-items:center;justify-content:center;min-height:48px;margin-top:12px;border:1px solid var(--edge);border-radius:8px;color:var(--ink);font-size:15px;font-weight:600;text-decoration:none}
+.ic{flex:none;width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.hint{margin:10px 0 0;font-size:14px}
+.bg-art{position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;opacity:.22}
+.sb{stroke:var(--portal-brand);fill:none}.fb{fill:var(--portal-brand);stroke:none}
+.lang{position:absolute;z-index:2;top:12px;right:12px;display:flex;gap:2px;padding:3px;border-radius:999px;border:1px solid var(--line);background:var(--surface)}
+.lang button{width:auto;min-height:44px;margin:0;padding:0 14px;border:0;border-radius:999px;background:none;box-shadow:none;color:var(--ink);font-size:14px;font-weight:600}
+.lang button[aria-pressed=true]{background:var(--portal-brand);color:var(--portal-on-brand)}.lang button:hover,.tabs button:hover{filter:none}
+.sup{display:flex;gap:8px;margin:22px 16px 0}.sup a{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;min-height:48px;border-radius:12px;border:1px solid var(--edge);background:var(--surface);color:var(--ink);font-size:14px;font-weight:650;text-decoration:none}
+.tr{list-style:none;display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:22px 16px 0;padding:0;text-align:center;font-size:11px;line-height:1.35;color:var(--ink-soft)}.tr .ic{display:block;width:26px;height:26px;margin:0 auto 5px;color:var(--accent)}
+html[lang=my] :is(p,label,summary,button,a,li,b,.consent,.hn){line-height:1.75}html[lang=my] :is(h1,h2){line-height:1.6}
+@media(prefers-reduced-motion:reduce){button,.tabs button{transition:none}}
+/*login*/
+label{display:block}.field-label{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.lbl{margin:10px 0 4px;font-size:13px;font-weight:600;color:var(--ink-soft)}
+input{display:block;width:100%;min-height:60px;padding:0 16px;border-radius:8px;border:1px solid var(--edge);background:var(--sunken);color:var(--ink);font:600 22px ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.14em;text-transform:uppercase}
+input.txt{min-height:52px;font-family:inherit;font-size:17px;font-weight:500;letter-spacing:0;text-transform:none}
+input::placeholder{color:var(--ink-mute);letter-spacing:.3em}
+input:focus{outline:none;border-color:var(--accent);box-shadow:var(--glow)}
+.tabs{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin:0 0 14px;padding:4px;border-radius:999px;border:1px solid var(--line);background:var(--sunken)}
+.tabs button{min-height:44px;margin:0;padding:0 6px;border:0;border-radius:999px;background:none;box-shadow:none;color:var(--ink);font-size:14px;transition:background-color .2s,color .2s}
+.tabs button[aria-selected=true]{background:var(--portal-brand);color:var(--portal-on-brand)}
+button.gh,a.alt{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:48px;margin-top:10px;border:1px solid var(--edge);border-radius:8px;background:none;box-shadow:none;color:var(--ink);font-size:15px;font-weight:600;text-decoration:none}
 .err{margin:12px 0;padding:10px 12px;border-radius:8px;background:var(--bad-soft);border:1px solid var(--bad);color:var(--bad);font-size:14px;line-height:1.5;text-align:left}
 .consent{display:flex;align-items:flex-start;gap:10px;text-align:left;font-size:14px;line-height:1.5;margin:16px 0 0;color:var(--ink-soft)}.consent input{width:22px;min-height:22px;height:22px;padding:0;margin:0;flex-shrink:0;accent-color:var(--accent)}
-details{margin:0 0 16px;font-size:14px;line-height:1.6;color:var(--ink-soft);text-align:left}details p{white-space:pre-wrap;margin:10px 0;font-size:14px}summary{cursor:pointer;min-height:44px;display:flex;align-items:center}
-.card{position:relative;z-index:1}.bg-art{position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;opacity:.22}
-.sb{stroke:var(--portal-brand);fill:none}.fb{fill:var(--portal-brand);stroke:none}
-.lang{display:flex;justify-content:flex-end;gap:6px;margin:0 0 14px;order:-3}
-.lang button{width:auto;min-height:44px;margin:0;padding:0 14px;border:1px solid var(--edge);border-radius:999px;background:none;box-shadow:none;color:var(--ink);font-size:14px;font-weight:600}
-.lang button[aria-pressed=true]{background:var(--portal-brand);border-color:var(--portal-brand);color:var(--portal-on-brand)}.lang button:hover{filter:none}
-html[lang=my] p,html[lang=my] label,html[lang=my] summary,html[lang=my] button,html[lang=my] a.alt,html[lang=my] .consent{line-height:1.75}html[lang=my] h1{line-height:1.6}
-@media(max-height:560px){body{align-items:flex-start;padding-top:24px}}
-@media(prefers-reduced-motion:reduce){button{transition:none}}
-</style></head><body><main class="card">
+details{margin:0 0 12px;font-size:14px;line-height:1.6;color:var(--ink-soft);text-align:left}details p{white-space:pre-wrap;margin:10px 0;font-size:14px}summary{cursor:pointer;min-height:44px;display:flex;align-items:center;font-weight:600}summary::after{content:"+";margin-left:auto;font-size:18px}details[open] summary::after{content:"\2212"}
+.pg{list-style:none;margin:0 16px;padding:0;display:grid;grid-template-columns:1fr 1fr;gap:14px 10px}
+.pg li{position:relative;display:flex;flex-direction:column;gap:3px;min-width:0;padding:16px 12px 12px;border-radius:14px;border:1px solid var(--line);background:var(--surface);box-shadow:var(--shadow)}
+.pg .bv{border-color:var(--accent)}.pg em{position:absolute;top:-10px;right:10px;padding:2px 9px;border-radius:999px;background:var(--portal-brand);color:var(--portal-on-brand);font-size:11px;font-weight:700;font-style:normal}
+.pg b{font-size:13px;color:var(--ink-soft);overflow-wrap:anywhere}.pg .d{font-size:22px;font-weight:750;color:var(--ink)}.pg .s{font-size:12px;color:var(--ink-soft)}.pg strong{margin-top:6px;font-size:15px;color:var(--ink)}
+.pg a{display:flex;align-items:center;justify-content:center;min-height:44px;margin-top:8px;border-radius:10px;background:var(--portal-brand);color:var(--portal-on-brand);font-size:14px;font-weight:700;text-decoration:none}
+</style></head><body><div class="wrap"><header class="hero"></header><main class="card">
 <h1 data-t="title">Wi-Fi Access</h1>
 <p data-t="welcome">Enter voucher code to connect</p>
 $(if error)<p class="err">$(error)</p>$(endif)
@@ -163,20 +186,25 @@ $(if error)<p class="err">$(error)</p>$(endif)
 <input type="hidden" name="dst" value="$(link-orig)">
 <input type="hidden" name="popup" value="true">
 </form>
+<div class="tabs" role="tablist"><button type="button" id="tab-v" role="tab" aria-selected="true" onclick="setMode('v')" data-t="tabV">Voucher Code</button><button type="button" id="tab-m" role="tab" aria-selected="false" onclick="setMode('m')" data-t="tabM">Member Login</button></div>
 <form id="voucher-login" action="$(link-login-only)" method="post" onsubmit="return doLogin()" novalidate>
-<label class="field-label" for="voucher" data-t="voucher">Voucher code</label>
-<input id="voucher" name="voucher" type="text" placeholder="••••••••" autocapitalize="characters" autocorrect="off" autocomplete="off" spellcheck="false" aria-describedby="login-error">
+<div id="pane-v"><label class="field-label" for="voucher" data-t="voucher">Voucher code</label>
+<input id="voucher" name="voucher" type="text" placeholder="••••••••" autocapitalize="characters" autocorrect="off" autocomplete="off" spellcheck="false" aria-describedby="login-error"></div>
+<div id="pane-m" hidden><label class="lbl" for="mu" data-t="user">Username</label><input id="mu" class="txt" type="text" autocapitalize="none" autocorrect="off" autocomplete="username" spellcheck="false"><label class="lbl" for="mp" data-t="pass">Password</label><input id="mp" class="txt" type="password" autocomplete="current-password"></div>
 <p id="login-error" class="err" role="alert" hidden></p>
 <button id="connect" type="submit" data-t="connect">Connect to Wi-Fi</button>
+<button type="button" class="gh" id="qr" onclick="scanQR()"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h2v2h-2zM18 18h2v2h-2zM18 14h2M14 18v2"/></svg><span data-t="qr">Scan QR Voucher</span></button>
+<input id="qrf" type="file" accept="image/*" capture="environment" hidden onchange="readQR(this)">
+<p id="qr-hint" class="hint" role="status" hidden></p>
 </form>
-</main>
+</main></div>
 $(if chap-id)<script src="md5.js"></script>$(endif)
 <script>
 var loginPending=false;
 var loginTimer;
-var BI=false,PREF='';
-var T={en:{title:'Wi-Fi Access',welcome:'Enter voucher code to connect',voucher:'Voucher code',connect:'Connect to Wi-Fi',connecting:'Connecting\u2026',terms:'Internet access terms',pay:'Pay by bank transfer',consent:'I agree to the internet access terms.',s1:'Type your voucher code',s2:'Tap Connect',s3:'You are online',link:'Fast satellite link',passes:'Guest passes',badCode:'Enter the complete voucher code as printed.',needConsent:'Accept the internet access terms before connecting.',preview:'Preview only. No voucher was used and no internet access was granted.',noLoader:'WiFi login could not load. Reload this page and try again.',noResponse:'No login response received. Check your WiFi connection and try again.',sendFail:'Could not send your code. Check your WiFi connection and try again.'},
-my:{title:'Wi-Fi အသုံးပြုရန်',welcome:'ဘောက်ချာကုဒ် ထည့်ပြီး ချိတ်ဆက်ပါ',voucher:'ဘောက်ချာကုဒ်',connect:'Wi-Fi ချိတ်ဆက်မည်',connecting:'ချိတ်ဆက်နေသည်\u2026',terms:'အင်တာနက် အသုံးပြုမှု စည်းကမ်းချက်များ',pay:'ဘဏ်လွှဲ၍ ပေးချေမည်',consent:'အင်တာနက် အသုံးပြုမှု စည်းကမ်းချက်များကို သဘောတူပါသည်။',s1:'ဘောက်ချာကုဒ် ရိုက်ထည့်ပါ',s2:'ချိတ်ဆက်မည် ကို နှိပ်ပါ',s3:'အင်တာနက် သုံးနိုင်ပါပြီ',link:'ဂြိုဟ်တုလင့်ခ် မြန်နှုန်းမြင့်',passes:'ဧည့်သည် အသုံးပြုခွင့်များ',badCode:'စာရွက်ပေါ်ပါအတိုင်း ကုဒ်အပြည့်အစုံ ထည့်ပါ။',needConsent:'ချိတ်ဆက်မီ စည်းကမ်းချက်များကို လက်ခံပါ။',preview:'နမူနာကြည့်ရန်သာ ဖြစ်သည်။ ဘောက်ချာ မသုံးရသေးပါ၊ အင်တာနက်လည်း မရပါ။',noLoader:'Wi-Fi ဝင်ရောက်မှု မတင်နိုင်ပါ။ စာမျက်နှာကို ပြန်ဖွင့်ပြီး ထပ်ကြိုးစားပါ။',noResponse:'ဖြေကြားချက် မရရှိပါ။ Wi-Fi ချိတ်ဆက်မှုကို စစ်ပြီး ထပ်ကြိုးစားပါ။',sendFail:'ကုဒ်ကို မပို့နိုင်ပါ။ Wi-Fi ချိတ်ဆက်မှုကို စစ်ပြီး ထပ်ကြိုးစားပါ။'}};
+var BI=false,PREF='',mode='v';
+var T={en:{title:'Wi-Fi Access',welcome:'Enter voucher code to connect',voucher:'Voucher code',connect:'Connect to Wi-Fi',connecting:'Connecting\u2026',terms:'Internet access terms',pay:'Pay by bank transfer',consent:'I agree to the internet access terms.',tabV:'Voucher Code',tabM:'Member Login',user:'Username',pass:'Password',qr:'Scan QR Voucher',qrHint:'Point your phone camera at the QR code on your voucher, or type the code printed on it.',qrBad:'That QR code could not be read. Type the code printed on your voucher.',pk:'Internet Packages',bv:'Best Value',buy:'Buy Now',unl:'Unlimited',f1:'Fast Speed',f2:'24/7 Stable',f3:'Family Safe',f4:'Best Signal',call:'Call',badCode:'Enter the complete voucher code as printed.',badMember:'Enter your username and password.',needConsent:'Accept the internet access terms before connecting.',preview:'Preview only. No voucher was used and no internet access was granted.',noLoader:'WiFi login could not load. Reload this page and try again.',noResponse:'No login response received. Check your WiFi connection and try again.',sendFail:'Could not send your code. Check your WiFi connection and try again.'},
+my:{title:'Wi-Fi အသုံးပြုရန်',welcome:'ဘောက်ချာကုဒ် ထည့်ပြီး ချိတ်ဆက်ပါ',voucher:'ဘောက်ချာကုဒ်',connect:'Wi-Fi ချိတ်ဆက်မည်',connecting:'ချိတ်ဆက်နေသည်\u2026',terms:'အင်တာနက် အသုံးပြုမှု စည်းကမ်းချက်များ',pay:'ဘဏ်လွှဲ၍ ပေးချေမည်',consent:'အင်တာနက် အသုံးပြုမှု စည်းကမ်းချက်များကို သဘောတူပါသည်။',tabV:'ဘောက်ချာကုဒ်',tabM:'အဖွဲ့ဝင် ဝင်ရန်',user:'အသုံးပြုသူအမည်',pass:'စကားဝှက်',qr:'QR ဘောက်ချာ စကင်ဖတ်မည်',qrHint:'ဖုန်းကင်မရာဖြင့် ဘောက်ချာပေါ်ရှိ QR ကုဒ်ကို ဖတ်ပါ၊ သို့မဟုတ် စာရွက်ပေါ်ပါ ကုဒ်ကို ရိုက်ထည့်ပါ။',qrBad:'QR ကုဒ်ကို မဖတ်နိုင်ပါ။ ဘောက်ချာပေါ်ပါ ကုဒ်ကို ရိုက်ထည့်ပါ။',pk:'အင်တာနက် ပက်ကေ့ချ်များ',bv:'အတန်ဆုံး',buy:'ဝယ်မည်',unl:'အကန့်အသတ်မဲ့',f1:'မြန်နှုန်းမြင့်',f2:'၂၄ နာရီ တည်ငြိမ်',f3:'မိသားစုအတွက် ဘေးကင်း',f4:'လိုင်းအကောင်းဆုံး',call:'ဖုန်းခေါ်မည်',badCode:'စာရွက်ပေါ်ပါအတိုင်း ကုဒ်အပြည့်အစုံ ထည့်ပါ။',badMember:'အသုံးပြုသူအမည်နှင့် စကားဝှက် ထည့်ပါ။',needConsent:'ချိတ်ဆက်မီ စည်းကမ်းချက်များကို လက်ခံပါ။',preview:'နမူနာကြည့်ရန်သာ ဖြစ်သည်။ ဘောက်ချာ မသုံးရသေးပါ၊ အင်တာနက်လည်း မရပါ။',noLoader:'Wi-Fi ဝင်ရောက်မှု မတင်နိုင်ပါ။ စာမျက်နှာကို ပြန်ဖွင့်ပြီး ထပ်ကြိုးစားပါ။',noResponse:'ဖြေကြားချက် မရရှိပါ။ Wi-Fi ချိတ်ဆက်မှုကို စစ်ပြီး ထပ်ကြိုးစားပါ။',sendFail:'ကုဒ်ကို မပို့နိုင်ပါ။ Wi-Fi ချိတ်ဆက်မှုကို စစ်ပြီး ထပ်ကြိုးစားပါ။'}};
 var lang=PREF||((typeof navigator!=='undefined'&&/^my/i.test(navigator.language||''))?'my':'en');
 function tr(k){
   if(BI&&(k==='connect'||k==='pay')){return T.my[k]+' / '+T.en[k];}
@@ -195,6 +223,32 @@ function setLang(l){
   if(my){my.setAttribute('aria-pressed',l==='my'?'true':'false');}
   if(en){en.setAttribute('aria-pressed',l==='en'?'true':'false');}
 }
+function setMode(m){
+  mode=m;
+  var ids={'pane-v':m!=='v','pane-m':m!=='m'};
+  for(var k in ids){var e=document.getElementById(k);if(e){e.hidden=ids[k];}}
+  var v=document.getElementById('tab-v'),b=document.getElementById('tab-m');
+  if(v&&v.setAttribute){v.setAttribute('aria-selected',m==='v'?'true':'false');}
+  if(b&&b.setAttribute){b.setAttribute('aria-selected',m==='m'?'true':'false');}
+  resetLogin();
+}
+function qrSay(k){var h=document.getElementById('qr-hint');if(h){h.textContent=k?tr(k):'';h.hidden=!k;}}
+function scanQR(){
+  var f=document.getElementById('qrf');
+  if(f&&window.BarcodeDetector&&window.createImageBitmap){qrSay('');f.click();return;}
+  qrSay('qrHint');
+}
+function readQR(f){
+  if(!f.files||!f.files[0]){return;}
+  try{
+    window.createImageBitmap(f.files[0]).then(function(b){return new window.BarcodeDetector({formats:['qr_code']}).detect(b);}).then(function(r){
+      var v=r&&r[0]?String(r[0].rawValue):'',m=/[?&]username=([^&#]+)/.exec(v);
+      v=(m?decodeURIComponent(m[1]):v).trim().toUpperCase();
+      if(!/^[A-Z0-9][A-Z0-9_-]{3,31}$/.test(v)){qrSay('qrBad');return;}
+      setMode('v');document.getElementById('voucher').value=v;qrSay('');
+    })['catch'](function(){qrSay('qrBad');});
+  }catch(e){qrSay('qrBad');}
+}
 function resetLogin(message){
   window.clearTimeout(loginTimer);
   loginPending=false;
@@ -208,13 +262,25 @@ function resetLogin(message){
 }
 function doLogin(){
   if(loginPending){return false;}
-  var input=document.getElementById('voucher');
-  var code=input.value.trim().toUpperCase();
-  input.value=code;
-  if(!/^[A-Z0-9][A-Z0-9_-]{3,31}$/.test(code)){
-    resetLogin(tr('badCode'));
-    input.focus();
-    return false;
+  var input=document.getElementById('voucher'),user,code;
+  if(mode==='m'){
+    var mu=document.getElementById('mu');
+    user=mu.value.trim();
+    code=document.getElementById('mp').value;
+    if(!user||user.length>64||/\s/.test(user)||!code){
+      resetLogin(tr('badMember'));
+      mu.focus();
+      return false;
+    }
+  }else{
+    code=input.value.trim().toUpperCase();
+    input.value=code;
+    if(!/^[A-Z0-9][A-Z0-9_-]{3,31}$/.test(code)){
+      resetLogin(tr('badCode'));
+      input.focus();
+      return false;
+    }
+    user=code;
   }
   var consent=document.getElementById('voucher-consent');
   if(consent && !consent.checked){resetLogin(tr('needConsent'));return false;}
@@ -233,7 +299,7 @@ function doLogin(){
     }
   }
   var sendin=document.getElementById('sendin');
-  sendin.elements.username.value=code;
+  sendin.elements.username.value=user;
   sendin.elements.password.value=password;
   loginPending=true;
   input.disabled=true;
@@ -279,6 +345,7 @@ type portalState struct {
 	mediaGarden                             string
 	mediaHost, mediaPort                    string
 	directory, destination                  string
+	status                                  string
 	needsCHAP                               bool
 	hasGarden                               bool
 }
@@ -356,8 +423,8 @@ func portalPreflight(ctx context.Context, r CommandRunner, businessID, deviceID 
 		return s, fmt.Errorf("existing login.html not found; initialize HotSpot HTML files first")
 	}
 	out, err = r.Run(ctx, ":put [/file get [find "+file+"] contents]")
-	if err != nil || len(out) > 24000 || strings.TrimSpace(out) == "" {
-		return s, fmt.Errorf("login page could not be read safely (maximum 24 KB)")
+	if err != nil || len(out) > portalLoginMaxBytes || strings.TrimSpace(out) == "" {
+		return s, fmt.Errorf("login page could not be read safely (maximum 30 KB)")
 	}
 	s.original = strings.TrimSuffix(strings.TrimSuffix(out, "\n"), "\r")
 	var renderErr error
@@ -368,6 +435,17 @@ func portalPreflight(ctx context.Context, r CommandRunner, businessID, deviceID 
 	s.plan.PreviewHTML, renderErr = RenderPortalLogin(request.Design, true)
 	if renderErr != nil {
 		return s, renderErr
+	}
+	// The matching status.html replaces the copied one only where the profile already serves a status page.
+	out, err = r.Run(ctx, "/file print count-only where name="+routerOSQuoted(directory+"/status.html"))
+	if err == nil && strings.TrimSpace(out) == "1" {
+		if s.status, renderErr = RenderPortalStatus(request.Design, false); renderErr != nil {
+			return s, renderErr
+		}
+		if s.plan.StatusPreviewHTML, renderErr = RenderPortalStatus(request.Design, true); renderErr != nil {
+			return s, renderErr
+		}
+		s.plan.StatusFile = s.destination + "/status.html"
 	}
 	s.garden = "comment=" + routerOSQuoted("mm-portal-"+request.Profile)
 	mediaHost, mediaPort, mediaErr := mediaTarget(request)
@@ -397,9 +475,13 @@ func portalPreflight(ctx context.Context, r CommandRunner, businessID, deviceID 
 	if s.mediaHost != "" {
 		steps = append(steps, "Allow guests on this HotSpot to reach the media server at "+s.mediaHost+":"+s.mediaPort+" on your local network")
 	}
-	steps = append(steps, "Install the router-served voucher login page and switch only profile "+request.Profile, "Read back and verify the login page and profile switch; the RouterBOARD validates issued voucher codes against its own user list")
+	steps = append(steps, "Install the router-served voucher login page and switch only profile "+request.Profile)
+	if s.status != "" {
+		steps = append(steps, "Install the matching connected-session page (status.html) with session details and a Logout button")
+	}
+	steps = append(steps, "Read back and verify the login page and profile switch; the RouterBOARD validates issued voucher codes against its own user list")
 	s.plan.Steps = steps
-	encoded, _ := json.Marshal([]any{businessID, deviceID, s.plan, s.original, s.replacement, s.hasGarden})
+	encoded, _ := json.Marshal([]any{businessID, deviceID, s.plan, s.original, s.replacement, s.hasGarden, s.status})
 	digest := sha256.Sum256(encoded)
 	s.plan.Confirmation = hex.EncodeToString(digest[:])
 	return s, nil
@@ -559,6 +641,17 @@ func (a *DeviceApplier) ApplyPortal(ctx context.Context, businessID, deviceID st
 	if err != nil || strings.TrimSpace(out) != s.replacement {
 		rollback()
 		return result, fmt.Errorf("login page verification failed; check rollback status")
+	}
+	if s.status != "" {
+		statusFile := "name=" + routerOSQuoted(s.plan.StatusFile)
+		_, err = r.Run(ctx, "/file set [find "+statusFile+"] contents="+routerOSQuoted(s.status))
+		if err == nil {
+			out, err = r.Run(ctx, ":put [/file get [find "+statusFile+"] contents]")
+		}
+		if err != nil || strings.TrimSpace(out) != s.status {
+			rollback()
+			return result, fmt.Errorf("status page write did not verify; check rollback status")
+		}
 	}
 	out, err = r.Run(ctx, portalGardenCommand(s.garden, false))
 	g := parseValueList(out)

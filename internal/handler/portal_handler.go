@@ -508,6 +508,9 @@ func (h *PortalHandler) StaffUpdateConfig(c *gin.Context) {
 		VoucherLoginEnabled  *bool              `json:"voucher_login_enabled"`
 		MobilePaymentEnabled *bool              `json:"mobile_payment_enabled"`
 		PaymentInstructions  *string            `json:"payment_instructions"`
+		SupportPhone         *string            `json:"support_phone"`
+		SupportTelegram      *string            `json:"support_telegram"`
+		SupportViber         *string            `json:"support_viber"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -547,6 +550,26 @@ func (h *PortalHandler) StaffUpdateConfig(c *gin.Context) {
 	if req.GlassTintHex != nil && !model.IsHexColor(*req.GlassTintHex) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "glass_tint_hex must be a hex colour like #7ad0ff"})
 		return
+	}
+	// Support contacts become links on the router login page, so only a plain phone number or Telegram username is stored.
+	for _, contact := range []struct {
+		value     *string
+		normalize func(string) (string, bool)
+		message   string
+	}{
+		{req.SupportPhone, routeros.NormalizeSupportPhone, "support phone must be 6 to 15 digits, with an optional leading +"},
+		{req.SupportTelegram, routeros.NormalizeSupportTelegram, "support Telegram must be a username of 5 to 32 letters, digits or underscores"},
+		{req.SupportViber, routeros.NormalizeSupportViber, "support Viber must be a phone number of 6 to 15 digits, with an optional leading +"},
+	} {
+		if contact.value == nil {
+			continue
+		}
+		normalized, ok := contact.normalize(*contact.value)
+		if !ok {
+			c.JSON(http.StatusBadRequest, gin.H{"error": contact.message})
+			return
+		}
+		*contact.value = normalized
 	}
 	if req.TemplateID != nil && !routeros.ValidPortalTemplate(*req.TemplateID) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "unknown login page template"})
@@ -632,6 +655,15 @@ func (h *PortalHandler) StaffUpdateConfig(c *gin.Context) {
 		}
 		if req.PaymentInstructions != nil {
 			existing.PaymentInstructions = strings.TrimSpace(*req.PaymentInstructions)
+		}
+		if req.SupportPhone != nil {
+			existing.SupportPhone = *req.SupportPhone
+		}
+		if req.SupportTelegram != nil {
+			existing.SupportTelegram = *req.SupportTelegram
+		}
+		if req.SupportViber != nil {
+			existing.SupportViber = *req.SupportViber
 		}
 		if req.BankName != nil {
 			existing.BankName = *req.BankName
@@ -740,6 +772,12 @@ func (h *PortalHandler) RouterPreview(c *gin.Context) {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
+	// The connected-session page (status.html) in the same template, with a labelled sample session.
+	status, err := routeros.RenderPortalStatus(&design, true)
+	if err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
 	c.Header("Cache-Control", "no-store")
-	c.JSON(200, gin.H{"html": page})
+	c.JSON(200, gin.H{"html": page, "status_html": status})
 }
