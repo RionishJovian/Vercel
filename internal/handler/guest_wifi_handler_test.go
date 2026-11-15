@@ -10,6 +10,8 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -91,6 +93,10 @@ func setupHarness(base string) {
 		return
 	}
 	harnessDB = db
+	if os.Getenv("MM_TEST_SCHEMA") == "migrations" {
+		harnessFatal = loadProductionSchema(db)
+		return
+	}
 	sqlBytes, err := os.ReadFile("../../database/init.sql")
 	if err != nil {
 		harnessFatal = fmt.Errorf("read schema: %w", err)
@@ -143,6 +149,43 @@ func setupHarness(base string) {
 			return
 		}
 	}
+}
+
+// loadProductionSchema builds the schema the way production does (mm-migrate): db/baseline.sql, then
+// every file in db/migrations in order, then deploy/runtime-db-role.sql. It exercises every
+// foreign key and trigger a newer migration added, which the hand-picked list below cannot.
+func loadProductionSchema(db *database.DB) error {
+	base, err := os.ReadFile("../../db/baseline.sql")
+	if err != nil {
+		return err
+	}
+	files, err := filepath.Glob("../../db/migrations/*.sql")
+	if err != nil {
+		return err
+	}
+	sort.Strings(files)
+	// The dump header empties search_path and turns row_security off for the connection it runs
+	// on; restore both so that pooled connection behaves like a fresh psql session.
+	if _, err := db.Exec(string(base) + "\nSELECT pg_catalog.set_config('search_path','public',false), pg_catalog.set_config('row_security','on',false);"); err != nil {
+		return fmt.Errorf("load baseline: %w", err)
+	}
+	for _, f := range files {
+		body, err := os.ReadFile(f)
+		if err != nil {
+			return err
+		}
+		if _, err := db.Exec(string(body)); err != nil {
+			return fmt.Errorf("load migration %s: %w", filepath.Base(f), err)
+		}
+	}
+	post, err := os.ReadFile("../../deploy/runtime-db-role.sql")
+	if err != nil {
+		return err
+	}
+	if _, err := db.Exec(string(post)); err != nil {
+		return fmt.Errorf("load runtime role: %w", err)
+	}
+	return nil
 }
 
 func teardownHarness() {

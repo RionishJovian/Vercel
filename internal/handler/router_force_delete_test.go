@@ -6,10 +6,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/lib/pq"
 	"mega-magic/internal/auth"
 	"mega-magic/internal/database"
 	"mega-magic/internal/model"
@@ -51,6 +53,7 @@ func TestDBRouterForceDeleteByPlatformAdmin(t *testing.T) {
 	}
 	// Every kind of history that blocks a normal delete, on one router that already ended its
 	// Hub connection (the Nish's ax3 case).
+	batchOf := map[string]string{}
 	withEveryHistory := func(t *testing.T) (device string, voucher string) {
 		t.Helper()
 		device = insertGatewayNoSite(db, business)
@@ -69,6 +72,15 @@ func TestDBRouterForceDeleteByPlatformAdmin(t *testing.T) {
 				t.Fatalf("seed %s: %v", seed.name, err)
 			}
 		}
+		// Issue items point at the batch with no cascade: the table the first production attempt missed.
+		var batch string
+		if err := db.QueryRow(`SELECT id FROM guest_voucher_issue_batches WHERE device_id=$1`, device).Scan(&batch); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec(`INSERT INTO guest_voucher_issue_items(business_id,batch_id,voucher_id,position) VALUES($1,$2,$3,0)`, business, batch, voucher); err != nil {
+			t.Fatalf("seed issue item: %v", err)
+		}
+		batchOf[device] = batch
 		var account string
 		if err := db.QueryRow(`INSERT INTO broadband_accounts(id,business_id,device_id,username,profile) VALUES(uuid_generate_v4(),$1,$2,'paid-customer','10M') RETURNING id`, business, device).Scan(&account); err != nil {
 			t.Fatal(err)
@@ -85,14 +97,14 @@ VALUES(uuid_generate_v4(),$1,$2,$3,'create',15000,30,repeat('c',64),'sealed','ap
 	ledgers := func(device string) int {
 		t.Helper()
 		total := 0
-		for _, table := range forceDeleteHistory {
+		for _, table := range []string{"broadband_session_usage", "broadband_operations", "broadband_accounts", "vip_wifi_codes", "ap_radio_proposals", "guest_access_recovery", "guest_voucher_grants", "guest_voucher_issue_batches"} {
 			total += count(`SELECT count(*) FROM `+table+` WHERE device_id=$1`, device)
 		}
-		return total
+		return total + count(`SELECT count(*) FROM guest_voucher_issue_items WHERE batch_id=$1`, batchOf[device])
 	}
 	untouched := func(t *testing.T, device string) {
 		t.Helper()
-		if count(`SELECT count(*) FROM devices WHERE device_id=$1`, device) != 1 || ledgers(device) != 8 {
+		if count(`SELECT count(*) FROM devices WHERE device_id=$1`, device) != 1 || ledgers(device) != 9 {
 			t.Fatalf("a refused or failed force delete changed data: %d ledger rows left", ledgers(device))
 		}
 	}
@@ -174,4 +186,89 @@ VALUES(uuid_generate_v4(),$1,$2,$3,'10.77.0.50','10.77.0.51','mm-hub','old','SHA
 			t.Fatal("the force delete was not audited with what it removed")
 		}
 	})
+}
+
+// The delete plan comes from the catalog, so it must cover every foreign key that has no
+// cascade, however deep, and the API's database role must be allowed to delete from each table.
+func TestDBForceDeletePlanCoversEveryBlockingForeignKey(t *testing.T) {
+	db := harness_testdb(t)
+	steps, err := forceDeleteSteps(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	planned := map[string]bool{"devices": true}
+	for _, s := range steps {
+		planned[s.table] = true
+	}
+	for _, want := range []string{"broadband_session_usage", "broadband_operations", "broadband_accounts", "vip_wifi_codes", "ap_radio_proposals", "guest_access_recovery", "guest_voucher_grants", "guest_voucher_issue_items", "guest_voucher_issue_batches"} {
+		if !planned[want] {
+			t.Errorf("the plan misses %s: %v", want, steps)
+		}
+	}
+	rows, err := db.Query(`SELECT cl.relname, pl.relname, c.conname FROM pg_constraint c
+JOIN pg_class cl ON cl.oid=c.conrelid JOIN pg_class pl ON pl.oid=c.confrelid
+WHERE c.contype='f' AND c.confdeltype IN ('a','r') AND cl.relnamespace='public'::regnamespace AND c.conrelid<>c.confrelid`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var child, parent, name string
+		if err := rows.Scan(&child, &parent, &name); err != nil {
+			t.Fatal(err)
+		}
+		if planned[parent] && !planned[child] {
+			t.Errorf("%s (%s) would block deleting %s but is not in the plan", child, name, parent)
+		}
+	}
+	if os.Getenv("MM_TEST_SCHEMA") != "migrations" {
+		t.Skip("grants are only provisioned in the full production schema (set MM_TEST_SCHEMA=migrations)")
+	}
+	for table := range planned {
+		var ok bool
+		if err := db.QueryRow(`SELECT has_table_privilege('mega_magic_runtime', $1, 'DELETE')`, "public."+pq.QuoteIdentifier(table)).Scan(&ok); err != nil {
+			t.Fatal(err)
+		}
+		if !ok {
+			t.Errorf("the API role cannot DELETE from %s", table)
+		}
+	}
+}
+
+func TestPlanForceDeleteOrdersChildrenFirstAndScopesThroughParents(t *testing.T) {
+	devKey := []string{"device_id", "business_id"}
+	edges := []forceDeleteEdge{
+		{child: "grants", parent: "devices", childCols: devKey, parentCols: devKey, action: "a"},
+		{child: "recovery", parent: "devices", childCols: devKey, parentCols: devKey, action: "a"},
+		{child: "recovery", parent: "grants", childCols: []string{"voucher_id", "business_id"}, parentCols: []string{"voucher_id", "business_id"}, action: "a"},
+		{child: "batches", parent: "devices", childCols: devKey, parentCols: devKey, action: "a"},
+		{child: "items", parent: "batches", childCols: []string{"business_id", "batch_id"}, parentCols: []string{"business_id", "id"}, action: "a"},
+		{child: "items", parent: "vouchers", childCols: []string{"voucher_id"}, parentCols: []string{"id"}, action: "a"},
+		{child: "events", parent: "batches", childCols: []string{"batch_id"}, parentCols: []string{"id"}, action: "c"},
+		{child: "event_notes", parent: "events", childCols: []string{"event_id"}, parentCols: []string{"id"}, action: "a"},
+		{child: "samples", parent: "devices", childCols: devKey, parentCols: devKey, action: "c"},
+		{child: "vouchers", parent: "devices", childCols: devKey, parentCols: devKey, action: "n"},
+		{child: "bystander", parent: "devices", childCols: devKey, parentCols: devKey, action: "n"},
+	}
+	steps := planForceDelete(edges)
+	index := map[string]int{}
+	for i, s := range steps {
+		index[s.table] = i
+	}
+	for _, skipped := range []string{"samples", "vouchers", "bystander"} {
+		if _, ok := index[skipped]; ok {
+			t.Errorf("%s cascades or keeps its rows and must not be deleted by hand", skipped)
+		}
+	}
+	for _, pair := range [][2]string{{"recovery", "grants"}, {"items", "batches"}, {"event_notes", "events"}, {"events", "batches"}} {
+		a, aok := index[pair[0]]
+		b, bok := index[pair[1]]
+		if !aok || !bok || a > b {
+			t.Errorf("%s must be planned before %s: %v", pair[0], pair[1], steps)
+		}
+	}
+	items := steps[index["items"]].scope
+	if !strings.Contains(items, `FROM "batches" WHERE`) || !strings.Contains(items, `device_id=$1 AND business_id=$2`) || strings.Contains(items, "vouchers") {
+		t.Errorf("items must be scoped through its batch only: %s", items)
+	}
 }

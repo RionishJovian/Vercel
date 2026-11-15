@@ -35,7 +35,7 @@ Older notes that name `web/app.html` or ask for UI in `src/` are obsolete: new c
 - Production host: Vultr Singapore `magic-app` (`207.148.76.172`); `megamagic.tech` resolves there (verified). Hostinger (`srv2032937`, `156.67.216.128`) and the Z.com servers are discontinued; do not use or restore them. SSH uses the key recorded in the owner's SSH config, not a password. Never store credentials in this file.
 - Proof of what is live: the API container image carries the label `org.opencontainers.image.revision` (matched `2ff77b1` on 2026-11-06), and served console assets can be hashed against a local `app/` build (matched on that date). `/api/v1/version` returns `0.1.0-dev` and does not identify the commit; an image tag alone is not proof of served content.
 - Do not edit files inside running containers.
-- Local tests: database tests need an explicitly selected disposable database (`MM_TEST_DB_URL`); never reuse production connection settings. Skipped database tests are not integration coverage. Do not start `deploy/compose.go-restore.yaml` for tests.
+- Local tests: database tests need an explicitly selected disposable database (`MM_TEST_DB_URL`); never reuse production connection settings. Skipped database tests are not integration coverage. `MM_TEST_SCHEMA=migrations` builds the throwaway database the way production does (`db/baseline.sql`, every `db/migrations` file, then `deploy/runtime-db-role.sql`) instead of the legacy `database/init.sql` subset; run router-delete and other foreign-key tests that way too. Do not start `deploy/compose.go-restore.yaml` for tests.
 
 ## 4. Product rules (owner decisions)
 

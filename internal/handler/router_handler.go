@@ -362,6 +362,7 @@ func (h *RouterHandler) DeleteRouter(c *gin.Context) {
 	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
 		existing, err := h.deviceRepo.GetDeviceByIDTXN(tx, deviceID)
 		if err != nil {
+			log.Printf("router delete: loading %s failed: %v", deviceID, err)
 			return &httpError{status: http.StatusInternalServerError, msg: "database error"}
 		}
 		if existing == nil {
