@@ -40,6 +40,7 @@ import (
 
 type Server struct {
 	telegramRuntime   *telegram.Runtime
+	renotify          func(context.Context)
 	telegramCancel    context.CancelFunc
 	telegramDone      chan struct{}
 	broadband         *handler.SecurityHandler
@@ -530,7 +531,8 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		ownerDecider.Deciders = append(ownerDecider.Deciders, handler.MediaReceiptDecider{Store: mediaBridge.NewPostgres(db)})
 	}
 	botRuntime.SetBusinessDecider(ownerDecider)
-	authHandler.NotifyRenewal = func(id string) { platformHandler.NotifyAccountRenewal(id, botRuntime) }
+	// Sent after the customer's response, never inside it; an undelivered alert is retried by renotify.
+	authHandler.NotifyRenewal = func(id string) { go platformHandler.NotifyAccountRenewal(id, botRuntime) }
 
 	// Start the recovery worker: consumes peer.recover (from the evaluator),
 	// runs the a/b/c self-healing ladder, emits recovery.result / escalate.
@@ -557,6 +559,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 
 	return &Server{
 		telegramRuntime: botRuntime,
+		renotify:        func(ctx context.Context) { platformHandler.RunRenewalNotifier(ctx, botRuntime) },
 		cfg:             cfg,
 		log:             log,
 		sugar:           sugar,
@@ -1110,6 +1113,9 @@ func (s *Server) Start() error {
 		done := s.telegramDone
 		s.guestRepairMu.Unlock()
 		go func() { defer close(done); s.telegramRuntime.Run(ctx) }()
+		if s.renotify != nil {
+			go s.renotify(ctx)
+		}
 		defer cancel()
 	}
 	s.sugar.Infow("Starting HTTP server", "addr", s.http.Addr)

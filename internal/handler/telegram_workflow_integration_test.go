@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"github.com/gin-gonic/gin"
 	"mega-magic/internal/database"
 	"mega-magic/internal/model"
@@ -11,6 +12,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 type runtimeStub struct{ wakes int }
@@ -149,5 +151,53 @@ func TestRenewalNotificationIsAfterCommitAndNotRepeated(t *testing.T) {
 	}
 	if calls != 1 {
 		t.Fatalf("idempotent renewal sent %d notifications", calls)
+	}
+}
+
+type alertStub struct {
+	fail bool
+	sent int
+}
+
+func (a *alertStub) SendMessage(string, string) error { return nil }
+func (a *alertStub) SendButtons(string, string, string) error {
+	a.sent++
+	if a.fail {
+		return errors.New("receiver is not running")
+	}
+	return nil
+}
+func (a *alertStub) VerifyToken() (bool, string)                             { return false, "" }
+func (a *alertStub) AwaitReply(string, time.Duration) (string, string, bool) { return "", "", false }
+
+// An alert that could not be delivered stays unmarked, so the retry loop picks it up;
+// a delivered one is marked and not sent again.
+func TestRenewalAlertIsMarkedOnlyWhenDelivered(t *testing.T) {
+	db := harness_testdb(t)
+	bid := insertBusiness(db)
+	var uid, id string
+	if e := db.QueryRow(`INSERT INTO users(business_id,email,full_name,password_hash,user_role)VALUES($1,$2,'Fixture','fixture','OWNER')RETURNING user_id`, bid, randHex(8)+"@alert.fixture").Scan(&uid); e != nil {
+		t.Fatal(e)
+	}
+	if e := db.QueryRow(`INSERT INTO app_account_pass_renewals(user_id,business_id,plan)VALUES($1,$2,'monthly')RETURNING id`, uid, bid).Scan(&id); e != nil {
+		t.Fatal(e)
+	}
+	p := NewPlatformHandler(database.NewPlatformBusinessRepository(db), nil, nil, db, nil)
+	notified := func() bool {
+		var ok bool
+		if e := db.QueryRow(`SELECT notified_at IS NOT NULL FROM app_account_pass_renewals WHERE id=$1`, id).Scan(&ok); e != nil {
+			t.Fatal(e)
+		}
+		return ok
+	}
+	stub := &alertStub{fail: true}
+	p.NotifyAccountRenewal(id, stub)
+	if notified() {
+		t.Fatal("a failed send must leave the request un-notified")
+	}
+	stub.fail = false
+	p.NotifyAccountRenewal(id, stub)
+	if !notified() || stub.sent != 2 {
+		t.Fatalf("a delivered send must mark the request; notified=%v sent=%d", notified(), stub.sent)
 	}
 }

@@ -87,7 +87,7 @@ func (h *PlatformHandler) AccountRenewalInbox(c *gin.Context) {
 		return
 	}
 	var raw []byte
-	err := h.db.QueryRowContext(c.Request.Context(), `SELECT COALESCE(jsonb_agg(q),'[]'::jsonb) FROM(SELECT r.id,r.user_id,r.business_id,u.email,r.plan,r.status,r.created_at,r.amount_mmk,r.bank_reference,r.bank_snapshot FROM app_account_pass_renewals r JOIN users u ON u.user_id=r.user_id AND u.business_id=r.business_id WHERE r.status='pending' ORDER BY r.created_at,r.id LIMIT 100)q`).Scan(&raw)
+	err := h.db.QueryRowContext(c.Request.Context(), `SELECT COALESCE(jsonb_agg(q),'[]'::jsonb) FROM(SELECT r.id,r.user_id,r.business_id,u.email,r.plan,r.status,r.created_at,r.amount_mmk,r.bank_reference,r.bank_snapshot,(r.notified_at IS NOT NULL) AS notified FROM app_account_pass_renewals r JOIN users u ON u.user_id=r.user_id AND u.business_id=r.business_id WHERE r.status='pending' ORDER BY r.created_at,r.id LIMIT 100)q`).Scan(&raw)
 	if err != nil {
 		c.JSON(503, gin.H{"error": "renewal inbox unavailable"})
 		return
