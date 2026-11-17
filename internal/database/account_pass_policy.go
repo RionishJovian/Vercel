@@ -53,6 +53,10 @@ func AccountPassStatusTXN(tx *sql.Tx, businessID, userID string, enabled, operat
 		return &v.Time
 	}
 	status := accountpass.Evaluate(now, enabled, operator, pointer(start), pointer(end), pointer(revoked), pointer(transition))
+	// The pass includes one gateway; paid router slots and platform grants add more.
+	if err := tx.QueryRow(`SELECT business_gateway_capacity($1)`, businessID).Scan(&status.RouterLimit); err != nil {
+		return accountpass.Status{}, err
+	}
 	status.Authorized = operator || (!operatorWorkspace && primary.Valid && primary.String == userID)
 	if enabled && !status.Authorized {
 		status.Access = false

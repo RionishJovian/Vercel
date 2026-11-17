@@ -167,7 +167,7 @@ func TestClientBusinessCapacitySerializesCreation(t *testing.T) {
 			for e := range results {
 				if e == nil {
 					ok++
-				} else if bytes.Contains([]byte(e.Error()), []byte("One ")) {
+				} else if bytes.Contains([]byte(e.Error()), []byte("One ")) || bytes.Contains([]byte(e.Error()), []byte("Gateway capacity reached")) {
 					denied++
 				} else {
 					t.Fatal(e)

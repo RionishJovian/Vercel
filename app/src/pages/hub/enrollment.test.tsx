@@ -4,7 +4,7 @@ import { I18nProvider } from "../../i18n";
 import { Enrollment } from "./Enrollment";
 
 const ID = "6f69dede-53d9-478a-bc68-9911e878d440";
-const SETUP = "{\n:put \"probe\"\n}\n";
+const SETUP = "{\n:put \"check\"\n# APPLY: tunnel\n:put \"probe\"\n}\n";
 const PASTE = "\n" + SETUP;
 let calls: Array<{ method: string; url: string; body?: Record<string, unknown> }>;
 let callbackAnswer: { status: number; body: unknown } = { status: 200, body: { one_paste: true, key_custody: "router_only", router_script: SETUP } };

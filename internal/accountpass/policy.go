@@ -51,6 +51,8 @@ type Status struct {
 	TrialExpiresAt      *time.Time `json:"trial_expires_at,omitempty"`
 	CapacityExempt      bool       `json:"capacity_exempt"`
 	CapacityScope       string     `json:"capacity_scope"`
+	// RouterLimit is the included gateway (1) from Evaluate; the database layer
+	// replaces it with business_gateway_capacity() for the business.
 	RouterLimit         int        `json:"router_limit"`
 	SiteLimit           int        `json:"site_limit"`
 	UnlimitedVouchers   bool       `json:"unlimited_vouchers"`

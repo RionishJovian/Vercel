@@ -53,7 +53,7 @@ func TestHandshakeRedactionRemovesOnlyTheWireGuardKey(t *testing.T) {
 func TestNoScriptIsReissuedAfterTheKeyWasRemoved(t *testing.T) {
 	p, raw := managementWithKey(t)
 	// A real tunnel block, so the only reason to refuse is the removed key.
-	p.tunnelScript = "{\n# Scoped tunnel only. Does not enable SSH/REST or change WAN/LAN/firewall/users.\n/interface/wireguard add private-key=\"" + strings.Repeat("A", 43) + "=\"\n}"
+	p.tunnelScript = "{\n# Scoped tunnel only. Does not enable SSH/REST or change WAN/LAN/firewall/users.\n# PREFLIGHT: checks\n# APPLY: writes\n/interface/wireguard add private-key=\"" + strings.Repeat("A", 43) + "=\"\n}"
 	if _, err := automaticEnrollmentScript("gateway", p); err != nil {
 		t.Fatalf("a normal script must still build: %v", err)
 	}

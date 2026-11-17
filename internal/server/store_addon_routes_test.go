@@ -23,6 +23,7 @@ func TestDBStoreAddonCatalogAndRequests(t *testing.T) {
 	if _, e = db.Exec(string(b)); e != nil {
 		t.Fatal(e)
 	}
+	applyGatewayCapacitySchema(t, db)
 	svc, _ := auth.NewService("store-addon-test-signing-secret", time.Hour, time.Hour, 4)
 	svc.UseSessions(db)
 	mkBiz := func(name string) string {

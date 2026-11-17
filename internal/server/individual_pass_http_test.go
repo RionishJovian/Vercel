@@ -26,6 +26,7 @@ func TestIndividualProductionRouteChain(t *testing.T) {
 			t.Fatal(e)
 		}
 	}
+	applyGatewayCapacitySchema(t, db)
 	if e := database.CheckIndividualPassSchema(db); e == nil {
 		t.Fatal("unarmed enforcement accepted")
 	}

@@ -32,7 +32,26 @@ func insertSite(db *database.DB, businessID string) string {
 	return id
 }
 
+// allowGateways grants extra gateway slots (2026-11-13 paid-gateway rule), the way
+// an approved purchase or platform grant would, for fixtures with several gateways.
+func allowGateways(db *database.DB, businessID string, extra int) {
+	if _, err := db.Exec(`INSERT INTO gateway_capacity_grants(business_id,units,source,reason) VALUES($1,$2,'operator_grant','test fixture: several gateways')`, businessID, extra); err != nil {
+		panic("grant gateway slots: " + err.Error())
+	}
+}
+
+// ensureGatewaySlot grants one fixture slot when the business has no free gateway
+// slot, so helpers that add several gateways keep working under the paid-gateway rule.
+func ensureGatewaySlot(db *database.DB, businessID string) {
+	if _, err := db.Exec(`INSERT INTO gateway_capacity_grants(business_id,units,source,reason)
+		SELECT $1,1,'operator_grant','test fixture: several gateways'
+		 WHERE business_gateway_capacity($1) <= (SELECT count(*) FROM devices WHERE business_id=$1 AND deployment_layer='MAIN_GATEWAY')`, businessID); err != nil {
+		panic("grant gateway slot: " + err.Error())
+	}
+}
+
 func insertGateway(db *database.DB, businessID, siteID string) string {
+	ensureGatewaySlot(db, businessID)
 	var id string
 	err := db.QueryRow(
 		`INSERT INTO devices (business_id, site_id, hardware_name, deployment_layer) VALUES ($1, $2, 'gateway', 'MAIN_GATEWAY') RETURNING device_id`,
@@ -45,6 +64,7 @@ func insertGateway(db *database.DB, businessID, siteID string) string {
 }
 
 func insertGatewayNoSite(db *database.DB, businessID string) string {
+	ensureGatewaySlot(db, businessID)
 	var id string
 	err := db.QueryRow(
 		`INSERT INTO devices (business_id, hardware_name, deployment_layer) VALUES ($1, 'gateway-no-site', 'MAIN_GATEWAY') RETURNING device_id`,

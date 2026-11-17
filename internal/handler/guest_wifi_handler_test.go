@@ -149,6 +149,18 @@ func setupHarness(base string) {
 			return
 		}
 	}
+	// Gateway capacity (2026-11-13) needs the Store tables, which init.sql predates.
+	for _, name := range []string{"../../migrations/20261031100000_store_addons.sql", "../../db/migrations/20261118120000_gateway_capacity.sql"} {
+		raw, err := os.ReadFile(name)
+		if err != nil {
+			harnessFatal = fmt.Errorf("read migration %s: %w", name, err)
+			return
+		}
+		if _, err := db.Exec(string(raw)); err != nil {
+			harnessFatal = fmt.Errorf("load migration %s into %s: %w", name, harnessName, err)
+			return
+		}
+	}
 }
 
 // loadProductionSchema builds the schema the way production does (mm-migrate): db/baseline.sql, then

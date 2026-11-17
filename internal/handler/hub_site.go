@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"mega-magic/internal/auth"
+	"mega-magic/internal/database"
 )
 
 var gatewaySiteUUID = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
@@ -96,6 +97,33 @@ func (h *VPSHandler) RequireGatewaySite(c *gin.Context) {
 	}
 	if !ready {
 		c.AbortWithStatusJSON(409, gin.H{"error": "Add a site and assign this gateway before connecting Magic Hub", "code": "site_required"})
+		return
+	}
+	c.Next()
+}
+// RequireGatewayCapacity guards only the endpoints that start a NEW Hub
+// allocation (bootstrap, enroll, quick-enroll). The gateway must fit the
+// account's gateway capacity, counted in registration order. Finishing or
+// re-checking an existing connection is not gated here, so a later change in
+// capacity never disconnects or strands a gateway that is already set up.
+func (h *VPSHandler) RequireGatewayCapacity(c *gin.Context) {
+	biz, id := auth.GetBusinessID(c), c.Param("deviceId")
+	if h.db == nil {
+		c.AbortWithStatusJSON(503, gin.H{"error": "Gateway capacity could not be checked"})
+		return
+	}
+	var allowed bool
+	err := runInTenant(c, h.db, biz, func(tx *sql.Tx) error {
+		var e error
+		allowed, e = database.GatewayEnrollmentAllowedTXN(tx, biz, id)
+		return e
+	})
+	if err != nil {
+		c.AbortWithStatusJSON(503, gin.H{"error": "Gateway capacity could not be checked"})
+		return
+	}
+	if !allowed {
+		c.AbortWithStatusJSON(409, gin.H{"error": "This gateway is beyond the account's gateway slots. Buy another gateway slot in the Store before connecting it.", "code": "gateway_capacity_reached", "resource": "gateway"})
 		return
 	}
 	c.Next()

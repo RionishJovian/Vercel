@@ -102,10 +102,12 @@ func TestAutomaticOnePasteSurvivesCoordinatorRestart(t *testing.T) {
 	if _, e = db.Exec(`UPDATE hub_pending_enrollments SET expires_at=now()-interval '1 second' WHERE device_id=$1`, id); e != nil {
 		t.Fatal(e)
 	}
+	// Since 2026-11-13 the allocation is kept and a resume script is returned: it carries
+	// no private key and no new enrollment is made. Replacement needs an explicit Start over.
 	fourth := makeHandler()
-	code, _ = run(fourth)
-	if code != 409 || stub.calls != 1 {
-		t.Fatal("expired key silently replaced peer", code)
+	code, resumed := run(fourth)
+	if code != 200 || stub.calls != 1 || strings.Contains(resumed, "private-key=") || !strings.Contains(resumed, "choose Start over; nothing changed") {
+		t.Fatal("expired key silently replaced peer or resume unavailable", code, stub.calls)
 	}
 	box, _ := secretbox.New(cfg.Provisioner.Applier.CredentialKey)
 	if e = (database.PendingEnrollmentStore{DB: db, Box: box}).Delete(context.Background(), biz, id); e != nil {

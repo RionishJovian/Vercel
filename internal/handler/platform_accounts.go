@@ -79,7 +79,9 @@ func (h *PlatformHandler) Accounts(c *gin.Context) {
 			a["subscription"] = status
 			pass["state"], pass["authorized_login"], pass["transition_expires_at"] = status.State, status.Authorized, status.TransitionExpiresAt
 			limits := a["limits"].(map[string]any)
-			limits["router_limit"], limits["site_limit"], limits["capacity_scope"] = 1, 1, "business"
+			// Gateways follow business_gateway_capacity() (included + purchased + granted);
+			// the site rule stays one per business under enforcement.
+			limits["router_limit"], limits["site_limit"], limits["capacity_scope"] = limits["gateway_limit"], 1, "business"
 			access = access && status.Access
 		}
 		role := model.UserRole(a["user_role"].(string))

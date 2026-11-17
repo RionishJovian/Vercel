@@ -69,9 +69,13 @@ func quickRetryHandler(s *retryEnrollmentHub) *VPSHandler {
 }
 
 func requestQuickEnrollment(h *VPSHandler, biz string) *httptest.ResponseRecorder {
+	return requestQuickEnrollmentBody(h, biz, `{"management_rest_port":443,"confirm_enrollment":true}`)
+}
+
+func requestQuickEnrollmentBody(h *VPSHandler, biz, body string) *httptest.ResponseRecorder {
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest("POST", "/", strings.NewReader(`{"management_rest_port":443,"confirm_enrollment":true}`))
+	c.Request = httptest.NewRequest("POST", "/", strings.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Params = gin.Params{{Key: "deviceId", Value: "gateway"}}
 	c.Set(auth.ContextKeyBusinessID, biz)
@@ -206,9 +210,11 @@ func expireQuickKey(h *VPSHandler) {
 	h.quickKeys["tenant/gateway"] = key
 }
 
-// A script not pasted before its setup key ended must not be a dead end: the router
-// never connected, so it gets a fresh allocation and one script that works.
-func TestQuickEnrollmentKeyExpiryStartsAgain(t *testing.T) {
+// A script not pasted before its setup key ended must not be a dead end, and it
+// must not strand a router that already installed the earlier key: by default
+// the allocation is KEPT and a resume script (no new key) is returned. Only the
+// owner's explicit Start over replaces the allocation.
+func TestQuickEnrollmentKeyExpiryResumesAndStartsOverOnlyWhenAsked(t *testing.T) {
 	s := &removingHub{retryEnrollmentHub: &retryEnrollmentHub{peers: map[string]hub.Peer{}}}
 	h := quickRetryHandler(s.retryEnrollmentHub)
 	h.ConfigureHubEnrollment(s)
@@ -219,17 +225,30 @@ func TestQuickEnrollmentKeyExpiryStartsAgain(t *testing.T) {
 	first := s.peers["tenant/gateway"]
 	expireQuickKey(h)
 	w := requestQuickEnrollment(h, "tenant")
-	if w.Code != 200 || !strings.Contains(w.Body.String(), `"one_paste":true`) {
-		t.Fatalf("expired setup is a dead end: %d %s", w.Code, w.Body.String())
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"recovery":"resume"`) || strings.Contains(w.Body.String(), "private-key=") {
+		t.Fatalf("expired setup must resume with the router's own key: %d %s", w.Code, w.Body.String())
+	}
+	if len(s.removed) != 0 || s.peers["tenant/gateway"].RouterPublicKey != first.RouterPublicKey {
+		t.Fatalf("allocation replaced without the owner asking: %v", s.removed)
+	}
+	if !strings.Contains(w.Body.String(), "choose Start over; nothing changed") {
+		t.Fatal("a router without the earlier key must be told how to recover")
+	}
+	w = requestQuickEnrollmentBody(h, "tenant", `{"management_rest_port":443,"confirm_enrollment":true,"start_over":true}`)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"recovery":"start_over"`) {
+		t.Fatalf("explicit start over failed: %d %s", w.Code, w.Body.String())
 	}
 	if len(s.removed) != 1 || s.removed[0] != first.PeerID {
-		t.Fatalf("old allocation not replaced: %v", s.removed)
+		t.Fatalf("old allocation not replaced on Start over: %v", s.removed)
 	}
 	second := s.peers["tenant/gateway"]
 	if second.RouterPublicKey == first.RouterPublicKey {
 		t.Fatal("the new allocation reused the lost key")
 	}
 	assertReservedRouterKey(t, w, second)
+	if !strings.Contains(w.Body.String(), "START OVER") || !strings.Contains(w.Body.String(), `remove [find where interface=\"`) {
+		t.Fatal("start-over script must replace only this gateway's marked tunnel")
+	}
 }
 
 // A saved connection is never replaced this way: the preflight refuses first.
@@ -248,7 +267,8 @@ func TestQuickEnrollmentKeyExpiryNeverTouchesASavedConnection(t *testing.T) {
 	}
 }
 
-// Without a way to remove the old allocation, nothing is changed.
+// Without a way to remove the old allocation, Start over changes nothing; the
+// default path still offers the resume script for the same allocation.
 func TestQuickEnrollmentKeyExpiryHoldsWithoutRemoval(t *testing.T) {
 	s := &retryEnrollmentHub{peers: map[string]hub.Peer{}}
 	h := quickRetryHandler(s)
@@ -257,7 +277,10 @@ func TestQuickEnrollmentKeyExpiryHoldsWithoutRemoval(t *testing.T) {
 	}
 	reserved := s.peers["tenant/gateway"].RouterPublicKey
 	expireQuickKey(h)
-	w := requestQuickEnrollment(h, "tenant")
+	if w := requestQuickEnrollment(h, "tenant"); w.Code != 200 || !strings.Contains(w.Body.String(), `"recovery":"resume"`) {
+		t.Fatalf("resume unavailable: %d", w.Code)
+	}
+	w := requestQuickEnrollmentBody(h, "tenant", `{"management_rest_port":443,"confirm_enrollment":true,"start_over":true}`)
 	if w.Code != 409 || !strings.Contains(w.Body.String(), "hub_router_key_unavailable") {
 		t.Fatalf("status = %d", w.Code)
 	}

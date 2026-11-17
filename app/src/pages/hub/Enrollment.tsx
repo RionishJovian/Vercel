@@ -5,11 +5,11 @@ import { Note } from "../../components/ui";
 import { enrollError } from "./messages";
 import { splitCidr } from "../../lib/age";
 import { isWifiUplink, validWifi, withNewRouterNetwork, type Uplink } from "./newRouterNetwork";
-import { radioFor } from "./routerProfiles";
+import { radioFor, type RouterProfile } from "./routerProfiles";
 import { findModel, modelGroups, uplinksFor } from "./modelCatalogue";
 import { productPhotoUrl } from "../../lib/mikrotikProducts";
 
-interface Enrolled { key_custody?: string; state?: string; router_configuration_required?: boolean; one_paste?: boolean; automatic_management?: boolean; router_script?: string; tunnel_address?: string; hub_public_key?: string; endpoint?: string; allowed_ips?: string[] }
+interface Enrolled { recovery?: string; key_custody?: string; state?: string; router_configuration_required?: boolean; one_paste?: boolean; automatic_management?: boolean; router_script?: string; tunnel_address?: string; hub_public_key?: string; endpoint?: string; allowed_ips?: string[] }
 interface Live { handshake_status?: string; connection?: { management?: string } }
 const okScript = (s: unknown): s is string => typeof s === "string" && s.trim() !== "" && s.length <= 32768;
 type StepNo = 1 | 2 | 3;
@@ -138,9 +138,16 @@ function NetworkSetup() {
 }
 
 /** One paste connects the router: the app finishes by itself, even if this page is closed. Nothing here asks for router credentials. */
-export function Enrollment({ id, onVerified, routerKey = false }: { id: string; onVerified: () => void; routerKey?: boolean }) {
+export function Enrollment({ id, name, onVerified, onBusy, routerKey = false }: { id: string; name?: string; onVerified: () => void; onBusy?: (busy: boolean) => void; routerKey?: boolean }) {
   const { t } = useI18n();
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusyState] = useState(false);
+  const busyRef = useRef(onBusy);
+  useEffect(() => { busyRef.current = onBusy; }, [onBusy]);
+  // The page locks the other gateways' actions while this gateway's script is being made.
+  const setBusy = (v: boolean) => { setBusyState(v); busyRef.current?.(v); };
+  useEffect(() => () => busyRef.current?.(false), []);
+  const [startOverOk, setStartOverOk] = useState(false);
+  const uplinkRef = useRef<{ uplink: Uplink | null; profile?: RouterProfile; ssid: string; passphrase: string; own: boolean }>({ uplink: null, ssid: "", passphrase: "", own: false });
   const [result, setResult] = useState<{ ok: true; data: Enrolled } | { ok: false; key: string } | null>(null);
   const [networkSetup, setNetworkSetup] = useState(false);
   // Router-generated key: the router makes and keeps its WireGuard key, so the app issues only a token.
@@ -196,6 +203,14 @@ export function Enrollment({ id, onVerified, routerKey = false }: { id: string; 
       if (!radioFor(profile, uplink)) { setResult({ ok: false, key: "hub.net.noRadio" }); return; }
       if (!validWifi(ssid, passphrase)) { setResult({ ok: false, key: "hub.net.invalidWifi" }); return; }
     }
+    uplinkRef.current = { uplink, profile, ssid, passphrase, own };
+    await request(false);
+  }
+
+  // One request path for the normal paste and for the owner's explicit Start over.
+  async function request(startOver: boolean) {
+    if (pending.current) return;
+    const { uplink, profile, ssid, passphrase, own } = uplinkRef.current;
     pending.current = true; setBusy(true); setResult(null);
     try {
       if (own) {
@@ -206,7 +221,9 @@ export function Enrollment({ id, onVerified, routerKey = false }: { id: string; 
         return;
       }
       setViaRouterKey(false);
-      const r = await api.post<Enrolled>(`/vps/peers/${eid}/quick-enroll`, { management_rest_port: 443, confirm_enrollment: true });
+      const body: Record<string, unknown> = { management_rest_port: 443, confirm_enrollment: true };
+      if (startOver) body.start_over = true;
+      const r = await api.post<Enrolled>(`/vps/peers/${eid}/quick-enroll`, body);
       if (r.state !== "hub_peer_enrolled" || r.router_configuration_required !== true || r.one_paste !== true || r.automatic_management !== true || !okScript(r.router_script)) throw new Error("unverified");
       const router_script = uplink && profile ? withNewRouterNetwork(r.router_script, profile, uplink, ssid, passphrase) : r.router_script;
       setNetworkSetup(uplink !== null);
@@ -221,6 +238,7 @@ export function Enrollment({ id, onVerified, routerKey = false }: { id: string; 
   return (
     <div className="stack enroll wiz">
       <Rail step={step} />
+      {name ? <p className="soft small"><b>{t("gw.target").replace("{name}", name)}</b></p> : null}
 
       {step === 1 && (
         <section className="stack" aria-labelledby={"wiz-h-" + id}>
@@ -249,8 +267,11 @@ export function Enrollment({ id, onVerified, routerKey = false }: { id: string; 
           <Where />
           <p className="soft small">{t("hub.w.scriptBody")}</p>
           <Script title={t("hub.setupTitle")} text={result.data.router_script ?? ""} />
+          {result.data.recovery === "resume" && <Note kind="warn">{t("hub.resume")}</Note>}
+          {result.data.recovery === "start_over" && <Note kind="warn">{t("hub.so.done")}</Note>}
           <Note kind="warn">{t(viaRouterKey ? "hub.own.once" : networkSetup ? "hub.net.safe" : "hub.w.once")}</Note>
-          <p className="soft small">{t("hub.keepPrivate")}</p>
+          <Note>{t("hub.safeMode")}</Note>
+          <p className="soft small">{t("hub.keepPrivate")} {t("hub.retention")}</p>
           <div role="status" aria-live="polite" className="link-state" data-state={reached ? "up" : "wait"}><i className="led" data-state={reached ? "up" : "wait"} aria-hidden="true" /><span>{t(reached ? "hub.w.reached" : "hub.w.waiting")}</span></div>
           {slow && (
             <div className="stack" role="group" aria-label={t("hub.w.help")}>
@@ -259,6 +280,15 @@ export function Enrollment({ id, onVerified, routerKey = false }: { id: string; 
                 <li>{t("hub.w.h1")}</li><li>{t("hub.w.h2")}</li><li>{t("hub.w.h3")}</li><li>{t("hub.w.h4")}</li>
               </ul>
             </div>
+          )}
+          {result.data.recovery !== "start_over" && (
+            <details className="wiz-where"><summary>{t("hub.so.title")}</summary>
+              <div className="stack">
+                <p className="soft small">{t("hub.so.body")}</p>
+                <label className="check"><span>{t("hub.so.confirm")}</span><input type="checkbox" checked={startOverOk} onChange={(e) => setStartOverOk(e.target.checked)} /></label>
+                <button className="pill" type="button" disabled={!startOverOk || busy} onClick={() => { setStartOverOk(false); void request(true); }}>{t("hub.so.button")}</button>
+              </div>
+            </details>
           )}
           <details className="wiz-where"><summary>{t("hub.w.details")}</summary>
             <dl className="spec">
@@ -275,6 +305,7 @@ export function Enrollment({ id, onVerified, routerKey = false }: { id: string; 
         <section className="stack" aria-labelledby={"wiz-h-" + id}>
           <h3 id={"wiz-h-" + id} ref={head} tabIndex={-1}>{t("hub.w.t3")}</h3>
           <Note kind="ok">{t("hub.fin.ok")}</Note>
+          <Note>{t("hub.safeMode")}</Note>
         </section>
       )}
     </div>

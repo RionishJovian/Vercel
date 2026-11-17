@@ -264,6 +264,7 @@ func TestManagementMigrationGuardAllowsFirstAuthentication(t *testing.T) {
 func TestManagementMigrationGuardHubDisconnectIsNarrow(t *testing.T) {
 	db := harness_testdb(t)
 	biz := insertBusiness(db)
+	allowGateways(db, biz, 5) // the test registers several gateways in one business (paid-gateway rule, 2026-11-13)
 	connected := func() string {
 		var device string
 		if e := db.QueryRow(`INSERT INTO devices(business_id,hardware_name,transport,management_ip,ssh_port,ssh_username,ssh_secret_kind,ssh_secret_ciphertext,ssh_host_key_fingerprint)VALUES($1,'Connected fixture','tunnel','10.77.0.80',22,'fixture','password','test-cipher','SHA256:'||repeat('A',43))RETURNING device_id`, biz).Scan(&device); e != nil {

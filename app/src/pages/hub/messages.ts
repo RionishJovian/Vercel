@@ -6,6 +6,8 @@ export function enrollError(status: number | undefined, code: string | undefined
   return code === "hub_management_already_configured" ? "hub.err.already"
     : code === "hub_callback_disabled" ? "hub.err.ownOff"
     : code === "hub_management_preflight_failed" ? "hub.err.preflight"
+    : code === "gateway_capacity_reached" ? "hub.err.capacity"
+    : code === "hub_router_key_unavailable" ? "hub.err.keyUnavailable"
     : status === 503 ? "hub.err.unavailable"
     : status === 403 ? "hub.err.forbidden"
     : "hub.err.generic";
