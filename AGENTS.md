@@ -96,7 +96,7 @@ Writes to routers are fail-closed: each needs an env var that is exactly `"true"
 | `MM_BROADBAND_WRITES_ENABLED` | off | paid PPPoE writes locked since the 2026-11-04 incident until a router trial |
 | `MM_FIRMWARE_UPGRADE_ENABLED` | off | |
 | `MM_NETWORK_WIFI_CONTROLS_ENABLED` | on (owner decision 2026-11-06) | physical-radio trial not run yet |
-| `VPS_HUB_CALLBACK_ENROLLMENT_ENABLED` (`vps.hub_callback_enrollment_enabled`) | off (new, 2026-11-14) | router-generated WireGuard keys; also needs `vps.public_base_url`. Defaults off; a PR that turns it on needs the hardware checklist in `docs/HUB-CALLBACK-ENROLLMENT.md` first |
+| `VPS_HUB_CALLBACK_ENROLLMENT_ENABLED` (`vps.hub_callback_enrollment_enabled`) | **off, verified 2026-11-17** (`.env.production` had it `true` from 2026-11-14; set to `false` and the API recreated on 2026-11-17 by owner decision) | router-generated WireGuard keys; also needs `vps.public_base_url`. Defaults off; a PR that turns it on needs the hardware checklist in `docs/HUB-CALLBACK-ENROLLMENT.md` first |
 | `MM_WEBFIG_ACCESS` | off (unset) | Values `open` and `locked`. Also needs `MM_WEBFIG_HOST`; see `docs/WEBFIG-CLOUD-ACCESS.md` |
 
 The owner asked for server-wide router read/write/edit/delete on 2026-11-06. These gates apply to every customer on the server. Re-read the server environment before relying on this table; it is a dated observation. Because pushes to `main` deploy, a PR that adds or depends on a gate must default to off.
