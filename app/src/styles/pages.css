@@ -550,3 +550,7 @@ details.adv summary { cursor: pointer; min-height: 36px; display: flex; align-it
 
 /* Phones: every expandable row is a full-size tap target. */
 @media (max-width: 760px) { .wiz-where summary, .moredet summary, details.adv summary, .nt-tree-group summary { min-height: 44px; display: flex; align-items: center; } }
+
+/* Preview tabs wrap instead of clipping; the chosen theme says "Selected" in words, not only by outline. */
+.gp-tabs { flex-wrap: wrap; }
+.tpl-sel { font-size: .8125rem; font-weight: 650; color: var(--jade); }

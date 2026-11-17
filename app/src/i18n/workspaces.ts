@@ -3,7 +3,7 @@
 const workspaces = {
   en: {
     "gt.title": "Login page theme", "gt.help": "Preview every theme. Free themes save instantly; Add-on themes unlock in the Store.", "gt.group.myanmar": "Myanmar ISP & regional hotspot themes", "gt.group.commercial": "Commercial & hospitality themes",
-    "gt.addon": "Add-on", "gt.unlocked": "Unlocked", "gt.lockedNote": "This theme is a Store add-on. You can preview it here; unlock it to save or publish.", "gt.unlock": "Unlock in Store →",
+    "gt.addon": "Add-on", "gt.selected": "Selected", "gt.unlocked": "Unlocked", "gt.lockedNote": "This theme is a Store add-on. You can preview it here; unlock it to save or publish.", "gt.unlock": "Unlock in Store →",
     "gt.tabLogin": "Login page", "gt.tabStatus": "Connected page", "gt.tabPay": "Pay page", "gt.statusNote": "The page your router shows after a guest logs in: their session and a Logout button. The figures here are a sample; the router fills in the real ones.",
     "gs.title": "Support contacts", "gs.help": "Shown as buttons at the bottom of the router login page. Leave a field empty to hide that button. Before a guest logs in only the phone call works without internet; Telegram and Viber open the app.",
     "gs.phone": "Phone number", "gs.telegram": "Telegram username", "gs.viber": "Viber number", "gs.bad": "Check the support contacts: a phone number is 6 to 15 digits (a leading + is allowed) and a Telegram username is 5 to 32 letters, digits or underscores.", "gt.previewNote": "The page your router shows before guests have internet. Draft preview; nothing is saved until you press Save.",
@@ -85,7 +85,7 @@ const workspaces = {
   },
   my: {
     "gt.title": "Login စာမျက်နှာ ပုံစံ", "gt.help": "ပုံစံအားလုံးကို ကြိုကြည့်နိုင်သည်။ အခမဲ့ပုံစံများ ချက်ချင်းသိမ်းနိုင်ပြီး Add-on ပုံစံများကို Store တွင် ဖွင့်ပါ။", "gt.group.myanmar": "မြန်မာ ISP နှင့် ဒေသဆိုင်ရာ hotspot ပုံစံများ", "gt.group.commercial": "စီးပွားရေးနှင့် ဧည့်ဝတ်ပြုလုပ်ငန်း ပုံစံများ",
-    "gt.addon": "Add-on", "gt.unlocked": "ဖွင့်ထားသည်", "gt.lockedNote": "ဤပုံစံသည် Store add-on ဖြစ်သည်။ ဤနေရာတွင် ကြိုကြည့်နိုင်သည်၊ သိမ်းရန် သို့မဟုတ် ထုတ်ပြန်ရန် ဖွင့်ပါ။", "gt.unlock": "Store တွင် ဖွင့်မည် →",
+    "gt.addon": "Add-on", "gt.selected": "ရွေးထားသည်", "gt.unlocked": "ဖွင့်ထားသည်", "gt.lockedNote": "ဤပုံစံသည် Store add-on ဖြစ်သည်။ ဤနေရာတွင် ကြိုကြည့်နိုင်သည်၊ သိမ်းရန် သို့မဟုတ် ထုတ်ပြန်ရန် ဖွင့်ပါ။", "gt.unlock": "Store တွင် ဖွင့်မည် →",
     "gt.tabLogin": "Login စာမျက်နှာ", "gt.tabStatus": "ချိတ်ဆက်ပြီး စာမျက်နှာ", "gt.tabPay": "ငွေပေးချေ စာမျက်နှာ", "gt.statusNote": "ဧည့်သည် login ဝင်ပြီးနောက် သင့် router ပြသသော စာမျက်နှာ။ အသုံးပြုမှု အချက်အလက်နှင့် ထွက်ရန် ခလုတ် ပါသည်။ ဤနေရာရှိ ကိန်းဂဏန်းများမှာ နမူနာသာ ဖြစ်ပြီး တကယ့်တန်ဖိုးကို router က ဖြည့်ပေးသည်။",
     "gs.title": "အကူအညီ ဆက်သွယ်ရန်", "gs.help": "Router login စာမျက်နှာ အောက်ခြေတွင် ခလုတ်များအဖြစ် ပြသသည်။ မပြလိုသော ခလုတ်အတွက် အကွက်ကို ဗလာထားပါ။ ဧည့်သည် login မဝင်မီ ဖုန်းခေါ်ဆိုမှုသာ အင်တာနက်မလိုဘဲ အလုပ်လုပ်ပြီး Telegram နှင့် Viber က app ကို ဖွင့်ပေးသည်။",
     "gs.phone": "ဖုန်းနံပါတ်", "gs.telegram": "Telegram အသုံးပြုသူအမည်", "gs.viber": "Viber နံပါတ်", "gs.bad": "အကူအညီ ဆက်သွယ်ရန် အချက်အလက်များကို စစ်ပါ။ ဖုန်းနံပါတ်သည် ဂဏန်း ၆ မှ ၁၅ လုံး (ရှေ့တွင် + ပါနိုင်သည်)၊ Telegram အမည်သည် စာလုံး၊ ဂဏန်း သို့မဟုတ် underscore ၅ မှ ၃၂ လုံး ဖြစ်ရမည်။", "gt.previewNote": "ဧည့်သည်တွင် အင်တာနက် မရှိမီ သင့် router ပြသသော စာမျက်နှာ။ နမူနာသာ၊ သိမ်းမည်ကို မနှိပ်မချင်း မသိမ်းပါ။",
