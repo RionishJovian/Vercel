@@ -282,7 +282,7 @@ func (h *RouterHandler) CreateRouter(c *gin.Context) {
 	// Publish registration event over NATS
 	if h.messaging != nil {
 		event := []byte(`{"device_id":"` + created.DeviceID + `","hardware":"` + created.HardwareName + `"}`)
-		_ = h.messaging.Publish(businessID, "fleet.register", event)
+		logIfErr(h.messaging.Publish(businessID, "fleet.register", event), "fleet.register for device %s not published", created.DeviceID)
 	}
 
 	c.JSON(http.StatusCreated, gin.H{"router": created})

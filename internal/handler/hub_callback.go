@@ -294,7 +294,7 @@ func (h *VPSHandler) recordAllocation(ctx context.Context, identity hub.Identity
 	if errors.Is(err, database.ErrTunnelAddressInUse) && fresh && h.enrollmentRemover != nil {
 		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 20*time.Second)
 		defer cancel()
-		_ = h.enrollmentRemover.RemovePeer(cleanup, identity, peer.PeerID)
+		logIfErr(h.enrollmentRemover.RemovePeer(cleanup, identity, peer.PeerID), "hub peer %s not removed after a failed enrolment", peer.PeerID)
 	}
 	return err
 }
@@ -314,9 +314,9 @@ func (h *VPSHandler) observeVerifiedHandshake(ctx context.Context, biz, device s
 	bounded, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
 	if h.peerState != nil {
-		_ = h.peerState.TouchHandshake(bounded, biz, device, *peer.LastHandshakeAt)
+		logIfErr(h.peerState.TouchHandshake(bounded, biz, device, *peer.LastHandshakeAt), "handshake time of router %s not stored", device)
 	}
 	if h.purgeRouterKey != nil {
-		_ = h.purgeRouterKey(bounded, biz, device)
+		logIfErr(h.purgeRouterKey(bounded, biz, device), "setup key of router %s not purged after its handshake", device)
 	}
 }

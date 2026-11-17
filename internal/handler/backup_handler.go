@@ -297,9 +297,9 @@ func (h *BackupHandler) Restore(c *gin.Context) {
 		return
 	}
 
-	_ = runInTenant(c, h.db, businessID, func(tx *sql.Tx) error {
+	logIfErr(runInTenant(c, h.db, businessID, func(tx *sql.Tx) error {
 		return h.devices.RecordChangeTXN(tx, businessID, deviceID, auth.GetUserRole(c), "restore", "one-click restore from backup "+backupID)
-	})
+	}), "router change %v on %s not recorded", "restore", deviceID)
 
 	c.JSON(http.StatusOK, gin.H{"restored": true, "backup_id": backupID, "at": time.Now().UTC()})
 }

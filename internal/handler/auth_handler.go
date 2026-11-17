@@ -235,7 +235,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	h.logins.Succeed(req.Email)
 
 	// Update last login (EXCLUSION: pre-tenant bootstrap write, owner-scoped by design).
-	_ = h.userRepo.UpdateLastLogin(user.UserID)
+	logIfErr(h.userRepo.UpdateLastLogin(user.UserID), "last login of user %s not stored", user.UserID)
 
 	// Fetch business
 	var business model.Business

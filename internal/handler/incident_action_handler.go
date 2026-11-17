@@ -136,7 +136,7 @@ func (h *IncidentActionHandler) record(c *gin.Context, businessID, deviceID, act
 	if deviceID == "" {
 		return
 	}
-	_ = runInTenant(c, h.db, businessID, func(tx *sql.Tx) error {
+	logIfErr(runInTenant(c, h.db, businessID, func(tx *sql.Tx) error {
 		return h.devices.RecordChangeTXN(tx, businessID, deviceID, auth.GetUserRole(c), action, reason)
-	})
+	}), "router change %v on %s not recorded", action, deviceID)
 }
