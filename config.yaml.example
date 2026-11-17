@@ -13,6 +13,8 @@ server:
   read_timeout: 30s
   write_timeout: 30s
   shutdown_timeout: 10s
+  # CIDRs allowed to set X-Forwarded-For. Unset = loopback + this container's own subnets.
+  # trusted_proxies: ["172.18.0.5/32"]
 
 # Database (PostgreSQL)
 database:

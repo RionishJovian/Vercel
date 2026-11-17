@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -77,6 +78,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	}
 
 	sugar := log.Sugar()
+	readinessLog = sugar
 
 	db, err := database.New(cfg.Database)
 	if err != nil {
@@ -404,7 +406,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		}
 	}
 	r := gin.New()
-	if err := r.SetTrustedProxies([]string{"127.0.0.1", "::1"}); err != nil {
+	if err := r.SetTrustedProxies(trustedProxyCIDRs(cfg.Server.TrustedProxies, localInterfaceCIDRs())); err != nil {
 		return nil, err
 	}
 	r.Use(gin.Recovery())
@@ -1020,29 +1022,48 @@ func healthCheck(c *gin.Context) {
 	})
 }
 
+// readinessLog receives the database error that /ready no longer prints; set once in New.
+var readinessLog *zap.SugaredLogger
+
 func readinessCheck(s *Server) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		dbOK := "ok"
-		redisOK := "ok"
-		natsOK := "ok"
-
-		health := s.db.Ping()
-		if health != nil {
-			dbOK = fmt.Sprintf("error: %v", health)
+		dbErr := s.db.Ping()
+		if dbErr != nil {
+			if readinessLog != nil {
+				readinessLog.Warnw("readiness: database check failed", "error", dbErr)
+			}
 		}
+		redisUp := s.cache == nil || s.cache.IsConnected()
+		natsUp := s.messaging == nil || s.messaging.IsConnected()
+		code, body := readinessReport(dbErr == nil, redisUp, natsUp)
+		c.JSON(code, body)
+	}
+}
 
-		if s.cache != nil && !s.cache.IsConnected() {
-			redisOK = "disconnected"
+// readinessReport: the database is required (503 without it); Redis and NATS are required at boot
+// but the app keeps serving without them, so they only mark the server degraded (200). Check text
+// never carries error detail because /ready is public.
+func readinessReport(dbUp, redisUp, natsUp bool) (int, gin.H) {
+	state := func(up bool, down string) string {
+		if up {
+			return "ok"
 		}
-
-		c.JSON(http.StatusOK, gin.H{
-			"status": "ready",
-			"checks": gin.H{
-				"database": dbOK,
-				"redis":    redisOK,
-				"nats":     natsOK,
-			},
-		})
+		return down
+	}
+	status, code := "ready", http.StatusOK
+	switch {
+	case !dbUp:
+		status, code = "not_ready", http.StatusServiceUnavailable
+	case !redisUp || !natsUp:
+		status = "degraded"
+	}
+	return code, gin.H{
+		"status": status,
+		"checks": gin.H{
+			"database": state(dbUp, "error"),
+			"redis":    state(redisUp, "disconnected"),
+			"nats":     state(natsUp, "disconnected"),
+		},
 	}
 }
 
@@ -1189,4 +1210,29 @@ func aiIncidentNotifier(cfg *config.Config, webhooks ai.IncidentNotifier, sugar 
 	}
 	sugar.Infow("AI incident Telegram notification configured", "enabled", true)
 	return ai.NewFanout(webhooks, ai.NewTelegramNotifier(msg, target, sugar))
+}
+
+// trustedProxyCIDRs picks the peers whose X-Forwarded-For the API honours. An explicit list wins
+// as written; otherwise loopback plus the subnets of this container's own interfaces, which is the
+// compose network only, never all of RFC1918. Behind the web container this makes c.ClientIP() the
+// guest's address instead of the container's, so per-IP limits stop sharing one bucket.
+func trustedProxyCIDRs(configured, local []string) []string {
+	if len(configured) > 0 {
+		return configured
+	}
+	return append([]string{"127.0.0.1", "::1"}, local...)
+}
+
+func localInterfaceCIDRs() []string {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, a := range addrs {
+		if n, ok := a.(*net.IPNet); ok && !n.IP.IsLoopback() && n.IP.To4() != nil {
+			out = append(out, (&net.IPNet{IP: n.IP.Mask(n.Mask), Mask: n.Mask}).String())
+		}
+	}
+	return out
 }

@@ -16,3 +16,11 @@ test('Exact deployment transform changes only API/web image references',()=>{
 test('Missing service image aborts before changing original compose',()=>{
  const dir=mkdtempSync(path.join(tmpdir(),'mm-compose-'));try{const p=path.join(dir,'compose.yaml'),s=fixture.replace('    image: old-web:release\n','');writeFileSync(p,s);assert.throws(()=>execFileSync('python3',['-c',python,p,api,web],{stdio:'pipe'}));assert.equal(readFileSync(p,'utf8'),s);}finally{rmSync(dir,{recursive:true,force:true});}
 });
+test('Web Caddy trusts only the edge proxy computed at start, so client IPs reach the API',()=>{
+ const caddyfile=readFileSync(new URL('../deploy/Caddyfile.go-staging',import.meta.url),'utf8');
+ assert.match(caddyfile,/^\{\s*servers \{[^}]*trusted_proxies static \{\$MM_EDGE_PROXY\}/);
+ assert.doesNotMatch(caddyfile,/trusted_proxies[^\n]*private_ranges/);
+ const entry=readFileSync(new URL('../deploy/web-entrypoint.sh',import.meta.url),'utf8');
+ assert.match(entry,/export MM_EDGE_PROXY="\$gw\/32"/);
+ assert.match(readFileSync(new URL('../Dockerfile.web.prod',import.meta.url),'utf8'),/ENTRYPOINT \["\/usr\/local\/bin\/mm-web-entrypoint"\]/);
+});

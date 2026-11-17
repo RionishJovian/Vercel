@@ -51,7 +51,7 @@ try {
   const apiPort = fixture.address().port, port = Number(process.env.TRANSITION_PORT) || await reserve(), admin = await reserve();
   const origin = 'http://127.0.0.1:' + port;
   const configure = async (source, directory, first = false) => {
-    let text = readFileSync(source, 'utf8').replace('import security-headers.caddy', 'import ' + path.join(root, 'deploy/security-headers.caddy'));
+    let text = readFileSync(source, 'utf8').replace(/^\{[\s\S]*?\n\}\n\n/, '').replace('import security-headers.caddy', 'import ' + path.join(root, 'deploy/security-headers.caddy'));
     text = `{ admin 127.0.0.1:${admin}\n auto_https off\n}\n` + text.replace(':80 {', `:${port} {`).replaceAll('root * /srv/v2', 'root * ' + path.join(directory, 'v2')).replaceAll('root * /srv', 'root * ' + directory).replaceAll('api:8080', '127.0.0.1:' + apiPort);
     const config = path.join(temp, 'Caddyfile'); writeFileSync(config, text);
     if (first) {
