@@ -173,7 +173,7 @@ func startLiveApplier(cfg *config.Config, client *messaging.Client, sugar *zap.S
 		}
 		sugar.Info("Telegram approval bridge started (flag-gated)")
 	} else {
-		sugar.Warn("Telegram approval bridge not configured (no bot messenger) — approval requests will time out and DENY")
+		sugar.Info("Recovery approval bridge is off: no provisioner Telegram token and chat are set, so automatic recovery steps that need a human approval are denied (fail closed). Purchase, guest and incident Telegram messages use the account bindings and are not affected.")
 	}
 
 	return nil
