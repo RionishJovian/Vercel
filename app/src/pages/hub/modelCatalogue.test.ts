@@ -71,7 +71,7 @@ describe("wired-only profile", () => {
     ports: [{ name: "ether1", kind: "ether", speed: "1G" }, { name: "ether2", kind: "ether", speed: "1G" }],
     wan: "ether1", radios: [], lan: { bridge: "bridge", address: "192.168.88.1/24", network: "192.168.88.0/24" }, wifiDriver: "wifi", docs: ["https://help.mikrotik.com/docs/"],
   };
-  const BLOCK = "{\n:put \"probe\"\n}\n";
+  const BLOCK = "{\n:put \"check\"\n# APPLY: tunnel\n:put \"probe\"\n}\n";
   it("generates the Ethernet script with its own board guard", () => {
     const script = withNewRouterNetwork(BLOCK, wired, "ethernet", "", "");
     expect(script).toContain('!= "FIXTURE-WIRED"');

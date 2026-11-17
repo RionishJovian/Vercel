@@ -1,18 +1,54 @@
 import { describe, expect, it } from "vitest";
-import golden from "./__fixtures__/ax2-network-golden.json";
-import { isWifiUplink, withNewRouterNetwork, type Uplink } from "./newRouterNetwork";
+import { isWifiUplink, MARK, withNewRouterNetwork, type Uplink } from "./newRouterNetwork";
 import { findProfile, routerProfiles, type RouterProfile } from "./routerProfiles";
 
-const BLOCK = "{\n:put \"probe\"\n}\n";
+// A Magic Hub block as the server sends it: read-only checks, then the apply boundary, then the writes.
+const BLOCK = "{\n# PREFLIGHT: checks\n:put \"check\"\n# APPLY: tunnel\n:put \"probe\"\n}\n";
 const SSID = 'Fixture "$&"', PASS = "test-password";
 const ax2 = findProfile("hap-ax2")!, ax3 = findProfile("hap-ax3")!;
 const make = (p: RouterProfile, u: Uplink) => withNewRouterNetwork(BLOCK, p, u, SSID, PASS);
-const GOLDEN = golden as Record<Uplink, string>;
 
 describe("hAP ax2 network setup", () => {
-  // The golden scripts are what the ax2-only builder produced before models became a table.
-  it.each(["ethernet", "5ghz", "2ghz"] as const)("is identical to the script the ax2-only builder produced (%s)", uplink => {
-    expect(make(ax2, uplink)).toBe(GOLDEN[uplink]);
+  it.each(["ethernet", "5ghz", "2ghz"] as const)("checks first, changes only at the Magic Hub boundary (%s)", uplink => {
+    const script = make(ax2, uplink);
+    const board = script.indexOf("/system routerboard get model");
+    const hubCheck = script.indexOf(':put "check"');
+    const firstWrite = script.search(/\/interface (bridge port set|wifi set)|\/ip dhcp-client (add|set)/);
+    const boundary = script.indexOf("# APPLY: tunnel");
+    expect(board).toBeGreaterThan(-1);
+    expect(board).toBeLessThan(hubCheck);          // the model check comes before everything else
+    expect(hubCheck).toBeLessThan(firstWrite);     // network changes come after every Magic Hub check
+    expect(firstWrite).toBeLessThan(boundary);     // and before the first Magic Hub write
+    expect(script.endsWith('# APPLY: tunnel\n:put "probe"\n}\n')).toBe(true);
+  });
+  it("needs the Magic Hub boundary to place the changes", () => {
+    expect(() => withNewRouterNetwork("{\n:put \"x\"\n}", ax2, "ethernet", "", "")).toThrow(/boundary/);
+  });
+  it("only a Magic Hub tunnel from an earlier attempt may already exist, and a hotspot may not", () => {
+    const script = make(ax2, "ethernet");
+    expect(script).toContain('[:find [/interface wireguard get $mmWg comment] "mega-magic:mmh-"] != 0');
+    expect(script).toContain("[:len [/ip hotspot find]] != 0");
+  });
+});
+
+describe("Wi-Fi WAN can resume a cut-off paste", () => {
+  it.each([["hap-ax2", "5ghz"], ["hap-ac2", "5ghz"]] as const)("%s %s marks what it creates and only continues its own work", (id, band) => {
+    const script = make(findProfile(id)!, band);
+    expect(script).toContain(`:local mmMark "${MARK}"`);
+    expect(script).toContain(":if (!$mmPortOurs) do={ /interface bridge port set $mmBridgePort disabled=yes comment=$mmMark }");
+    expect(script).toContain(":if ([:len $mmMember] = 0) do={ /interface list member add list=WAN interface=$mmUplink comment=$mmMark }");
+    expect(script).toContain(":if ([:len $mmClient] = 0) do={ /ip dhcp-client add");
+    expect(script).toContain("comment=$mmMark }\n:set mmClient");
+    // Anything that is neither factory state nor marked stops the script before a change.
+    for (const stop of ["bridge port was changed outside this setup", "interface list was changed outside this setup", "DHCP client was changed outside this setup"]) {
+      expect(script.indexOf(stop)).toBeGreaterThan(-1);
+      expect(script.indexOf(stop)).toBeLessThan(script.indexOf("# APPLY (Wi-Fi WAN)"));
+    }
+  });
+  it("a re-paste of the Ethernet script has nothing to resume and stays a single enable", () => {
+    const eth = make(ax2, "ethernet");
+    expect(eth).not.toContain("$mmMark");
+    expect(eth).toContain("/ip dhcp-client set $mmClient disabled=no");
   });
 });
 
@@ -28,9 +64,10 @@ describe("model check", () => {
       expect(before).toEqual([]);
       // No state-changing command is allowed before the first model check either.
       expect(script.slice(0, at)).not.toMatch(/\/(interface|ip|system)\b.*\b(set|add|disable|remove)\b/);
-      // The Hub block itself is still the one that follows, untouched.
+      // The Hub block keeps its own checks first and its own writes last, untouched.
       expect(script.startsWith("{")).toBe(true);
-      expect(script.endsWith(BLOCK.slice(1))).toBe(true);
+      expect(script.indexOf(':put "check"')).toBeGreaterThan(at);
+      expect(script.endsWith('# APPLY: tunnel\n:put "probe"\n}\n')).toBe(true);
       expect(script.indexOf("Continuing with Magic Hub")).toBeLessThan(script.indexOf(':put "probe"'));
     }
   });
@@ -51,20 +88,22 @@ describe("legacy wireless (ac models)", () => {
     expect(script).toContain(":local mmRadio [/interface wireless find where default-name=$mmUplink and name=$mmUplink]");
     expect(script).toContain('/interface wireless security-profiles add name=mm-wifi-wan mode=dynamic-keys authentication-types=wpa2-psk wpa2-pre-shared-key="test-password"');
     expect(script).toContain('/interface wireless set $mmRadio mode=station ssid="Fixture \\"\\$&\\"" security-profile=mm-wifi-wan disabled=no');
-    expect(script).toContain("/interface bridge port disable $mmBridgePort");
+    expect(script).toContain("/interface bridge port set $mmBridgePort disabled=yes comment=$mmMark");
     expect(script).toContain("default-route-distance=2");
   });
   it("never uses the RouterOS 7 wifi menu, and never edits the shared default security profile", () => {
     const script = make(ac2, "5ghz");
     expect(script).not.toContain("/interface wifi");
-    expect(script).not.toContain("security-profiles set");
+    expect(script).not.toMatch(/security-profiles set (default|\[find default)/);
+    expect(script).toContain("security-profiles set $mmProfile wpa2-pre-shared-key=");
     expect(script).not.toContain("configuration.mode");
   });
-  it("refuses to run when the Wi-Fi profile name is already taken, before changing anything", () => {
+  it("refuses a Wi-Fi profile named mm-wifi-wan that it did not create, before changing anything", () => {
     const script = make(ac2, "5ghz");
     const guard = script.indexOf('[/interface wireless security-profiles find where name="mm-wifi-wan"]');
     expect(guard).toBeGreaterThan(-1);
-    expect(guard).toBeLessThan(script.indexOf("/interface bridge port disable"));
+    expect(script).toContain("Wi-Fi security profile mm-wifi-wan was created outside this setup");
+    expect(guard).toBeLessThan(script.indexOf("/interface bridge port set"));
     expect(guard).toBeLessThan(script.indexOf("/interface wireless security-profiles add"));
   });
   it("leaves the Ethernet script untouched for an ac model", () => {
@@ -103,8 +142,8 @@ describe("generated from the profile", () => {
       expect(script).toContain(p.wifiDriver === "wifi" ? "/interface wifi set $mmRadio configuration.mode=station" : "/interface wireless set $mmRadio mode=station");
       expect(script).toContain("default-route-distance=2");
       // Every check runs before the first change, so a refused check leaves the router untouched.
-      expect(script.indexOf("STOP: an internet route is already active")).toBeLessThan(script.indexOf("/interface bridge port disable"));
-      expect(script.indexOf("STOP: Wi-Fi interface already configured or missing")).toBeLessThan(script.indexOf("/interface bridge port disable"));
+      expect(script.indexOf("STOP: an internet route is already active")).toBeLessThan(script.indexOf("/interface bridge port set"));
+      expect(script.indexOf("STOP: Wi-Fi interface missing or already configured")).toBeLessThan(script.indexOf("/interface bridge port set"));
     }
     const eth = make(p, "ethernet");
     expect(eth).toContain(`:local mmUplink "${p.wan}"`);
