@@ -479,6 +479,7 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 		return
 	}
 	defer tx.Rollback()
+	var updated *model.User
 	err = database.WithTenant(tx, businessID, func() error {
 		user, e := h.userRepo.FindByIDTXN(tx, userID)
 		if e != nil || user == nil {
@@ -491,7 +492,11 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 		if e != nil {
 			return e
 		}
-		return h.userRepo.UpdateOwnPasswordTXN(tx, businessID, userID, hash)
+		if e = h.userRepo.UpdateOwnPasswordTXN(tx, businessID, userID, hash); e != nil {
+			return e
+		}
+		updated, e = h.userRepo.FindByIDTXN(tx, userID)
+		return e
 	})
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "current password is incorrect or the new password is invalid"})
@@ -501,7 +506,19 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"status": "password changed"})
+	// The database revokes every session of a user whose password changed, this browser's included.
+	// Start a fresh one so the person who just changed it is not bounced to sign-in; every other
+	// device stays signed out. If this fails the change still stands and they sign in again.
+	resp := gin.H{"status": "password changed"}
+	if updated != nil {
+		if access, refresh, e := h.authService.StartSession(updated); e == nil {
+			h.setSessionCookies(c, access, refresh)
+			if c.GetHeader("Origin") == "" {
+				resp["token"], resp["refresh_token"] = access, refresh
+			}
+		}
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 func profileAssetLimit(kind string) int64 {
