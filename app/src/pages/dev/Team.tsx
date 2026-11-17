@@ -50,8 +50,8 @@ export function Team() {
   return (
     <Page title={t("dev.tm.title")} lead={t("dev.tm.lead")}>
       {msg && <Note kind="bad">{msg}</Note>}
-      {!team.length ? <Note>{t("dev.tm.none")}</Note> : <div className="stack">{team.map((u) => <Member key={u.user_id} u={u} onChanged={() => void mutate()} onError={setMsg} />)}</div>}
-      <form className="glass pad stack" onSubmit={add}>
+      {!team.length ? <Note>{t("dev.tm.none")}</Note> : <div className="workspace-main workspace-stack">{team.map((u) => <Member key={u.user_id} u={u} onChanged={() => void mutate()} onError={setMsg} />)}</div>}
+      <form className="glass pad stack workspace-rail" onSubmit={add}>
         <h2>{t("dev.tm.add")}</h2>
         <Field label={t("pf.name")}><input className="input" name="name" required /></Field>
         <Field label={t("s.email")}><input className="input" name="email" type="email" required /></Field>

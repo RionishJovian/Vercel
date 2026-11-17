@@ -77,3 +77,33 @@ test('non-API path never becomes an arbitrary upstream proxy', async () => {
   await rejected(request('GET', {}, '/https://evil.example'), 404);
   await rejected(new Request('http://mega-magic-example.vercel.app/api/v1/me'), 404);
 });
+
+// Audit: every method the SPA uses must reach the VPS with its cookie, validated Origin and CSRF header,
+// and the proxy must only touch headers, never the body.
+import proxy from '../../proxy.js';
+for (const method of ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']) {
+  test(`${method} through the proxy entry forwards Cookie, Origin and X-MM-CSRF and leaves the body alone`, async () => {
+    const write = method !== 'GET';
+    const body = write ? '{"a":1}' : undefined;
+    const req = new Request(ORIGIN + '/api/v1/routers/1', { method, body, headers: {
+      origin: ORIGIN, 'x-mm-csrf': '1', cookie: 'mm_access=test-only', 'content-type': 'application/json' } });
+    const res = proxy(req);
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get('x-middleware-next'), '1');
+    assert.equal(res.headers.get('x-middleware-request-cookie'), 'mm_access=test-only');
+    assert.equal(res.headers.get('x-middleware-request-origin'), UPSTREAM_ORIGIN);
+    assert.equal(res.headers.get('x-middleware-request-x-mm-csrf'), '1');
+    assert.equal(res.headers.get('x-middleware-request-host'), 'megamagic.tech');
+    // Only headers are overridden; the incoming body is still unread for Vercel to stream upstream.
+    assert.equal(req.bodyUsed, false);
+    if (write) assert.equal(await req.text(), body);
+    assert.equal(res.headers.get('cache-control'), 'private, no-store');
+  });
+}
+
+test('a same-origin write without Origin or CSRF is refused for every method', async () => {
+  for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) {
+    await rejected(request(method, { 'x-mm-csrf': '1', cookie: 'mm_access=test-only' }), 403);
+    await rejected(request(method, { origin: ORIGIN, cookie: 'mm_access=test-only' }), 403);
+  }
+});

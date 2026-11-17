@@ -47,16 +47,24 @@ func (s *Server) buildGuestVoucherSyncWorker() (func(context.Context), error) {
 		Syncer:      voucherLoginTransport{applier: applier},
 	}
 	return func(ctx context.Context) {
+		backoff := newSyncBackoff()
 		syncTenant := func(biz string) {
-			if ctx.Err() != nil {
+			if ctx.Err() != nil || !backoff.allow(biz, time.Now()) {
 				return
 			}
 			work, stop := context.WithTimeout(ctx, 60*time.Second)
 			defer stop()
 			applied, err := h.SyncBusinessVouchers(work, biz)
 			if err != nil {
-				s.sugar.Warnw("Voucher login synchronization pending", "business_id", biz, "error", err)
+				// An unreachable router is retried after a growing wait and logged on the
+				// first failure and every tenth, not on every scan.
+				if n, logIt := backoff.fail(biz, time.Now()); logIt {
+					s.sugar.Warnw("Voucher login synchronization pending", "business_id", biz, "consecutive_failures", n, "error", err)
+				}
 				return
+			}
+			if n := backoff.ok(biz); n > 0 {
+				s.sugar.Infow("Voucher login synchronization recovered", "business_id", biz, "after_failures", n)
 			}
 			if applied > 0 {
 				s.sugar.Infow("Voucher login accounting synchronized", "business_id", biz, "gateways_applied", applied)

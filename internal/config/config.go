@@ -10,6 +10,7 @@ import (
 
 	"mega-magic/internal/hub"
 	"mega-magic/internal/secretbox"
+	"mega-magic/internal/vouchercode"
 )
 
 type Config struct {
@@ -126,6 +127,9 @@ type ServerConfig struct {
 	ReadTimeout     time.Duration `mapstructure:"read_timeout"`
 	WriteTimeout    time.Duration `mapstructure:"write_timeout"`
 	ShutdownTimeout time.Duration `mapstructure:"shutdown_timeout"`
+	// TrustedProxies lists the CIDRs allowed to set X-Forwarded-For. Empty means loopback plus the
+	// subnets of this container's own interfaces (the compose network).
+	TrustedProxies []string `mapstructure:"trusted_proxies"`
 }
 
 type DatabaseConfig struct {
@@ -183,6 +187,11 @@ type VPSConfig struct {
 	EndpointHost         string `mapstructure:"endpoint_host"`
 	HubLookupEnabled     bool   `mapstructure:"hub_lookup_enabled"`
 	HubEnrollmentEnabled bool   `mapstructure:"hub_enrollment_enabled"`
+	// HubCallbackEnrollmentEnabled turns on router-generated-key enrolment: the
+	// router makes its own WireGuard key and calls back with the public half.
+	// Off by default; PublicBaseURL is the https origin routers can reach.
+	HubCallbackEnrollmentEnabled bool   `mapstructure:"hub_callback_enrollment_enabled"`
+	PublicBaseURL                string `mapstructure:"public_base_url"`
 	HubURL               string `mapstructure:"hub_url"`
 	HubKeyID             string `mapstructure:"hub_key_id"`
 	HubSigningKey        string `mapstructure:"hub_signing_key" json:"-"`
@@ -210,6 +219,11 @@ type SecurityConfig struct {
 	RefreshExpiry time.Duration `mapstructure:"refresh_expiry"`
 	BcryptCost    int           `mapstructure:"bcrypt_cost"`
 	AESGCMKey     string        `mapstructure:"aes_gcm_key"`
+	// VoucherCodeKey is the 32-byte (base64 or hex) master key for voucher codes at rest (internal/vouchercode).
+	// With a key the app can read protected codes; ProtectVoucherCodes also makes NEW codes protected.
+	// Back this key up: without it protected codes cannot be recovered. Keep it separate from the credential key.
+	VoucherCodeKey      string `mapstructure:"voucher_code_key"`
+	ProtectVoucherCodes bool   `mapstructure:"protect_voucher_codes"`
 	TLSCertPath   string        `mapstructure:"tls_cert_path"`
 	TLSKeyPath    string        `mapstructure:"tls_key_path"`
 }
@@ -439,6 +453,14 @@ func (cfg *Config) Validate() error {
 	if cfg.VPS.HubEnrollmentEnabled && !cfg.VPS.HubLookupEnabled {
 		problems = append(problems, "Hub enrollment requires Hub lookup configuration")
 	}
+	if cfg.VPS.HubCallbackEnrollmentEnabled {
+		if !cfg.VPS.HubEnrollmentEnabled {
+			problems = append(problems, "Hub callback enrollment requires Hub enrollment")
+		}
+		if _, err := hub.CallbackURL(cfg.VPS.PublicBaseURL); err != nil {
+			problems = append(problems, "vps.public_base_url must be the https origin routers use to reach this app when Hub callback enrollment is on")
+		}
+	}
 	if cfg.VPS.HubLookupEnabled {
 		if _, err := hub.New(hub.Options{URL: cfg.VPS.HubURL, KeyID: cfg.VPS.HubKeyID, SigningKey: cfg.VPS.HubSigningKey}); err != nil {
 			problems = append(problems, "vps Hub lookup requires a valid HTTPS endpoint, key identifier and 32-byte hex signing key")
@@ -502,6 +524,11 @@ func (cfg *Config) Validate() error {
 	}
 
 	if env == "production" || env == "prod" {
+		// Telegram tokens and webhook signing secrets are encrypted with the
+		// RouterOS credential key even when live router writes are disabled.
+		if _, err := secretbox.New(cfg.Provisioner.Applier.CredentialKey); err != nil {
+			problems = append(problems, "provisioner.applier.credential_key must be a valid 32-byte encryption key in production")
+		}
 		if cfg.Provisioner.Applier.InsecureIgnoreHostKey {
 			problems = append(problems, "provisioner.applier.insecure_ignore_host_key must be false in production")
 		}
@@ -532,6 +559,15 @@ func (cfg *Config) Validate() error {
 			problems = append(problems, "ai.gemini_model must be a Gemini model ID")
 		}
 	}
+	// Voucher code protection fails closed in every environment: a key that is set must be valid, and protecting new
+	// codes without a key would silently keep storing plaintext.
+	if strings.TrimSpace(cfg.Security.VoucherCodeKey) != "" {
+		if _, err := vouchercode.New(cfg.Security.VoucherCodeKey); err != nil {
+			problems = append(problems, "security.voucher_code_key must be a base64 or hex encoded 32-byte key")
+		}
+	} else if cfg.Security.ProtectVoucherCodes {
+		problems = append(problems, "security.protect_voucher_codes needs security.voucher_code_key")
+	}
 	if len(problems) > 0 {
 		return fmt.Errorf("unsafe %s configuration: %s", env, strings.Join(problems, "; "))
 	}
@@ -546,6 +582,8 @@ func weakSecret(value, knownDefault string, minLength int) bool {
 func setDefaults(v *viper.Viper) {
 	v.SetDefault("vps.hub_lookup_enabled", false)
 	v.SetDefault("vps.hub_enrollment_enabled", false)
+	v.SetDefault("vps.hub_callback_enrollment_enabled", false)
+	v.SetDefault("vps.public_base_url", "")
 	v.SetDefault("vps.hub_url", "")
 	v.SetDefault("vps.hub_key_id", "")
 	v.SetDefault("vps.hub_signing_key", "")
@@ -634,6 +672,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("security.refresh_expiry", "168h")
 	v.SetDefault("security.bcrypt_cost", 12)
 	v.SetDefault("security.aes_gcm_key", defaultAESGCMKey)
+	v.SetDefault("security.voucher_code_key", "")
+	v.SetDefault("security.protect_voucher_codes", false)
 	v.SetDefault("security.tls_cert_path", "")
 	v.SetDefault("security.tls_key_path", "")
 

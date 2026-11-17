@@ -20,7 +20,7 @@ func applyGatewayCapacitySchema(t *testing.T, db *database.DB) {
 	if !present {
 		files = append(files, "../../migrations/20261031100000_store_addons.sql")
 	}
-	files = append(files, "../../db/migrations/20261113120000_gateway_capacity.sql")
+	files = append(files, "../../db/migrations/20261118120000_gateway_capacity.sql")
 	for _, f := range files {
 		raw, err := os.ReadFile(f)
 		if err != nil {

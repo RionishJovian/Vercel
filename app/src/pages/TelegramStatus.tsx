@@ -22,8 +22,8 @@ export function TelegramStatus({ runtime }: { runtime?: BotRuntime }) {
         <div><dt>{t("tg.token")}</dt><dd>{label("token", runtime?.token)}</dd></div>
         <div><dt>{t("tg.receiver")}</dt><dd>{label("receiver", receiver)}</dd></div>
         <div><dt>{t("tg.approver")}</dt><dd>{runtime?.approver_configured ? t("tg.configured") : t("tg.notConfigured")}</dd></div>
-        <div><dt>{t("tg.lastPoll")}</dt><dd>{runtime?.last_poll_at ? new Date(runtime.last_poll_at).toLocaleString() : "—"}</dd></div>
-        <div><dt>{t("tg.delivery")}</dt><dd>{label("delivery", runtime?.last_delivery)}{runtime?.last_delivery_at ? ` · ${new Date(runtime.last_delivery_at).toLocaleString()}` : ""}</dd></div>
+        <div><dt>{t("tg.lastPoll")}</dt><dd className="num">{runtime?.last_poll_at ? new Date(runtime.last_poll_at).toLocaleString() : "—"}</dd></div>
+        <div><dt>{t("tg.delivery")}</dt><dd className="num">{label("delivery", runtime?.last_delivery)}{runtime?.last_delivery_at ? ` · ${new Date(runtime.last_delivery_at).toLocaleString()}` : ""}</dd></div>
       </dl>
       {runtime?.detail && <p role="alert">{runtime.detail}</p>}
       <p className="soft">{t("tg.evidenceNote")}</p>

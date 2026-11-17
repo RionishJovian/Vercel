@@ -13,7 +13,7 @@ beforeEach(() => {
   bodies = [];
   vi.stubGlobal("fetch", vi.fn(async (_url: string, init?: RequestInit) => { bodies.push(JSON.parse(String(init?.body))); return reply(); }));
 });
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); history.replaceState({}, "", "/"); });
 
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 const submit = (onDone = vi.fn()) => {
@@ -76,5 +76,32 @@ describe("Sign in", () => {
     expect(pw.type).toBe("text");
     fireEvent.click(screen.getByRole("button", { name: "Hide password" }));
     expect(pw.type).toBe("password");
+  });
+});
+
+
+describe("sign-in credential navigation safety", () => {
+  const open = () => render(<ThemeProvider><I18nProvider><SignIn onDone={vi.fn()} /></I18nProvider></ThemeProvider>);
+  it("declares a POST fallback and only mounts the active sign-in inputs", () => {
+    const { container } = open();
+    expect(container.querySelector("form")?.getAttribute("method")).toBe("post");
+    expect(container.querySelectorAll("form")).toHaveLength(1);
+    expect(container.querySelectorAll('input[name="password"]')).toHaveLength(1);
+    expect(container.querySelector('input[autocomplete="new-password"]')).toBeNull();
+  });
+  it.each(["?email=synthetic%40example.test&password=synthetic-only", "?%70assword=synthetic-only", "?EMAIL=synthetic%40example.test"]) ("strips credential query keys and keeps them out of the create-account return link: %s", (query) => {
+    history.replaceState({}, "", "/app/revenue" + query + "#old");
+    const { container } = open();
+    expect(location.search).toBe("");
+    expect(location.hash).toBe("");
+    const link = container.querySelector('a[href^="/signin?"]') as HTMLAnchorElement;
+    expect(new URL(link.href).searchParams.get("next")).toBe("/app/revenue");
+  });
+  it("preserves a non-credential return query", () => {
+    history.replaceState({}, "", "/app/revenue?period=day");
+    const { container } = open();
+    expect(location.search).toBe("?period=day");
+    const link = container.querySelector('a[href^="/signin?"]') as HTMLAnchorElement;
+    expect(new URL(link.href).searchParams.get("next")).toBe("/app/revenue?period=day");
   });
 });

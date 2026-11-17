@@ -45,10 +45,28 @@ func (r *VoucherRepository) ListVouchersPageTXN(tx *sql.Tx, businessID string, f
 	}
 	if f.Query != "" {
 		args = append(args, likeContains(f.Query))
-		where = append(where, fmt.Sprintf("(code ILIKE $%[1]d OR plan_label ILIKE $%[1]d)", len(args)))
+		clause := fmt.Sprintf("code ILIKE $%[1]d OR plan_label ILIKE $%[1]d", len(args))
+		// Protected rows have no plaintext to search, so they match only a complete code (via the blind index).
+		if blind := VoucherCodeBlind(strings.ToUpper(strings.TrimSpace(f.Query))); blind != "" {
+			args = append(args, blind)
+			clause += fmt.Sprintf(" OR code_hmac = $%d", len(args))
+		}
+		where = append(where, "("+clause+")")
 	}
 	if len(f.Codes) > 0 {
-		add("code = ANY($%d)", pq.Array(f.Codes))
+		args = append(args, pq.Array(f.Codes))
+		clause := fmt.Sprintf("code = ANY($%d)", len(args))
+		var blinds []string
+		for _, c := range f.Codes {
+			if b := VoucherCodeBlind(c); b != "" {
+				blinds = append(blinds, b)
+			}
+		}
+		if len(blinds) > 0 {
+			args = append(args, pq.Array(blinds))
+			clause += fmt.Sprintf(" OR code_hmac = ANY($%d)", len(args))
+		}
+		where = append(where, "("+clause+")")
 	}
 	if f.BatchID != "" {
 		var exists bool
@@ -89,7 +107,7 @@ func (r *VoucherRepository) ListVouchersPageTXN(tx *sql.Tx, businessID string, f
 	}
 
 	args = append(args, f.Limit, f.Offset)
-	rows, err = tx.Query(`SELECT id, business_id, device_id, plan_key, plan_label, code,
+	rows, err = tx.Query(`SELECT id, business_id, device_id, plan_key, plan_label, `+voucherCodeSQL+`,
 		       price_mmk, duration_minutes, device_mac, status,
 		       first_seen_at, expires_at, created_at, updated_at
 		FROM vouchers WHERE `+strings.Join(where, " AND ")+
@@ -103,7 +121,7 @@ func (r *VoucherRepository) ListVouchersPageTXN(tx *sql.Tx, businessID string, f
 		var deviceID, deviceMAC sql.NullString
 		var durationMin sql.NullInt64
 		var firstSeen, expires sql.NullTime
-		if err := rows.Scan(&v.ID, &v.BusinessID, &deviceID, &v.PlanKey, &v.PlanLabel, &v.Code,
+		if err := rows.Scan(&v.ID, &v.BusinessID, &deviceID, &v.PlanKey, &v.PlanLabel, ScanVoucherCode(&v.Code),
 			&v.PriceMMK, &durationMin, &deviceMAC, &v.Status, &firstSeen, &expires, &v.CreatedAt, &v.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan voucher row: %w", err)
 		}

@@ -41,7 +41,7 @@ export function Backups() {
   return (
     <>
       {back}<PageHead title={t("bk.title")} help={t("bk.lead")} />
-      <section className="glass pad stack">
+      <section className="glass pad stack workspace-rail">
         <label className="field"><span>{t("bk.device")}</span><select className="input" value={id} onChange={(e) => { setDev(e.target.value); setRestoring(null); setMsg(null); }}>{list.map((d) => <option key={d.device_id} value={d.device_id}>{d.hardware_name || d.device_id}</option>)}</select></label>
         <button className="btn" type="button" disabled={busy || bk.data?.capture_available !== true} onClick={() => void capture()}>{t("bk.capture")}</button>
         <p className="soft small" role="status">{bk.isLoading ? t("bk.checking") : bk.error ? t("bk.unconfirmed") : bk.data?.capture_available === true ? t("bk.available") : t("bk.unavailable")}</p>
@@ -54,6 +54,7 @@ export function Backups() {
               : "This mode saves router-side artifacts and database metadata only. It is not an off-device disaster-recovery backup.")}</Note>}
       </section>
       {msg && <Note kind={msg.bad ? "bad" : "ok"}>{msg.text}</Note>}
+      <div className="workspace-main workspace-stack">
       <section className="stack"><h2>{t("bk.backups")}</h2>
         {bk.error ? <Note kind="bad">{t("bk.loadFail")}</Note> : bk.isLoading ? <Skeleton h={100} /> : !backups.length ? <Note>{t("bk.none")}</Note> : backups.map((b) => (
           <div className="glass pad stack" key={b.id}>
@@ -79,6 +80,7 @@ export function Backups() {
           <div className="rowitem" key={i}><div className="stack" style={{ gap: 2 }}><b className="small">{c.action}</b><span className="soft small">{c.reason}</span></div><span className="soft small num">{c.user_role} · {c.timestamp ? new Date(c.timestamp).toLocaleString() : ""}</span></div>
         ))}
       </section>
+      </div>
     </>
   );
 }

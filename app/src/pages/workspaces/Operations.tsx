@@ -35,6 +35,7 @@ export function NetworkHub({ routerId }: { me: Me; routerId?: string | null }) {
         <h1>{t("nav.network")}</h1>
         <div className="toolbar">{health.fleet.isLoading ? null : <StatePill tone={health.tone}>{t(health.key)}</StatePill>}{health.checkedAt ? <Ago at={health.checkedAt} prefix={t("ws.checked")} /> : null}</div>
       </header>
+      <div className="workspace-main workspace-stack">
       <section className="glass pad stack" aria-labelledby="nh-routers">
         <div className="row"><h2 id="nh-routers">{t("nh.routers")}</h2><a className="link small" href="/app/hub">{t("hub.title")}</a></div>
         {routers.isLoading ? <Loading><SkRows n={1} pill /></Loading> : routers.error ? <Recovery title={t("nh.routersUnavailable")} onRetry={() => void routers.mutate()} /> : !list?.length ? (
@@ -62,7 +63,8 @@ export function NetworkHub({ routerId }: { me: Me; routerId?: string | null }) {
           {selected ? <HomePorts key={selected.device_id} router={selected} /> : null}
         </section>
       )}
-      <section className="stack" aria-label={t("nh.tools")}>
+      </div>
+      <section className="stack workspace-rail" aria-label={t("nh.tools")}>
         <h2 className="group-title">{t("nh.tools")}</h2>
         <div className="linklist">
           <LinkRow href="/app/setup" icon="rocket" title={t("nav.setup")} detail={t("nh.setupHelp")} />
@@ -98,7 +100,7 @@ export function Activity() {
   return (
     <>
       <header className="ws-head"><h1>{t("ac.title")}</h1><p className="ws-lead">{t("ac.lead")}</p></header>
-      <section className="glass pad stack" aria-labelledby="ac-monitor">
+      <section className="glass pad stack workspace-summary" aria-labelledby="ac-monitor">
         <div className="row"><h2 id="ac-monitor">{t("ac.monitor")}</h2>{health.fleet.isLoading ? null : <StatePill tone={health.tone}>{t(health.key)}</StatePill>}</div>
         <div className="metrics four">
           <Metric label={t("nw.online")} value={health.total === null ? null : `${health.up}/${health.total}`} />
@@ -108,6 +110,7 @@ export function Activity() {
         </div>
         <p className="soft small">{t("ac.interval")} {health.checkedAt ? <Ago at={health.checkedAt} prefix={t("ws.checked")} /> : null}</p>
       </section>
+      <div className="workspace-rail workspace-stack">
       <section className="glass pad stack" aria-labelledby="ac-alerts">
         <div className="row"><h2 id="ac-alerts">{t("nav.alerts")}</h2><a className="link small" href="/app/incidents">{t("hm.open")}</a></div>
         {incidents.isLoading ? <Loading><SkRows n={1} /></Loading> : incidents.error ? <Recovery title={t("ac.alertsUnavailable")} onRetry={() => void incidents.mutate()} /> : open.length === 0 ? (
@@ -125,14 +128,6 @@ export function Activity() {
         )}
         <p className="soft small">{t("ac.recoveryNote")}</p>
       </section>
-      <section className="glass pad stack" aria-labelledby="ac-events">
-        <div className="row"><h2 id="ac-events">{t("ac.events")}</h2><a className="link small" href="/app/events">{t("hm.open")}</a></div>
-        {events.isLoading ? <Loading><SkList n={3} /></Loading> : events.error ? <p className="note warn small">{t("ac.eventsUnavailable")}</p> : evs.length === 0 ? <p className="soft small">{t("ac.noEvents")}</p> : (
-          <ul className="list-table">
-            {evs.map((e, i) => <li key={i} className="sub-row"><span className="small" style={{ overflowWrap: "anywhere" }}>{e.message}</span><span className="chip">{e.severity || "info"}</span><span className="meta"><span>{e.program || t("ac.router")}</span><Ago at={e.received_at} /></span></li>)}
-          </ul>
-        )}
-      </section>
       <section className="stack" aria-label={t("ac.more")}>
         <h2 className="group-title">{t("ac.more")}</h2>
         <div className="linklist">
@@ -140,6 +135,15 @@ export function Activity() {
           <LinkRow href="/app/fleet" icon="pulse" title={t("fl.title")} detail={t("ac.fleetHelp")} />
           <LinkRow href="/app/security" icon="shield" title={t("sec.title")} detail={t("ac.securityHelp")} />
         </div>
+      </section>
+      </div>
+      <section className="glass pad stack workspace-main" aria-labelledby="ac-events">
+        <div className="row"><h2 id="ac-events">{t("ac.events")}</h2><a className="link small" href="/app/events">{t("hm.open")}</a></div>
+        {events.isLoading ? <Loading><SkList n={3} /></Loading> : events.error ? <p className="note warn small">{t("ac.eventsUnavailable")}</p> : evs.length === 0 ? <p className="soft small">{t("ac.noEvents")}</p> : (
+          <ul className="list-table">
+            {evs.map((e, i) => <li key={i} className="sub-row"><span className="small" style={{ overflowWrap: "anywhere" }}>{e.message}</span><span className="chip">{e.severity || "info"}</span><span className="meta"><span>{e.program || t("ac.router")}</span><Ago at={e.received_at} /></span></li>)}
+          </ul>
+        )}
       </section>
     </>
   );
@@ -164,7 +168,7 @@ export function Approvals() {
           <li key={k} className="step"><span className="step-n" aria-hidden="true">{i + 1}</span><div className="step-body"><b>{t("cfg.f." + k)}</b><p className="soft small">{t("cfg.f." + k + "Help")}</p></div></li>
         ))}
       </ol>
-      <section className="stack" aria-label={t("cfg.where")}>
+      <section className="stack workspace-rail" aria-label={t("cfg.where")}>
         <h2 className="group-title">{t("cfg.where")}</h2>
         <div className="linklist">
           <LinkRow href="/app/network" icon="globe" title={t("nh.internet")} detail={t("cfg.internetHelp")} />
@@ -173,7 +177,7 @@ export function Approvals() {
           <LinkRow href="/app/backups" icon="save" title={t("cfg.rollback")} detail={t("cfg.rollbackHelp")} />
         </div>
       </section>
-      <section className="glass pad stack" aria-labelledby="ap-recent">
+      <section className="glass pad stack workspace-main" aria-labelledby="ap-recent">
         <div className="row"><h2 id="ap-recent">{t("cfg.recent")}</h2>{first ? <span className="soft small">{first.hardware_name || first.device_id}</span> : null}</div>
         {!first ? <p className="soft small">{t("nh.noRoutersHelp")}</p> : changes.isLoading ? <Loading><SkList n={3} /></Loading> : changes.error ? <p className="note warn small">{t("cfg.recentUnavailable")}</p> : list.length === 0 ? <p className="soft small">{t("cfg.noChanges")}</p> : (
           <ul className="list-table">

@@ -13,6 +13,8 @@ server:
   read_timeout: 30s
   write_timeout: 30s
   shutdown_timeout: 10s
+  # CIDRs allowed to set X-Forwarded-For. Unset = loopback + this container's own subnets.
+  # trusted_proxies: ["172.18.0.5/32"]
 
 # Database (PostgreSQL)
 database:
@@ -132,6 +134,9 @@ security:
   refresh_expiry: 168h  # 7 days
   bcrypt_cost: 12
   aes_gcm_key: "CHANGE_ME_32_BYTE_KEY_FOR_ENCRYPTION"
+  # Voucher codes at rest (docs/VOUCHER-CODE-PROTECTION.md). Off by default.
+  # voucher_code_key: ""            # 32 random bytes, base64 or hex. Back it up: lost key = unrecoverable codes.
+  # protect_voucher_codes: false    # true: new vouchers store only a sealed copy; needs voucher_code_key
   tls_cert_path: ""
   tls_key_path: ""
 
@@ -239,6 +244,11 @@ vps:
   # /vps/peers/{id}/quick-enroll call fail with 503 "not enabled".
   hub_lookup_enabled: false
   hub_enrollment_enabled: false
+  # Router-generated key setup (Wave 3). The router creates its own WireGuard key
+  # and posts only the public half. Off by default; needs hub_enrollment_enabled
+  # and the https origin routers use to reach this app. Untested on real hardware.
+  hub_callback_enrollment_enabled: false
+  public_base_url: ""
   hub_url: "https://hub.example.com/internal/provisioner"
   hub_key_id: "v1"
   hub_signing_key: ""

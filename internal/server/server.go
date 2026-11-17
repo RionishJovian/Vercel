@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -33,11 +34,13 @@ import (
 	"mega-magic/internal/recovery"
 	"mega-magic/internal/secretbox"
 	"mega-magic/internal/telegram"
+	"mega-magic/internal/vouchercode"
 	"mega-magic/pkg/logger"
 )
 
 type Server struct {
 	telegramRuntime   *telegram.Runtime
+	renotify          func(context.Context)
 	telegramCancel    context.CancelFunc
 	telegramDone      chan struct{}
 	broadband         *handler.SecurityHandler
@@ -76,6 +79,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	}
 
 	sugar := log.Sugar()
+	readinessLog = sugar
 
 	db, err := database.New(cfg.Database)
 	if err != nil {
@@ -109,7 +113,25 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 			sugar.Infow("Integration secrets sealed", "telegram_bot_tokens", bots, "webhook_secrets", hooks)
 		}
 	} else {
+		if cfg.Environment == "production" || cfg.Environment == "prod" {
+			_ = db.Close()
+			return nil, errors.New("production integration-secret encryption key is required")
+		}
 		sugar.Warn("No credential key configured: Telegram bot tokens and webhook secrets are stored in plaintext")
+	}
+
+	// Voucher codes at rest. A key lets the app read protected codes; protect_voucher_codes (default off) makes new
+	// codes protected. Without a key, protected rows fail closed instead of reading as empty.
+	if key := strings.TrimSpace(cfg.Security.VoucherCodeKey); key != "" {
+		protector, err := vouchercode.New(key)
+		if err == nil {
+			err = database.ConfigureVoucherCodes(protector, cfg.Security.ProtectVoucherCodes)
+		}
+		if err != nil {
+			_ = db.Close()
+			return nil, fmt.Errorf("voucher code key: %w", err)
+		}
+		sugar.Infow("Voucher code protection key loaded", "protect_new_codes", cfg.Security.ProtectVoucherCodes)
 	}
 
 	natsRepo := database.NewNATSSubjectRepository(db)
@@ -231,7 +253,8 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	botRuntime := telegram.NewRuntime(telegramBindings{db: db, repo: database.NewBusinessTelegramBotRepository(db), reservedToken: reservedTelegramToken}, func(b telegram.Binding) telegram.PurchaseDecider {
 		return telegram.CompositePurchaseDecider{Deciders: []telegram.PurchaseDecider{handler.AccountRenewalDecider{Handler: platformHandler, ActorID: b.ActorID}, storeHandler, billingHandler, telegram.ScopedPurchaseDecider{BusinessID: b.BusinessID, Decider: ownerDecider}}}
 	}, nil)
-	notifierr.SetIncidentSink(ai.NewTelegramNotifier(botRuntime, "platform", sugar))
+	incidentTelegram := ai.NewTelegramNotifier(botRuntime, "platform", sugar)
+	notifierr.SetIncidentSink(incidentTelegram)
 	portalHandler := handler.NewPortalHandler(
 		db,
 		database.NewDeviceRepository(db),
@@ -359,6 +382,16 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 			if err != nil {
 				return nil, errors.New("management credential encryption unavailable")
 			}
+			if err := database.CheckHubEnrollmentTables(db); err != nil {
+				return nil, err
+			}
+			vpsHandler.ConfigurePeerState(database.HubPeerStateStore{DB: db})
+			vpsHandler.ConfigureRouterKeyPurge(purgeRouterKeyMaterial(database.PendingEnrollmentStore{DB: db, Box: box}))
+			if cfg.VPS.HubCallbackEnrollmentEnabled {
+				if err := vpsHandler.ConfigureCallbackEnrollment(cfg.VPS.PublicBaseURL, database.HubCallbackTokenStore{DB: db}); err != nil {
+					return nil, err
+				}
+			}
 			go newHubAutoConnect(database.PendingEnrollmentStore{DB: db, Box: box}, vpsHandler).run(context.Background())
 			routerHandler.ConfigureHubForget(database.PendingEnrollmentStore{DB: db, Box: box}.Delete)
 			routerHandler.ConfigureHubRemoval(func(ctx context.Context, biz, requester, id string) (string, error) {
@@ -379,7 +412,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		}
 	}
 	r := gin.New()
-	if err := r.SetTrustedProxies([]string{"127.0.0.1", "::1"}); err != nil {
+	if err := r.SetTrustedProxies(trustedProxyCIDRs(cfg.Server.TrustedProxies, localInterfaceCIDRs())); err != nil {
 		return nil, err
 	}
 	r.Use(gin.Recovery())
@@ -503,7 +536,8 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		ownerDecider.Deciders = append(ownerDecider.Deciders, handler.MediaReceiptDecider{Store: mediaBridge.NewPostgres(db)})
 	}
 	botRuntime.SetBusinessDecider(ownerDecider)
-	authHandler.NotifyRenewal = func(id string) { platformHandler.NotifyAccountRenewal(id, botRuntime) }
+	// Sent after the customer's response, never inside it; an undelivered alert is retried by renotify.
+	authHandler.NotifyRenewal = func(id string) { go platformHandler.NotifyAccountRenewal(id, botRuntime) }
 
 	// Start the recovery worker: consumes peer.recover (from the evaluator),
 	// runs the a/b/c self-healing ladder, emits recovery.result / escalate.
@@ -530,10 +564,15 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 
 	return &Server{
 		telegramRuntime: botRuntime,
-		cfg:             cfg,
-		log:             log,
-		sugar:           sugar,
-		gin:             r,
+		renotify: func(ctx context.Context) {
+			go platformHandler.RunRenewalNotifier(ctx, botRuntime)
+			go incidentTelegram.Run(ctx)
+			guestWifiHandler.RunOwnerAlertRetry(ctx)
+		},
+		cfg:   cfg,
+		log:   log,
+		sugar: sugar,
+		gin:   r,
 		http: &http.Server{
 			Addr:           fmt.Sprintf(":%d", cfg.Server.Port),
 			Handler:        withWebFigHost(webFigProxy, r),
@@ -589,6 +628,10 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 			DeviceIndex: database.NewDeviceRepository(db),
 			Ready:       mediaCatalogueReady,
 		}
+		// Router-generated key enrolment: called by the router itself, authenticated
+		// only by a single-use token. It answers 503 until the feature is configured.
+		tv1.POST("/hub-callback/enroll", auth.BoundedPortalRateLimit(), vpsHandler.CallbackEnroll)
+
 		portalPublic := tv1.Group("/portal", auth.BoundedPortalRateLimit(), boundedPortalBody())
 		{
 			portalPublic.GET("/:deviceId/config", portalHandler.PublicConfig)
@@ -870,6 +913,7 @@ func setupRoutes(r *gin.Engine, authService *auth.Service, authHandler *handler.
 			portalStaff := protected.Group("/portal")
 			{
 				portalStaff.GET("/config", portalHandler.StaffGetConfig)
+				portalStaff.GET("/template-access", portalHandler.TemplateAccess)
 				portalStaff.POST("/router-preview", auth.RequireMinRole(model.RoleAdmin), portalHandler.RouterPreview)
 				portalStaff.PUT("/config", auth.RequireMinRole(model.RoleAdmin), portalHandler.StaffUpdateConfig)
 			}
@@ -991,29 +1035,48 @@ func healthCheck(c *gin.Context) {
 	})
 }
 
+// readinessLog receives the database error that /ready no longer prints; set once in New.
+var readinessLog *zap.SugaredLogger
+
 func readinessCheck(s *Server) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		dbOK := "ok"
-		redisOK := "ok"
-		natsOK := "ok"
-
-		health := s.db.Ping()
-		if health != nil {
-			dbOK = fmt.Sprintf("error: %v", health)
+		dbErr := s.db.Ping()
+		if dbErr != nil {
+			if readinessLog != nil {
+				readinessLog.Warnw("readiness: database check failed", "error", dbErr)
+			}
 		}
+		redisUp := s.cache == nil || s.cache.IsConnected()
+		natsUp := s.messaging == nil || s.messaging.IsConnected()
+		code, body := readinessReport(dbErr == nil, redisUp, natsUp)
+		c.JSON(code, body)
+	}
+}
 
-		if s.cache != nil && !s.cache.IsConnected() {
-			redisOK = "disconnected"
+// readinessReport: the database is required (503 without it); Redis and NATS are required at boot
+// but the app keeps serving without them, so they only mark the server degraded (200). Check text
+// never carries error detail because /ready is public.
+func readinessReport(dbUp, redisUp, natsUp bool) (int, gin.H) {
+	state := func(up bool, down string) string {
+		if up {
+			return "ok"
 		}
-
-		c.JSON(http.StatusOK, gin.H{
-			"status": "ready",
-			"checks": gin.H{
-				"database": dbOK,
-				"redis":    redisOK,
-				"nats":     natsOK,
-			},
-		})
+		return down
+	}
+	status, code := "ready", http.StatusOK
+	switch {
+	case !dbUp:
+		status, code = "not_ready", http.StatusServiceUnavailable
+	case !redisUp || !natsUp:
+		status = "degraded"
+	}
+	return code, gin.H{
+		"status": status,
+		"checks": gin.H{
+			"database": state(dbUp, "error"),
+			"redis":    state(redisUp, "disconnected"),
+			"nats":     state(natsUp, "disconnected"),
+		},
 	}
 }
 
@@ -1060,6 +1123,9 @@ func (s *Server) Start() error {
 		done := s.telegramDone
 		s.guestRepairMu.Unlock()
 		go func() { defer close(done); s.telegramRuntime.Run(ctx) }()
+		if s.renotify != nil {
+			go s.renotify(ctx)
+		}
 		defer cancel()
 	}
 	s.sugar.Infow("Starting HTTP server", "addr", s.http.Addr)
@@ -1160,4 +1226,29 @@ func aiIncidentNotifier(cfg *config.Config, webhooks ai.IncidentNotifier, sugar 
 	}
 	sugar.Infow("AI incident Telegram notification configured", "enabled", true)
 	return ai.NewFanout(webhooks, ai.NewTelegramNotifier(msg, target, sugar))
+}
+
+// trustedProxyCIDRs picks the peers whose X-Forwarded-For the API honours. An explicit list wins
+// as written; otherwise loopback plus the subnets of this container's own interfaces, which is the
+// compose network only, never all of RFC1918. Behind the web container this makes c.ClientIP() the
+// guest's address instead of the container's, so per-IP limits stop sharing one bucket.
+func trustedProxyCIDRs(configured, local []string) []string {
+	if len(configured) > 0 {
+		return configured
+	}
+	return append([]string{"127.0.0.1", "::1"}, local...)
+}
+
+func localInterfaceCIDRs() []string {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, a := range addrs {
+		if n, ok := a.(*net.IPNet); ok && !n.IP.IsLoopback() && n.IP.To4() != nil {
+			out = append(out, (&net.IPNet{IP: n.IP.Mask(n.Mask), Mask: n.Mask}).String())
+		}
+	}
+	return out
 }

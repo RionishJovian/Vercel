@@ -3,6 +3,7 @@ package handler
 import (
 	"database/sql"
 	"errors"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -274,7 +275,8 @@ func (h *PortalHandler) PublicConfig(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"config": cfg, "guest_voucher_access": h.GuestVoucherAccess})
+	// Anonymous callers get the allow-listed view, never the model (see publicPortalConfig).
+	c.JSON(http.StatusOK, gin.H{"config": publicPortalView(cfg), "guest_voucher_access": h.GuestVoucherAccess})
 }
 
 // PublicRedeem: POST /api/v1/portal/:deviceId/redeem
@@ -491,6 +493,7 @@ func (h *PortalHandler) StaffUpdateConfig(c *gin.Context) {
 		TermsText            *string            `json:"terms_text"`
 		PrimaryHex           *string            `json:"primary_hex"`
 		GlassTintHex         *string            `json:"glass_tint_hex"`
+		TemplateID           *string            `json:"template_id"`
 		ConsentRequired      *bool              `json:"consent_required"`
 		ConsentText          *string            `json:"consent_text"`
 		GraceMinutes         *int               `json:"guest_grace_minutes"`
@@ -505,6 +508,9 @@ func (h *PortalHandler) StaffUpdateConfig(c *gin.Context) {
 		VoucherLoginEnabled  *bool              `json:"voucher_login_enabled"`
 		MobilePaymentEnabled *bool              `json:"mobile_payment_enabled"`
 		PaymentInstructions  *string            `json:"payment_instructions"`
+		SupportPhone         *string            `json:"support_phone"`
+		SupportTelegram      *string            `json:"support_telegram"`
+		SupportViber         *string            `json:"support_viber"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -543,6 +549,30 @@ func (h *PortalHandler) StaffUpdateConfig(c *gin.Context) {
 	}
 	if req.GlassTintHex != nil && !model.IsHexColor(*req.GlassTintHex) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "glass_tint_hex must be a hex colour like #7ad0ff"})
+		return
+	}
+	// Support contacts become links on the router login page, so only a plain phone number or Telegram username is stored.
+	for _, contact := range []struct {
+		value     *string
+		normalize func(string) (string, bool)
+		message   string
+	}{
+		{req.SupportPhone, routeros.NormalizeSupportPhone, "support phone must be 6 to 15 digits, with an optional leading +"},
+		{req.SupportTelegram, routeros.NormalizeSupportTelegram, "support Telegram must be a username of 5 to 32 letters, digits or underscores"},
+		{req.SupportViber, routeros.NormalizeSupportViber, "support Viber must be a phone number of 6 to 15 digits, with an optional leading +"},
+	} {
+		if contact.value == nil {
+			continue
+		}
+		normalized, ok := contact.normalize(*contact.value)
+		if !ok {
+			c.JSON(http.StatusBadRequest, gin.H{"error": contact.message})
+			return
+		}
+		*contact.value = normalized
+	}
+	if req.TemplateID != nil && !routeros.ValidPortalTemplate(*req.TemplateID) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unknown login page template"})
 		return
 	}
 	if req.GuestPlans != nil {
@@ -600,6 +630,19 @@ func (h *PortalHandler) StaffUpdateConfig(c *gin.Context) {
 		if req.GlassTintHex != nil {
 			existing.GlassTintHex = *req.GlassTintHex
 		}
+		if req.TemplateID != nil {
+			// Keeping the stored template is always allowed; changing to a premium one needs the Store add-on.
+			if *req.TemplateID != existing.TemplateID && portalTemplatePremium(*req.TemplateID) && auth.GetUserRole(c) != string(model.RoleDeveloper) {
+				owned, e := ownedPortalAddons(tx, businessID)
+				if e != nil {
+					return e
+				}
+				if !portalTemplateAllowed(*req.TemplateID, auth.GetUserRole(c), owned) {
+					return errPortalTemplateLocked
+				}
+			}
+			existing.TemplateID = *req.TemplateID
+		}
 		if req.MMQRURL != nil {
 			existing.MMQRURL = *req.MMQRURL
 		}
@@ -612,6 +655,15 @@ func (h *PortalHandler) StaffUpdateConfig(c *gin.Context) {
 		}
 		if req.PaymentInstructions != nil {
 			existing.PaymentInstructions = strings.TrimSpace(*req.PaymentInstructions)
+		}
+		if req.SupportPhone != nil {
+			existing.SupportPhone = *req.SupportPhone
+		}
+		if req.SupportTelegram != nil {
+			existing.SupportTelegram = *req.SupportTelegram
+		}
+		if req.SupportViber != nil {
+			existing.SupportViber = *req.SupportViber
 		}
 		if req.BankName != nil {
 			existing.BankName = *req.BankName
@@ -658,6 +710,10 @@ func (h *PortalHandler) StaffUpdateConfig(c *gin.Context) {
 		return nil
 	})
 	if err != nil {
+		if errors.Is(err, errPortalTemplateLocked) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "this login page theme is a Store add-on; unlock it in the Store", "code": "template_locked"})
+			return
+		}
 		if errors.Is(err, errBusinessNameRequired) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "business_name is required"})
 			return
@@ -666,6 +722,7 @@ func (h *PortalHandler) StaffUpdateConfig(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "enable voucher login or mobile payment"})
 			return
 		}
+		log.Printf("portal config update failed: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update portal config"})
 		return
 	}
@@ -715,6 +772,12 @@ func (h *PortalHandler) RouterPreview(c *gin.Context) {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
+	// The connected-session page (status.html) in the same template, with a labelled sample session.
+	status, err := routeros.RenderPortalStatus(&design, true)
+	if err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
 	c.Header("Cache-Control", "no-store")
-	c.JSON(200, gin.H{"html": page})
+	c.JSON(200, gin.H{"html": page, "status_html": status})
 }

@@ -120,9 +120,22 @@ func (h *VPSHandler) EnrollGateway(c *gin.Context) {
 		c.JSON(404, gin.H{"error": "gateway not found in your tenant"})
 		return
 	}
-	peer, err := h.enrollmentHub.EnrollPeer(c.Request.Context(), hub.Identity{TenantID: biz, RouterID: device.DeviceID, RequestedBy: user}, body.PublicKey, body.Port)
+	identity := hub.Identity{TenantID: biz, RouterID: device.DeviceID, RequestedBy: user}
+	ctx, cancel := context.WithTimeout(c.Request.Context(), enrollmentDeadline)
+	defer cancel()
+	unlock, lockErr := h.enrollLocks.Lock(ctx, biz+"/"+device.DeviceID)
+	if lockErr != nil {
+		c.JSON(503, gin.H{"error": "another setup for this router is still running; wait a moment and retry", "code": "hub_enrollment_busy"})
+		return
+	}
+	defer unlock()
+	peer, err := h.enrollmentHub.EnrollPeer(ctx, identity, body.PublicKey, body.Port)
 	if err != nil || peer.TenantID != biz || peer.RouterID != device.DeviceID || peer.RouterPublicKey != body.PublicKey || peer.EnrollmentVersion != 1 || peer.State != "active" {
 		c.JSON(502, gin.H{"error": "enrollment not confirmed; retry with the same public key, do not generate a replacement key"})
+		return
+	}
+	if e := h.recordAllocation(ctx, identity, peer, false); e != nil {
+		c.JSON(502, gin.H{"error": "Hub allocation conflicts with another router; no setup was issued", "code": "hub_allocation_conflict"})
 		return
 	}
 	scripts, err := hub.BuildRouterScripts(device.DeviceID, peer)
@@ -201,10 +214,21 @@ func (h *VPSHandler) QuickEnrollGateway(c *gin.Context) {
 		}
 	}
 	identity := hub.Identity{TenantID: biz, RouterID: device.DeviceID, RequestedBy: user}
+	// One enrolment per router at a time: two concurrent pastes must not both
+	// remove and re-create a peer, or one of them leaves an orphan allocation.
+	ctx, cancel := context.WithTimeout(c.Request.Context(), enrollmentDeadline)
+	defer cancel()
+	unlock, lockErr := h.enrollLocks.Lock(ctx, biz+"/"+device.DeviceID)
+	if lockErr != nil {
+		c.JSON(503, gin.H{"error": "another setup for this router is still running; wait a moment and retry", "code": "hub_enrollment_busy"})
+		return
+	}
+	defer unlock()
 	var peer hub.Peer
 	var script string
+	freshPeer := false
 	if h.liveHub != nil {
-		peer, err = h.liveHub.InspectRouter(c.Request.Context(), identity)
+		peer, err = h.liveHub.InspectRouter(ctx, identity)
 		if err != nil && !errors.Is(err, hub.ErrPeerNotFound) {
 			c.JSON(503, gin.H{"error": "Hub lookup unavailable; no enrollment changed"})
 			return
@@ -230,6 +254,13 @@ func (h *VPSHandler) QuickEnrollGateway(c *gin.Context) {
 		case key.public != "" && key.public == peer.RouterPublicKey:
 			script, err = hub.BuildQuickConnectScript(device.DeviceID, peer, key.private)
 		case !body.StartOver:
+			// A router that has handshaken is connected. Its server-held key was
+			// purged on purpose at that handshake, and replacing the peer now would
+			// cut off a working tunnel, so refuse instead of re-allocating.
+			if peer.LastHandshakeAt != nil {
+				c.JSON(409, gin.H{"error": "This router is already connected. Use Finish connection; its tunnel was not changed.", "code": "hub_peer_already_connected"})
+				return
+			}
 			// The setup key is gone (expired or never saved) but the Hub allocation
 			// is kept. A router that already holds that key continues with it; one
 			// that does not stops before any change and the owner can choose Start over.
@@ -237,11 +268,18 @@ func (h *VPSHandler) QuickEnrollGateway(c *gin.Context) {
 			recovery = "resume"
 		default:
 			// Explicit Start over: only now is the old allocation replaced.
-			if h.enrollmentRemover == nil {
+			// A router that has handshaken is connected. Its server-held key was
+			// purged on purpose at that handshake, and replacing the peer now would
+			// cut off a working tunnel, so refuse instead of re-allocating.
+			if peer.LastHandshakeAt != nil {
+				c.JSON(409, gin.H{"error": "This router is already connected. Use Finish connection; its tunnel was not changed.", "code": "hub_peer_already_connected"})
+				return
+			}
+			if h.enrollmentRemover == nil || h.automaticPreflight == nil {
 				c.JSON(409, gin.H{"error": "existing router key cannot be recovered; enrollment preserved", "code": "hub_router_key_unavailable"})
 				return
 			}
-			if err = h.enrollmentRemover.RemovePeer(c.Request.Context(), identity, peer.PeerID); err != nil {
+			if err = h.enrollmentRemover.RemovePeer(ctx, identity, peer.PeerID); err != nil {
 				c.JSON(503, gin.H{"error": "Hub could not replace the old allocation; nothing changed. Try again"})
 				return
 			}
@@ -258,11 +296,12 @@ func (h *VPSHandler) QuickEnrollGateway(c *gin.Context) {
 			c.JSON(503, gin.H{"error": "router key preparation temporarily unavailable"})
 			return
 		}
-		peer, err = h.enrollmentHub.EnrollPeer(c.Request.Context(), identity, key.public, body.Port)
+		peer, err = h.enrollmentHub.EnrollPeer(ctx, identity, key.public, body.Port)
 		if err != nil || peer.TenantID != biz || peer.RouterID != device.DeviceID || peer.RouterPublicKey != key.public || peer.EnrollmentVersion != 1 || peer.State != "active" {
 			c.JSON(502, gin.H{"error": "enrollment not confirmed; retry the one-paste action"})
 			return
 		}
+		freshPeer = true
 		if body.StartOver {
 			script, err = hub.BuildStartOverScript(device.DeviceID, peer, key.private)
 			recovery = "start_over"
@@ -274,7 +313,11 @@ func (h *VPSHandler) QuickEnrollGateway(c *gin.Context) {
 			return
 		}
 	}
-	script, err = h.automaticPrepare(c.Request.Context(), biz, device.DeviceID, peer.RouterPublicKey, script)
+	if e := h.recordAllocation(ctx, identity, peer, freshPeer); e != nil {
+		c.JSON(502, gin.H{"error": "Hub allocation conflicts with another router; no setup was issued", "code": "hub_allocation_conflict"})
+		return
+	}
+	script, err = h.automaticPrepare(ctx, biz, device.DeviceID, peer.RouterPublicKey, script)
 	if err != nil {
 		if errors.Is(err, ErrHubManagementConfigured) {
 			c.JSON(409, gin.H{"error": "This router already has a saved management connection. Use Finish connection to verify it; no setup credentials were replaced.", "code": "hub_management_already_configured"})

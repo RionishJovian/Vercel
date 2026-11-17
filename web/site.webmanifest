@@ -4,16 +4,16 @@
   "description": "Hotspot and PPPoE management for MikroTik.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#f7f3e8",
-  "theme_color": "#0b7a58",
+  "background_color": "#0b0e14",
+  "theme_color": "#0b0e14",
   "icons": [
     {
-      "src": "/assets/images/megamagic-logo-a-180.png?v=20261112",
+      "src": "/assets/images/megamagic-logo-b-180.png?v=20261113",
       "sizes": "180x180",
       "type": "image/png"
     },
     {
-      "src": "/assets/images/megamagic-logo-a-512.png?v=20261112",
+      "src": "/assets/images/megamagic-logo-b-512.png?v=20261113",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"

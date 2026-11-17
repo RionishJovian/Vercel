@@ -12,6 +12,6 @@
     "GitHub/Mega-Magic local changes through 2026-10-28",
     "October 28 telemetry and device-workspace release frontend"
   ],
-  "local_private_records": ".local/",
+  "local_private_records": "~/MegaMagic-private/local/ (outside the repo since 2026-11-17)",
   "consolidation_is_deployment": false
 }

@@ -3,6 +3,7 @@ package handler
 import (
 	"database/sql"
 	"errors"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -168,10 +169,14 @@ func (h *StoreHandler) notify(p *model.StorePurchase) {
 	}
 	text := telegram.StoreApprovalMessage(p.ID, businessName, p.ServiceLabel, p.PriceMMK, value(p.BankReference))
 	if buttons, ok := h.messenger.(telegram.ButtonMessenger); ok {
-		_ = buttons.SendButtons(h.operatorChat, text, p.ID)
+		if err := buttons.SendButtons(h.operatorChat, text, p.ID); err != nil {
+			log.Printf("store purchase %s: platform Telegram alert not delivered: %v", p.ID, err)
+		}
 		return
 	}
-	_ = h.messenger.SendMessage(h.operatorChat, text+"\nReview this order in Mega Magic Store to approve or reject it.")
+	if err := h.messenger.SendMessage(h.operatorChat, text+"\nReview this order in Mega Magic Store to approve or reject it."); err != nil {
+		log.Printf("store purchase %s: platform Telegram alert not delivered: %v", p.ID, err)
+	}
 }
 
 func value(v *string) string {

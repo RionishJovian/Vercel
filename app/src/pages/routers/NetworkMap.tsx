@@ -57,13 +57,13 @@ export function NetworkMap({ gateways, selected, hub }: { gateways: RouterRow[];
         {gateways.length > 1 && <select className="input" aria-label={t("v.f.gateway")} value={gw.device_id} onChange={(e) => { navigate("/app/router/map?id=" + encodeURIComponent(e.target.value)); }}>{gateways.map((g) => <option key={g.device_id} value={g.device_id}>{g.hardware_name || g.device_id}</option>)}</select>}
         <section className="glass pad stack">
           <div className="mapnode router">
-            <div><b>{gw.hardware_name || "RouterBOARD"}</b><div className="soft small">{m.total} {t("map.devices")}</div></div>
+            <div><b>{gw.hardware_name || "RouterBOARD"}</b><div className="soft small tnum">{m.total} {t("map.devices")}</div></div>
             <HubChip status={hub[gw.device_id]} />
           </div>
           {m.total === 0 && <Note>{t("map.empty")}</Note>}
           {m.ports.map(([port, devs]) => (
             <div className="branch" key={port}>
-              <div className="row"><span className="chip num">{port}</span><span className="soft small">{devs.length}</span></div>
+              <div className="row"><span className="chip num">{port}</span><span className="soft small num">{devs.length}</span></div>
               <div className="stack leaf">{devs.map((d) => <Node key={d.mac} d={d} />)}</div>
             </div>
           ))}

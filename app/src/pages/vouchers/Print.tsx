@@ -44,8 +44,8 @@ function LayoutForm({ initial, onSaved }: { initial: Layout; onSaved: () => void
     setBusy(false);
   }
   return (
-    <div className="pl-layout">
-      <form className="glass pad stack" onSubmit={(e) => void save(e)}>
+    <div className="pl-layout workspace-grid">
+      <form className="glass pad stack workspace-main" onSubmit={(e) => void save(e)}>
         <div><h3>{t("pl.card")}</h3><p className="soft small">{t("pl.cardLead")}</p></div>
         <div className="pl-fields">
           <Field label={t("p.biz")} htmlFor="pl-biz"><input className="input" id="pl-biz" maxLength={120} required value={d.business_name} onChange={(e) => set("business_name", e.target.value)} /></Field>
@@ -72,7 +72,7 @@ function LayoutForm({ initial, onSaved }: { initial: Layout; onSaved: () => void
           <button className="pill" type="button" onClick={() => printCodes([demo], d, firstUse)}>{t("pl.test")}</button>
         </div>
       </form>
-      <aside className="glass pad stack pl-side">
+      <aside className="glass pad stack pl-side workspace-rail">
         <div><h3>{t("pl.preview")}</h3><p className="soft small">{t("pl.previewLead")}</p></div>
         <Preview voucher={demo} layout={d} firstUse={firstUse} />
       </aside>

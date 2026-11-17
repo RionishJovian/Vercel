@@ -1,11 +1,15 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { Fragment, useEffect, useRef, useState, type FormEvent } from "react";
 import { api, ApiError, isUnauthorized } from "../../lib/api";
 import { useI18n } from "../../i18n";
 import { Note } from "../../components/ui";
 import { enrollError } from "./messages";
-import { validWifi, withNewRouterNetwork, type Uplink } from "./newRouterNetwork";
+import { splitCidr } from "../../lib/age";
+import { isWifiUplink, validWifi, withNewRouterNetwork, type Uplink } from "./newRouterNetwork";
+import { radioFor, type RouterProfile } from "./routerProfiles";
+import { findModel, modelGroups, uplinksFor } from "./modelCatalogue";
+import { productPhotoUrl } from "../../lib/mikrotikProducts";
 
-interface Enrolled { recovery?: string; state?: string; router_configuration_required?: boolean; one_paste?: boolean; automatic_management?: boolean; router_script?: string; tunnel_address?: string; hub_public_key?: string; endpoint?: string; allowed_ips?: string[] }
+interface Enrolled { recovery?: string; key_custody?: string; state?: string; router_configuration_required?: boolean; one_paste?: boolean; automatic_management?: boolean; router_script?: string; tunnel_address?: string; hub_public_key?: string; endpoint?: string; allowed_ips?: string[] }
 interface Live { handshake_status?: string; connection?: { management?: string } }
 const okScript = (s: unknown): s is string => typeof s === "string" && s.trim() !== "" && s.length <= 32768;
 type StepNo = 1 | 2 | 3;
@@ -23,10 +27,12 @@ export function Script({ title, text }: { title: string; text: string }) {
     try { await navigator.clipboard.writeText(pasteText); setLabel("copied"); } catch { area.current?.focus(); area.current?.select(); setLabel("manual"); }
   }
   return (
-    <div className="stack">
-      <h4>{title}</h4>
+    <div className="cmd">
+      <div className="cmd-bar">
+        <b>{title}</b>
+        <button className="pill" type="button" data-done={label === "copied" ? "true" : undefined} onClick={() => void copy()}>{t(label === "copy" ? "hub.copy" : label === "copied" ? "hub.copied" : "hub.copyManual")}</button>
+      </div>
       <textarea ref={area} className="input script" rows={9} readOnly spellCheck={false} aria-label={title} value={pasteText} />
-      <button className="pill" type="button" onClick={() => void copy()}>{t(label === "copy" ? "hub.copy" : label === "copied" ? "hub.copied" : "hub.copyManual")}</button>
     </div>
   );
 }
@@ -55,27 +61,74 @@ function Where() {
   return <details className="wiz-where"><summary>{t("hub.w.where")}</summary><p className="soft small">{t("hub.w.whereBody")}</p></details>;
 }
 
+/**
+ * Pick any catalogue model; the setup choices that follow come from `modelCatalogue.ts`:
+ * "keep existing" always, Ethernet WAN and Wi-Fi WAN bands only for a model with a confirmed
+ * setup profile, and Wi-Fi only on the bands that profile has a radio for.
+ */
 function NetworkSetup() {
   const { t } = useI18n();
   const [uplink, setUplink] = useState<"existing" | Uplink>("existing");
-  const wifi = uplink === "wifi1" || uplink === "wifi2";
+  const [modelId, setModelId] = useState("");
+  const model = findModel(modelId);
+  const profile = model?.profile;
+  const choices = uplinksFor(model);
+  const fresh = uplink !== "existing";
+  const wifi = uplink === "5ghz" || uplink === "2ghz";
+  const base = import.meta.env.BASE_URL;
+  function pickModel(id: string) {
+    setModelId(id);
+    const next = uplinksFor(findModel(id));
+    // Keep a choice the new model supports; otherwise fall back to Ethernet, or to keeping the network as it is.
+    if (uplink !== "existing" && !next.includes(uplink)) setUplink(next.includes("ethernet") ? "ethernet" : "existing");
+  }
   return (
     <div className="stack">
+      <label className="stack">
+        <span>{t("hub.net.model")}</span>
+        <select className="input" name="model" value={modelId} onChange={e => pickModel(e.target.value)}>
+          <option value="">{t("hub.net.modelPick")}</option>
+          {modelGroups().map(g => (
+            <optgroup key={g.category} label={t("hub.net.group." + g.category)}>
+              {g.models.map(m => <option key={m.product.id} value={m.product.id}>{m.product.name}{m.profile ? "" : " · " + t("hub.net.keepOnly")}</option>)}
+            </optgroup>
+          ))}
+        </select>
+      </label>
+      {!model && <p className="soft small">{t("hub.net.modelHint")}</p>}
+      {model && (
+        <figure className="model-card">
+          <img src={productPhotoUrl(model.product, base)} alt={model.product.alt} width={160} height={120} loading="lazy" />
+          {model.panel && <img src={base + model.panel.image} alt={model.panel.alt} loading="lazy" />}
+        </figure>
+      )}
+      {model?.blocked && <p className="soft small">{t("hub.net.blocked." + model.blocked)}</p>}
       <label className="stack">
         <span>{t("hub.net.setup")}</span>
         <select className="input" name="uplink" value={uplink} onChange={e => setUplink(e.target.value as typeof uplink)}>
           <option value="existing">{t("hub.net.existing")}</option>
-          <option value="ethernet">{t("hub.net.ethernet")}</option>
-          <option value="wifi1">{t("hub.net.wifi5")}</option>
-          <option value="wifi2">{t("hub.net.wifi24")}</option>
+          {choices.includes("ethernet") && <option value="ethernet">{t("hub.net.ethernet")}</option>}
+          {choices.includes("5ghz") && <option value="5ghz">{t("hub.net.wifi5")}</option>}
+          {choices.includes("2ghz") && <option value="2ghz">{t("hub.net.wifi24")}</option>}
         </select>
       </label>
-      {uplink !== "existing" && <>
+      {profile && (
+        <>
+          <dl className="spec">
+            <dt>{t("hub.net.wanPort")}</dt><dd><code className="num">{profile.wan}</code></dd>
+            {profile.radios.map(r => <Fragment key={r.name}><dt>{t(r.band === "5ghz" ? "hub.net.radio5" : "hub.net.radio24")}</dt><dd><code className="num">{r.name}</code></dd></Fragment>)}
+            <dt>{t("hub.net.board")}</dt><dd><code className="num">{profile.boardModel}</code></dd>
+          </dl>
+          {profile.radios.length === 0 && <p className="soft small">{t("hub.net.wiredOnly")}</p>}
+        </>
+      )}
+      {fresh && <>
+        <p className="soft small">{t("hub.net.modelCheck")}</p>
         <p className="soft small">{t("hub.net.preview")}</p>
         <p className="soft small">{t(wifi ? "hub.net.wifiPreview" : "hub.net.ethernetPreview")}</p>
         <Note kind="warn">{t("hub.net.safe")}</Note>
       </>}
-      {wifi && <>
+      {fresh && wifi && <>
         <label className="stack"><span>{t("hub.net.ssid")}</span><input className="input" name="ssid" maxLength={32} autoComplete="off" required /></label>
         <label className="stack"><span>{t("hub.net.password")}</span><input className="input" name="wifiPassphrase" type="password" minLength={8} maxLength={63} autoComplete="new-password" required /></label>
         <p className="soft small">{t("hub.net.private")}</p>
@@ -85,7 +138,7 @@ function NetworkSetup() {
 }
 
 /** One paste connects the router: the app finishes by itself, even if this page is closed. Nothing here asks for router credentials. */
-export function Enrollment({ id, name, onVerified, onBusy }: { id: string; name?: string; onVerified: () => void; onBusy?: (busy: boolean) => void }) {
+export function Enrollment({ id, name, onVerified, onBusy, routerKey = false }: { id: string; name?: string; onVerified: () => void; onBusy?: (busy: boolean) => void; routerKey?: boolean }) {
   const { t } = useI18n();
   const [busy, setBusyState] = useState(false);
   const busyRef = useRef(onBusy);
@@ -94,9 +147,11 @@ export function Enrollment({ id, name, onVerified, onBusy }: { id: string; name?
   const setBusy = (v: boolean) => { setBusyState(v); busyRef.current?.(v); };
   useEffect(() => () => busyRef.current?.(false), []);
   const [startOverOk, setStartOverOk] = useState(false);
-  const uplinkRef = useRef<{ uplink: Uplink | null; ssid: string; passphrase: string }>({ uplink: null, ssid: "", passphrase: "" });
+  const uplinkRef = useRef<{ uplink: Uplink | null; profile?: RouterProfile; ssid: string; passphrase: string; own: boolean }>({ uplink: null, ssid: "", passphrase: "", own: false });
   const [result, setResult] = useState<{ ok: true; data: Enrolled } | { ok: false; key: string } | null>(null);
   const [networkSetup, setNetworkSetup] = useState(false);
+  // Router-generated key: the router makes and keeps its WireGuard key, so the app issues only a token.
+  const [ownKey, setOwnKey] = useState(false), [viaRouterKey, setViaRouterKey] = useState(false);
   const [connected, setConnected] = useState(false), [reached, setReached] = useState(false), [slow, setSlow] = useState(false);
   const head = useRef<HTMLHeadingElement>(null);
   const first = useRef(true);
@@ -137,28 +192,40 @@ export function Enrollment({ id, name, onVerified, onBusy }: { id: string; name?
     if (pending.current) return;
     const form = new FormData(e.currentTarget);
     if (form.get("confirm") !== "on") { setResult({ ok: false, key: "hub.confirmNeeded" }); return; }
-    const choice = form.get("uplink");
-    const uplink = choice === "ethernet" || choice === "wifi1" || choice === "wifi2" ? choice : null;
+    const own = routerKey && form.get("ownkey") === "on";
+    const choice = own ? null : form.get("uplink");
+    const uplink: Uplink | null = choice === "ethernet" || choice === "5ghz" || choice === "2ghz" ? choice : null;
+    const profile = findModel(String(form.get("model") ?? ""))?.profile;
     const ssid = String(form.get("ssid") ?? ""), passphrase = String(form.get("wifiPassphrase") ?? "");
-    if ((uplink === "wifi1" || uplink === "wifi2") && !validWifi(ssid, passphrase)) {
-      setResult({ ok: false, key: "hub.net.invalidWifi" });
-      return;
+    // Check everything before the enrollment request, so a refused choice creates nothing on the server.
+    if (uplink && !profile) { setResult({ ok: false, key: "hub.net.modelNeeded" }); return; }
+    if (uplink && profile && isWifiUplink(uplink)) {
+      if (!radioFor(profile, uplink)) { setResult({ ok: false, key: "hub.net.noRadio" }); return; }
+      if (!validWifi(ssid, passphrase)) { setResult({ ok: false, key: "hub.net.invalidWifi" }); return; }
     }
-    uplinkRef.current = { uplink, ssid, passphrase };
+    uplinkRef.current = { uplink, profile, ssid, passphrase, own };
     await request(false);
   }
 
   // One request path for the normal paste and for the owner's explicit Start over.
   async function request(startOver: boolean) {
     if (pending.current) return;
-    const { uplink, ssid, passphrase } = uplinkRef.current;
+    const { uplink, profile, ssid, passphrase, own } = uplinkRef.current;
     pending.current = true; setBusy(true); setResult(null);
     try {
+      if (own) {
+        const r = await api.post<Enrolled>(`/vps/peers/${eid}/callback-enroll`, {});
+        if (r.key_custody !== "router_only" || r.one_paste !== true || !okScript(r.router_script)) throw new Error("unverified");
+        setNetworkSetup(false); setViaRouterKey(true);
+        setResult({ ok: true, data: r });
+        return;
+      }
+      setViaRouterKey(false);
       const body: Record<string, unknown> = { management_rest_port: 443, confirm_enrollment: true };
       if (startOver) body.start_over = true;
       const r = await api.post<Enrolled>(`/vps/peers/${eid}/quick-enroll`, body);
       if (r.state !== "hub_peer_enrolled" || r.router_configuration_required !== true || r.one_paste !== true || r.automatic_management !== true || !okScript(r.router_script)) throw new Error("unverified");
-      const router_script = uplink ? withNewRouterNetwork(r.router_script, uplink, ssid, passphrase) : r.router_script;
+      const router_script = uplink && profile ? withNewRouterNetwork(r.router_script, profile, uplink, ssid, passphrase) : r.router_script;
       setNetworkSetup(uplink !== null);
       setResult({ ok: true, data: { ...r, router_script } });
     } catch (err) {
@@ -179,7 +246,13 @@ export function Enrollment({ id, name, onVerified, onBusy }: { id: string; name?
           <p className="soft small">{t("hub.w.b1")}</p>
           <form className="stack" onSubmit={enroll}>
             <fieldset className="nolock stack" disabled={busy}>
-              <NetworkSetup />
+              {routerKey && (
+                <div className="stack">
+                  <label className="check"><span>{t("hub.own.label")}</span><input type="checkbox" name="ownkey" checked={ownKey} onChange={(e) => setOwnKey(e.target.checked)} /></label>
+                  <p className="soft small">{t("hub.own.note")}</p>
+                </div>
+              )}
+              {!ownKey && <NetworkSetup />}
               <label className="check"><span>{t("hub.authorize")}</span><input type="checkbox" name="confirm" required /></label>
               <button className="btn" type="submit">{busy ? t("hub.creating") : t("hub.generate")}</button>
             </fieldset>
@@ -196,10 +269,10 @@ export function Enrollment({ id, name, onVerified, onBusy }: { id: string; name?
           <Script title={t("hub.setupTitle")} text={result.data.router_script ?? ""} />
           {result.data.recovery === "resume" && <Note kind="warn">{t("hub.resume")}</Note>}
           {result.data.recovery === "start_over" && <Note kind="warn">{t("hub.so.done")}</Note>}
-          <Note kind="warn">{t(networkSetup ? "hub.net.safe" : "hub.w.once")}</Note>
+          <Note kind="warn">{t(viaRouterKey ? "hub.own.once" : networkSetup ? "hub.net.safe" : "hub.w.once")}</Note>
           <Note>{t("hub.safeMode")}</Note>
           <p className="soft small">{t("hub.keepPrivate")} {t("hub.retention")}</p>
-          <div role="status" aria-live="polite"><Note kind={reached ? "ok" : ""}>{t(reached ? "hub.w.reached" : "hub.w.waiting")}</Note></div>
+          <div role="status" aria-live="polite" className="link-state" data-state={reached ? "up" : "wait"}><i className="led" data-state={reached ? "up" : "wait"} aria-hidden="true" /><span>{t(reached ? "hub.w.reached" : "hub.w.waiting")}</span></div>
           {slow && (
             <div className="stack" role="group" aria-label={t("hub.w.help")}>
               <b>{t("hub.w.help")}</b>
@@ -218,11 +291,11 @@ export function Enrollment({ id, name, onVerified, onBusy }: { id: string; name?
             </details>
           )}
           <details className="wiz-where"><summary>{t("hub.w.details")}</summary>
-            <dl className="facts">
-              <dt>{t("hub.addr")}</dt><dd><code>{result.data.tunnel_address}</code></dd>
-              <dt>{t("hub.pubkey")}</dt><dd><code>{result.data.hub_public_key || t("hub.notReported")}</code></dd>
-              <dt>{t("hub.endpoint")}</dt><dd><code>{result.data.endpoint || t("hub.notReported")}</code></dd>
-              <dt>{t("hub.allowed")}</dt><dd><code>{Array.isArray(result.data.allowed_ips) ? result.data.allowed_ips.join(", ") : t("hub.notReported")}</code></dd>
+            <dl className="spec">
+              <dt>{t("hub.addr")}</dt><dd>{(() => { const a = splitCidr(result.data.tunnel_address); return a ? <code className="num">{a.addr}<span className="cidr">{a.cidr}</span></code> : <span className="nil">{t("hub.notReported")}</span>; })()}</dd>
+              <dt>{t("hub.pubkey")}</dt><dd>{result.data.hub_public_key ? <code className="mono wrap">{result.data.hub_public_key}</code> : <span className="nil">{t("hub.notReported")}</span>}</dd>
+              <dt>{t("hub.endpoint")}</dt><dd>{result.data.endpoint ? <code className="num">{result.data.endpoint}</code> : <span className="nil">{t("hub.notReported")}</span>}</dd>
+              <dt>{t("hub.allowed")}</dt><dd>{Array.isArray(result.data.allowed_ips) ? <code className="num">{result.data.allowed_ips.join(", ")}</code> : <span className="nil">{t("hub.notReported")}</span>}</dd>
             </dl>
           </details>
         </section>

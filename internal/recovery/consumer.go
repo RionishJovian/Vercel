@@ -14,7 +14,7 @@ import (
 	"mega-magic/internal/provisioner"
 )
 
-// ApplyConsumer wires the provisioner apply path (DESIGN-provisioner.md
+// ApplyConsumer wires the provisioner apply path (docs/archive/DESIGN-provisioner.md
 // sections 2-4) to the existing recovery intent. It consumes `peer.recover.cmd`
 // (the hub action intent emitted by RecoveryService.emitHubAction) and
 // `peer.recover` (the raw trigger), builds a plan with the committed planner,

@@ -7,6 +7,7 @@ const ID = "6f69dede-53d9-478a-bc68-9911e878d440";
 const SETUP = "{\n:put \"check\"\n# APPLY: tunnel\n:put \"probe\"\n}\n";
 const PASTE = "\n" + SETUP;
 let calls: Array<{ method: string; url: string; body?: Record<string, unknown> }>;
+let callbackAnswer: { status: number; body: unknown } = { status: 200, body: { one_paste: true, key_custody: "router_only", router_script: SETUP } };
 let liveAnswer: { status: number; body: unknown }, enrollAnswer: { status: number; body: unknown };
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 const ENROLLED = { state: "hub_peer_enrolled", router_configuration_required: true, one_paste: true, automatic_management: true, router_script: SETUP, tunnel_address: "10.77.0.20/32", hub_public_key: "HUBKEY", endpoint: "megamagic.tech:51820", allowed_ips: ["10.77.0.1/32"] };
@@ -18,13 +19,14 @@ beforeEach(() => {
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
     const method = init?.method ?? "GET", path = String(url).replace("/api/v1", "");
     calls.push({ method, url: path, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+    if (path.endsWith("/callback-enroll")) return json(callbackAnswer.status, callbackAnswer.body);
     if (path.endsWith("/quick-enroll")) return json(enrollAnswer.status, enrollAnswer.body);
     if (path.endsWith("/live")) return json(liveAnswer.status, liveAnswer.body);
     return json(404, {});
   }));
 });
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); });
-const open = (onVerified = vi.fn()) => { render(<I18nProvider><Enrollment id={ID} onVerified={onVerified} /></I18nProvider>); return onVerified; };
+const open = (onVerified = vi.fn(), routerKey = false) => { render(<I18nProvider><Enrollment id={ID} onVerified={onVerified} routerKey={routerKey} /></I18nProvider>); return onVerified; };
 const click = (name: string | RegExp) => fireEvent.click(screen.getByRole("button", { name }));
 const generate = async () => { fireEvent.click(screen.getByRole("checkbox")); click("Generate one-paste script"); await screen.findByRole("textbox", { name: "Connection script" }); };
 const rail = () => [...screen.getByRole("list", { name: "Connection steps" }).querySelectorAll("li")].map((li) => li.getAttribute("data-state"));
@@ -55,8 +57,23 @@ describe("one-paste connection", () => {
     await screen.findByRole("button", { name: "Selected: copy it manually" });
     expect(script.value.slice(script.selectionStart, script.selectionEnd)).toBe(PASTE);
   });
-  it.each(["ethernet", "wifi1", "wifi2"])("previews and includes %s setup without posting Wi-Fi details", async uplink => {
+  it.each([
+    ["hap-ax2", "ethernet", "ether1", "C52iG-5HaxD2HaxD"],
+    ["hap-ax2", "5ghz", "wifi1", "C52iG-5HaxD2HaxD"],
+    ["hap-ax2", "2ghz", "wifi2", "C52iG-5HaxD2HaxD"],
+    ["hap-ax3", "ethernet", "ether1", "C53UiG+5HPaxD2HPaxD"],
+    ["hap-ax3", "5ghz", "wifi1", "C53UiG+5HPaxD2HPaxD"],
+    ["hap-ax3", "2ghz", "wifi2", "C53UiG+5HPaxD2HPaxD"],
+    // Legacy `ac` radios (wlan1 = 2.4 GHz, wlan2 = 5 GHz), a radio order that differs from the ax2's, and wired models.
+    ["hap-ac2", "5ghz", "wlan2", "RBD52G-5HacD2HnD"],
+    ["hap-ac2", "2ghz", "wlan1", "RBD52G-5HacD2HnD"],
+    ["wap-ax", "5ghz", "wifi2", "wAPG-5HaxD2HaxD"],
+    ["hap-ax-lite", "2ghz", "wifi1", "L41G-2axD"],
+    ["rb5009", "ethernet", "ether1", "RB5009UG+S+"],
+    ["l009", "ethernet", "ether1", "L009UiGS"],
+  ])("previews and includes %s %s setup without posting Wi-Fi details", async (model, uplink, iface, board) => {
     open();
+    fireEvent.change(screen.getByLabelText("Router model"), { target: { value: model } });
     fireEvent.change(screen.getByLabelText("Router network setup"), { target: { value: uplink } });
     expect(screen.getByText(/Requires factory defaults/)).toBeTruthy();
     if (uplink !== "ethernet") {
@@ -66,12 +83,73 @@ describe("one-paste connection", () => {
     await generate();
     const { value } = screen.getByRole<HTMLTextAreaElement>("textbox", { name: "Connection script" });
     expect(value).toMatch(/^\n\{\n/);
-    expect(value).toContain(`:local mmUplink "${uplink === "ethernet" ? "ether1" : uplink}"`);
-    // Network writes come after every Magic Hub check and before the first Magic Hub write.
+    expect(value).toContain(`:if ([/system routerboard get model] != "${board}")`);
+    expect(value).toContain(`:local mmUplink "${iface}"`);
     expect(value.indexOf("add-default-route=yes")).toBeLessThan(value.indexOf(':put "probe"'));
-    expect(value.indexOf(':put "check"')).toBeLessThan(value.indexOf("/ip dhcp-client set"));
-    expect(value.includes("security.passphrase=")).toBe(uplink !== "ethernet");
+    expect(/security\.passphrase=|wpa2-pre-shared-key=/.test(value)).toBe(uplink !== "ethernet");
     expect(calls[0].body).toEqual({ management_rest_port: 443, confirm_enrollment: true });
+    expect(JSON.stringify(calls)).not.toContain("test-password");
+  });
+  const setupOptions = () => [...screen.getByLabelText<HTMLSelectElement>("Router network setup").options].map(o => o.value);
+  it("lists every catalogue model, grouped, with no free-text model entry", () => {
+    open();
+    const model = screen.getByLabelText<HTMLSelectElement>("Router model");
+    expect(model.tagName).toBe("SELECT");
+    const names = [...model.options].map(o => o.text);
+    // Models that can be set up come first inside each group, in catalogue order.
+    expect(names.slice(0, 4)).toEqual(["Choose your router model", "RB5009UG+S+IN", "hAP ax²", "hAP ax³"]);
+    expect(names).toHaveLength(1 + 27);
+    expect([...model.querySelectorAll("optgroup")].map(g => g.label)).toEqual(["Routers", "Access points", "Switches"]);
+    expect(names).toContain("CCR2004-16G-2S+PC · keep existing only");
+    expect(names).toContain("cAP XL ac · keep existing only");
+    expect(names).not.toContain("RB5009UG+S+IN · keep existing only");
+    fireEvent.change(model, { target: { value: "hap-ax3" } });
+    expect(screen.getByText("C53UiG+5HPaxD2HPaxD")).toBeTruthy();
+    expect(screen.getByAltText("MikroTik hAP ax³")).toBeTruthy();
+    expect(screen.getByAltText("Back panel of a MikroTik hAP ax³")).toBeTruthy();
+  });
+  it("offers only keep-existing until a model with a confirmed profile is chosen", () => {
+    open();
+    expect(setupOptions()).toEqual(["existing"]);
+    fireEvent.change(screen.getByLabelText("Router model"), { target: { value: "hap-ax2" } });
+    expect(setupOptions()).toEqual(["existing", "ethernet", "5ghz", "2ghz"]);
+  });
+  it.each([
+    ["cap-xl-ac", /board code has not been confirmed/],
+    ["crs310", /no WAN port/],
+    ["ccr2004", /IP-only default/],
+  ])("%s: explains why only keep-existing is offered and still generates the plain script", async (model, reason) => {
+    open();
+    fireEvent.change(screen.getByLabelText("Router model"), { target: { value: model } });
+    expect(screen.getByText(reason)).toBeTruthy();
+    expect(setupOptions()).toEqual(["existing"]);
+    await generate();
+    expect(screen.getByRole<HTMLTextAreaElement>("textbox", { name: "Connection script" }).value).toBe(PASTE);
+  });
+  it("falls back to Ethernet-free keep-existing for a model without the chosen band, and keeps Ethernet for a wired one", () => {
+    open();
+    fireEvent.change(screen.getByLabelText("Router model"), { target: { value: "hap-ax2" } });
+    fireEvent.change(screen.getByLabelText("Router network setup"), { target: { value: "5ghz" } });
+    fireEvent.change(screen.getByLabelText("Router model"), { target: { value: "hap-ax-lite" } });
+    expect(setupOptions()).toEqual(["existing", "ethernet", "2ghz"]);
+    expect((screen.getByLabelText("Router network setup") as HTMLSelectElement).value).not.toBe("5ghz");
+    fireEvent.change(screen.getByLabelText("Router model"), { target: { value: "rb5009" } });
+    expect(setupOptions()).toEqual(["existing", "ethernet"]);
+  });
+  it("falls back to keep-existing when the chosen model cannot do the selected setup", () => {
+    open();
+    fireEvent.change(screen.getByLabelText("Router model"), { target: { value: "hap-ax2" } });
+    fireEvent.change(screen.getByLabelText("Router network setup"), { target: { value: "5ghz" } });
+    fireEvent.change(screen.getByLabelText("Router model"), { target: { value: "ccr2004" } });
+    expect((screen.getByLabelText("Router network setup") as HTMLSelectElement).value).toBe("existing");
+    expect(screen.queryByLabelText(/Upstream Wi-Fi name/)).toBeNull();
+  });
+  it("keeps existing network settings by default, with no model and no network prelude", async () => {
+    open();
+    expect((screen.getByLabelText("Router network setup") as HTMLSelectElement).value).toBe("existing");
+    expect((screen.getByLabelText("Router model") as HTMLSelectElement).value).toBe("");
+    await generate();
+    expect(screen.getByRole<HTMLTextAreaElement>("textbox", { name: "Connection script" }).value).toBe(PASTE);
   });
   it("needs authorization before generating", () => {
     open();
@@ -138,5 +216,31 @@ describe("one-paste connection", () => {
     const form = screen.getByRole("button", { name: "Generate one-paste script" }).closest("form")!;
     fireEvent.submit(form); fireEvent.submit(form);
     release(); await screen.findByRole("textbox", { name: "Connection script" }); expect(calls.filter((c) => c.url.endsWith("/quick-enroll"))).toHaveLength(1);
+  });
+});
+
+describe("router-generated key option", () => {
+  it("is hidden while the server flag is off", () => {
+    open();
+    expect(screen.queryByText("Let the router create its own key (new)")).toBeNull();
+  });
+  it("uses the callback endpoint, sends no key and hides the network choices", async () => {
+    open(vi.fn(), true);
+    fireEvent.click(screen.getByLabelText("Let the router create its own key (new)"));
+    expect(screen.queryByText(/Router network setup/i)).toBeNull();
+    fireEvent.click(screen.getByLabelText(/I authorize/));
+    click("Generate one-paste script");
+    await screen.findByRole("textbox", { name: "Connection script" });
+    expect(calls[0]).toEqual({ method: "POST", url: `/vps/peers/${ID}/callback-enroll`, body: {} });
+    expect(screen.getByText(/works for 15 minutes/)).toBeTruthy();
+  });
+  it("refuses a reply that does not state router-only key custody", async () => {
+    callbackAnswer = { status: 200, body: { one_paste: true, key_custody: "app", router_script: SETUP } };
+    open(vi.fn(), true);
+    fireEvent.click(screen.getByLabelText("Let the router create its own key (new)"));
+    fireEvent.click(screen.getByLabelText(/I authorize/));
+    click("Generate one-paste script");
+    expect(await screen.findByText(/not confirmed/)).toBeTruthy();
+    expect(screen.queryByRole("textbox", { name: "Connection script" })).toBeNull();
   });
 });

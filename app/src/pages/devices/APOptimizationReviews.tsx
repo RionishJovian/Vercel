@@ -98,7 +98,7 @@ export function APOptimizationReviews() {
           <span className="chip">{expired && row.status === "pending" ? "expired" : row.status}</span></div>
         <p className="small">{p.band} · {my ? "ချန်နယ်" : "Channel"} <b>{p.before_channel} → {p.after_channel}</b>
           {" · "}{my ? "ထုတ်လွှင့်အား" : "Transmit power"} {p.before_power_dbm} → {p.after_power_dbm} dBm</p>
-        <p className="soft small">{my ? "သက်တမ်းကုန်ဆုံး" : "Expires"}: {new Date(row.expires_at).toLocaleString()}</p>
+        <p className="soft small num">{my ? "သက်တမ်းကုန်ဆုံး" : "Expires"}: {new Date(row.expires_at).toLocaleString()}</p>
         {(p.warnings || []).map((warning, idx) => <p className="soft small" key={idx}>{warning}</p>)}
         {pending && <div className="stack">
           <label className="row small"><input type="checkbox" checked={!!checked[row.id]}

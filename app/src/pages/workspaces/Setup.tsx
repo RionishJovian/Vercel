@@ -65,7 +65,7 @@ export function Setup() {
       {p.loading ? <Loading className="sk-page"><div className="glass pad stack"><Bar w="45%" /><span className="progress" /><div className="dude-tip"><span className="skeleton" style={{ width: 40, height: 40, borderRadius: "50%", flex: "none" }} /><span style={{ flex: 1 }}><Bar w="95%" size=".875rem" /><Bar w="90%" size=".875rem" /><Bar w="60%" size=".875rem" /></span></div></div><SkSteps n={7} /></Loading> : (
         <>
           <section className="glass pad stack">
-            <div className="row"><b>{p.complete ? t("su.ready") : t("su.progress").replace("{done}", String(p.done)).replace("{total}", String(p.total))}</b>{p.complete ? <StatePill tone="ok">{t("su.siteReady")}</StatePill> : null}</div>
+            <div className="row"><b className="tnum">{p.complete ? t("su.ready") : t("su.progress").replace("{done}", String(p.done)).replace("{total}", String(p.total))}</b>{p.complete ? <StatePill tone="ok">{t("su.siteReady")}</StatePill> : null}</div>
             <div className="progress" role="progressbar" aria-valuemin={0} aria-valuemax={p.total} aria-valuenow={p.done} aria-label={t("su.title")}><i style={{ width: `${(p.done / Math.max(1, p.total)) * 100}%` }} /></div>
             {p.failed ? <p className="note warn small">{t("su.partial")}</p> : null}
             <div className="dude-tip"><img src={import.meta.env.BASE_URL + "magic-dude.png"} alt="" width={40} height={40} /><p className="small">{t("su.dude")}</p></div>

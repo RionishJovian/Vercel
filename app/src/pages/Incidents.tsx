@@ -49,11 +49,12 @@ export function Incidents({ me }: { me: Me }) {
     <>
       {back}<PageHead title={t("inc.title")} help={t("inc.lead")} />
       {err && <Note kind="bad">{err}</Note>}
+      <div className="workspace-main workspace-stack">
       {!list.length ? <Note kind="ok">{t("inc.none")}</Note> : (
         <div className="stack">
           {list.map((i) => (
             <article className="glass pad stack" key={i.id} data-tone={tone(i.severity) || undefined}>
-              <div className="row"><IconTile name="alert" tone={tone(i.severity)} /><span className={"chip " + tone(i.severity)}>{i.severity || "info"}</span><span className="soft small">{i.opened_at ? new Date(i.opened_at).toLocaleString() : ""}</span></div>
+              <div className="row"><IconTile name="alert" tone={tone(i.severity)} /><span className={"chip " + tone(i.severity)}>{i.severity || "info"}</span><span className="soft small num">{i.opened_at ? new Date(i.opened_at).toLocaleString() : ""}</span></div>
               <b>{i.subject_label || i.subject_id || "—"}</b>
               <p className="soft small num">{i.kind}</p>
               {i.detail && <p className="small">{i.detail.replace(/\s+/g, " ").slice(0, 160)}</p>}
@@ -68,6 +69,13 @@ export function Incidents({ me }: { me: Me }) {
           ))}
         </div>
       )}
+      </div>
+      <section className="glass pad stack workspace-rail" aria-label={t("hm.quick")}>
+        <h2>{t("hm.quick")}</h2>
+        <button className="pill" type="button" onClick={() => void mutate()}>{t("gu.refresh")}</button>
+        <a className="pill" href="/app/fleet">{t("fl.title")}</a>
+        <a className="pill" href="/app/net">{t("nav.network")}</a>
+      </section>
     </>
   );
 }

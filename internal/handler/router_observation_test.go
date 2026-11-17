@@ -33,7 +33,11 @@ func (f *observationFixture) ReadObservations(_ context.Context, b, d string) (r
 
 func TestRouterObservationAuthenticatedContract(t *testing.T) {
 	db := harness_testdb(t)
-	for _, file := range []string{"20261023120000_device_discovery_labels.sql", "20261024010000_discovery_label_isolation.sql"} {
+	files := []string{"20261023120000_device_discovery_labels.sql", "20261024010000_discovery_label_isolation.sql"}
+	if os.Getenv("MM_TEST_SCHEMA") == "migrations" {
+		files = nil // the production baseline already contains these retired migrations
+	}
+	for _, file := range files {
 		raw, e := os.ReadFile("../../migrations/" + file)
 		if e != nil {
 			t.Fatal(e)

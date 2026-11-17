@@ -151,3 +151,53 @@ Environment: Chromium (Playwright), Caddy v2.10.2 running the candidate `deploy/
    - sign-in return-to-page;
    - `/ready` and the security headers;
    - that the image label matches the merge commit.
+
+## Production release verification (Claude, 2026-11-13, after the merge)
+
+**Result: `7f63fbfc2ea909ebded0a056df8222cf6c1c5b15` (PR #201) is live on `megamagic.tech`. Evidence label: Deployed, Production verified (signed-out and API level). The signed-in console checks ran on a local stack serving the exact release build, not in production.**
+
+### Release record
+| Item | Value |
+|---|---|
+| Merge | `7f63fbf`, squash of PR #201, 2026-11-13 05:40 UTC |
+| Release run | [Actions run 43373581788](https://github.com/RionishJovian/Vercel/actions/runs/43373581788) (#672): validate, build and deploy-vps all succeeded |
+| API image | `ghcr.io/rionishjovian/vercel/mega-magic-api@sha256:bf213532f6e1a641661e86f0c8c4fd0a3f5d25a03fdebff0138f08187251e737` |
+| Web image | `ghcr.io/rionishjovian/vercel/mega-magic-web@sha256:d09c02b9299162d961adf2e6b04b76fdac7f8ced48083091b7b0398a5fea66a4` |
+| Revision check | `deploy/deploy-vps.sh:27` requires both images' `org.opencontainers.image.revision` label to equal the release SHA; the log ends `Verified release 7f63fbf…` |
+| Migrations | none pending (`nothing to apply`; the 9 post-baseline migrations were already applied) |
+| Server rollback copy | `/root/mm-rollout-backups/ci-7f63fbfc2ea909ebded0a056df8222cf6c1c5b15-20261113T054717Z` |
+| Images running immediately before | run 668 (`2fe42e6`, same app code as `5931ed0`): API `sha256:5320e4f038e2f112a32ec01e72a9b0d3d3fa3748ff08f7e0dfe75c427f4dcc7a`, web `sha256:376eaa99be36c1356c40710443062be481f21389e8dafd5ccd294b5d0755a78b` |
+| Rollback branch | `rollback/pre-public-pages-20261112` at `5931ed0` |
+
+During container recreation the readiness probe logged one `curl: (56) Connection reset` before passing; the same happens on run 668 and is the expected restart gap.
+
+### Production checks (signed out, from this session)
+- **Served content = this commit.** A clean local `app/` build of `7f63fbf` produced 66 files; all 66 are byte-identical (SHA-256) to `https://megamagic.tech/app/assets/*`, and `/app/home` references the same entry files (`index-Cb4vlmOU.js`, `index-CsuIgxv-.css`).
+- **Previous release kept.** All 66 files listed in `deploy/compat/console-5931ed0/manifest.json` are served at `/v2/assets/*` with matching SHA-256. Absent files return 404 under both `/v2/assets/` and `/app/assets/`. Fingerprinted assets carry no `no-cache` (ETag/Last-Modified only); pages are `no-cache`.
+- **Readiness.** `/ready` → `{"checks":{"database":"ok","nats":"ok","redis":"ok"},"status":"ready"}`; `/health` healthy. `/api/v1/version` still reports `0.1.0-dev` (does not identify the commit, as before). `/api/v1` itself is 404 (no index route; unchanged).
+- **Security headers** on pages and API: CSP (`default-src 'self'`, `object-src 'none'`, `frame-ancestors 'self'`), HSTS `max-age=31536000`, `nosniff`, `X-Frame-Options: SAMEORIGIN`, `Referrer-Policy: strict-origin-when-cross-origin`.
+- **Pages (200):** `/`, `/signin`, `/signin?register=1`, `/pricing`, `/app/home`, `/app/net`, `/app/vouchers`, `/app/activity`, `/app/more`, `/app/customers?type=pppoe`.
+- **Redirects:** `/app.html` 302 → `/app/home` (query kept); `/signin.html` and `/pricing.html` 301 → clean URL (query kept); `/v2`, `/v2/` 301 → `/app/`; `/v2/vouchers` 301 → `/app/vouchers`; `/app` 301 → `/app/`; `/v2//evil.example` stays on `megamagic.tech`.
+- **Browser (Chromium, 390 × 844, Day and Night):** no horizontal overflow on any page above; public pages have no console errors or failed requests. Signed-out `/app/*` pages show the console sign-in on the requested URL. Their only failed requests are the expected `401 /api/v1/me` and `400 /api/v1/auth/refresh` (no refresh cookie). `/v2/#/vouchers` → `/app/vouchers`, `/v2/#/activity` → `/app/activity`, `/app/#/net` → `/app/net`. Public Back/Forward (landing → pricing → sign-in) works. Hostile `next=` values keep the visitor on `megamagic.tech`.
+- **API refusals:** `/api/v1/me`, `/sites`, `/guest-vouchers/config`, `/guest-vouchers/batches` return 401 signed out. A wrong password with the console's headers (`Origin`, `X-MM-CSRF: 1`) returns `401 invalid credentials`; without `X-MM-CSRF` it returns `403 same-origin request required` (the intended CSRF guard).
+
+### Signed-in flow on the exact release build (local, not production)
+Production Caddyfile run by Caddy v2.10.2, `/srv` assembled exactly as `Dockerfile.web.prod` does (including the verified 66 legacy assets), the Go API built from `7f63fbf`, and a disposable PostgreSQL 16 database built with `mm-migrate init` + `up` (baseline + 9 migrations), Redis and NATS (JetStream). 390 × 844 Chromium. 14 of 16 checks passed:
+- Registration from `/signin?register=1&next=/app/net` lands on `/app/net`.
+- The five tabs (Home, Network, Vouchers, Activity, More) open the right path with `aria-current="page"`, without a page reload and without horizontal overflow.
+- Console Back/Forward stays in sync with the bottom navigation.
+- Signed in, `/app/#portal` → `/app/vouchers/guest`, `/v2/#/activity` → `/app/activity`, `/app/nonsense` → `/app/home`, `/app.html` → `/app/home`, and `/app/customers?type=pppoe` opens directly.
+- Sign-out on `/app/more` shows the sign-in on the same URL, and `/me` then returns 401. Signing in again returns to `/app/more`. Public sign-in with `next=/app/vouchers/create` lands there.
+- **Not product failures:**
+  - Network: the map tiles host `tiles.openfreemap.org` is blocked in this container (the same as on 2026-11-12).
+  - Vouchers: `/guest-vouchers/*` returned 404 locally because the disposable config leaves `guest_wifi.voucher_access_enabled` and the applier off. Production registers those routes (401 signed out).
+  - **But** the Vouchers screen then rendered an empty body with no message (screenshot reviewed). A failed load must show an error state; this is tracked for Phase 2.
+
+### Not verified (remaining uncertainty)
+- **A real signed-in production session.** No production account or approved browser session was available here. Owner action: sign in on a phone, open each of the five tabs, sign out and sign in from a deep link.
+- **The live `MM_BROADBAND_WRITES_ENABLED` value.** It can only be read with SSH or from an authenticated `write_enabled` field. Source evidence:
+  - The deploy script sets no `*_ENABLED` gate and keeps the server's settings.
+  - PR #201 changed no environment.
+  - The handler requires both `MM_NETWORK_CONTROLS_ENABLED` and `MM_BROADBAND_WRITES_ENABLED` to equal `true` (`internal/handler/broadband_handler.go:45`).
+  - The last recorded state (AGENTS.md §5, 2026-11-06) is off.
+- Device, assistive-technology and native-Burmese checks remain open (see above).

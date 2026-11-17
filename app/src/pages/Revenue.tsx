@@ -34,15 +34,15 @@ export function Revenue({ me }: { me: Me }) {
         <p className="soft small" role="note">{lang === "my" ? "ဤတန်ဖိုးသည် အသုံးပြုထားသော ဗောက်ချာများ၏ မှတ်တမ်းတန်ဖိုးဖြစ်ပြီး ငွေလက်ခံရရှိမှု အတည်ပြုချက် မဟုတ်ပါ။" : "Recorded voucher activation value, not verified cash received or bank settlement."}</p>
         <p className="num ledger-figure">{mmk(todayShown ?? 0)}<small>{t("c.mmk")}</small></p>
         <p className="mute small">{t("h.today")}</p>
-        <div className="capsules">
-          <div className="capsule"><span className="mute small">{t("h.last7")}</span><b className="num">{mmk(num(r.activation_last7) ?? 0)}</b></div>
-          <div className="capsule"><span className="mute small">{t("h.last30")}</span><b className="num">{mmk(num(r.activation_last30) ?? 0)}</b></div>
-          <div className="capsule"><span className="mute small">{t("rv.all")}</span><b className="num">{mmk(num(r.activation_value) ?? 0)}</b></div>
+        <div className="strip">
+          <div><span className="mute small">{t("h.last7")}</span><b className="num">{mmk(num(r.activation_last7) ?? 0)}</b></div>
+          <div><span className="mute small">{t("h.last30")}</span><b className="num">{mmk(num(r.activation_last30) ?? 0)}</b></div>
+          <div><span className="mute small">{t("rv.all")}</span><b className="num">{mmk(num(r.activation_value) ?? 0)}</b></div>
         </div>
         {(num(r.activation_time_unknown_count) ?? 0) > 0 ? <p className="note warn">{r.activation_time_unknown_count} {t("rv.unknown")}</p> : null}
       </section>
 
-      <section className="glass pad" aria-labelledby="rv-counts">
+      <section className="glass pad workspace-rail" aria-labelledby="rv-counts">
         <h2 id="rv-counts">{t("rv.counts")}</h2>
         <div className="meter" role="img" aria-label={counts.map((c) => `${t(c.label)} ${c.n}`).join(", ")}>
           {total > 0 ? counts.filter((c) => c.n > 0).map((c) => <i key={c.cls} className={c.cls} style={{ flexGrow: c.n }} />) : <i className="s-empty" style={{ flexGrow: 1 }} />}
@@ -52,6 +52,7 @@ export function Revenue({ me }: { me: Me }) {
         </ul>
       </section>
 
+      <div className="workspace-main workspace-stack">
       {gateways.length > 0 ? (
         <section className="stack" aria-labelledby="rv-by">
           <h2 id="rv-by">{t("rv.byRouter")}</h2>
@@ -67,6 +68,7 @@ export function Revenue({ me }: { me: Me }) {
       ) : null}
       <RevenuePayments canDecide={["ADMIN", "OWNER", "DEVELOPER"].includes(me.user?.user_role ?? "")} />
       {["ADMIN", "OWNER", "DEVELOPER"].includes(me.user?.user_role ?? "") && <BroadbandRevenue />}
+      </div>
     </>
   );
 }

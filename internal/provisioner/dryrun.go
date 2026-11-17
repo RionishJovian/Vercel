@@ -1,5 +1,5 @@
 // Package provisioner implements the safe, side-effect-free half of the router
-// recovery provisioner described in DESIGN-provisioner.md section 1 (Dry-Run
+// recovery provisioner described in docs/archive/DESIGN-provisioner.md section 1 (Dry-Run
 // Mode).
 //
 // Everything here is a *plan*: the prober gathers read-only evidence, the
@@ -433,7 +433,7 @@ func (p *Provisioner) WithFileReader(f func(string) ([]byte, error)) *Provisione
 	return p
 }
 
-// DryRunAction implements DESIGN-provisioner.md section 1: validate the
+// DryRunAction implements docs/archive/DESIGN-provisioner.md section 1: validate the
 // provisioning config file, check connectivity to the peer, and simulate the
 // recovery changes. It NEVER writes to production — it only reports.
 func (p *Provisioner) DryRunAction(ctx context.Context, peerID, cfgFile string) (*Report, error) {

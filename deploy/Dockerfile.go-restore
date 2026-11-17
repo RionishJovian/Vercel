@@ -4,6 +4,7 @@ WORKDIR /app
 COPY restore-bin/mega-magic /app/mega-magic
 COPY restore-bin/config-check /app/config-check
 COPY restore-bin/rotate-credential-key /app/rotate-credential-key
+COPY restore-bin/voucher-code-protect /app/voucher-code-protect
 RUN mkdir -p /app/data && chown -R app:app /app
 USER app
 EXPOSE 8080

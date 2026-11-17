@@ -1,3 +1,10 @@
+{
+    servers {
+        # Honour X-Forwarded-For only from the host Caddy (see deploy/web-entrypoint.sh).
+        trusted_proxies static {$MM_EDGE_PROXY}
+    }
+}
+
 import security-headers.caddy
 
 :80 {

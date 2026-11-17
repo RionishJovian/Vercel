@@ -94,7 +94,7 @@ type PlatformIncidentCounts struct {
 type RegisterRequest struct {
 	CompanyName string `json:"company_name" binding:"required,min=1,max=255"`
 	Email       string `json:"email" binding:"required,email"`
-	Password    string `json:"password" binding:"required,min=8"`
+	Password    string `json:"password" binding:"required,min=10,max=128"`
 	FullName    string `json:"full_name" binding:"required,min=1,max=255"`
 }
 

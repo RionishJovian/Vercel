@@ -9,12 +9,16 @@ const PLAN = { key: "hour", label: "1 hour", minutes: 60, amount: 1000, data_mb:
 const EDITOR = /Guests can't pay by bank transfer yet/;
 const INSTALL = /Bank transfer is on, but no plan is saved/;
 let config: Record<string, unknown>;
+let access: Record<string, unknown>, saved: Array<Record<string, unknown>>, previews: Array<Record<string, unknown>>, forbidPremium = false;
 
 beforeEach(() => {
   localStorage.setItem("mm2_lang", "en");
+  access = { exempt: false, unlocked: ["starlink_mm", "daylight"] }; saved = []; previews = []; forbidPremium = false;
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
     const path = String(url).replace("/api/v1", "");
-    if (path === "/portal/config" && init?.method === "PUT") { config = { ...config, ...JSON.parse(String(init.body)) }; return json(200, {}); }
+    if (path === "/portal/template-access") return json(200, access);
+    if (path === "/portal/router-preview") { previews.push(JSON.parse(String(init?.body))); return json(200, { html: "<p>login preview</p>", status_html: "<p>status preview</p>" }); }
+    if (path === "/portal/config" && init?.method === "PUT") { const b = JSON.parse(String(init.body)); saved.push(b); if (forbidPremium && b.template_id && !["starlink_mm", "daylight"].includes(b.template_id)) return json(403, { error: "locked" }); config = { ...config, ...JSON.parse(String(init.body)) }; return json(200, {}); }
     if (path === "/portal/config") return json(200, { config });
     if (path === "/routers") return json(200, { routers: [{ device_id: "d1", hardware_name: "Shop", deployment_layer: "MAIN_GATEWAY" }] });
     if (path.endsWith("/portal/profiles")) return json(200, { profiles: ["hotspot1"] });
@@ -29,9 +33,10 @@ const open = async () => {
 };
 
 describe("bank transfer with no saved plans", () => {
-  it("shows only the hosted Guest Portal preview", async () => {
+  it("shows the hosted Guest Portal preview on its own tab", async () => {
     config = { voucher_login_enabled: true, mobile_payment_enabled: true, guest_plans: [PLAN] };
     await open();
+    fireEvent.click(screen.getByRole("tab", { name: "Pay page" }));
     expect(screen.getByTitle("Guest Portal").getAttribute("src")).toBe("/portal.html?preview=1");
     expect(document.querySelectorAll(".gp-preview iframe")).toHaveLength(1);
     expect(screen.queryByRole("button", { name: "Voucher page" })).toBeNull();
@@ -75,5 +80,115 @@ describe("bank transfer with no saved plans", () => {
     expect(screen.getByText(INSTALL)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /^Save/ }));
     await waitFor(() => expect(screen.queryByText(INSTALL)).toBeNull());
+  });
+});
+
+describe("login page themes and the Store add-on lock", () => {
+  const pickCard = (id: string) => fireEvent.click(document.querySelector(`[data-template="${id}"]`)!);
+  const badges = (id: string) => document.querySelector(`[data-template="${id}"]`)!.textContent ?? "";
+  it("lists nine themes in two groups and marks seven as add-ons", async () => {
+    config = { business_name: "Cafe" };
+    await open();
+    expect(document.querySelectorAll("[data-template]")).toHaveLength(9);
+    expect(screen.getByText("Myanmar ISP & regional hotspot themes")).toBeTruthy();
+    expect(screen.getByText("Commercial & hospitality themes")).toBeTruthy();
+    for (const id of ["cultural_mm", "mountain_mm", "village_mm", "obsidian", "cafe", "hotel", "express"]) expect(badges(id)).toContain("Add-on");
+    for (const id of ["starlink_mm", "daylight"]) expect(badges(id)).not.toContain("Add-on");
+  });
+  it("previews a locked theme but swaps Save for Unlock in Store", async () => {
+    config = { business_name: "Cafe" };
+    await open();
+    pickCard("hotel");
+    const unlock = await screen.findByRole("link", { name: /Unlock in Store/ });
+    expect(unlock.getAttribute("href")).toBe("/app/store");
+    expect(screen.queryByRole("button", { name: /^Save/ })).toBeNull();
+    await waitFor(() => expect(document.querySelector("iframe[title='Login page']")?.getAttribute("srcdoc")).toContain("login preview"));
+  });
+  it("saves a free theme with no add-on", async () => {
+    config = { business_name: "Cafe" };
+    await open();
+    pickCard("daylight");
+    fireEvent.click(screen.getByRole("button", { name: /^Save/ }));
+    await waitFor(() => expect(saved).toHaveLength(1));
+    expect(saved[0].template_id).toBe("daylight");
+  });
+  it("saves a locked theme once the add-on is approved", async () => {
+    access = { exempt: false, unlocked: ["starlink_mm", "daylight", "cafe"] };
+    config = { business_name: "Cafe" };
+    await open();
+    pickCard("cafe");
+    fireEvent.click(await screen.findByRole("button", { name: /^Save/ }));
+    await waitFor(() => expect(saved[0]?.template_id).toBe("cafe"));
+  });
+  it("lets a platform administrator use every theme", async () => {
+    access = { exempt: true, unlocked: ["starlink_mm", "cultural_mm", "mountain_mm", "village_mm", "obsidian", "cafe", "hotel", "express", "daylight"] };
+    config = { business_name: "Cafe" };
+    await open();
+    for (const id of ["cultural_mm", "mountain_mm", "village_mm", "obsidian", "cafe", "hotel", "express"]) {
+      pickCard(id);
+      expect(screen.queryByRole("link", { name: /Unlock in Store/ })).toBeNull();
+      expect(badges(id)).not.toContain("Add-on");
+    }
+  });
+  it("does not resend an unchanged theme, so older portals keep saving", async () => {
+    config = { business_name: "Cafe", template_id: "" };
+    await open();
+    fireEvent.click(screen.getByRole("button", { name: /^Save/ }));
+    await waitFor(() => expect(saved).toHaveLength(1));
+    expect("template_id" in saved[0]).toBe(false);
+  });
+  it("explains a 403 from the server instead of a generic failure", async () => {
+    forbidPremium = true;
+    access = { exempt: false, unlocked: ["starlink_mm", "daylight", "express"] };
+    config = { business_name: "Cafe" };
+    await open();
+    pickCard("express");
+    fireEvent.click(await screen.findByRole("button", { name: /^Save/ }));
+    await screen.findAllByText(/Store add-on/);
+  });
+});
+
+describe("rich router pages", () => {
+  it("previews the connected-session page from the same renderer, on its own tab", async () => {
+    config = { voucher_login_enabled: true, mobile_payment_enabled: true, guest_plans: [{ ...PLAN, speed_down_mbps: 10, speed_up_mbps: 5 }] };
+    await open();
+    await waitFor(() => expect(screen.getByTitle("Login page").getAttribute("srcdoc")).toBe("<p>login preview</p>"));
+    fireEvent.click(screen.getByRole("tab", { name: "Connected page" }));
+    const frame = screen.getByTitle("Connected page");
+    expect(frame.getAttribute("srcdoc")).toBe("<p>status preview</p>");
+    expect(frame.getAttribute("sandbox")).toBe("allow-scripts");
+    // The packages grid needs each plan's speed and data, not only its price.
+    expect(previews.at(-1)!.plans).toEqual([{ label: "1 hour", minutes: 60, amount: 1000, data_mb: 1024, speed_down_mbps: 10 }]);
+  });
+  it("saves cleaned support contacts and refuses ones that cannot become a link", async () => {
+    config = { business_name: "Cafe", voucher_login_enabled: true, mobile_payment_enabled: false, guest_plans: [] };
+    await open();
+    fireEvent.change(screen.getByLabelText("Phone number"), { target: { value: "+95 9 123-456-789" } });
+    fireEvent.change(screen.getByLabelText("Telegram username"), { target: { value: "@magic_cafe" } });
+    fireEvent.change(screen.getByLabelText("Viber number"), { target: { value: "not a number" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Save/ }));
+    await screen.findByText(/Check the support contacts/);
+    expect(saved).toHaveLength(0);
+    fireEvent.change(screen.getByLabelText("Viber number"), { target: { value: "" } });
+    await waitFor(() => expect(previews.at(-1)).toMatchObject({ support_phone: "+959123456789", support_telegram: "magic_cafe", support_viber: "" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Save/ }));
+    await waitFor(() => expect(saved).toHaveLength(1));
+    expect(saved[0]).toMatchObject({ support_phone: "+959123456789", support_telegram: "magic_cafe", support_viber: "" });
+  });
+});
+
+describe("preview tabs and theme marker", () => {
+  it("moves between preview tabs with the arrow keys and wraps", async () => {
+    await open();
+    const login = screen.getByRole("tab", { name: "Login page" });
+    fireEvent.keyDown(login, { key: "ArrowRight" });
+    expect(screen.getByRole("tab", { name: "Connected page" }).getAttribute("aria-selected")).toBe("true");
+    fireEvent.keyDown(screen.getByRole("tab", { name: "Connected page" }), { key: "ArrowLeft" });
+    fireEvent.keyDown(screen.getByRole("tab", { name: "Login page" }), { key: "ArrowLeft" });
+    expect(screen.getByRole("tab", { name: "Pay page" }).getAttribute("aria-selected")).toBe("true");
+  });
+  it("says Selected in words on the chosen theme", async () => {
+    await open();
+    expect(screen.getAllByText(/Selected/).length).toBe(1);
   });
 });

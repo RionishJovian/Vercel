@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48" fill="none">
+  <title>MegaMagic</title>
+  <rect x="1" y="1" width="46" height="46" rx="12" fill="#0F1420"/>
+  <rect x="1.5" y="1.5" width="45" height="45" rx="11.5" stroke="#F8FAFC" stroke-opacity=".10"/>
+  <g transform="translate(-2 2)" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M23.91 31.75A9 9 0 0 0 16.25 24.09" stroke="#38BDF8"/>
+    <path d="M30.84 30.77A16 16 0 0 0 17.23 17.16" stroke="#38BDF8"/>
+    <circle cx="15" cy="33" r="2.3" fill="#F8FAFC" stroke="none"/>
+    <path d="M33 8.5Q33.9 14.1 39.5 15Q33.9 15.9 33 21.5Q32.1 15.9 26.5 15Q32.1 14.1 33 8.5Z" stroke="#F8FAFC" fill="#F8FAFC"/>
+  </g>
+</svg>

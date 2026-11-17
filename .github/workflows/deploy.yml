@@ -44,6 +44,17 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
+          fetch-depth: 0
+      - name: No new files in the retired migrations/ folder
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          added=$(git diff --name-only --diff-filter=A "$BASE_SHA" HEAD -- migrations/)
+          if [ -n "$added" ]; then
+            echo "New files in the retired migrations/ folder:"; echo "$added"
+            echo "Add migrations to db/migrations/ instead (docs/MIGRATIONS.md)."; exit 1
+          fi
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
           go-version-file: go.mod
@@ -72,6 +83,23 @@ jobs:
           sudo apt-get install -y postgresql-client-17 >/dev/null
           export PATH=/usr/lib/postgresql/17/bin:$PATH
           bash -n deploy/server/mm-migrate && bash deploy/server/test-mm-migrate.sh
+
+  # Python account/payment API (backend/). Not production code (Go is), so it does not gate the build job yet.
+  python-api:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Python tests (isolated SQLite, pinned requirements)
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install -q -r requirements.txt
+          PYTHONDONTWRITEBYTECODE=1 "$RUNNER_TEMP/venv/bin/python" -m unittest discover -s tests -p 'test_*.py'
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24'
+      - run: node --test tests/account-client.test.mjs
 
   build:
     needs: validate
@@ -102,13 +130,14 @@ jobs:
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -buildvcs=false -o restore-bin/mega-magic ./cmd/server
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -buildvcs=false -o restore-bin/config-check ./cmd/config-check
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -buildvcs=false -o restore-bin/rotate-credential-key ./cmd/rotate-credential-key
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -buildvcs=false -o restore-bin/voucher-code-protect ./cmd/voucher-code-protect
       - id: images
         run: |
           repo=${GITHUB_REPOSITORY,,}
           echo "api=ghcr.io/$repo/mega-magic-api" >> "$GITHUB_OUTPUT"
           echo "web=ghcr.io/$repo/mega-magic-web" >> "$GITHUB_OUTPUT"
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069
-      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550
         with:
           registry: ghcr.io
           username: ${{ github.actor }}

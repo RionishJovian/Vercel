@@ -10,6 +10,8 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -91,6 +93,10 @@ func setupHarness(base string) {
 		return
 	}
 	harnessDB = db
+	if os.Getenv("MM_TEST_SCHEMA") == "migrations" {
+		harnessFatal = loadProductionSchema(db)
+		return
+	}
 	sqlBytes, err := os.ReadFile("../../database/init.sql")
 	if err != nil {
 		harnessFatal = fmt.Errorf("read schema: %w", err)
@@ -119,6 +125,7 @@ func setupHarness(base string) {
 		"20261021090000_guest_voucher_activation.sql",
 		"20261021180000_guest_voucher_issue_batches.sql",
 		"20261024170000_guest_voucher_resellers.sql",
+		"20261024160000_hub_pending_enrollments.sql",
 	} {
 		migration, err := os.ReadFile("../../migrations/" + name)
 		if err != nil {
@@ -131,17 +138,19 @@ func setupHarness(base string) {
 		}
 	}
 	// Migrations after the baseline live in db/migrations (see docs/MIGRATIONS.md).
-	newer, err := os.ReadFile("../../db/migrations/20261102120000_guest_plan_speed.sql")
-	if err != nil {
-		harnessFatal = fmt.Errorf("read migration guest_plan_speed: %w", err)
-		return
-	}
-	if _, err := db.Exec(string(newer)); err != nil {
-		harnessFatal = fmt.Errorf("load migration guest_plan_speed into %s: %w", harnessName, err)
-		return
+	for _, name := range []string{"20261117190000_guest_request_notified.sql", "20261117180000_account_renewal_notified.sql", "20261102120000_guest_plan_speed.sql", "20261108130000_vip_wifi_codes.sql", "20261108190000_ap_radio_owner_approval.sql", "20261114120000_hub_callback_enrollment.sql", "20261114130000_voucher_code_protection.sql", "20261114140000_hub_disconnect_guard.sql"} {
+		newer, err := os.ReadFile("../../db/migrations/" + name)
+		if err != nil {
+			harnessFatal = fmt.Errorf("read migration %s: %w", name, err)
+			return
+		}
+		if _, err := db.Exec(string(newer)); err != nil {
+			harnessFatal = fmt.Errorf("load migration %s into %s: %w", name, harnessName, err)
+			return
+		}
 	}
 	// Gateway capacity (2026-11-13) needs the Store tables, which init.sql predates.
-	for _, name := range []string{"../../migrations/20261031100000_store_addons.sql", "../../db/migrations/20261113120000_gateway_capacity.sql"} {
+	for _, name := range []string{"../../migrations/20261031100000_store_addons.sql", "../../db/migrations/20261118120000_gateway_capacity.sql"} {
 		raw, err := os.ReadFile(name)
 		if err != nil {
 			harnessFatal = fmt.Errorf("read migration %s: %w", name, err)
@@ -152,6 +161,43 @@ func setupHarness(base string) {
 			return
 		}
 	}
+}
+
+// loadProductionSchema builds the schema the way production does (mm-migrate): db/baseline.sql, then
+// every file in db/migrations in order, then deploy/runtime-db-role.sql. It exercises every
+// foreign key and trigger a newer migration added, which the hand-picked list below cannot.
+func loadProductionSchema(db *database.DB) error {
+	base, err := os.ReadFile("../../db/baseline.sql")
+	if err != nil {
+		return err
+	}
+	files, err := filepath.Glob("../../db/migrations/*.sql")
+	if err != nil {
+		return err
+	}
+	sort.Strings(files)
+	// The dump header empties search_path and turns row_security off for the connection it runs
+	// on; restore both so that pooled connection behaves like a fresh psql session.
+	if _, err := db.Exec(string(base) + "\nSELECT pg_catalog.set_config('search_path','public',false), pg_catalog.set_config('row_security','on',false);"); err != nil {
+		return fmt.Errorf("load baseline: %w", err)
+	}
+	for _, f := range files {
+		body, err := os.ReadFile(f)
+		if err != nil {
+			return err
+		}
+		if _, err := db.Exec(string(body)); err != nil {
+			return fmt.Errorf("load migration %s: %w", filepath.Base(f), err)
+		}
+	}
+	post, err := os.ReadFile("../../deploy/runtime-db-role.sql")
+	if err != nil {
+		return err
+	}
+	if _, err := db.Exec(string(post)); err != nil {
+		return fmt.Errorf("load runtime role: %w", err)
+	}
+	return nil
 }
 
 func teardownHarness() {

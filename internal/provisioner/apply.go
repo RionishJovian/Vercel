@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// DefaultRollbackWindow is the auto-revert deadline from DESIGN-provisioner.md
+// DefaultRollbackWindow is the auto-revert deadline from docs/archive/DESIGN-provisioner.md
 // section 4: a failed verification must roll back within 60 seconds.
 const DefaultRollbackWindow = 60 * time.Second
 

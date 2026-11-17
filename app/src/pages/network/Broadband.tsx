@@ -62,7 +62,7 @@ export function Broadband({ routerId, routerName, canEdit, onBusyChange }: { rou
   void act("/accounts", { operation_id: crypto.randomUUID(), username: String(f.get("username")), password: String(f.get("password")), profile: String(f.get("profile")), period_days: days, amount_mmk: amount }).then((applied) => { if (applied && form.isConnected) form.reset(); });
  }
  const locked = busy || !!error || !canEdit || data?.write_enabled !== true;
- return <section className="glass pad stack" aria-label={t("bb.title")}>
+ return <section className="glass pad workspace-grid" aria-label={t("bb.title")}>
   <div className="row" style={{ flexWrap: "wrap" }}><h2>{t("bb.title")}</h2><b>{routerName}</b><button className="pill" type="button" disabled={busy || !!error || !data || !canEdit} onClick={() => void act("/sync", {}, true)}>{t("bb.sync")}</button></div>
   {error && <Note kind="warn">
    <p>{t("bb.loadFailed")}</p>
@@ -79,29 +79,31 @@ export function Broadband({ routerId, routerName, canEdit, onBusyChange }: { rou
   </Note>}
   {notice && <div role="status"><Note kind={failed ? "warn" : undefined}>{notice}</Note></div>}
   {data && !error && <dl className="capsules wrap" aria-label={t("bb.overview")}>
-   <div className="capsule"><dt>{t("bb.title")}</dt><dd>{data.accounts.length}</dd></div>
-   <div className="capsule"><dt>{t("bb.sessionsSeen")}</dt><dd>{data.accounts.filter(a => a.session).length}</dd></div>
-   <div className="capsule"><dt>{t("bb.suspendedCount")}</dt><dd>{data.accounts.filter(a => a.observation?.suspended === true).length}</dd></div>
+   <div className="capsule"><dt>{t("bb.title")}</dt><dd className="num">{data.accounts.length}</dd></div>
+   <div className="capsule"><dt>{t("bb.sessionsSeen")}</dt><dd className="num">{data.accounts.filter(a => a.session).length}</dd></div>
+   <div className="capsule"><dt>{t("bb.suspendedCount")}</dt><dd className="num">{data.accounts.filter(a => a.observation?.suspended === true).length}</dd></div>
   </dl>}
+  <div className="workspace-main workspace-stack">
   {data && !data.accounts.length && <p>{t("bb.empty")}</p>}
   {data?.accounts.map((a) => {
    const s = a.observation, now = Date.now() / 1000;
    const status = !s ? "unknown" : s.last_clock > now + 30 ? "clock" : s.suspended ? "suspended" : !s.first_use ? "unused" : s.expires_at <= now ? "expired" : "active";
    return <article className="rowitem stack" key={a.id}>
     <div className="row" style={{ flexWrap: "wrap", overflowWrap: "anywhere" }}><b>{a.username}</b><span>{a.profile}</span><span>{t("bb." + status)}</span></div>
-    <p className="soft small">{t("bb.first")}: {stamp(s?.first_use)} · {t("bb.expiry")}: {stamp(s?.expires_at)}<br />{t("bb.observed")}: {a.observed_at ? new Date(a.observed_at).toLocaleString() : "—"}</p>
-    {a.session && <p className="soft small">{t("bb.session")}: {a.session.id} · ↓ {a.session.download_bytes} B · ↑ {a.session.upload_bytes} B<br />{t("bb.observed")}: {a.session_observed_at ? new Date(a.session_observed_at).toLocaleString() : "—"}</p>}
+    <p className="soft small tnum">{t("bb.first")}: {stamp(s?.first_use)} · {t("bb.expiry")}: {stamp(s?.expires_at)}<br />{t("bb.observed")}: {a.observed_at ? new Date(a.observed_at).toLocaleString() : "—"}</p>
+    {a.session && <p className="soft small tnum">{t("bb.session")}: {a.session.id} · ↓ {a.session.download_bytes} B · ↑ {a.session.upload_bytes} B<br />{t("bb.observed")}: {a.session_observed_at ? new Date(a.session_observed_at).toLocaleString() : "—"}</p>}
     {canEdit && (a.pending_operation ? <button className="pill" disabled={locked} onClick={() => void act(`/operations/${a.pending_operation}/retry`, {})}>{t("bb.retry")}</button> : <div className="row">
      <button className="pill" disabled={locked || !s} onClick={() => void act(`/accounts/${a.id}/renew`, { operation_id: crypto.randomUUID(), period_days: days, amount_mmk: amount })}>{t("bb.renew")}</button>
      <button className="pill" disabled={locked || !s} onClick={() => void act(`/accounts/${a.id}/${s?.suspended ? "resume" : "suspend"}`, { operation_id: crypto.randomUUID() })}>{t(s?.suspended ? "bb.resume" : "bb.suspend")}</button>
     </div>)}
    </article>;
   })}
-  {canEdit && <>
+  </div>
+  {canEdit && <div className="workspace-rail workspace-stack">
    {!data?.write_enabled && data && <Note>{t("bb.locked")}</Note>}
    <div className="row">
-    <label className="field"><span>{t("bb.days")}</span><input className="input" type="number" min="1" max="366" value={days} disabled={busy || !!error} onChange={(e) => setDays(Number(e.target.value))} /></label>
-    <label className="field"><span>{t("bb.amount")}</span><input className="input" type="number" min="0" max="1000000000" value={amount} disabled={busy || !!error} onChange={(e) => setAmount(Number(e.target.value))} /></label>
+    <label className="field"><span>{t("bb.days")}</span><input className="input" type="number" inputMode="numeric" min="1" max="366" value={days} disabled={busy || !!error} onChange={(e) => setDays(Number(e.target.value))} /></label>
+    <label className="field"><span>{t("bb.amount")}</span><input className="input" type="number" inputMode="numeric" min="0" max="1000000000" value={amount} disabled={busy || !!error} onChange={(e) => setAmount(Number(e.target.value))} /></label>
    </div>
    <details><summary>{t("bb.new")}</summary><form className="stack" onSubmit={create}>
     <fieldset disabled={locked || inventoryChecking || !!inventoryError || !plansLoaded || !plans.length} className="nolock stack">
@@ -111,6 +113,6 @@ export function Broadband({ routerId, routerName, canEdit, onBusyChange }: { rou
      <p className="soft small">{t("bb.review")}</p><button className="btn">{t("bb.install")}</button>
     </fieldset>
    </form></details>
-  </>}
+  </div>}
  </section>;
 }

@@ -105,7 +105,7 @@ export function Devices({ me }: { me: Me }) {
             <>
               <p className="soft small" role="status">{t("dv.read")} {state.at}. {state.partial ? t("dv.partial") : ""} {state.labelsFailed ? t("dv.labelsFailed") : ""}</p>
               {!state.rows.length ? <Note>{t("dv.none")}</Note> : (
-                <div className="stack">
+                <div className="workspace-cards">
                   {state.rows.map((r) => (
                     <div className="glass pad stack" key={r.mac || r.ip} data-tone={r.state === "bound" ? "ok" : undefined}>
                       <LabelForm row={r} label={byMac.get(r.mac)} routerId={selected.device_id} canEdit={canEdit} />

@@ -31,14 +31,16 @@ export function Detail({ id, router, canReview }: { id: string; router?: RouterR
   return (
     <>
       <h1>{router?.hardware_name || id}</h1>
+      {router?.device_model && <p className="rc-model">{router.device_model}</p>}
       {/* Outside the loading/error branches so a restart (when telemetry briefly fails) does not close it. */}
       <FirmwareUpgrade id={id} fw={snap?.firmware ?? undefined} onDone={() => void mutate()} />
       {isLoading ? <Skeleton h={300} /> : error || !snap ? (
         <><Note kind="warn">{t("r.telFail")}</Note><button className="pill" type="button" onClick={() => void mutate()}>{t("c.retry")}</button></>
       ) : (
         <>
-          <section className="glass pad stack">
+          <section className="glass pad stack workspace-main">
             <div className="row"><h2>{t("r.health")}</h2><span className={"chip " + (tele?.state === "live" || tele?.state === "syncing" ? "ok" : "warn")}>{tele?.state || "—"}</span></div>
+            <div className="kv-list">
             <Kv k={t("r.board")} v={(r.board_name || "—") + (r.routeros_version ? " " + r.routeros_version : "")} />
             <Kv k="CPU" v={pct(r.cpu_percent)} />
             <Kv k={t("r.memory")} v={`${mb(r.memory_used_bytes)} / ${mb(r.memory_total_bytes)}`} />
@@ -48,8 +50,9 @@ export function Detail({ id, router, canReview }: { id: string; router?: RouterR
             {firmwareText(snap.firmware ?? undefined, words) && <Kv k={t("r.firmware")} v={firmwareText(snap.firmware ?? undefined, words)} />}
             <Kv k={t("r.guests")} v={snap.hotspot_sessions == null ? "—" : String(snap.hotspot_sessions)} />
             <Kv k={t("r.leases")} v={snap.dhcp_bound_leases == null ? "—" : String(snap.dhcp_bound_leases)} />
+            </div>
           </section>
-          <section className="glass pad stack" aria-label={lang === "my" ? "Router ပြင်ဆင်မှုများ" : "Router configuration"}>
+          <section className="glass pad stack workspace-rail" aria-label={lang === "my" ? "Router ပြင်ဆင်မှုများ" : "Router configuration"}>
             <h2>{lang === "my" ? "Router ပြင်ဆင်မှုများ" : "Router configuration"}</h2>
             <p className="soft small">{lang === "my"
               ? "ဤစာမျက်နှာရှိ အခြေအနေပြချက်များမှာ ဖတ်ရန်သာဖြစ်သည်။ Router ပြင်ဆင်မှုများကို အောက်ပါ လုပ်ငန်းစဉ်များမှ စစ်ဆေး၊ အတည်ပြုပြီးမှ အသုံးပြုနိုင်သည်။ ဆာဗာက ပိတ်ထားသော လုပ်ဆောင်ချက်များကို ဤစာမျက်နှာက မဖွင့်နိုင်ပါ။"

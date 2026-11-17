@@ -22,11 +22,12 @@ type RouterScripts struct {
 	Disconnect string `json:"disconnect_script"`
 }
 
-// GenerateRouterKeypair creates a WireGuard keypair for the one-paste setup.
-// The private key is returned only to the authenticated operator as part of a
-// no-store script response. When durable setup is configured, the server keeps
-// it encrypted in the pending-enrollment store until the router connects (at
-// most PendingEnrollmentLifetime) and deletes it then; it is never sent to Hub.
+// GenerateRouterKeypair creates a WireGuard keypair for the legacy server-keygen
+// one-paste setup. The private key is returned to the authenticated operator in a
+// no-store script response, but the application also keeps it, encrypted and
+// time-limited, so a retry can reissue the same script (see
+// database.RouterKeyLifetime and docs/HUB-CALLBACK-ENROLLMENT.md). The router-
+// generated flow (BuildCallbackBootstrapScript) never creates or holds one.
 func GenerateRouterKeypair() (privateKey, publicKey string, err error) {
 	private := make([]byte, 32)
 	if _, err := rand.Read(private); err != nil {
@@ -275,10 +276,12 @@ func buildQuickConnect(deviceID string, peer Peer, privateKey string, startOver 
 	}
 	w(`
 # PREFLIGHT: inspect all existing Magic Hub identities and destinations before any writes.
+:local mmVer [/system/resource get version]
+:if ([:tonum [:pick $mmVer 0 [:find $mmVer "."]]] < 7) do={ :error ("STOP: Magic Hub needs RouterOS 7 or newer; this router runs " . $mmVer . ". Nothing changed.") }
 :foreach mmItem in=[/interface/wireguard find where name~"^mmh-"] do={
   :local mmName [/interface/wireguard get $mmItem name]
   :local mmComment [/interface/wireguard get $mmItem comment]
-  :if ($mmName != "%[1]s" && [:pick $mmComment 0 15] = "mega-magic:mmh-") do={
+  :if ($mmName != "%[1]s" && [:find $mmComment "mega-magic:mmh-"] = 0) do={
     :error "STOP: older Magic Hub tunnel found. Migrate separately; nothing changed"
   }
 }
@@ -395,7 +398,7 @@ func BuildDisconnectScript(deviceID string, peer Peer, managementUser string) (s
 /ip/firewall/nat remove [find where comment="%[1]s"]
 :local mmAccount [/user find where name="%[2]s"]
 :if ([:len $mmAccount] = 1) do={
-  :if ([:pick [/user get $mmAccount comment] 0 %[3]d] = "%[1]s:") do={
+  :if ([:find [/user get $mmAccount comment] "%[1]s:"] = 0) do={
     /user/ssh-keys remove [find where user="%[2]s"]
     /user remove $mmAccount
     :put "Management user and SSH key removed."
@@ -403,10 +406,10 @@ func BuildDisconnectScript(deviceID string, peer Peer, managementUser string) (s
 }
 :local mmGroup [/user/group find where name="%[2]s"]
 :if ([:len $mmGroup] = 1) do={ :do { /user/group remove $mmGroup } on-error={ :put "Management group is still in use; left in place." } }
-/ip/route remove [find where comment="%[5]s"]
-/ip/address remove [find where comment="%[5]s"]
-/interface/wireguard/peers remove [find where interface="%[4]s" and comment="%[5]s"]
-/interface/wireguard remove [find where name="%[4]s" and comment="%[5]s"]
+/ip/route remove [find where comment="%[4]s"]
+/ip/address remove [find where comment="%[4]s"]
+/interface/wireguard/peers remove [find where interface="%[3]s" and comment="%[4]s"]
+/interface/wireguard remove [find where name="%[3]s" and comment="%[4]s"]
 :put "Magic Hub setup removed from this router."
-}`, marker, managementUser, len(marker)+1, name, tunnelMarker), nil
+}`, marker, managementUser, name, tunnelMarker), nil
 }

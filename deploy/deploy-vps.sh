@@ -108,3 +108,8 @@ PY
 docker cp mega-magic-go-restored-api-1:/app/mega-magic "$app/restore-bin/mega-magic"
 printf 'Verified release %s; rollback retained at %s\n' "$release_sha" "$backup"
 trap - ERR
+# Keep the newest five images of each service (current, previous and a few more) and drop the
+# rest. Images in use are never removed; a failure here must not fail a verified release.
+for repo in ghcr.io/rionishjovian/vercel/mega-magic-api ghcr.io/rionishjovian/vercel/mega-magic-web;do
+ docker images --format '{{.ID}} {{.CreatedAt}}' --filter "reference=$repo" | sort -k2,3 -r | awk '{print $1}' | sed -n '6,$p' | xargs -r docker rmi >/dev/null 2>&1 || true
+done

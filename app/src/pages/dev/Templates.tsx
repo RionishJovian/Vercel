@@ -30,6 +30,7 @@ export function Templates({ me }: { me: Me }) {
   }
   return (
     <Page title={t("dev.tpl.title")} lead={t("dev.tpl.lead")}>
+      <div className="workspace-rail workspace-stack">
       <FilterBar onApply={p.apply} onReset={p.reset}>
         <Select label={t("dev.tpl.category")} value={p.draft.category} onChange={(v) => p.setDraft("category", v)} all={t("dev.allCategories")} options={asArray<string>(p.data?.categories)} />
         <Field label={t("dev.tpl.contains")}><input className="input" value={p.draft.q} placeholder="firewall" onChange={(e) => p.setDraft("q", e.target.value)} /></Field>
@@ -47,11 +48,13 @@ export function Templates({ me }: { me: Me }) {
           <div className="row" style={{ justifyContent: "flex-start" }}><button className="btn" type="submit" disabled={busy}>{t("dev.tpl.create")}</button><button className="btn quiet" type="button" onClick={() => setForm(false)}>{t("c.cancel")}</button></div>
         </form>
       )}
+      </div>
+      <div className="workspace-main workspace-stack">
       {msg && <Note kind="bad">{msg}</Note>}
       <Loading loading={p.isLoading && !p.data} error={p.error} text={t("dev.tpl.failed")} />
       {p.data && (
         <>
-          <p className="soft small" role="status">{p.data.count} {t("dev.tpl.templates")}: {p.data.builtin} {t("dev.tpl.builtin")}, {p.data.custom} {t("dev.tpl.custom")}{p.filtered ? ` (${t("ev.filtered")})` : ""}</p>
+          <p className="soft small tnum" role="status">{p.data.count} {t("dev.tpl.templates")}: {p.data.builtin} {t("dev.tpl.builtin")}, {p.data.custom} {t("dev.tpl.custom")}{p.filtered ? ` (${t("ev.filtered")})` : ""}</p>
           {!list.length ? <Note>{t("dev.tpl.none")}</Note> : <div className="stack">{list.map((x) => (
             <div className="rowitem" key={x.id} style={{ alignItems: "flex-start" }}>
               <div className="stack" style={{ gap: 2, minWidth: 0 }}>
@@ -63,6 +66,7 @@ export function Templates({ me }: { me: Me }) {
           ))}</div>}
         </>
       )}
+      </div>
     </Page>
   );
 }

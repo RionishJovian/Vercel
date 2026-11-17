@@ -1,6 +1,6 @@
 from typing import Optional
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy import String, Integer, BigInteger, ForeignKey, JSON, UniqueConstraint, Boolean, CheckConstraint, LargeBinary
+from sqlalchemy import String, Integer, BigInteger, ForeignKey, JSON, UniqueConstraint, Boolean, CheckConstraint, LargeBinary, Index
 import uuid
 class Base(DeclarativeBase):pass
 def uid():return str(uuid.uuid4())
@@ -213,7 +213,7 @@ class FinancialEvent(Base):
  actor_id:Mapped[Optional[str]]=mapped_column(ForeignKey('users.id'),nullable=True)
  occurred_at:Mapped[int]=mapped_column(BigInteger,index=True)
  timestamp_basis:Mapped[str]=mapped_column(String(32))
- __table_args__=(UniqueConstraint('source','source_id','kind'),CheckConstraint('amount > 0'),CheckConstraint("kind IN ('collection','refund')"),CheckConstraint("source IN ('guest_order','voucher_sale')"))
+ __table_args__=(UniqueConstraint('source','source_id','kind'),CheckConstraint('amount > 0'),CheckConstraint("kind IN ('collection','refund')"),CheckConstraint("source IN ('guest_order','voucher_sale')"),Index('ix_financial_events_tenant_occurred','tenant_id','occurred_at'))
 
 class ThemeSettings(Base):
  __tablename__='theme_settings'

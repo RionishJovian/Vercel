@@ -150,6 +150,32 @@ func TestAutomaticManagementScriptAndOutputBounds(t *testing.T) {
 	}
 }
 
+// A hAP ax3 on RouterOS 7.12.2 rejected the pasted script: the SSH port read failed, which
+// left dst-port/to-ports empty, and the peer counter read was not valid syntax.
+func TestAutomaticManagementScriptRouterOS7Safety(t *testing.T) {
+	p := pendingManagement{user: "mm-123", public: "ssh-rsa public", private: "PRIVATE", proof: strings.Repeat("b", 64)}
+	script := automaticManagementScript("router", p)
+	port := strings.Index(script, ":local mmPort 22\n")
+	read := strings.Index(script, ":do { :set mmPort [/ip/service get $mmSSH port] } on-error={}")
+	guard := strings.Index(script, `:if ([:typeof $mmPort] != "num") do={ :set mmPort 22 }`)
+	filter := strings.Index(script, "dst-port=$mmPort")
+	if port < 0 || read < port || guard < read || filter < guard {
+		t.Fatal("the SSH port must default to 22, be read safely, and be settled before the firewall and NAT rules use it")
+	}
+	if !strings.Contains(script, `:do { :set mmSSH [:pick [/ip/service find where name="ssh"] 0] } on-error={}`) {
+		t.Fatal("a missing SSH service row must not stop the script")
+	}
+	if strings.Contains(script, ":local mmPort [/ip/service get") {
+		t.Fatal("the unguarded SSH port read is back")
+	}
+	if !strings.Contains(script, "get $mmHubPeer value-name=rx") {
+		t.Fatal("peer counters must be read with value-name=")
+	}
+	if strings.Contains(script, "get $mmHubPeer rx") {
+		t.Fatal("bare peer property reads are rejected by RouterOS 7.12")
+	}
+}
+
 func TestAutomaticEnrollmentRunsAsOneBlock(t *testing.T) {
 	private, key, err := hub.GenerateRouterKeypair()
 	if err != nil {
@@ -237,5 +263,36 @@ func TestManagementSourceCIDR(t *testing.T) {
 	p.sourceCIDR = "10.77.0.0/24"
 	if _, err := automaticEnrollmentScript("router", p); err == nil {
 		t.Fatal("subnet-wide management accepted")
+	}
+}
+
+func TestOnePasteChecksUserBeforeTunnelAndHidesProofFromPassword(t *testing.T) {
+	peer := hub.Peer{RouterID: "router", RouterPublicKey: "", EnrollmentVersion: 1}
+	_ = peer
+	private, public, err := hub.GenerateRouterKeypair()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, hubKey, _ := hub.GenerateRouterKeypair()
+	peer = hub.Peer{RouterID: "router", RouterPublicKey: public, HubPublicKey: hubKey, TunnelAddress: "10.77.0.5/32", Endpoint: "203.0.113.10:51820", AllowedIPs: []string{"10.77.0.1/32"}, EnrollmentVersion: 1, State: "active"}
+	quick, err := hub.BuildQuickConnectScript("router", peer, private)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proof := strings.Repeat("c", 64)
+	p := pendingManagement{user: "mm-test", public: "ssh-rsa public", proof: proof, routerKey: public, tunnelScript: quick, sourceCIDR: "10.77.0.1/32"}
+	s, err := automaticEnrollmentScript("router", p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	check, write := strings.Index(s, `"STOP: a user named`), strings.Index(s, "/interface/wireguard add")
+	if check < 0 || write < 0 || check > write {
+		t.Fatal("the user conflict check must run before the first write")
+	}
+	if strings.Contains(s, "Does not remove prior tunnels or change WAN/LAN/users") {
+		t.Fatal("header still claims the script changes no users")
+	}
+	if strings.Contains(s, `password="`+proof+`"`) || !strings.Contains(s, `comment="mega-magic:mm-test:`+proof+`"`) {
+		t.Fatal("password must differ from the proof kept in the comment")
 	}
 }

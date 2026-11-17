@@ -9,7 +9,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const setTheme = useCallback((t: Theme) => {
     set(t); document.documentElement.dataset.theme = t;
     try { localStorage.setItem("mm_theme", t); } catch { /* ignore */ }
-    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", t === "day" ? "#f7f3e8" : "#04130e");
+    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", t === "day" ? "#f8fafc" : "#0b0e14");
   }, []);
   const value = useMemo(() => ({ theme, setTheme }), [theme, setTheme]);
   return <Ctx value={value}>{children}</Ctx>;

@@ -80,7 +80,7 @@ export function VIP() {
     finally { setBusy(false); }
   }
 
-  return <div className="stack">
+  return <div className="workspace-grid">
     <Note kind="warn">{my
       ? "သတိပြုရန် — VIP ကုဒ်တစ်ခုကို စက် ၂ မှ ၈ လုံး တစ်ပြိုင်နက် အသုံးပြုနိုင်ပြီး အချိန်၊ ဒေတာ ကန့်သတ်ချက်မရှိပါ။ ပိုင်ရှင်ခွင့်ပြုချက်ရှိသော ဝန်ထမ်းများအတွက်သာဖြစ်သည်။"
       : "Staff VIP only: one code can connect 2–8 devices simultaneously, with no time or data quota. Share it only with trusted staff. Standard customer vouchers remain single-device."}</Note>
@@ -94,7 +94,7 @@ export function VIP() {
       : "A saved VIP request remains pending. Retry its exact identity rather than creating another credential."}{" "}
       <button className="pill" type="button" disabled={busy || !!vip.error} onClick={() => void retry()}>{my ? "ထပ်မံစစ်ဆေး" : "Retry verification"}</button>
     </Note>}
-    <form className="glass pad stack" onSubmit={create}>
+    <form className="glass pad stack workspace-rail" onSubmit={create}>
       <h3>{my ? "ဝန်ထမ်း VIP ဖန်တီးရန်" : "Create staff VIP Wi-Fi code"}</h3>
       <Field label={my ? "Gateway" : "Gateway"} htmlFor="vip-gateway">
         <select id="vip-gateway" className="input" value={router?.device_id || ""} onChange={e => setSelected(e.target.value)} disabled={busy || !!pending} required>
@@ -113,7 +113,7 @@ export function VIP() {
         {busy ? (my ? "စစ်ဆေးနေသည်" : "Checking gateway…") : (my ? "VIP ကုဒ် ထုတ်မည်" : "Create and verify VIP")}
       </button>
     </form>
-    <section className="glass pad stack">
+    <section className="glass pad stack workspace-main">
       <h3>{my ? "ဝန်ထမ်း VIP ကုဒ်များ" : "Staff VIP codes"}</h3>
       {vip.data && !asArray<VIPRecord>(vip.data.codes).length && <p className="soft small">{my ? "VIP မရှိသေးပါ" : "No VIP codes yet."}</p>}
       {asArray<VIPRecord>(vip.data?.codes).map(v => <div className="row" key={v.id}>

@@ -63,14 +63,14 @@ export function UniversalDiscoveryPanel({ gatewayId }: { gatewayId: string }) {
     </button>
     {error && <Note kind="warn">{error}</Note>}
     {active && <>
-      <p className="soft small" role="status">{active.devices.length} {my ? "စက်များတွေ့ရှိ" : "MAC identities observed"} · {active.observed_at || (my ? "အချိန် မသိ" : "Observation time unknown")}</p>
+      <p className="soft small num" role="status">{active.devices.length} {my ? "စက်များတွေ့ရှိ" : "MAC identities observed"} · {active.observed_at || (my ? "အချိန် မသိ" : "Observation time unknown")}</p>
       {(active.partial || active.truncated) && <Note kind="warn">{my
         ? "အချက်အလက်အချို့ ဖတ်မရသဖြင့် စာရင်း မပြည့်စုံနိုင်ပါ။"
         : "Partial discovery: one or more sources were unavailable or the bounded result was truncated."}</Note>}
       <Note kind="warn">{my
         ? "ပိုင်ရှင်မှ နာမည်ပေးထားခြင်း၊ Vendor အမည်တွေ့ခြင်း သို့မဟုတ် Port မှတစ်ဆင့် တွေ့ခြင်းသည် စက်ကို အဝေးမှပြင်နိုင်ကြောင်း၊ အွန်လိုင်းရှိကြောင်း၊ ကြိုးတိုက်ရိုက်ချိတ်ထားကြောင်း အထောက်အထား မဟုတ်ပါ။"
         : "Vendor names and MAC/port sightings do not verify manageability, live reachability or a direct physical cable. Configuration capabilities remain unknown."}</Note>
-      <p className="soft small">{active.sources.map(s => `${s.name}: ${s.available ? s.count : "unavailable"}`).join(" · ")}</p>
+      <p className="soft small num">{active.sources.map(s => `${s.name}: ${s.available ? s.count : "unavailable"}`).join(" · ")}</p>
       {!active.devices.length && <p className="soft small">{my ? "မြင်နိုင်သော စက် မရှိသေးပါ" : "No valid device MACs in the available tables."}</p>}
       {active.devices.map(d => <article className="stack" key={d.mac} style={{ borderTop: "1px solid var(--edge-soft)", paddingTop: 12 }}>
         <b>{d.name}</b>

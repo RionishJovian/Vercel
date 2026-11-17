@@ -27,9 +27,9 @@ func (r *VoucherRepository) CreateVoucher(voucher *model.Voucher) (*model.Vouche
 	query := `
 		INSERT INTO vouchers (business_id, device_id, plan_key, plan_label, code,
 		                      price_mmk, duration_minutes, device_mac, status,
-		                      first_seen_at, expires_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-		RETURNING id, business_id, device_id, plan_key, plan_label, code,
+		                      first_seen_at, expires_at, code_hmac, code_enc)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+		RETURNING id, business_id, device_id, plan_key, plan_label, ` + voucherCodeSQL + `,
 		          price_mmk, duration_minutes, device_mac, status,
 		          first_seen_at, expires_at, created_at, updated_at`
 
@@ -38,20 +38,26 @@ func (r *VoucherRepository) CreateVoucher(voucher *model.Voucher) (*model.Vouche
 	var durationMin sql.NullInt64
 	var firstSeen, expires sql.NullTime
 
+	plainCode, blind, sealed, cerr := voucherCodeColumns(voucher.Code)
+	if cerr != nil {
+		return nil, fmt.Errorf("create voucher: %w", cerr)
+	}
 	err := r.db.QueryRow(query,
 		voucher.BusinessID,
 		nullString(voucher.DeviceID),
 		voucher.PlanKey,
 		voucher.PlanLabel,
-		voucher.Code,
+		plainCode,
 		voucher.PriceMMK,
 		nullableInt(voucher.DurationMinutes),
 		macAddrStr(voucher.DeviceMAC),
 		voucher.Status,
 		nullTime(voucher.FirstSeenAt),
 		nullTime(voucher.ExpiresAt),
+		blind,
+		sealed,
 	).Scan(
-		&v.ID, &v.BusinessID, &deviceID, &v.PlanKey, &v.PlanLabel, &v.Code,
+		&v.ID, &v.BusinessID, &deviceID, &v.PlanKey, &v.PlanLabel, ScanVoucherCode(&v.Code),
 		&v.PriceMMK, &durationMin, &deviceMAC, &v.Status,
 		&firstSeen, &expires, &v.CreatedAt, &v.UpdatedAt,
 	)
@@ -71,7 +77,7 @@ func (r *VoucherRepository) CreateVoucher(voucher *model.Voucher) (*model.Vouche
 // GetVoucherByID retrieves a voucher by its ID
 func (r *VoucherRepository) GetVoucherByID(id string) (*model.Voucher, error) {
 	query := `
-		SELECT id, business_id, device_id, plan_key, plan_label, code,
+		SELECT id, business_id, device_id, plan_key, plan_label, ` + voucherCodeSQL + `,
 		       price_mmk, duration_minutes, device_mac, status,
 		       first_seen_at, expires_at, created_at, updated_at
 		FROM vouchers
@@ -83,7 +89,7 @@ func (r *VoucherRepository) GetVoucherByID(id string) (*model.Voucher, error) {
 	var firstSeen, expires sql.NullTime
 
 	err := r.db.QueryRow(query, id).Scan(
-		&v.ID, &v.BusinessID, &deviceID, &v.PlanKey, &v.PlanLabel, &v.Code,
+		&v.ID, &v.BusinessID, &deviceID, &v.PlanKey, &v.PlanLabel, ScanVoucherCode(&v.Code),
 		&v.PriceMMK, &durationMin, &deviceMAC, &v.Status,
 		&firstSeen, &expires, &v.CreatedAt, &v.UpdatedAt,
 	)
@@ -106,7 +112,7 @@ func (r *VoucherRepository) GetVoucherByID(id string) (*model.Voucher, error) {
 // ListVouchersByBusiness retrieves all vouchers for a given business
 func (r *VoucherRepository) ListVouchersByBusiness(businessID string) ([]*model.Voucher, error) {
 	query := `
-		SELECT id, business_id, device_id, plan_key, plan_label, code,
+		SELECT id, business_id, device_id, plan_key, plan_label, ` + voucherCodeSQL + `,
 		       price_mmk, duration_minutes, device_mac, status,
 		       first_seen_at, expires_at, created_at, updated_at
 		FROM vouchers
@@ -127,7 +133,7 @@ func (r *VoucherRepository) ListVouchersByBusiness(businessID string) ([]*model.
 		var firstSeen, expires sql.NullTime
 
 		err := rows.Scan(
-			&v.ID, &v.BusinessID, &deviceID, &v.PlanKey, &v.PlanLabel, &v.Code,
+			&v.ID, &v.BusinessID, &deviceID, &v.PlanKey, &v.PlanLabel, ScanVoucherCode(&v.Code),
 			&v.PriceMMK, &durationMin, &deviceMAC, &v.Status,
 			&firstSeen, &expires, &v.CreatedAt, &v.UpdatedAt,
 		)
@@ -153,19 +159,19 @@ func (r *VoucherRepository) ListVouchersByBusiness(businessID string) ([]*model.
 // GetVoucherByCode retrieves a voucher by business and code
 func (r *VoucherRepository) GetVoucherByCode(businessID, code string) (*model.Voucher, error) {
 	query := `
-		SELECT id, business_id, device_id, plan_key, plan_label, code,
+		SELECT id, business_id, device_id, plan_key, plan_label, ` + voucherCodeSQL + `,
 		       price_mmk, duration_minutes, device_mac, status,
 		       first_seen_at, expires_at, created_at, updated_at
 		FROM vouchers
-		WHERE business_id = $1 AND code = $2`
+		WHERE business_id = $1 AND (code = $2 OR code_hmac = $3)`
 
 	v := &model.Voucher{}
 	var deviceID, deviceMAC sql.NullString
 	var durationMin sql.NullInt64
 	var firstSeen, expires sql.NullTime
 
-	err := r.db.QueryRow(query, businessID, code).Scan(
-		&v.ID, &v.BusinessID, &deviceID, &v.PlanKey, &v.PlanLabel, &v.Code,
+	err := r.db.QueryRow(query, businessID, code, VoucherCodeBlind(code)).Scan(
+		&v.ID, &v.BusinessID, &deviceID, &v.PlanKey, &v.PlanLabel, ScanVoucherCode(&v.Code),
 		&v.PriceMMK, &durationMin, &deviceMAC, &v.Status,
 		&firstSeen, &expires, &v.CreatedAt, &v.UpdatedAt,
 	)
@@ -191,7 +197,7 @@ func (r *VoucherRepository) UpdateVoucherStatus(id, status string, firstSeenAt *
 		UPDATE vouchers
 		SET status = $2, first_seen_at = COALESCE($3, first_seen_at), updated_at = $4
 		WHERE id = $1
-		RETURNING id, business_id, device_id, plan_key, plan_label, code,
+		RETURNING id, business_id, device_id, plan_key, plan_label, ` + voucherCodeSQL + `,
 		          price_mmk, duration_minutes, device_mac, status,
 		          first_seen_at, expires_at, created_at, updated_at`
 
@@ -201,7 +207,7 @@ func (r *VoucherRepository) UpdateVoucherStatus(id, status string, firstSeenAt *
 	var firstSeen, expires sql.NullTime
 
 	err := r.db.QueryRow(query, id, status, nullTime(firstSeenAt), time.Now().UTC()).Scan(
-		&v.ID, &v.BusinessID, &deviceID, &v.PlanKey, &v.PlanLabel, &v.Code,
+		&v.ID, &v.BusinessID, &deviceID, &v.PlanKey, &v.PlanLabel, ScanVoucherCode(&v.Code),
 		&v.PriceMMK, &durationMin, &deviceMAC, &v.Status,
 		&firstSeen, &expires, &v.CreatedAt, &v.UpdatedAt,
 	)
@@ -231,10 +237,10 @@ func (r *VoucherRepository) ClaimVoucherTXN(tx *sql.Tx, businessID, code string,
 	query := `
 		UPDATE vouchers
 		SET status = 'used', first_seen_at = COALESCE(first_seen_at, $3), updated_at = $3
-		WHERE business_id = $1 AND code = $2
+		WHERE business_id = $1 AND (code = $2 OR code_hmac = $4)
 		  AND status = 'active'
 		  AND (expires_at IS NULL OR expires_at > $3)
-		RETURNING id, business_id, device_id, plan_key, plan_label, code,
+		RETURNING id, business_id, device_id, plan_key, plan_label, ` + voucherCodeSQL + `,
 		          price_mmk, duration_minutes, device_mac, status,
 		          first_seen_at, expires_at, created_at, updated_at`
 
@@ -243,8 +249,8 @@ func (r *VoucherRepository) ClaimVoucherTXN(tx *sql.Tx, businessID, code string,
 	var durationMin sql.NullInt64
 	var firstSeen, expires sql.NullTime
 
-	err := tx.QueryRow(query, businessID, code, now).Scan(
-		&v.ID, &v.BusinessID, &deviceID, &v.PlanKey, &v.PlanLabel, &v.Code,
+	err := tx.QueryRow(query, businessID, code, now, VoucherCodeBlind(code)).Scan(
+		&v.ID, &v.BusinessID, &deviceID, &v.PlanKey, &v.PlanLabel, ScanVoucherCode(&v.Code),
 		&v.PriceMMK, &durationMin, &deviceMAC, &v.Status,
 		&firstSeen, &expires, &v.CreatedAt, &v.UpdatedAt,
 	)
@@ -272,7 +278,7 @@ func (r *VoucherRepository) UpdateVoucherStatusByBusiness(businessID, id, status
 		SET status = $3, first_seen_at = COALESCE($4, first_seen_at), updated_at = $5
 		WHERE id = $1 AND business_id = $2
 		  AND (status = $3 OR (status IN ('active','unused') AND $3 IN ('revoked','banned','expired')))
-		RETURNING id, business_id, device_id, plan_key, plan_label, code,
+		RETURNING id, business_id, device_id, plan_key, plan_label, ` + voucherCodeSQL + `,
 		          price_mmk, duration_minutes, device_mac, status,
 		          first_seen_at, expires_at, created_at, updated_at`
 
@@ -282,7 +288,7 @@ func (r *VoucherRepository) UpdateVoucherStatusByBusiness(businessID, id, status
 	var firstSeen, expires sql.NullTime
 
 	err := r.db.QueryRow(query, id, businessID, status, nullTime(firstSeenAt), time.Now().UTC()).Scan(
-		&v.ID, &v.BusinessID, &deviceID, &v.PlanKey, &v.PlanLabel, &v.Code,
+		&v.ID, &v.BusinessID, &deviceID, &v.PlanKey, &v.PlanLabel, ScanVoucherCode(&v.Code),
 		&v.PriceMMK, &durationMin, &deviceMAC, &v.Status,
 		&firstSeen, &expires, &v.CreatedAt, &v.UpdatedAt,
 	)
@@ -341,10 +347,10 @@ func (r *VoucherRepository) CreateVoucherTXN(tx *sql.Tx, voucher *model.Voucher)
 	query := `
 		INSERT INTO vouchers (business_id, device_id, plan_key, plan_label, code,
 		                      price_mmk, duration_minutes, device_mac, status,
-		                      first_seen_at, expires_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-		ON CONFLICT (business_id, code) DO NOTHING
-		RETURNING id, business_id, device_id, plan_key, plan_label, code,
+		                      first_seen_at, expires_at, code_hmac, code_enc)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+		ON CONFLICT DO NOTHING
+		RETURNING id, business_id, device_id, plan_key, plan_label, ` + voucherCodeSQL + `,
 		          price_mmk, duration_minutes, device_mac, status,
 		          first_seen_at, expires_at, created_at, updated_at`
 
@@ -353,12 +359,17 @@ func (r *VoucherRepository) CreateVoucherTXN(tx *sql.Tx, voucher *model.Voucher)
 	var durationMin sql.NullInt64
 	var firstSeen, expires sql.NullTime
 
+	plainCode, blind, sealed, cerr := voucherCodeColumns(voucher.Code)
+	if cerr != nil {
+		return nil, fmt.Errorf("create voucher: %w", cerr)
+	}
 	err := tx.QueryRow(query,
 		voucher.BusinessID, nullString(voucher.DeviceID), voucher.PlanKey, voucher.PlanLabel,
-		voucher.Code, voucher.PriceMMK, nullableInt(voucher.DurationMinutes),
+		plainCode, voucher.PriceMMK, nullableInt(voucher.DurationMinutes),
 		macAddrStr(voucher.DeviceMAC), voucher.Status, nullTime(voucher.FirstSeenAt), nullTime(voucher.ExpiresAt),
+		blind, sealed,
 	).Scan(
-		&v.ID, &v.BusinessID, &deviceID, &v.PlanKey, &v.PlanLabel, &v.Code,
+		&v.ID, &v.BusinessID, &deviceID, &v.PlanKey, &v.PlanLabel, ScanVoucherCode(&v.Code),
 		&v.PriceMMK, &durationMin, &deviceMAC, &v.Status,
 		&firstSeen, &expires, &v.CreatedAt, &v.UpdatedAt,
 	)
@@ -379,7 +390,7 @@ func (r *VoucherRepository) CreateVoucherTXN(tx *sql.Tx, voucher *model.Voucher)
 // GetVoucherByIDTXN is the transaction-scoped variant of GetVoucherByID.
 func (r *VoucherRepository) GetVoucherByIDTXN(tx *sql.Tx, id string) (*model.Voucher, error) {
 	query := `
-		SELECT id, business_id, device_id, plan_key, plan_label, code,
+		SELECT id, business_id, device_id, plan_key, plan_label, ` + voucherCodeSQL + `,
 		       price_mmk, duration_minutes, device_mac, status,
 		       first_seen_at, expires_at, created_at, updated_at
 		FROM vouchers
@@ -391,7 +402,7 @@ func (r *VoucherRepository) GetVoucherByIDTXN(tx *sql.Tx, id string) (*model.Vou
 	var firstSeen, expires sql.NullTime
 
 	err := tx.QueryRow(query, id).Scan(
-		&v.ID, &v.BusinessID, &deviceID, &v.PlanKey, &v.PlanLabel, &v.Code,
+		&v.ID, &v.BusinessID, &deviceID, &v.PlanKey, &v.PlanLabel, ScanVoucherCode(&v.Code),
 		&v.PriceMMK, &durationMin, &deviceMAC, &v.Status,
 		&firstSeen, &expires, &v.CreatedAt, &v.UpdatedAt,
 	)
@@ -413,7 +424,7 @@ func (r *VoucherRepository) GetVoucherByIDTXN(tx *sql.Tx, id string) (*model.Vou
 // ListVouchersByBusiness.
 func (r *VoucherRepository) ListVouchersByBusinessTXN(tx *sql.Tx, businessID string) ([]*model.Voucher, error) {
 	query := `
-		SELECT id, business_id, device_id, plan_key, plan_label, code,
+		SELECT id, business_id, device_id, plan_key, plan_label, ` + voucherCodeSQL + `,
 		       price_mmk, duration_minutes, device_mac, status,
 		       first_seen_at, expires_at, created_at, updated_at
 		FROM vouchers
@@ -433,7 +444,7 @@ func (r *VoucherRepository) ListVouchersByBusinessTXN(tx *sql.Tx, businessID str
 		var durationMin sql.NullInt64
 		var firstSeen, expires sql.NullTime
 		if err := rows.Scan(
-			&v.ID, &v.BusinessID, &deviceID, &v.PlanKey, &v.PlanLabel, &v.Code,
+			&v.ID, &v.BusinessID, &deviceID, &v.PlanKey, &v.PlanLabel, ScanVoucherCode(&v.Code),
 			&v.PriceMMK, &durationMin, &deviceMAC, &v.Status,
 			&firstSeen, &expires, &v.CreatedAt, &v.UpdatedAt,
 		); err != nil {
@@ -455,19 +466,19 @@ func (r *VoucherRepository) ListVouchersByBusinessTXN(tx *sql.Tx, businessID str
 // GetVoucherByCodeTXN is the transaction-scoped variant of GetVoucherByCode.
 func (r *VoucherRepository) GetVoucherByCodeTXN(tx *sql.Tx, businessID, code string) (*model.Voucher, error) {
 	query := `
-		SELECT id, business_id, device_id, plan_key, plan_label, code,
+		SELECT id, business_id, device_id, plan_key, plan_label, ` + voucherCodeSQL + `,
 		       price_mmk, duration_minutes, device_mac, status,
 		       first_seen_at, expires_at, created_at, updated_at
 		FROM vouchers
-		WHERE business_id = $1 AND code = $2`
+		WHERE business_id = $1 AND (code = $2 OR code_hmac = $3)`
 
 	v := &model.Voucher{}
 	var deviceID, deviceMAC sql.NullString
 	var durationMin sql.NullInt64
 	var firstSeen, expires sql.NullTime
 
-	err := tx.QueryRow(query, businessID, code).Scan(
-		&v.ID, &v.BusinessID, &deviceID, &v.PlanKey, &v.PlanLabel, &v.Code,
+	err := tx.QueryRow(query, businessID, code, VoucherCodeBlind(code)).Scan(
+		&v.ID, &v.BusinessID, &deviceID, &v.PlanKey, &v.PlanLabel, ScanVoucherCode(&v.Code),
 		&v.PriceMMK, &durationMin, &deviceMAC, &v.Status,
 		&firstSeen, &expires, &v.CreatedAt, &v.UpdatedAt,
 	)
@@ -492,7 +503,7 @@ func (r *VoucherRepository) UpdateVoucherStatusTXN(tx *sql.Tx, id, status string
 		UPDATE vouchers
 		SET status = $2, first_seen_at = COALESCE($3, first_seen_at), updated_at = $4
 		WHERE id = $1
-		RETURNING id, business_id, device_id, plan_key, plan_label, code,
+		RETURNING id, business_id, device_id, plan_key, plan_label, ` + voucherCodeSQL + `,
 		          price_mmk, duration_minutes, device_mac, status,
 		          first_seen_at, expires_at, created_at, updated_at`
 
@@ -502,7 +513,7 @@ func (r *VoucherRepository) UpdateVoucherStatusTXN(tx *sql.Tx, id, status string
 	var firstSeen, expires sql.NullTime
 
 	err := tx.QueryRow(query, id, status, nullTime(firstSeenAt), time.Now().UTC()).Scan(
-		&v.ID, &v.BusinessID, &deviceID, &v.PlanKey, &v.PlanLabel, &v.Code,
+		&v.ID, &v.BusinessID, &deviceID, &v.PlanKey, &v.PlanLabel, ScanVoucherCode(&v.Code),
 		&v.PriceMMK, &durationMin, &deviceMAC, &v.Status,
 		&firstSeen, &expires, &v.CreatedAt, &v.UpdatedAt,
 	)
@@ -528,7 +539,7 @@ func (r *VoucherRepository) UpdateVoucherStatusByBusinessTXN(tx *sql.Tx, busines
 		SET status = $3, first_seen_at = COALESCE($4, first_seen_at), updated_at = $5
 		WHERE id = $1 AND business_id = $2
 		  AND (status = $3 OR (status IN ('active','unused') AND $3 IN ('revoked','banned','expired')))
-		RETURNING id, business_id, device_id, plan_key, plan_label, code,
+		RETURNING id, business_id, device_id, plan_key, plan_label, ` + voucherCodeSQL + `,
 		          price_mmk, duration_minutes, device_mac, status,
 		          first_seen_at, expires_at, created_at, updated_at`
 
@@ -538,7 +549,7 @@ func (r *VoucherRepository) UpdateVoucherStatusByBusinessTXN(tx *sql.Tx, busines
 	var firstSeen, expires sql.NullTime
 
 	err := tx.QueryRow(query, id, businessID, status, nullTime(firstSeenAt), time.Now().UTC()).Scan(
-		&v.ID, &v.BusinessID, &deviceID, &v.PlanKey, &v.PlanLabel, &v.Code,
+		&v.ID, &v.BusinessID, &deviceID, &v.PlanKey, &v.PlanLabel, ScanVoucherCode(&v.Code),
 		&v.PriceMMK, &durationMin, &deviceMAC, &v.Status,
 		&firstSeen, &expires, &v.CreatedAt, &v.UpdatedAt,
 	)

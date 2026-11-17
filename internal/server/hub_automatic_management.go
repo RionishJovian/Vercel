@@ -282,6 +282,13 @@ func automaticEnrollmentScript(id string, p pendingManagement) (string, error) {
 		return "", errors.New("management source must be a single host")
 	}
 	tunnel := strings.TrimSpace(p.tunnelScript)
+	if strings.Contains(tunnel, redactedRouterKey) {
+		return "", errors.New("the router already connected and its setup key was removed; no script is reissued")
+	}
+	// The router answers SSH through the tunnel routes, so the Hub source must be one of them.
+	if strings.Contains(tunnel, "/ip/route add") && !strings.Contains(tunnel, "dst-address="+p.sourceCIDR) && !strings.Contains(tunnel, "dst-address="+ip.String()) {
+		return "", errors.New("management source is not among the tunnel routes")
+	}
 	if !strings.HasPrefix(tunnel, "{\n") || !strings.HasSuffix(tunnel, "\n}") {
 		return "", errors.New("invalid tunnel execution block")
 	}
@@ -327,7 +334,7 @@ func managementPreflight(p pendingManagement) string {
 :local account [/user find where name="%[1]s"]
 :if ([:len $account] > 1) do={ :error "STOP: duplicate users named %[1]s; nothing changed" }
 :if ([:len $account] = 1) do={
-  :if ([:pick [/user get $account comment] 0 %[2]d] != "%[3]s:") do={ :error "STOP: a user named %[1]s exists and is not from Magic Hub; nothing changed" }
+  :if ([:find [/user get $account comment] "%[3]s:"] != 0) do={ :error "STOP: a user named %[1]s exists and is not from Magic Hub; nothing changed" }
 }
 :local grp [/user/group find where name="%[1]s"]
 :if ([:len $grp] > 1) do={ :error "STOP: duplicate groups named %[1]s; nothing changed" }
@@ -347,17 +354,25 @@ func managementApply(id string, p pendingManagement) string {
 	hash := sha256.Sum256([]byte(id))
 	iface := fmt.Sprintf("mmh-%x", hash[:6])
 	marker := "mega-magic:" + p.user
+	// The login password is derived from, but is not, the proof: the proof sits in the
+	// user's comment where any read-only router user can see it, so it must not unlock a login.
+	pw := sha256.Sum256([]byte("mm-password:" + p.proof))
 	// All interpolated values are generated locally as hex, fixed labels or RSA
 	// authorized-key data. No operator text reaches the RouterOS commands.
 	// /ip/service also lists live SSH connections, so the service is the first match.
 	return fmt.Sprintf(`# APPLY (management): this enrollment's own account, key and access rules.
-:local mmSSH [:pick [/ip/service find where name="ssh"] 0]
-:local mmPort [/ip/service get $mmSSH port]
+# /ip/service also lists live SSH connections, so the service is the first match.
+:local mmSSH
+:do { :set mmSSH [:pick [/ip/service find where name="ssh"] 0] } on-error={}
+# The port is never empty: an empty dst-port/to-ports makes RouterOS reject the firewall and NAT rules.
+:local mmPort 22
+:do { :set mmPort [/ip/service get $mmSSH port] } on-error={}
+:if ([:typeof $mmPort] != "num") do={ :set mmPort 22 }
 :if ([:len $grp] = 0) do={ /user/group add name="%[1]s" policy=ssh,read,write,policy,test,sensitive,reboot,ftp comment="%[3]s" } else={ /user/group set $grp policy=ssh,read,write,policy,test,sensitive,reboot,ftp comment="%[3]s" }
-:if ([:len $account] = 0) do={ /user add name="%[1]s" group="%[1]s" address=10.77.0.9/32 password="%[4]s" comment="%[3]s:%[4]s" }
-:if ([:len $account] = 1) do={ /user set $account group="%[1]s" address=10.77.0.9/32 password="%[4]s" comment="%[3]s:%[4]s" disabled=no }
+:if ([:len $account] = 0) do={ /user add name="%[1]s" group="%[1]s" address=10.77.0.9/32 password="%[7]s" comment="%[3]s:%[4]s" }
+:if ([:len $account] = 1) do={ /user set $account group="%[1]s" address=10.77.0.9/32 password="%[7]s" comment="%[3]s:%[4]s" disabled=no }
 :local keyfile "%[1]s.pub.txt"
-:if ([:len [/file find where name=$keyfile]] = 0) do={ /file print file="%[1]s.pub"; :delay 1s }
+:if ([:len [/file find where name=$keyfile]] = 0) do={ /file print file="%[1]s.pub"; :for mmWait from=1 to=20 do={ :if ([:len [/file find where name=$keyfile]] = 0) do={ :delay 500ms } } }
 /file set [find where name=$keyfile] contents="%[5]s"
 /user/ssh-keys remove [find where user="%[1]s"]
 /user/ssh-keys import public-key-file=$keyfile user="%[1]s"
@@ -366,19 +381,22 @@ func managementApply(id string, p pendingManagement) string {
 # is parsed only when it runs, so a current router never reads the deprecated one.
 :local mmSetAllowed do={ :do { [[:parse ("/ip/service set " . $1 . " available-from=" . $2)]] } on-error={ [[:parse ("/ip/service set " . $1 . " address=" . $2)]] } }
 :local mmGetAllowed do={ :local mmValue ""; :do { :set mmValue [[:parse (":return [/ip/service get " . $1 . " available-from]")]] } on-error={ :do { :set mmValue [[:parse (":return [/ip/service get " . $1 . " address]")]] } on-error={} }; :return $mmValue }
-:local mmAllowed [$mmGetAllowed $mmSSH]
-:if ([/ip/service get $mmSSH disabled]) do={
-  $mmSetAllowed $mmSSH "10.77.0.9/32"
-  /ip/service set $mmSSH disabled=no
-} else={
-  :if ([:len $mmAllowed] > 0) do={
-    :local mmHas false
-    :local mmList "10.77.0.9/32"
-    :foreach mmEntry in=$mmAllowed do={
-      :if ([:tostr $mmEntry] = "10.77.0.9/32" || [:tostr $mmEntry] = "10.77.0.9") do={ :set mmHas true }
-      :set mmList ($mmList . "," . [:tostr $mmEntry])
+# The service row can be missing on a stripped router; skip it with a warning instead of stopping.
+:if ([:typeof $mmSSH] = "nothing") do={ :put "WARNING: no SSH service row found; SSH access was not changed" } else={
+  :local mmAllowed [$mmGetAllowed $mmSSH]
+  :if ([/ip/service get $mmSSH disabled]) do={
+    $mmSetAllowed $mmSSH "10.77.0.9/32"
+    /ip/service set $mmSSH disabled=no
+  } else={
+    :if ([:len $mmAllowed] > 0) do={
+      :local mmHas false
+      :local mmList "10.77.0.9/32"
+      :foreach mmEntry in=$mmAllowed do={
+        :if ([:tostr $mmEntry] = "10.77.0.9/32" || [:tostr $mmEntry] = "10.77.0.9") do={ :set mmHas true }
+        :set mmList ($mmList . "," . [:tostr $mmEntry])
+      }
+      :if (!$mmHas) do={ $mmSetAllowed $mmSSH $mmList }
     }
-    :if (!$mmHas) do={ $mmSetAllowed $mmSSH $mmList }
   }
 }
 /ip/firewall/filter remove [find where comment="%[3]s"]
@@ -396,16 +414,16 @@ func managementApply(id string, p pendingManagement) string {
 :local mmReached false
 :local mmHubPeer [:pick [/interface/wireguard/peers find where interface="%[6]s"] 0]
 :local mmRxStart 0
-:do { :set mmRxStart [:tonum [/interface/wireguard/peers get $mmHubPeer rx]] } on-error={}
+:do { :set mmRxStart [:tonum [/interface/wireguard/peers get $mmHubPeer value-name=rx]] } on-error={}
 :for mmTry from=1 to=30 do={
   :if (!$mmReached) do={
     :delay 1s
-    :do { :if ([:tonum [/interface/wireguard/peers get $mmHubPeer rx]] > $mmRxStart) do={ :set mmReached true } } on-error={}
+    :do { :if ([:tonum [/interface/wireguard/peers get $mmHubPeer value-name=rx]] > $mmRxStart) do={ :set mmReached true } } on-error={}
   }
 }
 :if ($mmReached) do={ :put "TUNNEL ACTIVE: this router is receiving data from Magic Hub now. The app confirms router management by itself; that is a separate check shown in the app." } else={ :put "NOT CONNECTED YET: no data from Magic Hub during this check. Check this router's internet connection. Nothing more needs pasting: it connects by itself as soon as it can." }
 :put "SAFE MODE: if you turned on Safe Mode (Ctrl+X) before pasting, press Ctrl+X again now to keep these changes. Closing WinBox or the terminal while Safe Mode is on undoes them."
-`, p.user, len(marker)+1, marker, p.proof, p.public, iface)
+`, p.user, len(marker)+1, marker, p.proof, p.public, iface, hex.EncodeToString(pw[:]))
 }
 
 // Bootstrap trust is scoped to the cryptographically authenticated WireGuard

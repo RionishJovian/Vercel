@@ -26,7 +26,7 @@ function Card({ n, root, on, selected, onPick }: { n: TNode; root?: boolean; on?
       <span className="nt-image"><img src={asset(n.image || n.kind + ".svg")} alt="" width={96} height={96} /></span>
       <strong>{n.name}</strong>
       <span className={"nt-state" + (active ? " nt-active" : "")}>{n.state}</span>
-      <small>{n.ip || n.model || n.mac || ""}</small>
+      <small className="num">{n.ip || n.model || n.mac || ""}</small>
     </button>
   );
 }
@@ -144,7 +144,7 @@ export function Topology({ me }: { me: Me }) {
               {groups.size > 0 ? <div className="nt-tree-section">
                 <h3>{lang === "my" ? "အောက်ဆင့် ကိရိယာများ" : "Downstream — grouped by observed gateway interface"}</h3>
                 {[...groups].map(([port, nodes]) => <details className="nt-tree-group" key={port} open>
-                  <summary>{port} <span className="soft small">· {nodes.length}</span></summary>
+                  <summary>{port} <span className="soft small num">· {nodes.length}</span></summary>
                   <div className="nt-tree-items">{nodes.map((n) => <div className="nt-tree-item" key={n.id}>{branch(n)}</div>)}</div>
                 </details>)}
               </div> : <p className="soft small">{t("tp.noDownstream")}</p>}

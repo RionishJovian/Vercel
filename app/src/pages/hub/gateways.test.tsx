@@ -4,7 +4,6 @@ import { SWRConfig } from "swr";
 import { I18nProvider } from "../../i18n";
 import { Hub } from "./index";
 import { Enrollment } from "./Enrollment";
-import { MARK, withNewRouterNetwork } from "./newRouterNetwork";
 
 const SITE = { site_id: "bbbbbbbb-0000-4000-8000-000000000001", name: "Main shop" };
 const A = { device_id: "aaaaaaaa-0000-4000-8000-000000000001", hardware_name: "Gateway A", deployment_layer: "MAIN_GATEWAY", transport: "tunnel", site_id: SITE.site_id, management_connected: true };
@@ -113,22 +112,5 @@ describe("one-paste recovery and Safe Mode", () => {
     fireEvent.click(button);
     await screen.findByText(/This is a start-over script/);
     expect(posts.map((p) => p.body.start_over)).toEqual([undefined, true]);
-  });
-});
-
-describe("optional Wi-Fi WAN step", () => {
-  it("resumes only its own marked partial work and runs after every Magic Hub check", () => {
-    const out = withNewRouterNetwork(SCRIPT, "wifi1", "Shop", "password123");
-    const check = out.indexOf(':put "check"'), firstNetworkWrite = out.indexOf("/interface bridge port set"), hubWrite = out.indexOf("# APPLY: tunnel");
-    expect(check).toBeGreaterThan(0);
-    expect(check).toBeLessThan(firstNetworkWrite);
-    expect(firstNetworkWrite).toBeLessThan(hubWrite);
-    expect(out).toContain(`:local mmMark "${MARK}"`);
-    expect(out).toContain(":if (!$mmPortOurs) do={ /interface bridge port set $mmBridgePort disabled=yes comment=$mmMark }");
-    expect(out).toContain(":if ([:len $mmMember] = 0) do={ /interface list member add");
-    expect(out).toContain(":if ([:len $mmClient] = 0) do={ /ip dhcp-client add");
-    expect(out).toContain("changed outside this setup; nothing changed");
-    expect(out).toContain("RouterOS 7.13 or later");
-    expect(() => withNewRouterNetwork("{\n:put \"x\"\n}", "ethernet", "", "")).toThrow();
   });
 });

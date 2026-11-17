@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"strconv"
@@ -257,7 +258,7 @@ func (h *GuestWifiHandler) PublicGuestPurchase(c *gin.Context) {
 				// Remove only this failed request's router user, never a paid or
 				// unrelated account. Close its pending decision before retrying.
 				if e := h.graceRouter.DecideGuestAccess(c.Request.Context(), dev.BusinessID, deviceID, previous.ID, clientMAC, false, 0, 0, 0, 0); e != nil {
-					return &httpError{status: http.StatusBadGateway, msg: "could not close the previous temporary session"}
+					return &httpError{status: http.StatusBadGateway, retryable: true, cause: e, msg: "could not close the previous temporary session"}
 				}
 				if previous.Status == "pending" {
 					if _, e := h.reqRepo.RejectRequestTXN(tx, dev.BusinessID, previous.ID, now); e != nil {
@@ -295,7 +296,7 @@ func (h *GuestWifiHandler) PublicGuestPurchase(c *gin.Context) {
 		// both router provisioning and the response, including future resumes.
 		graceExpires = *r.GraceExpiresAt
 		if e := h.graceRouter.ConfigureGuestGrace(c.Request.Context(), dev.BusinessID, deviceID, routeros.GuestGrace{RequestID: r.ID, ClientMAC: clientMAC, Minutes: graceMinutes, DataMB: r.GraceDataMB, ExpiresAt: graceExpires}); e != nil {
-			return &httpError{status: http.StatusBadGateway, msg: "temporary internet could not be configured; the hotspot owner should check router connectivity and MAC login settings"}
+			return &httpError{status: http.StatusBadGateway, retryable: true, cause: e, msg: "temporary internet could not be configured; the hotspot owner should check router connectivity and MAC login settings"}
 		}
 		createdGrace = true
 		return nil
@@ -405,7 +406,7 @@ func (h *GuestWifiHandler) PublicAttachReceipt(c *gin.Context) {
 			return err
 		}
 		if !updated {
-			return &httpError{http.StatusGone, "payment window expired or request already decided"}
+			return &httpError{status: http.StatusGone, msg: "payment window expired or request already decided"}
 		}
 		return nil
 	})
@@ -425,7 +426,8 @@ func (h *GuestWifiHandler) PublicAttachReceipt(c *gin.Context) {
 	// Ping the OWNER's own bot (per-business binding) so they know a guest
 	// finished paying and is asking for the wifi extension. Best-effort: a
 	// missing/inactive bot binding must NOT fail the guest's submission.
-	h.notifyOwnerPurchase(req, phone, last6)
+	// After the response, so a slow Telegram never holds the guest; RunOwnerAlertRetry resends a missed alert.
+	go h.notifyOwnerPurchase(req, phone, last6)
 
 	c.JSON(http.StatusOK, gin.H{"request_id": req.ID, "status": req.Status, "receipt_attached": savedPath != "", "payment_details_saved": true})
 }
@@ -450,10 +452,18 @@ func validGuestPaymentDetails(phone, last6 string) bool {
 	return true
 }
 
-// notifyOwnerPurchase sends the owner's bound bot a verification prompt for a
-// guest who submitted their MMQR payment details. Fail-open (never blocks the
-// guest on a bot problem): no binding or send error is swallowed with `_ =`.
+var errNoOwnerBot = errors.New("no usable owner bot")
+
+// notifyOwnerPurchase alerts the owner's own bot once. A failure is logged and left for
+// RunOwnerAlertRetry; "no bot configured" is expected for owners who have not set one up.
 func (h *GuestWifiHandler) notifyOwnerPurchase(req *model.GuestPurchaseRequest, phone, last6 string) {
+	if err := h.sendOwnerPurchase(req, phone, last6); err != nil && !errors.Is(err, errNoOwnerBot) {
+		log.Printf("guest request %s: owner Telegram alert not delivered: %v", req.ID, err)
+	}
+}
+
+// sendOwnerPurchase marks the request notified only after Telegram accepted the message.
+func (h *GuestWifiHandler) sendOwnerPurchase(req *model.GuestPurchaseRequest, phone, last6 string) error {
 	var bot *model.BusinessTelegramBot
 	err := withDeviceTenant(h.db, req.BusinessID, func(tx *sql.Tx) error {
 		b, e := h.botRepo.GetByBusinessTXN(tx, req.BusinessID)
@@ -463,8 +473,11 @@ func (h *GuestWifiHandler) notifyOwnerPurchase(req *model.GuestPurchaseRequest, 
 		bot = b
 		return nil
 	})
-	if err != nil || bot == nil || !bot.Enabled || strings.TrimSpace(bot.BotToken) == "" {
-		return // fail open: no usable owner bot
+	if err != nil {
+		return err
+	}
+	if bot == nil || !bot.Enabled || strings.TrimSpace(bot.BotToken) == "" {
+		return errNoOwnerBot
 	}
 	target := "0"
 	if bot.TargetChatID != 0 {
@@ -472,7 +485,7 @@ func (h *GuestWifiHandler) notifyOwnerPurchase(req *model.GuestPurchaseRequest, 
 	}
 	msg, ok := h.svcFmt(bot.BotToken)
 	if !ok || msg == nil {
-		return
+		return errors.New("owner bot receiver is not running")
 	}
 	text := "🛜 Guest paid — approve?"
 	text += "\nOrder: " + telegram.OrderReference(req.ID)
@@ -490,11 +503,57 @@ func (h *GuestWifiHandler) notifyOwnerPurchase(req *model.GuestPurchaseRequest, 
 	}
 	// Prefer inline Approve/Reject buttons when the transport is the real Bot;
 	// fall back to typed-text instructions otherwise (e.g. test fakes).
-	if bot, okb := msg.(telegram.ButtonMessenger); okb {
-		_ = bot.SendButtons(target, text, req.ID)
-		return
+	if b, okb := msg.(telegram.ButtonMessenger); okb {
+		err = b.SendButtons(target, text, req.ID)
+	} else {
+		err = msg.SendMessage(target, text+"\n\nReview this payment in Mega Magic to approve or reject it.")
 	}
-	_ = msg.SendMessage(target, text+"\n\nReview this payment in Mega Magic to approve or reject it.")
+	if err != nil {
+		return err
+	}
+	return withDeviceTenant(h.db, req.BusinessID, func(tx *sql.Tx) error {
+		_, e := tx.Exec(`UPDATE guest_purchase_requests SET notified_at=now() WHERE id=$1 AND business_id=$2`, req.ID, req.BusinessID)
+		return e
+	})
+}
+
+// RunOwnerAlertRetry resends owner alerts that were never delivered (receiver still starting after a
+// restart, Telegram down, bot not saved yet). Requests older than a week are left to the console list.
+func (h *GuestWifiHandler) RunOwnerAlertRetry(ctx context.Context) {
+	tick := time.NewTicker(time.Minute)
+	defer tick.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+		}
+		var ids []string
+		rows, err := h.db.QueryContext(ctx, `SELECT id FROM guest_purchase_requests WHERE status='pending' AND COALESCE(paid_phone,'')<>'' AND notified_at IS NULL AND updated_at < now()-interval '30 seconds' AND created_at > now()-interval '7 days' ORDER BY created_at LIMIT 20`)
+		if err != nil {
+			log.Printf("guest owner alert retry: list failed: %v", err)
+			continue
+		}
+		for rows.Next() {
+			var id string
+			if rows.Scan(&id) == nil {
+				ids = append(ids, id)
+			}
+		}
+		rows.Close()
+		for _, id := range ids {
+			tx, e := h.db.Begin()
+			if e != nil {
+				continue
+			}
+			req, e := h.reqRepo.GetByIDOwnerTXN(tx, id)
+			_ = tx.Rollback()
+			if e != nil || req == nil {
+				continue
+			}
+			h.notifyOwnerPurchase(req, req.PaidPhone, req.TxLast6)
+		}
+	}
 }
 
 // GetBotBinding: GET /api/v1/guest-wifi/telegram-bot — returns the owner's own
@@ -574,6 +633,21 @@ func (h *GuestWifiHandler) PutBotBinding(c *gin.Context) {
 	if len(token) > 256 || strings.HasPrefix(token, "enc:") || strings.ContainsAny(token, "\r\n\t ") {
 		c.JSON(400, gin.H{"error": "Invalid bot token format"})
 		return
+	}
+	// One bot belongs to one account: the receiver refuses every binding that shares a token,
+	// so a duplicate would silence both owners. Refuse it here, with a reason.
+	if token != "" && body.Enabled {
+		others, e := h.botRepo.ListEnabled()
+		if e != nil {
+			c.JSON(503, gin.H{"error": "Telegram bots could not be checked; try again"})
+			return
+		}
+		for _, o := range others {
+			if o.BusinessID != businessID && o.BotToken == token {
+				c.JSON(409, gin.H{"error": "This bot is already used by another account. Create a separate bot with @BotFather for your business.", "code": "telegram_bot_in_use"})
+				return
+			}
+		}
 	}
 
 	if token == "" {
@@ -688,6 +762,23 @@ func (h *GuestWifiHandler) ResolveRequestBusiness(requestID string) (string, err
 	return r.BusinessID, nil
 }
 
+// guestRouterDecisionTimeout caps the router call inside DecideGuest. It is a
+// variable only so tests can shorten it.
+var guestRouterDecisionTimeout = 30 * time.Second
+
+// guestRouterRetry turns a router failure during a payment decision into a clear, retryable answer. The decision
+// runs in one transaction that rolls back on any error, so the request is still pending, and the router step is
+// keyed by the request id, so deciding again never grants the paid time twice. The raw transport error (which can
+// name the router's tunnel address) stays in the chain for logs and is not sent to the owner.
+func guestRouterRetry(err error) error {
+	var he *httpError
+	if err == nil || errors.As(err, &he) {
+		return err
+	}
+	return &httpError{status: http.StatusServiceUnavailable, retryable: true, cause: err,
+		msg: "The router did not answer in time. Nothing was changed and this payment is still waiting for your decision. Check the router is online, then try again."}
+}
+
 // DecideGuest approves (true) or rejects (false) a guest wifi purchase EXACTLY
 // ONCE (single-wind) under the owning business's tenant scope. Approve grants
 // the plan's data duration as a wifi time extension per the portal config.
@@ -698,6 +789,11 @@ func (h *GuestWifiHandler) DecideGuest(txSrc func() (*sql.Tx, error), businessID
 		return err
 	}
 	defer tx.Rollback()
+	// The router is called while this transaction holds the request row. Bound
+	// that call so an offline router cannot hold the lock or a worker open; on
+	// timeout the transaction rolls back and the request stays pending to retry.
+	routerCtx, cancelRouter := context.WithTimeout(context.Background(), guestRouterDecisionTimeout)
+	defer cancelRouter()
 
 	err = database.WithTenant(tx, businessID, func() error {
 		r, e := h.reqRepo.GetForDecisionTXN(tx, businessID, requestID)
@@ -715,8 +811,8 @@ func (h *GuestWifiHandler) DecideGuest(txSrc func() (*sql.Tx, error), businessID
 				if h.graceRouter == nil {
 					return &httpError{status: http.StatusServiceUnavailable, msg: "router access is unavailable"}
 				}
-				if e := h.graceRouter.DecideGuestAccess(context.Background(), businessID, *r.DeviceID, r.ID, r.ClientMAC, false, 0, 0, 0, 0); e != nil {
-					return e
+				if e := h.graceRouter.DecideGuestAccess(routerCtx, businessID, *r.DeviceID, r.ID, r.ClientMAC, false, 0, 0, 0, 0); e != nil {
+					return guestRouterRetry(e)
 				}
 			}
 			_, e := h.reqRepo.RejectRequestTXN(tx, businessID, requestID, time.Now().UTC())
@@ -745,7 +841,7 @@ func (h *GuestWifiHandler) DecideGuest(txSrc func() (*sql.Tx, error), businessID
 		if h.graceRouter == nil {
 			return &httpError{status: http.StatusServiceUnavailable, msg: "router access is unavailable"}
 		}
-		return h.graceRouter.DecideGuestAccess(context.Background(), businessID, *r.DeviceID, r.ID, r.ClientMAC, true, minutes, r.DataMB, r.SpeedDownMbps, r.SpeedUpMbps)
+		return guestRouterRetry(h.graceRouter.DecideGuestAccess(routerCtx, businessID, *r.DeviceID, r.ID, r.ClientMAC, true, minutes, r.DataMB, r.SpeedDownMbps, r.SpeedUpMbps))
 	})
 	if err != nil {
 		return err
@@ -771,19 +867,32 @@ func (h *GuestWifiHandler) ListGuestRequests(c *gin.Context) {
 		return
 	}
 	var reqs []*model.GuestPurchaseRequest
+	unalerted := []string{}
 	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
 		rs, e := h.reqRepo.ListByBusinessTXN(tx, businessID, 50)
 		if e != nil {
 			return e
 		}
 		reqs = rs
-		return nil
+		// Pending requests with payment details whose Telegram alert was not delivered yet.
+		rows, e := tx.Query(`SELECT id FROM guest_purchase_requests WHERE business_id=$1 AND status='pending' AND COALESCE(paid_phone,'')<>'' AND notified_at IS NULL`, businessID)
+		if e != nil {
+			return e
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var id string
+			if rows.Scan(&id) == nil {
+				unalerted = append(unalerted, id)
+			}
+		}
+		return rows.Err()
 	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"requests": reqs, "count": len(reqs)})
+	c.JSON(http.StatusOK, gin.H{"requests": reqs, "count": len(reqs), "unalerted_ids": unalerted})
 }
 
 // ApproveGuest: POST /api/v1/guest-wifi/approve/:requestId (owner web).

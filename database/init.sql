@@ -192,6 +192,10 @@ CREATE TABLE portal_configs (
     bank_holder text,
     mmqr_url text,                -- owner's MMQR payment QR image (Myanmar QR)
     payment_instructions text,    -- owner's own bank-transfer steps shown to guests
+    template_id text NOT NULL DEFAULT '',  -- router login page template; '' keeps the original look
+    support_phone text NOT NULL DEFAULT '',     -- support bar contacts on the router login page
+    support_telegram text NOT NULL DEFAULT '',
+    support_viber text NOT NULL DEFAULT '',
     media_host text,
     media_port text NOT NULL DEFAULT '8096',
     -- Guest wifi (Option C): the free online-payment window (minutes) and the

@@ -20,7 +20,7 @@ func (h *GuestVoucherHandler) gatewayVoucherLoginSpecs(ctx context.Context, biz,
 	defer tx.Rollback()
 	var specs []VoucherLoginSpec
 	err = database.WithTenant(tx, biz, func() error {
-		rows, err := tx.QueryContext(ctx, `SELECT v.id::text,v.code,g.minutes,g.data_mb
+		rows, err := tx.QueryContext(ctx, `SELECT v.id::text,`+database.VoucherCodeSQL("v")+`,g.minutes,g.data_mb
  FROM vouchers v JOIN guest_voucher_grants g ON g.voucher_id=v.id AND g.business_id=v.business_id
  WHERE g.business_id=$1 AND g.device_id=$2 AND v.device_id=$2 ORDER BY v.id`, biz, deviceID)
 		if err != nil {
@@ -29,7 +29,7 @@ func (h *GuestVoucherHandler) gatewayVoucherLoginSpecs(ctx context.Context, biz,
 		defer rows.Close()
 		for rows.Next() {
 			var spec VoucherLoginSpec
-			if err := rows.Scan(&spec.VoucherID, &spec.Code, &spec.Minutes, &spec.DataMB); err != nil {
+			if err := rows.Scan(&spec.VoucherID, database.ScanVoucherCode(&spec.Code), &spec.Minutes, &spec.DataMB); err != nil {
 				return err
 			}
 			specs = append(specs, spec)

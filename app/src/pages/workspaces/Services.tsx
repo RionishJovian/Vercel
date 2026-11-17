@@ -1,40 +1,45 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { asArray, mmk, num, type Me } from "../../lib/types";
 import { useI18n } from "../../i18n";
 import { Ago, IconTile, LinkRow, Metric, Recovery, Segmented, StatePill } from "../../components/ui";
 import { Loading, SkList, SkMetrics } from "../../components/Skeleton";
-import { bytes, duration, subscriberState, useBroadbandReport, useFleetSummary, usePppoe, useRouters, useVoucherReport } from "./data";
+import { useFleet } from "../../lib/useFleet";
+import { bytes, duration, gatewayStatus, subscriberState, useBroadbandReport, usePppoe, useRouters, useVoucherReport } from "./data";
 
 const STAFF = ["OWNER", "ADMIN", "DEVELOPER"];
 
 /** Hotspot service: the MikroTik captive portal, its vouchers and the people using it. */
 export function Hotspot() {
   const { t } = useI18n();
-  const health = useFleetSummary();
+  const fleet = useFleet();
   const routers = useRouters();
   const report = useVoucherReport();
   const rep = report.data;
-  const gw = routers.gateways;
+  // Only gateways that still exist: a router deleted on the Hub page leaves the names, the status and the check time.
+  const health = gatewayStatus(routers.gateways, fleet.data, !!fleet.error);
+  const gw = health.gateways;
+  const { disagree } = health, reread = routers.mutate;
+  useEffect(() => { if (disagree) void reread(); }, [disagree, reread]);
   return (
     <>
       <header className="ws-head">
         <h1>{t("hs.title")}</h1>
         <p className="ws-lead">{t("hs.lead")}</p>
       </header>
-      <section className="glass pad svc-card" aria-labelledby="hs-status">
-        <header><h2 id="hs-status">{t("hs.status")}</h2>{health.fleet.isLoading ? null : <StatePill tone={health.tone}>{t(health.key)}</StatePill>}</header>
+      <section className="glass pad svc-card workspace-rail" aria-labelledby="hs-status">
+        <header><h2 id="hs-status">{t("hs.status")}</h2>{fleet.isLoading ? null : <StatePill tone={health.tone}>{t(health.key)}</StatePill>}</header>
         {gw && gw.length === 0 ? (
           <Recovery title={t("isp.noGateway")} detail={t("hs.noGatewayHelp")} action={{ href: "/app/setup", label: t("su.continue") }} />
         ) : (
           <dl className="kv">
-            <dt>{t("hs.gateway")}</dt><dd>{gw === null ? "…" : gw.map((g) => g.hardware_name || g.device_id).join(", ")}</dd>
+            <dt>{t("hs.gateway")}</dt><dd>{gw === null ? (routers.error ? t("c.unavailable") : "…") : gw.map((g) => g.hardware_name || g.device_id).join(", ")}</dd>
             <dt>{t("ws.checked")}</dt><dd><Ago at={health.checkedAt} /></dd>
             <dt>{t("hs.interval")}</dt><dd>{t("hs.intervalValue")}</dd>
           </dl>
         )}
         <p className="soft small">{t("hs.statusNote")}</p>
       </section>
-      <section className="glass pad stack" aria-labelledby="hs-usage">
+      <section className="glass pad stack workspace-summary" aria-labelledby="hs-usage">
         <h2 id="hs-usage">{t("hs.usage")}</h2>
         {report.isLoading ? <Loading><SkMetrics n={4} cols="four" sub={false} /></Loading> : report.error ? <Recovery title={t("hm.vouchersUnavailable")} onRetry={() => void report.mutate()} /> : (
           <div className="metrics four">
@@ -45,7 +50,7 @@ export function Hotspot() {
           </div>
         )}
       </section>
-      <section className="stack" aria-label={t("hs.manage")}>
+      <section className="stack workspace-main" aria-label={t("hs.manage")}>
         <h2 className="group-title">{t("hs.manage")}</h2>
         <div className="linklist">
           <LinkRow href="/app/guests" icon="users" title={t("hs.sessions")} detail={t("hs.sessionsHelp")} />
@@ -74,11 +79,12 @@ export function Isp({ me }: { me: Me }) {
         <p className="ws-lead">{t("isp.lead")}</p>
       </header>
       <div className="note small">{t("isp.notWan")} <a className="link" href="/app/network/wan?task=pppoe_client">{t("isp.wanLink")}</a></div>
-      <section className="glass pad stack" aria-labelledby="isp-overview">
+      <section className="glass pad stack workspace-summary" aria-labelledby="isp-overview">
         <div className="row"><h2 id="isp-overview">{t("isp.overview")}</h2>{s?.newestObservation ? <Ago at={s.newestObservation} prefix={t("ws.reported")} /> : null}</div>
         {routers.gateways && routers.gateways.length === 0 ? (
           <Recovery title={t("isp.noGateway")} detail={t("isp.noGatewayHelp")} action={{ href: "/app/setup", label: t("su.continue") }} />
-        ) : pppoe.isLoading || routers.isLoading ? <Loading><SkMetrics n={4} cols="four" /></Loading> : pppoe.error ? <Recovery title={t("isp.unavailable")} onRetry={() => void pppoe.mutate()} /> : (
+        ) : routers.error && !routers.data ? <Recovery title={t("isp.unavailable")} onRetry={() => void routers.mutate()} />
+        : pppoe.isLoading || routers.isLoading ? <Loading><SkMetrics n={4} cols="four" /></Loading> : pppoe.error ? <Recovery title={t("isp.unavailable")} onRetry={() => void pppoe.mutate()} /> : (
           <>
             <div className="metrics four">
               <Metric label={t("isp.subscribers")} value={s ? mmk(s.total) : null} />
@@ -91,7 +97,7 @@ export function Isp({ me }: { me: Me }) {
           </>
         )}
       </section>
-      <section className="glass pad stack" aria-labelledby="isp-pay">
+      <section className="glass pad stack workspace-main" aria-labelledby="isp-pay">
         <h2 id="isp-pay">{t("isp.payments")}</h2>
         {report.isLoading ? <Loading><SkMetrics n={3} cols="three" /></Loading> : report.error ? <p className="note warn small">{t("isp.paymentsUnavailable")}</p> : (
           <div className="metrics three">
@@ -102,6 +108,7 @@ export function Isp({ me }: { me: Me }) {
         )}
         <p className="soft small">{t("isp.noGatewayPay")}</p>
       </section>
+      <div className="workspace-rail workspace-stack">
       <section className="stack" aria-label={t("isp.manageTitle")}>
         <h2 className="group-title">{t("isp.manageTitle")}</h2>
         <div className="linklist">
@@ -119,6 +126,7 @@ export function Isp({ me }: { me: Me }) {
           ))}
         </div>
       </section>
+      </div>
     </>
   );
 }
@@ -149,15 +157,15 @@ export function Customers({ params }: { params: URLSearchParams }) {
       <header className="ws-head"><h1>{t("cu.title")}</h1><p className="ws-lead">{t("cu.lead")}</p></header>
       <Segmented<CustType> label={t("cu.type")} value={type} onChange={setType} options={[["all", t("cu.all")], ["hotspot", t("cu.hotspot")], ["pppoe", t("cu.pppoe")]]} />
       {type !== "pppoe" && (
-        <section className="glass pad stack" aria-labelledby="cu-hs">
+        <section className={`glass pad stack workspace-rail${type === "hotspot" ? " customer-panel-solo" : ""}`} aria-labelledby="cu-hs">
           <div className="row"><h2 id="cu-hs">{t("cu.hotspotUsers")}</h2><span className="chip">{t("cu.hotspot")}</span></div>
           <p className="soft small">{t("cu.hotspotHelp")}</p>
-          {report.data ? <div className="metrics"><Metric label={t("cu.activeCodes")} value={mmk(report.data.activated_count)} sub={t("cu.activeCodesHint")} /><Metric label={t("hm.startedToday")} value={mmk(report.data.activation_today)} /></div> : report.isLoading ? <Loading><SkMetrics n={2} /></Loading> : null}
+          {report.data ? <div className="metrics"><Metric label={t("cu.activeCodes")} value={mmk(report.data.activated_count)} sub={t(report.data.activated_count === 0 ? "cu.noActiveUsage" : "cu.activeCodesHint")} /><Metric label={t("hm.startedToday")} value={mmk(report.data.activation_today)} /></div> : report.isLoading ? <Loading><SkMetrics n={2} /></Loading> : null}
           <div className="actions-row"><a className="btn small" href="/app/guests">{t("cu.openSessions")}</a><a className="btn small quiet" href="/app/vouchers">{t("cu.findCode")}</a></div>
         </section>
       )}
       {type !== "hotspot" && (
-        <section className="glass pad stack" aria-labelledby="cu-pp">
+        <section className={`glass pad stack workspace-main${type === "pppoe" ? " customer-panel-solo" : ""}`} aria-labelledby="cu-pp">
           <div className="row"><h2 id="cu-pp">{t("cu.subscribers")}</h2><span className="chip">{t("cu.pppoe")}</span></div>
           <div className="toolbar">
             <input className="input" type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("cu.search")} aria-label={t("cu.search")} />
@@ -165,7 +173,7 @@ export function Customers({ params }: { params: URLSearchParams }) {
               <option value="all">{t("cu.f.all")}</option><option value="connected">{t("isp.connected")}</option><option value="suspended">{t("isp.suspended")}</option><option value="expired">{t("isp.expired")}</option>
             </select>
           </div>
-          {routers.gateways?.length === 0 ? <p className="soft small">{t("isp.noGatewayHelp")}</p> : pppoe.isLoading || !routers.gateways ? <Loading><SkList n={3} /></Loading> : pppoe.error ? <Recovery title={t("isp.unavailable")} onRetry={() => void pppoe.mutate()} /> : rows.length === 0 ? (
+          {routers.gateways?.length === 0 ? <p className="soft small">{t("isp.noGatewayHelp")}</p> : routers.error && !routers.data ? <Recovery title={t("isp.unavailable")} onRetry={() => void routers.mutate()} /> : pppoe.isLoading || !routers.gateways ? <Loading><SkList n={3} /></Loading> : pppoe.error ? <Recovery title={t("isp.unavailable")} onRetry={() => void pppoe.mutate()} /> : rows.length === 0 ? (
             <p className="soft small" role="status">{pppoe.data?.total ? t("cu.noMatch") : t("cu.noSubs")}</p>
           ) : (
             <ul className="list-table" aria-label={t("cu.subscribers")}>
@@ -177,7 +185,7 @@ export function Customers({ params }: { params: URLSearchParams }) {
                     <StatePill tone={st.tone}>{t(st.key)}</StatePill>
                     <span className="meta">
                       <span>{t("cu.plan")}: {r.profile || "—"}</span>
-                      <span>{r.session ? `${t("isp.connected")} · ${duration(r.session.uptime_seconds)} · ↓${bytes(r.session.download_bytes)} ↑${bytes(r.session.upload_bytes)}` : t("cu.noSession")}</span>
+                      <span className="tnum">{r.session ? `${t("isp.connected")} · ${duration(r.session.uptime_seconds)} · ↓${bytes(r.session.download_bytes)} ↑${bytes(r.session.upload_bytes)}` : t("cu.noSession")}</span>
                       {r.observation?.expires_at ? <span>{t("cu.expires")}: {new Date(r.observation.expires_at * 1000).toLocaleDateString()}</span> : null}
                       <span>{r.routerName}</span>
                       <Ago at={r.session_observed_at ?? r.observed_at} prefix={t("ws.reported")} />
@@ -191,7 +199,7 @@ export function Customers({ params }: { params: URLSearchParams }) {
           <div className="actions-row"><a className="btn small" href="/app/pppoe">{t("cu.manageSubs")}</a></div>
         </section>
       )}
-      {asArray(pppoe.data?.failed).length ? <p className="note warn small">{t("isp.partial").replace("{n}", String(pppoe.data?.failed.length))}</p> : null}
+      {asArray(pppoe.data?.failed).length ? <p className="note warn small tnum">{t("isp.partial").replace("{n}", String(pppoe.data?.failed.length))}</p> : null}
     </>
   );
 }

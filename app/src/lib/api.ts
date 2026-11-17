@@ -20,7 +20,7 @@ export async function request<T = unknown>(method: string, path: string, body?: 
   const headers: Record<string, string> = { Accept: "application/json", "X-MM-CSRF": "1" };
   if (body !== undefined) headers["Content-Type"] = "application/json";
   let res: Response;
-  try { res = await fetch(API + path, { method, headers, signal, body: body !== undefined ? JSON.stringify(body) : undefined }); }
+  try { res = await fetch(API + path, { method, headers, signal, credentials: "include", body: body !== undefined ? JSON.stringify(body) : undefined }); }
   catch { throw new ApiError("network-unreachable"); }
   if (res.status === 401) {
     if (!retried && !path.startsWith("/auth/") && (await renew())) return request<T>(method, path, body, true, signal);
@@ -36,6 +36,6 @@ export const api = {
   get: <T,>(p: string, signal?: AbortSignal) => request<T>("GET", p, undefined, false, signal),
   post: <T,>(p: string, b: unknown = {}) => request<T>("POST", p, b),
   put: <T,>(p: string, b: unknown) => request<T>("PUT", p, b),
-  del: <T,>(p: string) => request<T>("DELETE", p),
+  del: <T,>(p: string, signal?: AbortSignal) => request<T>("DELETE", p, undefined, false, signal),
 };
 export const fetcher = <T,>(path: string) => api.get<T>(path);

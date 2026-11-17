@@ -72,7 +72,8 @@ func (GuestVoucherRepository) ReserveTXN(tx *sql.Tx, businessID, deviceID, code,
 	}
 	clientMAC = strings.ToUpper(mac.String())
 	var id, status string
-	err = tx.QueryRow(`SELECT id,status FROM vouchers WHERE business_id=$1 AND code=$2 FOR UPDATE`, businessID, strings.ToUpper(strings.TrimSpace(code))).Scan(&id, &status)
+	code = strings.ToUpper(strings.TrimSpace(code))
+	err = tx.QueryRow(`SELECT id,status FROM vouchers WHERE business_id=$1 AND (code=$2 OR code_hmac=$3) FOR UPDATE`, businessID, code, VoucherCodeBlind(code)).Scan(&id, &status)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrGuestVoucherUnavailable
 	}

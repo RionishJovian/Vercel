@@ -108,10 +108,10 @@ export function OmadaEnrollment() {
           <button type="button" className="pill danger" onClick={() => void revoke(row)} disabled={!!busy}>{my ? "ဖယ်ရှားမည်" : "Remove"}</button>
         </div>
         {inventory?.controller === row.id && <div className="stack">
-          <p className="small">{my ? "တွေ့ရှိသော စက်" : "Controller-reported devices"}: <b>{inventory.data.devices.length}</b></p>
+          <p className="small">{my ? "တွေ့ရှိသော စက်" : "Controller-reported devices"}: <b className="num">{inventory.data.devices.length}</b></p>
           <Note kind="warn">{my ? "ဤစက်စာရင်းသည် RF အကောင်းဆုံးချန်နယ် သို့မဟုတ် ချိတ်ဆက်ကြိုးပုံစံကို မအတည်ပြုနိုင်သေးပါ။"
             : "Inventory does not establish RF measurements, safe channel settings, physical switch links or write access."}</Note>
-          {inventory.data.devices.map((d, idx) => <p className="small" key={d.mac + idx}>
+          {inventory.data.devices.map((d, idx) => <p className="small num" key={d.mac + idx}>
             {d.name || d.mac} · {[d.device_type, d.model, d.firmware].filter(Boolean).join(" · ")}
           </p>)}
         </div>}

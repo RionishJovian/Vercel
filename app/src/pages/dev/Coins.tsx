@@ -39,7 +39,7 @@ export function Coins({ me }: { me: Me }) {
         <div className="capsules"><div className="capsule"><span className="soft small">{t("dev.co.balance")}</span><b className="num">{amt(wallet.data?.wallet?.balance)}</b></div><div className="capsule"><span className="soft small">{t("dev.co.entries")}</span><b className="num">{list.length}</b></div></div>
       )}
       {canAdjust && (
-        <form className="glass pad stack" onSubmit={adjust}>
+        <form className="glass pad stack workspace-rail" onSubmit={adjust}>
           <h2>{t("dev.co.adjust")}</h2>
           <Field label={t("dev.co.user")}><select className="input" name="user" required>{members.length ? members.map((m) => <option key={m.user_id} value={m.user_id}>{m.full_name || m.email}</option>) : <option value="">{t("dev.co.noMembers")}</option>}</select></Field>
           <Field label={t("dev.co.type")}><select className="input" name="kind"><option value="manual_credit">{t("dev.co.credit")}</option><option value="manual_debit">{t("dev.co.debit")}</option></select></Field>
@@ -49,7 +49,7 @@ export function Coins({ me }: { me: Me }) {
           <button className="btn" type="submit" disabled={busy}>{t("dev.co.apply")}</button>
         </form>
       )}
-      <section className="stack"><h2>{t("dev.co.ledger")}</h2>
+      <section className="stack workspace-main"><h2>{t("dev.co.ledger")}</h2>
         {!list.length ? <Note>{t("dev.co.none")}</Note> : list.map((x, i) => (
           <div className="rowitem" key={i}><div className="stack" style={{ gap: 2 }}><b className="small">{KINDS.includes(x.kind ?? "") ? t("dev.co.k." + x.kind) : x.kind}</b><span className="soft small">{x.note} · {when(x.created_at)}</span></div><span className="num">{Number(x.delta) > 0 ? "+" : ""}{amt(x.delta)}<span className="soft small"> → {amt(x.balance_after)}</span></span></div>
         ))}

@@ -6,17 +6,20 @@ import { Store } from "./Store";
 import type { Me } from "../lib/types";
 
 const ADDON = { id: "a1", kind: "feature", period: "monthly", price_mmk: 25000, name_en: "Extra router" };
+let access: Record<string, unknown>;
 let addons: { status: number; body: unknown }, post: () => Response, subscription: { status: number; body: unknown }, posted: Array<{ url: string; body: Record<string, unknown> }>;
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 beforeEach(() => {
   const store: Record<string, string> = { mm2_lang: "en" };
   vi.stubGlobal("localStorage", { getItem: (k: string) => store[k] ?? null, setItem: (k: string, v: string) => { store[k] = v; }, removeItem: (k: string) => { delete store[k]; } });
+  access = { exempt: false, bundle: false, unlocked: ["starlink_mm", "daylight"] };
   addons = { status: 200, body: { addons: [ADDON], requests: [] } }; subscription = { status: 200, body: { mode: "legacy" } }; posted = [];
   post = () => json(200, {});
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
     const path = String(url).replace("/api/v1", "");
     if (init?.method === "POST") { posted.push({ url: path, body: JSON.parse(String(init.body)) }); return post(); }
+    if (path === "/portal/template-access") return json(200, access);
     if (path === "/subscription") return json(subscription.status, subscription.body);
     if (path === "/store/addons") return json(addons.status, addons.body);
     if (path === "/me/app-pass/checkout-options") return json(200, { bank_accounts: [{ bank_name: "KBZ", holder_name: "Mega", account_number: "0123456" }] });
@@ -61,6 +64,38 @@ describe("Store add-ons", () => {
     subscription = { status: 500, body: {} };
     open();
     expect(await screen.findByText("Store status is unavailable, so no checkout is offered.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Request" })).toBeNull();
+  });
+});
+
+describe("Store portal theme add-ons", () => {
+  const THEME = { id: "t1", addon_key: "portal_theme_cafe", kind: "feature", period: "one_time", price_mmk: 5000, name_en: "Portal theme: Warm Café" };
+  const BUNDLE = { id: "b1", addon_key: "portal_themes_bundle", kind: "feature", period: "one_time", price_mmk: 25000, name_en: "All 7 Premium Portal Themes Bundle" };
+  it("offers an unowned theme and the bundle for purchase", async () => {
+    addons = { status: 200, body: { addons: [THEME, BUNDLE], requests: [] } };
+    open();
+    expect(await screen.findByText("All 7 Premium Portal Themes Bundle")).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: "Request" })).toHaveLength(2);
+    expect(screen.queryByText("Owned")).toBeNull();
+  });
+  it("shows Owned once the order is approved, with no second purchase", async () => {
+    access = { exempt: false, bundle: false, unlocked: ["starlink_mm", "daylight", "cafe"] };
+    addons = { status: 200, body: { addons: [THEME, BUNDLE], requests: [{ id: "r1", addon_id: "t1", status: "approved", bank_reference: "TX-9999", price_mmk: 5000, name_en: THEME.name_en }] } };
+    open();
+    expect((await screen.findAllByText("Owned")).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("button", { name: "Request" })).toHaveLength(1);
+  });
+  it("shows Unlocked on every theme when the bundle is owned", async () => {
+    access = { exempt: false, bundle: true, unlocked: ["starlink_mm", "daylight", "cafe"] };
+    addons = { status: 200, body: { addons: [THEME, BUNDLE], requests: [{ id: "r2", addon_id: "b1", status: "approved", bank_reference: "TX-8888", price_mmk: 25000, name_en: BUNDLE.name_en }] } };
+    open();
+    await screen.findByText("Unlocked");
+  });
+  it("marks themes Administrator exempt for a platform administrator", async () => {
+    access = { exempt: true, bundle: false, unlocked: [] };
+    addons = { status: 200, body: { addons: [THEME, BUNDLE], requests: [] } };
+    open("DEVELOPER");
+    expect((await screen.findAllByText("Administrator exempt")).length).toBe(2);
     expect(screen.queryByRole("button", { name: "Request" })).toBeNull();
   });
 });

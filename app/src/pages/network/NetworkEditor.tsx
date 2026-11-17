@@ -99,7 +99,16 @@ function TaskForm({ kind, inv, defaults, routerId, routerName, locked, setLocked
   // Reset only when the task, the chosen record or the default values actually change. Comparing by content keeps a
   // re-read of the same inventory (new objects, same data) from wiping what the owner has typed or the result shown.
   const defaultsKey = JSON.stringify(defaults);
-  useEffect(() => { setValues(start(selected)); setReview(null); setConsent(false); setStatus(""); setApplied(false); setRemoving(false); stamp.current++; }, [kind, recordId, selected?.id, defaultsKey]); // eslint-disable-line react-hooks/exhaustive-deps -- start() depends only on these
+  // The first run is skipped: useState already started from the same values, and a reset on mount would land after the
+  // owner's first keystroke whenever React flushes effects late, wiping what they just typed.
+  const resetKey = [kind, recordId, selected?.id ?? "", defaultsKey].join("\u0000"), lastReset = useRef<string | null>(null);
+  useEffect(() => {
+    if (lastReset.current === resetKey) return;
+    const first = lastReset.current === null;
+    lastReset.current = resetKey;
+    if (first) return;
+    setValues(start(selected)); setReview(null); setConsent(false); setStatus(""); setApplied(false); setRemoving(false); stamp.current++;
+  }, [resetKey]); // eslint-disable-line react-hooks/exhaustive-deps -- start() depends only on the parts of the key
 
   const portTypes = kind === "vlan" ? ["ether", "bridge", "bond"] : kind === "ip_address" ? ["ether", "bridge", "bond", "vlan"] : ["ether", "bridge", "vlan", "bond", "pppoe-out"];
   const eligible = (inv.interfaces ?? []).filter((i) => portTypes.includes(i.type));
@@ -125,7 +134,7 @@ function TaskForm({ kind, inv, defaults, routerId, routerName, locked, setLocked
     const id = "nf-" + key;
     return options
       ? <select className="input" id={id} name={key} required disabled={locked || fixed(key)} value={value} onChange={(e) => change(key, e.target.value)}>{options.map(([v, label]) => <option key={v} value={v}>{label}</option>)}</select>
-      : <input className="input" id={id} name={key} required disabled={locked} maxLength={128} type={type === "password" ? "password" : type === "number" ? "number" : "text"} autoComplete={type === "password" ? "new-password" : undefined}
+      : <input className="input" id={id} name={key} required disabled={locked} maxLength={128} inputMode={type === "number" ? "numeric" : undefined} type={type === "password" ? "password" : type === "number" ? "number" : "text"} autoComplete={type === "password" ? "new-password" : undefined}
           readOnly={(!!selected && kind === "fairshare" && ["name", "target"].includes(key)) || fixed(key)} value={type === "password" ? values[key] ?? "" : value} onChange={(e) => change(key, e.target.value)} />;
   }
   const fields = s.fields;
@@ -287,24 +296,24 @@ export function NetworkEditor({ workspace, router, canEdit, reason, prefill }: {
       )}
       {pendingNote && !waiting && <Note>{pendingNote}</Note>}
       {waiting && <PendingPanel routerId={routerId} revertAt={pendingAt} onDone={finishPending} />}
-      {!offline && <div className="row"><span className="soft small">{t("net.loaded")}: {(inv.interfaces ?? []).length} {t("net.interfaces")}</span><button className="pill" type="button" disabled={locked || waiting} onClick={() => void reload()}>{t("net.refresh")}</button></div>}
+      {!offline && <div className="row"><span className="soft small tnum">{t("net.loaded")}: {(inv.interfaces ?? []).length} {t("net.interfaces")}</span><button className="pill" type="button" disabled={locked || waiting} onClick={() => void reload()}>{t("net.refresh")}</button></div>}
       {kinds.length > 1 && <div className="tasks compact" role="group" aria-label={tn(name)}>
         {kinds.map((k) => (
           <button type="button" className="task" key={k} aria-pressed={k === task} disabled={locked || waiting} onClick={() => { setTask(k); requestAnimationFrame(() => formTop.current?.scrollIntoView?.({ block: "start", behavior: "smooth" })); }}>
             <b>{tn(schema[k].title)}</b>
-            {!offline && <span className="mute small">{schema[k].menu ? `${listFor(inv, k).length} ${t("net.records")}` : t("net.wizard")}</span>}
+            {!offline && <span className="mute small tnum">{schema[k].menu ? `${listFor(inv, k).length} ${t("net.records")}` : t("net.wizard")}</span>}
           </button>
         ))}
       </div>}
       {workspace === "pppoe" && !offline && <PppSessions inv={inv} />}
-      <section className="stack" aria-live="polite" ref={formTop} style={{ scrollMarginTop: 80 }}>
+      <section className="workspace-grid" aria-live="polite" ref={formTop} style={{ scrollMarginTop: 80 }}>
         {kinds.length > 1 && <SectionHead level={3} title={tn(s.title)} help={tn(descriptions[task])} />}
-        {!offline && <CurrentSettings inv={inv} kind={task} />}
+        {!offline && <div className="workspace-main"><CurrentSettings inv={inv} kind={task} /></div>}
         {blocked ? <Note>{blocked}</Note> : (
           <>
             {writeHold && <Note kind="warn">{writeHold}</Note>}
             {!writeHold && (task === "ip_address" || task === "vlan" || task === "remove_network" || task === "edit_network" || task === "move_network") && inv.address_preview_only === true && <Note kind="warn">{t("net.addressPreview")}</Note>}
-            <fieldset className="nolock" disabled={offline || !!writeHold || waiting}>
+            <fieldset className="nolock workspace-rail" disabled={offline || !!writeHold || waiting}>
               <TaskForm key={task + (offline ? "-unavailable" : "-ready")} onApplied={() => void refreshQuietly()} kind={task} inv={inv} defaults={defaults} routerId={routerId} routerName={router?.hardware_name ?? ""} locked={locked || offline || !!writeHold || waiting} setLocked={setLocked} onPending={(at) => { setPendingNote(""); setPendingAt(at); }} prefill={prefill} />
             </fieldset>
           </>

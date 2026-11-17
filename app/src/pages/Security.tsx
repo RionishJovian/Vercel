@@ -40,10 +40,10 @@ function Row({ d, controls }: { d: Dev; controls: boolean }) {
       <div className="row" style={{ justifyContent: "flex-start", flexWrap: "wrap" }}>
         {d.posture === "affected" && d.unpatchable && <span className="chip warn">{d.fix_first ? t("sec.partlyUnfixable") : t("sec.noFix")}</span>}
         {d.exploited && <span className="chip bad">{t("sec.exploited")}</span>}
-        {(d.advisories?.length ?? 0) > 0 && <span className="chip" title={asArray<Adv>(d.advisories).map((a) => `${a.id} — ${a.title}${a.fix_unavailable ? " (no fix)" : ""}`).join("\n")}>{d.advisories!.length} {t("sec.matching")}</span>}
+        {(d.advisories?.length ?? 0) > 0 && <span className="chip tnum" title={asArray<Adv>(d.advisories).map((a) => `${a.id} — ${a.title}${a.fix_unavailable ? " (no fix)" : ""}`).join("\n")}>{d.advisories!.length} {t("sec.matching")}</span>}
       </div>
       {fix && <p className="small">{fix}</p>}
-      <p className="soft small">{t("sec.checked")}: {d.version_checked_at ? new Date(d.version_checked_at).toLocaleString() : "—"}</p>
+      <p className="soft small tnum">{t("sec.checked")}: {d.version_checked_at ? new Date(d.version_checked_at).toLocaleString() : "—"}</p>
       {!controls ? <span className="soft small">{t("sec.controlOff")}</span> : (
         <div className="row" style={{ justifyContent: "flex-start", flexWrap: "wrap" }}>
           <button className="pill" type="button" disabled={!!busy} onClick={() => void verify()}>{busy === "verify" ? t("sec.checking") : t("sec.verify")}</button>
@@ -80,7 +80,7 @@ export function Security() {
           <div className="capsules wrap">{stat("affected", data.affected)}{stat("safe", data.safe)}{stat("unknown", data.unknown)}{stat("unpatchable", data.unpatchable)}{stat("exploited", data.exploited)}</div>
           {(data.unpatchable ?? 0) > 0 && <Note kind="warn">{data.unpatchable} / {data.count} {t("sec.unpatchableNote")}</Note>}
           {(data.exploited ?? 0) > 0 && <Note kind="bad">{data.exploited} {t("sec.exploitedNote")}</Note>}
-          <div className="stack">{devices.map((d) => <Row key={d.device_id} d={d} controls={!!data.controls_enabled} />)}</div>
+          <div className="workspace-cards">{devices.map((d) => <Row key={d.device_id} d={d} controls={!!data.controls_enabled} />)}</div>
         </>
       )}
     </>

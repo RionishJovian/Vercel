@@ -88,7 +88,7 @@ func TestEnrollmentCapabilityHTTPAuthorization(t *testing.T) {
 				if err := json.Unmarshal(w.Body.Bytes(), &b); err != nil {
 					t.Fatal(err)
 				}
-				if len(b) != 6 || b["available"] != false || b["lookup_enabled"] != false || b["code"] != "hub_lookup_disabled" {
+				if len(b) != 7 || b["available"] != false || b["lookup_enabled"] != false || b["code"] != "hub_lookup_disabled" || b["callback_enrollment_enabled"] != false {
 					t.Fatalf("unexpected capability data: %v", b)
 				}
 				if w.Header().Get("Cache-Control") != "no-store" {

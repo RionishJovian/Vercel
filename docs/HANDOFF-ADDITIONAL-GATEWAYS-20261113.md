@@ -45,7 +45,7 @@ There is no shared LAN, voucher pool, failover or load balancing. The rule is re
 | `node scripts/test-hub-enrollment.mjs` | Pass, including two routers in one tenant: distinct addresses, B retry/conflict leaves A byte-identical. |
 | App: lint, `tsc -b`, vitest 413/413, build | Pass. New tests: `gateways.test.tsx` (slots, add B in one request, capacity refusal, context lock, Safe Mode, resume, confirmed Start over, Wi-Fi resume order) and i18n coverage. |
 | Root: `test:deployment` 18/18, `test:vercel` 8/8, `npm run build`, `test:critical-ui` 25/25 | Pass. |
-| Rollback SQL `db/rollback/20261113120000_gateway_capacity_down.sql` | Applied after `up` on a throwaway DB: the original function is restored. |
+| Rollback SQL `db/rollback/20261118120000_gateway_capacity_down.sql` | Applied after `up` on a throwaway DB: the original function is restored. |
 | **Local purchase-to-second-gateway journey** (Caddy with production Caddyfile, API from this branch, disposable DB, enforcement on as in production, Chromium 390 px) | **29/29**, covering the steps below. |
 
 The journey's 29 checks covered:
@@ -79,12 +79,12 @@ Screenshots of the journey were taken locally at 390 px: slots full, payment und
 5. **Router-slot purchases approved before this release:** the operator should check that capacity was not already raised by hand, then use `POST /api/v1/platform/store/requests/:id/fulfill`. Fulfilment is not automatic for old approvals, to avoid double grants.
 
 ## Rollout
-1. Review and merge the PR (deploys). `mm-migrate up` applies `20261113120000_gateway_capacity.sql`, which adds a table and function and replaces the trigger function, then re-runs the runtime-role grants.
+1. Review and merge the PR (deploys). `mm-migrate up` applies `20261118120000_gateway_capacity.sql`, which adds a table and function and replaces the trigger function, then re-runs the runtime-role grants.
 2. Verify `/ready`, then sign in as a client and check that `GET /api/v1/gateway-capacity` reports 1 of 1 for a single-gateway account.
 3. Fulfil any already-approved router-slot purchases explicitly (see item 5 above).
 
 ## Rollback
-Revert the PR on `main` (deploys the old code). The new table and function are unused by the old code and can stay. To restore the old one-router database rule too, run `psql -v ON_ERROR_STOP=1 -f db/rollback/20261113120000_gateway_capacity_down.sql`. It keeps the grant ledger as purchase evidence and never removes devices.
+Revert the PR on `main` (deploys the old code). The new table and function are unused by the old code and can stay. To restore the old one-router database rule too, run `psql -v ON_ERROR_STOP=1 -f db/rollback/20261118120000_gateway_capacity_down.sql`. It keeps the grant ledger as purchase evidence and never removes devices.
 
 ## Remaining hardware acceptance (needs owner approval of a test window)
 1. Back up the test router. Record RouterOS version and model (e.g. hAP ax3 on 7.12.2, internet over Wi-Fi). Use **Keep existing network settings**.

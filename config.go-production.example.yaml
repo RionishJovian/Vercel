@@ -24,3 +24,6 @@ wireguard:
 security:
   jwt_secret: REPLACE_WITH_RANDOM_SECRET_32_BYTES_MINIMUM
   aes_gcm_key: REPLACE_WITH_RANDOM_SECRET_32_BYTES_MINIMUM
+  # Voucher codes at rest (docs/VOUCHER-CODE-PROTECTION.md). Leave both unset until the rollout there is followed.
+  # voucher_code_key: REPLACE_WITH_32_RANDOM_BYTES_BASE64   # back it up separately from the database
+  # protect_voucher_codes: true

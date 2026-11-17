@@ -72,6 +72,12 @@ The AP test used a bridge made by hand (`mm-guest-br`, members `wifi2` and `ethe
 | Internet through PPPoE | Pass | With the VPN off: route via `ppp0`, first hop `192.168.51.1`, 4/4 pings, HTTPS 200 from the PPPoE address |
 | 10M/20M limit | Not run | The download test had a script error |
 
+## Later checks
+
+- **Wizard fixes:** deployed (PR 152) and proven on a CHR, RouterOS 7.24.6; see `CHR-LAB.md`. The new job query also runs on this hAP's 7.25 by hand. A run on the hAP itself is still owed.
+- **Bugs 1, 2 and 3 below** are fixed by PR 152; **5, 7 and 8** by PR 155, except the password autofill and the bottom bar overlap in 7.
+- **Bug 6 was only partly right:** Capture backup is now enabled, but see the correction in `CHR-LAB.md`: the app doesn't keep a full copy.
+
 ## Open bugs
 
 1. Wizard refuses every interface on a factory router: ports are bridge members and the bridge already has an address.

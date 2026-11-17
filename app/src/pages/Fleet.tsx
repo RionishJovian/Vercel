@@ -38,7 +38,7 @@ export function Fleet() {
         <Ring fraction={availability / 100} label={`${availability}% ${t("fl.availability")}`}>
           <span className="mute small">{t("fl.availability")}</span>
           <span className="num hero-figure">{shownAvail ?? 0}%</span>
-          <span className="mute small">{num(f.up) ?? 0} / {total} {t("c.online")}</span>
+          <span className="mute small tnum">{num(f.up) ?? 0} / {total} {t("c.online")}</span>
         </Ring>
         <div className="capsules">
           <div className="capsule"><span className="mute small">{t("fl.attention")}</span><b className="num">{attention}</b></div>
@@ -47,7 +47,7 @@ export function Fleet() {
         </div>
       </section>
       {!peers.length && <Note>{t("fl.none")}</Note>}
-      <div className="stack">
+      <div className="workspace-cards">
         {peers.map((p, i) => {
           const state = String(p.state ?? "unknown").toLowerCase(), level = LEVEL[state] ?? 0, r = byId.get(p.device_id ?? "");
           return (

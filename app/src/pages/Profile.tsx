@@ -63,12 +63,12 @@ export function ProfilePage() {
   }
   async function saveTelegram(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const f = new FormData(e.currentTarget), chat = String(f.get("chat")).trim(), user = String(f.get("user")).trim(), enabled = f.get("enabled") === "on";
+    const f = new FormData(e.currentTarget), chat = String(f.get("tg-chat-id")).trim(), user = String(f.get("tg-approver-id")).trim(), enabled = f.get("enabled") === "on";
     if ((chat && (!/^-?[1-9]\d*$/.test(chat) || !Number.isSafeInteger(Number(chat)))) || (user && (!/^[1-9]\d*$/.test(user) || !Number.isSafeInteger(Number(user)))) || (enabled && (!chat || !user))) { say("tg", t("pf.tgInvalid"), true); return; }
     if (enabled && Number(chat) > 0 && Number(chat) !== Number(user)) { say("tg", t("tg.privateMismatch"), true); return; }
     say("tg", t("pf.saving"));
     try {
-      await api.put("/guest-wifi/telegram-bot", { bot_token: String(f.get("token")).trim(), target_chat_id: chat ? Number(chat) : 0, approver_user_id: user ? Number(user) : 0, enabled });
+      await api.put("/guest-wifi/telegram-bot", { bot_token: String(f.get("tg-bot-token")).trim(), target_chat_id: chat ? Number(chat) : 0, approver_user_id: user ? Number(user) : 0, enabled });
       say("tg", t("tg.saved")); void tg.mutate();
     } catch (err) { if (isUnauthorized(err)) throw err; say("tg", errorText(err, t("pf.tgFail")), true); }
   }
@@ -106,6 +106,7 @@ export function ProfilePage() {
         {out("photo")}
       </section>
 
+      <div className="workspace-rail workspace-stack">
       <form className="glass pad stack" onSubmit={saveProfile} key={p.full_name + lang}>
         <h2>{t("pf.details")}</h2>
         <Field label={t("pf.name")} htmlFor="pf-name"><input className="input" id="pf-name" name="name" maxLength={255} required defaultValue={p.full_name} /></Field>
@@ -122,17 +123,20 @@ export function ProfilePage() {
         {out("password")}<button className="btn quiet" type="submit">{t("pf.changePw")}</button>
       </form>
 
+      </div>
+      <div className="workspace-main workspace-stack">
       {tg.error ? <Note kind="bad">{t("tg.loadFailed")}</Note> : tg.isLoading ? <Skeleton h={250} /> : <form className="glass pad stack" onSubmit={saveTelegram} key={JSON.stringify([T.bot_token, T.target_chat_id, T.approver_user_id, T.enabled])}>
         <h2>{t("pf.tg")}</h2><p className="soft small">{p.user_role === "DEVELOPER" ? t("tg.platformScope") : t("tg.businessScope")}</p>
         <TelegramStatus runtime={T.runtime} />
-        <Field label={t("pf.tgToken")} htmlFor="pf-tok"><input className="input" id="pf-tok" name="token" type="password" autoComplete="off" placeholder={T.bot_token ? `${t("pf.tgBound")} ${T.bot_token}` : t("pf.tgPaste")} /></Field>
+        <Field label={t("pf.tgToken")} htmlFor="pf-tok"><input className="input" id="pf-tok" name="tg-bot-token" type="password" autoComplete="new-password" data-lpignore="true" placeholder={T.bot_token ? `${t("pf.tgBound")} ${T.bot_token}` : t("pf.tgPaste")} /></Field>
         <p className="soft small">{t("tg.chatHelp")}</p>
-        <Field label={t("pf.tgChat")} htmlFor="pf-chat"><input className="input" id="pf-chat" name="chat" inputMode="numeric" defaultValue={T.target_chat_id || ""} placeholder="123456789" /></Field>
-        <Field label={t("pf.tgUser")} htmlFor="pf-user"><input className="input" id="pf-user" name="user" inputMode="numeric" defaultValue={T.approver_user_id || ""} /></Field>
+        <Field label={t("pf.tgChat")} htmlFor="pf-chat"><input className="input" id="pf-chat" name="tg-chat-id" inputMode="numeric" autoComplete="off" defaultValue={T.target_chat_id || ""} placeholder="123456789" /></Field>
+        <Field label={t("pf.tgUser")} htmlFor="pf-user"><input className="input" id="pf-user" name="tg-approver-id" inputMode="numeric" autoComplete="off" defaultValue={T.approver_user_id || ""} /></Field>
         <label className="check"><span>{t("pf.tgEnable")}</span><input type="checkbox" name="enabled" defaultChecked={!!T.enabled} /></label>
         {out("tg")}
         <div className="row" style={{ justifyContent: "flex-start", flexWrap: "wrap" }}><button className="btn" type="submit">{t("pf.tgSave")}</button><button className="btn quiet" type="button" onClick={() => void testBot()}>{t("pf.tgTest")}</button><button className="btn quiet" type="button" disabled={!T.enabled || T.runtime?.receiver !== "running"} onClick={() => void sendTest()}>{t("tg.testSend")}</button></div>
       </form>}
+      </div>
     </>
   );
 }

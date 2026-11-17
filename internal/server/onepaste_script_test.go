@@ -22,7 +22,7 @@ var (
 	commandPath  = regexp.MustCompile(`(?:^|[\[;{]\s*|do=\{\s*|else=\{\s*)(/[a-z][a-z0-9/-]*)`)
 	knownPaths   = map[string]bool{
 		"/interface/wireguard": true, "/interface/wireguard/peers": true, "/ip/address": true, "/ip/route": true,
-		"/ip/service": true, "/ip/firewall/filter": true, "/ip/firewall/nat": true, "/user": true, "/user/group": true, "/user/ssh-keys": true, "/file": true,
+		"/ip/service": true, "/ip/firewall/filter": true, "/ip/firewall/nat": true, "/user": true, "/user/group": true, "/user/ssh-keys": true, "/file": true, "/system/resource": true, "/system/clock": true,
 	}
 )
 
@@ -191,7 +191,7 @@ func TestOnePasteScriptsAreWellFormedRouterOS(t *testing.T) {
 		}
 		last = i
 	}
-	if !strings.Contains(fullDisconnect, `comment="mega-magic:`+pending.user+`"`) || !strings.Contains(fullDisconnect, `] = "mega-magic:`+pending.user+`:"`) {
+	if !strings.Contains(fullDisconnect, `comment="mega-magic:`+pending.user+`"`) || !strings.Contains(fullDisconnect, `comment] "mega-magic:`+pending.user+`:"] = 0`) {
 		t.Error("full disconnect does not check ownership before removing the rule and user")
 	}
 	for _, forbidden := range []string{"/ip/service", "private-key", "/system", "/ip/firewall/filter add"} {
