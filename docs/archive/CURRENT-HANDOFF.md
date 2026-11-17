@@ -14,7 +14,7 @@ stream implementation. Catalog metadata transport remains; it must not be used
 as proof that local playback works. Checkout/public availability are held until
 the LAN delivery path is accepted, so guests are not asked to pay for it yet.
 
-HANDOVER.md now records a Hostinger migration. The old Z.com/unavailable-host
+archive/HANDOVER.md now records a Hostinger migration. The old Z.com/unavailable-host
 status below is historical. This continuation has not independently verified
 Hostinger's live configuration or deployed these boundary corrections.
 Remaining implementation: local guest entrypoint, business-network membership
@@ -40,7 +40,7 @@ requires a user-selected path and verified backup restore, not repeated SSH.
 ## 2026-10-04 preceding paid-media review — committed 472e776, NOT deployed
 
 The bank/MMQR checkout/receipt/owner-bot changes and local streaming foundations
-were reviewed against HANDOVER.md. Fixed checkout-key reuse after unpublish/
+were reviewed against archive/HANDOVER.md. Fixed checkout-key reuse after unpublish/
 republish: a key cannot return or rebind a purchase from another publication.
 Scoped Go race tests passed for media, handler, server, configuration and
 Telegram; scoped vet passed. All bridge PostgreSQL tests passed three consecutive
@@ -1272,7 +1272,7 @@ production rollout remain unverified. Do not deploy the entire dirty worktree.
 **Project:** `/Users/aces/Magic Development/mega-magic-project`.
 
 **Maintained code:** `cmd/`, `internal/`, `pkg/`, `web/`, current migrations,
-validation scripts and `deploy.sh`; see the [README](../README.md).
+validation scripts and `deploy.sh`; see the [README](../../README.md).
 
 This is a dated delivery record. Check the current tree and deployed revision
 before assuming it still describes live state. These documentation edits do not

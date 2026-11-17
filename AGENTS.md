@@ -8,7 +8,7 @@ means no check was made. Dated notes are evidence of that day, not live state.
 ## 1. Source identity
 
 - Local workspace: `/Users/aces/GitHub/Mega-Magic`. Remote: `https://github.com/RionishJovian/Vercel.git`; default branch `main` (verified). Read `.repo-identity.json` and `docs/WORKSPACE-CONSOLIDATION-20261028.md` first.
-- Do not restore or use older folders (for example `/Users/aces/123/...` or `~/GitHub/Mega-Magic-App`) based on their names or on older docs. `docs/HERMES-BUILD-CONTEXT.md` and `docs/HERMES-CONTINUATION-20261021.md` describe that old checkout and its remote (`RionishJovian/Mega`); they are historical.
+- Do not restore or use older folders (for example `/Users/aces/123/...` or `~/GitHub/Mega-Magic-App`) based on their names or on older docs. `docs/archive/HERMES-BUILD-CONTEXT.md` and `docs/archive/HERMES-CONTINUATION-20261021.md` describe that old checkout and its remote (`RionishJovian/Mega`); they are historical.
 - Never force-push or replace `main` with another history. Work on a branch and merge reviewed PRs normally. (On 2026-10-25 `main` was force-replaced by an October 7 history; recovery notes are in git history and `docs/`.)
 - `.local/` holds private recovery records. It is git-ignored; never publish, package or treat it as source (verified: in `.gitignore`).
 
