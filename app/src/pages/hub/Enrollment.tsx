@@ -9,7 +9,7 @@ import { radioFor } from "./routerProfiles";
 import { findModel, modelGroups, uplinksFor } from "./modelCatalogue";
 import { productPhotoUrl } from "../../lib/mikrotikProducts";
 
-interface Enrolled { state?: string; router_configuration_required?: boolean; one_paste?: boolean; automatic_management?: boolean; router_script?: string; tunnel_address?: string; hub_public_key?: string; endpoint?: string; allowed_ips?: string[] }
+interface Enrolled { key_custody?: string; state?: string; router_configuration_required?: boolean; one_paste?: boolean; automatic_management?: boolean; router_script?: string; tunnel_address?: string; hub_public_key?: string; endpoint?: string; allowed_ips?: string[] }
 interface Live { handshake_status?: string; connection?: { management?: string } }
 const okScript = (s: unknown): s is string => typeof s === "string" && s.trim() !== "" && s.length <= 32768;
 type StepNo = 1 | 2 | 3;
@@ -138,11 +138,13 @@ function NetworkSetup() {
 }
 
 /** One paste connects the router: the app finishes by itself, even if this page is closed. Nothing here asks for router credentials. */
-export function Enrollment({ id, onVerified }: { id: string; onVerified: () => void }) {
+export function Enrollment({ id, onVerified, routerKey = false }: { id: string; onVerified: () => void; routerKey?: boolean }) {
   const { t } = useI18n();
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ ok: true; data: Enrolled } | { ok: false; key: string } | null>(null);
   const [networkSetup, setNetworkSetup] = useState(false);
+  // Router-generated key: the router makes and keeps its WireGuard key, so the app issues only a token.
+  const [ownKey, setOwnKey] = useState(false), [viaRouterKey, setViaRouterKey] = useState(false);
   const [connected, setConnected] = useState(false), [reached, setReached] = useState(false), [slow, setSlow] = useState(false);
   const head = useRef<HTMLHeadingElement>(null);
   const first = useRef(true);
@@ -183,7 +185,8 @@ export function Enrollment({ id, onVerified }: { id: string; onVerified: () => v
     if (pending.current) return;
     const form = new FormData(e.currentTarget);
     if (form.get("confirm") !== "on") { setResult({ ok: false, key: "hub.confirmNeeded" }); return; }
-    const choice = form.get("uplink");
+    const own = routerKey && form.get("ownkey") === "on";
+    const choice = own ? null : form.get("uplink");
     const uplink: Uplink | null = choice === "ethernet" || choice === "5ghz" || choice === "2ghz" ? choice : null;
     const profile = findModel(String(form.get("model") ?? ""))?.profile;
     const ssid = String(form.get("ssid") ?? ""), passphrase = String(form.get("wifiPassphrase") ?? "");
@@ -195,6 +198,14 @@ export function Enrollment({ id, onVerified }: { id: string; onVerified: () => v
     }
     pending.current = true; setBusy(true); setResult(null);
     try {
+      if (own) {
+        const r = await api.post<Enrolled>(`/vps/peers/${eid}/callback-enroll`, {});
+        if (r.key_custody !== "router_only" || r.one_paste !== true || !okScript(r.router_script)) throw new Error("unverified");
+        setNetworkSetup(false); setViaRouterKey(true);
+        setResult({ ok: true, data: r });
+        return;
+      }
+      setViaRouterKey(false);
       const r = await api.post<Enrolled>(`/vps/peers/${eid}/quick-enroll`, { management_rest_port: 443, confirm_enrollment: true });
       if (r.state !== "hub_peer_enrolled" || r.router_configuration_required !== true || r.one_paste !== true || r.automatic_management !== true || !okScript(r.router_script)) throw new Error("unverified");
       const router_script = uplink && profile ? withNewRouterNetwork(r.router_script, profile, uplink, ssid, passphrase) : r.router_script;
@@ -217,7 +228,13 @@ export function Enrollment({ id, onVerified }: { id: string; onVerified: () => v
           <p className="soft small">{t("hub.w.b1")}</p>
           <form className="stack" onSubmit={enroll}>
             <fieldset className="nolock stack" disabled={busy}>
-              <NetworkSetup />
+              {routerKey && (
+                <div className="stack">
+                  <label className="check"><span>{t("hub.own.label")}</span><input type="checkbox" name="ownkey" checked={ownKey} onChange={(e) => setOwnKey(e.target.checked)} /></label>
+                  <p className="soft small">{t("hub.own.note")}</p>
+                </div>
+              )}
+              {!ownKey && <NetworkSetup />}
               <label className="check"><span>{t("hub.authorize")}</span><input type="checkbox" name="confirm" required /></label>
               <button className="btn" type="submit">{busy ? t("hub.creating") : t("hub.generate")}</button>
             </fieldset>
@@ -232,7 +249,7 @@ export function Enrollment({ id, onVerified }: { id: string; onVerified: () => v
           <Where />
           <p className="soft small">{t("hub.w.scriptBody")}</p>
           <Script title={t("hub.setupTitle")} text={result.data.router_script ?? ""} />
-          <Note kind="warn">{t(networkSetup ? "hub.net.safe" : "hub.w.once")}</Note>
+          <Note kind="warn">{t(viaRouterKey ? "hub.own.once" : networkSetup ? "hub.net.safe" : "hub.w.once")}</Note>
           <p className="soft small">{t("hub.keepPrivate")}</p>
           <div role="status" aria-live="polite" className="link-state" data-state={reached ? "up" : "wait"}><i className="led" data-state={reached ? "up" : "wait"} aria-hidden="true" /><span>{t(reached ? "hub.w.reached" : "hub.w.waiting")}</span></div>
           {slow && (

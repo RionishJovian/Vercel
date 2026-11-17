@@ -4,6 +4,7 @@ export const enrollmentUnavailableKey = (code?: string) =>
 
 export function enrollError(status: number | undefined, code: string | undefined): string {
   return code === "hub_management_already_configured" ? "hub.err.already"
+    : code === "hub_callback_disabled" ? "hub.err.ownOff"
     : code === "hub_management_preflight_failed" ? "hub.err.preflight"
     : status === 503 ? "hub.err.unavailable"
     : status === 403 ? "hub.err.forbidden"
