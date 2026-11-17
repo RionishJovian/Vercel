@@ -64,7 +64,7 @@ export default function SiteMap({ sites, states, selected, onSelect, pick, home 
     const lat = Number(pick?.lat), lng = Number(pick?.lng);
     if (!pick || !pick.lat || !pick.lng || !Number.isFinite(lat) || !Number.isFinite(lng)) { draft.current?.remove(); draft.current = null; return; }
     if (!draft.current) {
-      draft.current = new maplibregl.Marker({ draggable: true, color: "#146b52" }).setLngLat([lng, lat]).addTo(m);
+      draft.current = new maplibregl.Marker({ draggable: true, color: getComputedStyle(document.documentElement).getPropertyValue("--jade").trim() || "#146b52" }).setLngLat([lng, lat]).addTo(m);
       draft.current.on("dragend", () => { const p = draft.current!.getLngLat(); handlers.current.pick?.onPick(p.lat, p.lng); });
     } else draft.current.setLngLat([lng, lat]);
   }, [pick?.lat, pick?.lng, !!pick]); // eslint-disable-line react-hooks/exhaustive-deps

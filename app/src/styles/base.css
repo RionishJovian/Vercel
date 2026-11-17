@@ -121,7 +121,7 @@ button { cursor: pointer; }
   .print-root .card { border: 1px dashed #000; border-radius: 6px; padding: 10px; color: #000; break-inside: avoid; display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
   .print-root .card .code { font: 700 18px/1.3 ui-monospace, Menlo, monospace; letter-spacing: .08em; }
   .print-root .card .biz { font-size: 14px; }
-  .print-root .card .terms { font-size: 9px; }
+  .print-root .card .terms { font-size: 10px; }
   .print-root .card .qr { width: 26mm; height: 26mm; fill: #000; align-self: center; }
   body.printing .print-root.thermal { display: block; }
   .print-root.thermal .card { border: 0; border-bottom: 1px dashed #000; border-radius: 0; padding: 3mm; text-align: center; }

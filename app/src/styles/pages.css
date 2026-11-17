@@ -547,3 +547,6 @@ details.adv summary { cursor: pointer; min-height: 36px; display: flex; align-it
 .tpl-swatch b { position: absolute; left: 20px; right: 20px; bottom: 12px; height: 6px; border-radius: 3px; }
 .tpl-swatch em { position: absolute; left: 20px; top: 14px; width: 40%; height: 4px; border-radius: 2px; }
 .tpl-name { font-size: .85rem; font-weight: 600; }
+
+/* Phones: every expandable row is a full-size tap target. */
+@media (max-width: 760px) { .wiz-where summary, .moredet summary, details.adv summary, .nt-tree-group summary { min-height: 44px; display: flex; align-items: center; } }
