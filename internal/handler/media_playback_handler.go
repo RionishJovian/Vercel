@@ -300,5 +300,5 @@ func (h *MediaPlaybackHandler) Socket(c *gin.Context) {
 	stream := websocket.NetConn(ctx, socket, websocket.MessageBinary)
 	socket.SetReadLimit(64 << 10)
 	body := socketBody{Reader: io.LimitReader(stream, metadata.ContentLength), socket: socket, stream: stream}
-	_ = h.Broker.Deliver(ctx, bid, hash, c.Param("task"), relay.Response{Status: metadata.Status, Type: typ, Length: metadata.ContentLength, Range: metadata.ContentRange, Body: body})
+	logIfErr(h.Broker.Deliver(ctx, bid, hash, c.Param("task"), relay.Response{Status: metadata.Status, Type: typ, Length: metadata.ContentLength, Range: metadata.ContentRange, Body: body}), "media relay delivery of task %s failed", c.Param("task"))
 }

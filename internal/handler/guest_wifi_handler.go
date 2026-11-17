@@ -305,7 +305,7 @@ func (h *GuestWifiHandler) PublicGuestPurchase(c *gin.Context) {
 		if createdGrace && req != nil {
 			// Compensate if persisting the pending request fails after the
 			// router write. This cleanup is scoped by the request comment.
-			_ = h.graceRouter.DecideGuestAccess(context.Background(), dev.BusinessID, deviceID, req.ID, clientMAC, false, 0, 0, 0, 0)
+			h.undoGuestGrace(dev.BusinessID, deviceID, req.ID, clientMAC)
 		}
 		respondErr(c, err)
 		return
@@ -323,6 +323,26 @@ func (h *GuestWifiHandler) PublicGuestPurchase(c *gin.Context) {
 		"grace_configured": true,
 		"message":          "attach your payment receipt within the grace window to request the time extension",
 	})
+}
+
+// graceUndoPause is the wait after the first failed removal, then doubled; a variable so tests are fast.
+var graceUndoPause = time.Second
+
+// undoGuestGrace removes the free session just set up on the router when saving the request
+// failed. It retries, and if the router still cannot be reached it says so in the log: that
+// session would otherwise stay on the router with no record behind it.
+func (h *GuestWifiHandler) undoGuestGrace(businessID, deviceID, requestID, mac string) {
+	var err error
+	for attempt := 1; attempt <= 3; attempt++ {
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		err = h.graceRouter.DecideGuestAccess(ctx, businessID, deviceID, requestID, mac, false, 0, 0, 0, 0)
+		cancel()
+		if err == nil {
+			return
+		}
+		time.Sleep(time.Duration(attempt) * graceUndoPause)
+	}
+	log.Printf("guest request %s: the free session for %s on device %s could not be removed after a failed save; remove it on the router by hand (comment %s): %v", requestID, mac, deviceID, requestID, err)
 }
 
 // PublicAttachReceipt: POST /api/v1/portal/guest-purchase/:requestId/receipt.

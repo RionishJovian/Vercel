@@ -79,9 +79,9 @@ func (h *SecurityHandler) GatewaySetup(c *gin.Context) {
 		action = "router.gateway_setup.failed"
 		reason = err.Error()
 	}
-	_ = runInTenant(c, h.db, businessID, func(tx *sql.Tx) error {
+	logIfErr(runInTenant(c, h.db, businessID, func(tx *sql.Tx) error {
 		return h.deviceRepo.RecordChangeTXN(tx, businessID, deviceID, auth.GetUserRole(c), action, reason)
-	})
+	}), "router change %v on %s not recorded", action, deviceID)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error(), "result": result})
 		return

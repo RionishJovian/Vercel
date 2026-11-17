@@ -82,7 +82,7 @@ func (h *BillingHandler) notifyOperator(businessID string, req *model.PurchaseRe
 		"amount: " + strconv.Itoa(req.Amount) + "\n" +
 		"status: " + req.Status + "\n" +
 		"action: approve or reject on the billing endpoint"
-	_ = h.messenger.SendMessage("platform", text)
+	logIfErr(h.messenger.SendMessage("platform", text), "platform alert for a purchase request not delivered")
 }
 
 // PublicCreatePurchase: POST /api/v1/portal/:deviceId/purchase (multipart).
@@ -171,9 +171,9 @@ func (h *BillingHandler) PublicCreatePurchase(c *gin.Context) {
 			_ = f.Close()
 			if rerr == nil {
 				if path, serr := billing.SaveReceipt(h.receiptRoot, dev.BusinessID, req.ID, data); serr == nil {
-					_ = withDeviceTenant(h.db, dev.BusinessID, func(tx *sql.Tx) error {
+					logIfErr(withDeviceTenant(h.db, dev.BusinessID, func(tx *sql.Tx) error {
 						return h.requestRepo.SetReceiptPathTXN(tx, dev.BusinessID, req.ID, path)
-					})
+					}), "receipt path of request %s not stored", req.ID)
 				}
 			}
 		}

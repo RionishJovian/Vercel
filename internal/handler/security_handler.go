@@ -50,9 +50,9 @@ func (h *SecurityHandler) ConfigureWebFig(c *gin.Context) {
 	if err != nil {
 		action, reason = "router.webfig.secure.failed", err.Error()
 	}
-	_ = runInTenant(c, h.db, businessID, func(tx *sql.Tx) error {
+	logIfErr(runInTenant(c, h.db, businessID, func(tx *sql.Tx) error {
 		return h.deviceRepo.RecordChangeTXN(tx, businessID, deviceID, auth.GetUserRole(c), action, reason)
-	})
+	}), "router change %v on %s not recorded", action, deviceID)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error(), "result": result})
 		return
@@ -303,9 +303,9 @@ func (h *SecurityHandler) ApplyQuickConfig(c *gin.Context) {
 			reason += "; targeted rollback completed"
 		}
 	}
-	_ = runInTenant(c, h.db, businessID, func(tx *sql.Tx) error {
+	logIfErr(runInTenant(c, h.db, businessID, func(tx *sql.Tx) error {
 		return h.deviceRepo.RecordChangeTXN(tx, businessID, deviceID, auth.GetUserRole(c), action, reason)
-	})
+	}), "router change %v on %s not recorded", action, deviceID)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error(), "backup": result.Backup, "rolled_back": result.RolledBack})
 		return
@@ -359,9 +359,9 @@ func (h *SecurityHandler) HardenManagement(c *gin.Context) {
 	} else if result.RolledBack {
 		reason += "; automatic rollback: " + result.RollbackDetail
 	}
-	_ = runInTenant(c, h.db, businessID, func(tx *sql.Tx) error {
+	logIfErr(runInTenant(c, h.db, businessID, func(tx *sql.Tx) error {
 		return h.deviceRepo.RecordChangeTXN(tx, businessID, deviceID, auth.GetUserRole(c), action, reason)
-	})
+	}), "router change %v on %s not recorded", action, deviceID)
 	status := http.StatusOK
 	if !result.Verified {
 		status = http.StatusConflict
