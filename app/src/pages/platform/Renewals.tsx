@@ -7,7 +7,7 @@ import { Note } from "../../components/ui";
 import { Skeleton } from "../../components/Skeleton";
 import { errorText } from "../../lib/errors";
 
-interface Req { id: string; email?: string; plan?: string; created_at?: string; amount_mmk?: number; bank_reference?: string; bank_snapshot?: { bank_name?: string; account_number?: string; holder_name?: string } }
+interface Req { id: string; email?: string; plan?: string; created_at?: string; amount_mmk?: number; bank_reference?: string; notified?: boolean; bank_snapshot?: { bank_name?: string; account_number?: string; holder_name?: string } }
 
 function Item({ r, onDone }: { r: Req; onDone: () => void }) {
   const { t } = useI18n();
@@ -22,6 +22,7 @@ function Item({ r, onDone }: { r: Req; onDone: () => void }) {
   }
   return (
     <form className="glass pad stack" onSubmit={decide}>
+      {r.notified === false && <Note kind="warn">{t("pr.notAlerted")}</Note>}
       <b>{r.email}</b><p className="soft small">{r.plan} · {t("pr.requested")} <span className="num">{r.created_at ? new Date(r.created_at).toLocaleString() : ""}</span></p>
       {paid ? <p className="small">{t("ap.amount")}: <span className="num">{mmk(r.amount_mmk!)}</span> MMK<br />{t("ap.bankRef")}: <span className="num">{r.bank_reference}</span><br />{t("pr.payee")}: {r.bank_snapshot?.bank_name} · <span className="num">{r.bank_snapshot?.account_number}</span> · {r.bank_snapshot?.holder_name}</p> : <p className="small">{t("pr.noEvidence")}</p>}
       <label className="check"><span>{paid ? t("pr.checkedBank") : t("pr.reviewedReq")}</span><input type="checkbox" required /></label>
