@@ -3,6 +3,7 @@ package handler
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"github.com/gin-gonic/gin"
@@ -199,5 +200,75 @@ func TestRenewalAlertIsMarkedOnlyWhenDelivered(t *testing.T) {
 	p.NotifyAccountRenewal(id, stub)
 	if !notified() || stub.sent != 2 {
 		t.Fatalf("a delivered send must mark the request; notified=%v sent=%d", notified(), stub.sent)
+	}
+}
+
+// One bot belongs to one account: a second enabled binding with the same token is refused,
+// because the receiver would stop both.
+func TestBotTokenCannotBeSharedBetweenAccounts(t *testing.T) {
+	db := harness_testdb(t)
+	a, b := insertBusiness(db), insertBusiness(db)
+	repo := database.NewBusinessTelegramBotRepository(db)
+	h := NewGuestWifiHandler(db, nil, repo, nil, nil, nil, "", nil)
+	put := func(bid string) int {
+		data, _ := json.Marshal(map[string]any{"bot_token": "fixture:shared-token", "target_chat_id": int64(42), "approver_user_id": 42, "enabled": true})
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Set("business_id", bid)
+		c.Set("user_role", "OWNER")
+		c.Request = httptest.NewRequest("PUT", "/api/v1/guest-wifi/telegram-bot", bytes.NewReader(data))
+		c.Request.Header.Set("Content-Type", "application/json")
+		h.PutBotBinding(c)
+		return w.Code
+	}
+	if code := put(a); code != 200 {
+		t.Fatalf("first account: %d", code)
+	}
+	if code := put(b); code != 409 {
+		t.Fatalf("second account with the same token: %d, want 409", code)
+	}
+}
+
+// A paid guest's owner alert is marked only once Telegram accepted it, so a failed one is retried.
+func TestOwnerAlertIsMarkedOnlyWhenDelivered(t *testing.T) {
+	db := harness_testdb(t)
+	bid := insertBusiness(db)
+	repo := database.NewBusinessTelegramBotRepository(db)
+	if e := repo.Upsert(&model.BusinessTelegramBot{BusinessID: bid, BotToken: "fixture:owner-token", TargetChatID: 7, ApproverUserID: 7, Enabled: true}); e != nil {
+		t.Fatal(e)
+	}
+	stub := &alertStub{fail: true}
+	reqs := database.NewGuestPurchaseRequestRepository(db)
+	h := NewGuestWifiHandler(db, nil, repo, reqs, nil, nil, "", func(string) (telegram.Messenger, bool) { return stub, true })
+	var id string
+	now := time.Now().UTC()
+	exp := now.Add(time.Hour)
+	if e := withDeviceTenant(db, bid, func(tx *sql.Tx) error {
+		r, e := reqs.CreateTXN(tx, &model.GuestPurchaseRequest{BusinessID: bid, ClientMAC: "AA:BB:CC:DD:EE:01", PlanKey: "hour", Amount: 1000, GraceStartedAt: &now, GraceExpiresAt: &exp, GraceDataMB: 50, Status: "pending"})
+		if e != nil {
+			return e
+		}
+		id = r.ID
+		_, e = reqs.SubmitPaymentDetailsTXN(tx, bid, id, "0912345678", "123456", "")
+		return e
+	}); e != nil {
+		t.Fatal(e)
+	}
+	req := &model.GuestPurchaseRequest{ID: id, BusinessID: bid, PlanKey: "hour", Amount: 1000}
+	notified := func() bool {
+		var ok bool
+		if e := db.QueryRow(`SELECT notified_at IS NOT NULL FROM guest_purchase_requests WHERE id=$1`, id).Scan(&ok); e != nil {
+			t.Fatal(e)
+		}
+		return ok
+	}
+	h.notifyOwnerPurchase(req, "0912345678", "123456")
+	if notified() {
+		t.Fatal("a failed send must leave the request un-notified")
+	}
+	stub.fail = false
+	h.notifyOwnerPurchase(req, "0912345678", "123456")
+	if !notified() {
+		t.Fatal("a delivered send must mark the request")
 	}
 }

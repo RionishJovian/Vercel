@@ -559,11 +559,14 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 
 	return &Server{
 		telegramRuntime: botRuntime,
-		renotify:        func(ctx context.Context) { platformHandler.RunRenewalNotifier(ctx, botRuntime) },
-		cfg:             cfg,
-		log:             log,
-		sugar:           sugar,
-		gin:             r,
+		renotify: func(ctx context.Context) {
+			go platformHandler.RunRenewalNotifier(ctx, botRuntime)
+			guestWifiHandler.RunOwnerAlertRetry(ctx)
+		},
+		cfg:   cfg,
+		log:   log,
+		sugar: sugar,
+		gin:   r,
 		http: &http.Server{
 			Addr:           fmt.Sprintf(":%d", cfg.Server.Port),
 			Handler:        withWebFigHost(webFigProxy, r),

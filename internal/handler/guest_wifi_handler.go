@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"strconv"
@@ -425,7 +426,8 @@ func (h *GuestWifiHandler) PublicAttachReceipt(c *gin.Context) {
 	// Ping the OWNER's own bot (per-business binding) so they know a guest
 	// finished paying and is asking for the wifi extension. Best-effort: a
 	// missing/inactive bot binding must NOT fail the guest's submission.
-	h.notifyOwnerPurchase(req, phone, last6)
+	// After the response, so a slow Telegram never holds the guest; RunOwnerAlertRetry resends a missed alert.
+	go h.notifyOwnerPurchase(req, phone, last6)
 
 	c.JSON(http.StatusOK, gin.H{"request_id": req.ID, "status": req.Status, "receipt_attached": savedPath != "", "payment_details_saved": true})
 }
@@ -450,10 +452,18 @@ func validGuestPaymentDetails(phone, last6 string) bool {
 	return true
 }
 
-// notifyOwnerPurchase sends the owner's bound bot a verification prompt for a
-// guest who submitted their MMQR payment details. Fail-open (never blocks the
-// guest on a bot problem): no binding or send error is swallowed with `_ =`.
+var errNoOwnerBot = errors.New("no usable owner bot")
+
+// notifyOwnerPurchase alerts the owner's own bot once. A failure is logged and left for
+// RunOwnerAlertRetry; "no bot configured" is expected for owners who have not set one up.
 func (h *GuestWifiHandler) notifyOwnerPurchase(req *model.GuestPurchaseRequest, phone, last6 string) {
+	if err := h.sendOwnerPurchase(req, phone, last6); err != nil && !errors.Is(err, errNoOwnerBot) {
+		log.Printf("guest request %s: owner Telegram alert not delivered: %v", req.ID, err)
+	}
+}
+
+// sendOwnerPurchase marks the request notified only after Telegram accepted the message.
+func (h *GuestWifiHandler) sendOwnerPurchase(req *model.GuestPurchaseRequest, phone, last6 string) error {
 	var bot *model.BusinessTelegramBot
 	err := withDeviceTenant(h.db, req.BusinessID, func(tx *sql.Tx) error {
 		b, e := h.botRepo.GetByBusinessTXN(tx, req.BusinessID)
@@ -463,8 +473,11 @@ func (h *GuestWifiHandler) notifyOwnerPurchase(req *model.GuestPurchaseRequest, 
 		bot = b
 		return nil
 	})
-	if err != nil || bot == nil || !bot.Enabled || strings.TrimSpace(bot.BotToken) == "" {
-		return // fail open: no usable owner bot
+	if err != nil {
+		return err
+	}
+	if bot == nil || !bot.Enabled || strings.TrimSpace(bot.BotToken) == "" {
+		return errNoOwnerBot
 	}
 	target := "0"
 	if bot.TargetChatID != 0 {
@@ -472,7 +485,7 @@ func (h *GuestWifiHandler) notifyOwnerPurchase(req *model.GuestPurchaseRequest, 
 	}
 	msg, ok := h.svcFmt(bot.BotToken)
 	if !ok || msg == nil {
-		return
+		return errors.New("owner bot receiver is not running")
 	}
 	text := "🛜 Guest paid — approve?"
 	text += "\nOrder: " + telegram.OrderReference(req.ID)
@@ -490,11 +503,57 @@ func (h *GuestWifiHandler) notifyOwnerPurchase(req *model.GuestPurchaseRequest, 
 	}
 	// Prefer inline Approve/Reject buttons when the transport is the real Bot;
 	// fall back to typed-text instructions otherwise (e.g. test fakes).
-	if bot, okb := msg.(telegram.ButtonMessenger); okb {
-		_ = bot.SendButtons(target, text, req.ID)
-		return
+	if b, okb := msg.(telegram.ButtonMessenger); okb {
+		err = b.SendButtons(target, text, req.ID)
+	} else {
+		err = msg.SendMessage(target, text+"\n\nReview this payment in Mega Magic to approve or reject it.")
 	}
-	_ = msg.SendMessage(target, text+"\n\nReview this payment in Mega Magic to approve or reject it.")
+	if err != nil {
+		return err
+	}
+	return withDeviceTenant(h.db, req.BusinessID, func(tx *sql.Tx) error {
+		_, e := tx.Exec(`UPDATE guest_purchase_requests SET notified_at=now() WHERE id=$1 AND business_id=$2`, req.ID, req.BusinessID)
+		return e
+	})
+}
+
+// RunOwnerAlertRetry resends owner alerts that were never delivered (receiver still starting after a
+// restart, Telegram down, bot not saved yet). Requests older than a week are left to the console list.
+func (h *GuestWifiHandler) RunOwnerAlertRetry(ctx context.Context) {
+	tick := time.NewTicker(time.Minute)
+	defer tick.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+		}
+		var ids []string
+		rows, err := h.db.QueryContext(ctx, `SELECT id FROM guest_purchase_requests WHERE status='pending' AND COALESCE(paid_phone,'')<>'' AND notified_at IS NULL AND updated_at < now()-interval '30 seconds' AND created_at > now()-interval '7 days' ORDER BY created_at LIMIT 20`)
+		if err != nil {
+			log.Printf("guest owner alert retry: list failed: %v", err)
+			continue
+		}
+		for rows.Next() {
+			var id string
+			if rows.Scan(&id) == nil {
+				ids = append(ids, id)
+			}
+		}
+		rows.Close()
+		for _, id := range ids {
+			tx, e := h.db.Begin()
+			if e != nil {
+				continue
+			}
+			req, e := h.reqRepo.GetByIDOwnerTXN(tx, id)
+			_ = tx.Rollback()
+			if e != nil || req == nil {
+				continue
+			}
+			h.notifyOwnerPurchase(req, req.PaidPhone, req.TxLast6)
+		}
+	}
 }
 
 // GetBotBinding: GET /api/v1/guest-wifi/telegram-bot — returns the owner's own
@@ -574,6 +633,21 @@ func (h *GuestWifiHandler) PutBotBinding(c *gin.Context) {
 	if len(token) > 256 || strings.HasPrefix(token, "enc:") || strings.ContainsAny(token, "\r\n\t ") {
 		c.JSON(400, gin.H{"error": "Invalid bot token format"})
 		return
+	}
+	// One bot belongs to one account: the receiver refuses every binding that shares a token,
+	// so a duplicate would silence both owners. Refuse it here, with a reason.
+	if token != "" && body.Enabled {
+		others, e := h.botRepo.ListEnabled()
+		if e != nil {
+			c.JSON(503, gin.H{"error": "Telegram bots could not be checked; try again"})
+			return
+		}
+		for _, o := range others {
+			if o.BusinessID != businessID && o.BotToken == token {
+				c.JSON(409, gin.H{"error": "This bot is already used by another account. Create a separate bot with @BotFather for your business.", "code": "telegram_bot_in_use"})
+				return
+			}
+		}
 	}
 
 	if token == "" {
@@ -793,19 +867,32 @@ func (h *GuestWifiHandler) ListGuestRequests(c *gin.Context) {
 		return
 	}
 	var reqs []*model.GuestPurchaseRequest
+	unalerted := []string{}
 	err := h.withTenantTx(c, businessID, func(tx *sql.Tx) error {
 		rs, e := h.reqRepo.ListByBusinessTXN(tx, businessID, 50)
 		if e != nil {
 			return e
 		}
 		reqs = rs
-		return nil
+		// Pending requests with payment details whose Telegram alert was not delivered yet.
+		rows, e := tx.Query(`SELECT id FROM guest_purchase_requests WHERE business_id=$1 AND status='pending' AND COALESCE(paid_phone,'')<>'' AND notified_at IS NULL`, businessID)
+		if e != nil {
+			return e
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var id string
+			if rows.Scan(&id) == nil {
+				unalerted = append(unalerted, id)
+			}
+		}
+		return rows.Err()
 	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"requests": reqs, "count": len(reqs)})
+	c.JSON(http.StatusOK, gin.H{"requests": reqs, "count": len(reqs), "unalerted_ids": unalerted})
 }
 
 // ApproveGuest: POST /api/v1/guest-wifi/approve/:requestId (owner web).
