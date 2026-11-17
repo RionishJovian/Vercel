@@ -20,10 +20,11 @@ const dayLabel = (k: string) => new Date(`${k}T12:00:00+06:30`).toLocaleDateStri
 export function RevenuePayments({ canDecide }: { canDecide: boolean }) {
   const { t, lang } = useI18n();
   const sum = useSWR<Summary>("/guest-wifi/revenue", fetcher, { shouldRetryOnError: false });
-  const inbox = useSWR<{ requests?: Req[] } | Req[]>("/guest-wifi/requests", fetcher, { shouldRetryOnError: false });
+  const inbox = useSWR<{ requests?: Req[]; unalerted_ids?: string[] } | Req[]>("/guest-wifi/requests", fetcher, { shouldRetryOnError: false });
   const [busy, setBusy] = useState(""), [msg, setMsg] = useState("");
   const s = validSummary(sum.data);
   const reqs = asArray<Req>(Array.isArray(inbox.data) ? inbox.data : inbox.data?.requests);
+  const unalerted = new Set(Array.isArray(inbox.data) ? [] : inbox.data?.unalerted_ids ?? []);
   async function decide(id: string, action: "approve" | "reject") {
     setBusy(id + action); setMsg(`${t(action === "approve" ? "rp.approving" : "rp.rejecting")}…`);
     try { await api.post(`/guest-wifi/${action}/${encodeURIComponent(id)}`, {}); setMsg(""); await Promise.all([inbox.mutate(), sum.mutate()]); }
@@ -68,6 +69,7 @@ export function RevenuePayments({ canDecide }: { canDecide: boolean }) {
           const state = String(r.status || "unknown").toLowerCase(), ref = r.bank_reference || (r.tx_last6 ? `MMQR ••••••${r.tx_last6}` : "—");
           return (
             <article className="glass pad stack" key={r.id}>
+              {state === "pending" && unalerted.has(r.id) && <Note kind="warn">{t("rp.notAlerted")}</Note>}
               <div className="row"><b className="num">{mmk(Number(r.amount || 0))} MMK</b><span className={"chip " + (state === "approved" ? "ok" : state === "rejected" ? "bad" : "warn")}>{t("st.status." + (["pending", "approved", "rejected"].includes(state) ? state : "pending"))}</span></div>
               <p className="soft small num">{r.plan_key || "—"} · {r.created_at ? new Date(r.created_at).toLocaleString() : ""}</p><p className="small mono">{ref}</p>
               {state === "pending" && (canDecide ? <div className="row" style={{ justifyContent: "flex-start" }}><button className="pill on" type="button" disabled={!!busy} onClick={() => void decide(r.id, "approve")}>{t("pf.approve")}</button><button className="pill danger" type="button" disabled={!!busy} onClick={() => void decide(r.id, "reject")}>{t("pr.reject")}</button></div> : <span className="soft small">{t("rp.readOnly")}</span>)}
