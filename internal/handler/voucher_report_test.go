@@ -170,7 +170,8 @@ func TestDBVoucherReportFullInventoryAndTenantIsolation(t *testing.T) {
 	if len(result.Gateways) != 2 {
 		t.Fatalf("gateway grouping: %+v", result.Gateways)
 	}
-	if strings.Contains(w.Body.String(), "PRIVATE") || strings.Contains(w.Body.String(), "FULL-") || strings.Contains(w.Body.String(), "02:00") {
+	// The fixture client MACs all start 02:00:00:00:00. A bare "02:00" also matched report timestamps, so the test failed whenever it ran at 02:00 UTC.
+	if strings.Contains(w.Body.String(), "PRIVATE") || strings.Contains(w.Body.String(), "FULL-") || strings.Contains(w.Body.String(), "02:00:00:00:00") {
 		t.Fatal("report leaked another tenant, code or client MAC")
 	}
 	for _, g := range result.Gateways {
