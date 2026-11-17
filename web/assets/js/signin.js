@@ -134,7 +134,7 @@
       var ok = fieldError(company, company.value.trim() ? "" : mmT("Enter your business name.", "လုပ်ငန်းအမည် ထည့်ပါ။"));
       ok = fieldError(name, name.value.trim() ? "" : mmT("Enter your name.", "သင့်အမည် ထည့်ပါ။")) && ok;
       ok = fieldError(email, looksLikeEmail(email.value.trim()) ? "" : mmT("Enter a valid email, like name@example.com.", "မှန်ကန်သော အီးမေးလ် ထည့်ပါ (ဥပမာ name@example.com)။")) && ok;
-      ok = fieldError(password, password.value.length >= 8 ? "" : mmT("Use 8 or more characters.", "စာလုံး ၈ လုံးနှင့်အထက် သုံးပါ။")) && ok;
+      ok = fieldError(password, password.value.length >= 10 ? "" : mmT("Use 10 or more characters.", "စာလုံး ၁၀ လုံးနှင့်အထက် သုံးပါ။")) && ok;
       if (!ok) { registerForm.querySelector('[aria-invalid="true"]').focus(); return; }
       busy(submit, true, "Creating your account…", "အကောင့် ဖွင့်နေသည်…");
       try {
@@ -147,7 +147,7 @@
         else if (err.status === 409) { msg = mmT("This email is already registered. Sign in instead.", "ဤအီးမေးလ်ကို စာရင်းသွင်းပြီးသား ဖြစ်သည်။ ဝင်ရန် ရွှေ့ပါ။"); fieldError(email, msg); }
         else if (err.status === 403) msg = mmT("New accounts are closed right now. Contact us on Telegram.", "ယခု အကောင့်အသစ် ဖွင့်ခြင်း ပိတ်ထားသည်။ Telegram တွင် ဆက်သွယ်ပါ။");
         else if (err.status === 429) msg = mmT("Too many attempts. Wait a minute and try again.", "ကြိုးစားမှု များလွန်းသည်။ ခဏစောင့်ပြီး ပြန်ကြိုးစားပါ။");
-        else if (err.status === 400) msg = mmT("Check your details: a valid email and a password of 8 or more characters.", "အချက်အလက်များကို စစ်ပါ - မှန်ကန်သော အီးမေးလ်နှင့် စာလုံး ၈ လုံးနှင့်အထက် စကားဝှက်။");
+        else if (err.status === 400) msg = mmT("Check your details: a valid email and a password of 10 or more characters.", "အချက်အလက်များကို စစ်ပါ - မှန်ကန်သော အီးမေးလ်နှင့် စာလုံး ၁၀ လုံးနှင့်အထက် စကားဝှက်။");
         else msg = mmT("The account could not be created. Try again in a moment.", "အကောင့် မဖန်တီးနိုင်ပါ။ ခဏနေ ပြန်ကြိုးစားပါ။");
         say("bad", msg, true);
         busy(submit, false, "Create account", "အကောင့် ဖွင့်မည်");
