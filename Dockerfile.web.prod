@@ -15,4 +15,7 @@ COPY --from=app /app/dist /srv/app
 COPY --from=app /legacy-console /srv/v2
 COPY deploy/Caddyfile.go-staging /etc/caddy/Caddyfile
 COPY deploy/security-headers.caddy /etc/caddy/security-headers.caddy
+COPY deploy/web-entrypoint.sh /usr/local/bin/mm-web-entrypoint
+ENTRYPOINT ["/usr/local/bin/mm-web-entrypoint"]
+CMD ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
 HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=10 CMD wget --quiet --tries=1 --spider http://127.0.0.1/ || exit 1

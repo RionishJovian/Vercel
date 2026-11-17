@@ -67,9 +67,38 @@ var MM = {
   trialEndsIn:"ယာယီအင်တာနက် ကုန်ရန်", // Temporary internet ends in  [native review]
   passActive:"အသုံးပြုနိုင်ပါပြီ", // Pass active  [native review]
   timeLeft:  "ကျန်ရှိသော အချိန်", // Time left  [native review]
-  passEnded: "Pass ကုန်ဆုံးပါပြီ" // Pass ended  [native review]
-  // 'waiting' — malformed in the draft and deliberately REMOVED so the safe
-  // English fallback renders until a native speaker supplies correct text.
+  passEnded: "Pass ကုန်ဆုံးပါပြီ", // Pass ended  [native review]
+  // Voucher flow and loading strings — drafts, [needs native review] (docs/BURMESE-REVIEW.md).
+  loadingHotspot: "Hotspot ဖွင့်နေသည်…",
+  loadErr: "ဤ hotspot ကို မဖွင့်နိုင်ပါ။ WiFi ချိတ်ဆက်မှုကို စစ်ပြီး ပြန်စမ်းပါ။",
+  retryHotspot: "ပြန်စမ်းမည်",
+  voucherTitle: "ဘောက်ချာကုဒ် သုံးမည်",
+  voucherHelp: "WiFi ဘောက်ချာပေါ်ရှိ ကုဒ်ကို ထည့်ပါ။",
+  voucherConnect: "ချိတ်ဆက်မည်",
+  goPayment: "ဘဏ်လွှဲ၍ WiFi ဝယ်မည် →",
+  goPaymentNote: "အစီအစဉ်များနှင့် MMQR ငွေပေးချေမှုသို့ ဆက်သွားမည်",
+  accessUnavailable: "ဘောက်ချာဖြင့် ဝင်ခြင်းနှင့် ဘဏ်လွှဲခြင်းကို ယခု မရနိုင်သေးပါ။ Hotspot ပိုင်ရှင်ကို မေးပါ။",
+  noPlans: "အစီအစဉ် မရှိသေးပါ။",
+  backVoucher: "← ဘောက်ချာကုဒ် သုံးမည်",
+  activating: "ဖွင့်နေသည်…",
+  voucherRequired: "ဘောက်ချာကုဒ် ထည့်ပါ။",
+  voucherPreview: "အစမ်းကြည့်ရှုမှုသာ — မှန်ကန်သော ဘောက်ချာက ဤစက်ကို ချိတ်ဆက်ပေးပါမည်။",
+  hotspotContext: "ဤစာမျက်နှာကို hotspot ဝင်ရောက်မှု မျက်နှာပြင်မှ ဖွင့်ပြီး ပြန်စမ်းပါ။",
+  voucherChecking: "ဘောက်ချာ စစ်ဆေးနေစဉ် ဤစာမျက်နှာကို ဖွင့်ထားပါ။",
+  voucherAccepted: "ဘောက်ချာ လက်ခံပြီး",
+  voucherActivated: "ဤစက်အတွက် ဘောက်ချာ ဖွင့်ပြီးပါပြီ။ အင်တာနက် ရမရ စစ်ရန် ဝက်ဘ်ဆိုက်တစ်ခု ဖွင့်ကြည့်ပါ။ ထပ်ဝင်ရန် တောင်းလျှင် ကုဒ်တူကိုပဲ သုံးပါ။",
+  voucherExpiry: "သက်တမ်းကုန်ချိန်: ",
+  voucherAllowance: "စုစုပေါင်း ဒေတာ: ",
+  voucherFailed: "ဤဘောက်ချာကို မသုံးနိုင်ပါ။",
+  voucherRetry: "ကုဒ်တူကို ပြန်စမ်းပါ။ မရသေးလျှင် ဘောက်ချာအသစ် မသုံးခင် hotspot ပိုင်ရှင်ကို မေးပါ။",
+  inputErr: "ဖုန်းနံပါတ်နှင့် ငွေလွှဲနံပါတ် ၆ လုံးကို ထည့်ပါ။",
+  pvInert: "အစမ်းကြည့်ရှုမှုသာ — ဘာမှ မပို့ပါ။",
+  waiting: "ပိုင်ရှင်ထံ အကြောင်းကြားပြီး။ ယာယီသုံးခွင့်သည် အချိန် သို့မဟုတ် ဒေတာ ကုန်လျှင် ရပ်ပါမည်။ အတည်ပြုပြီးမှ ငွေပေးထားသော သုံးခွင့် စပါမည်။",
+  submitErr: "မပို့နိုင်ပါ",
+  pvWaiting: "ကွန်ဆိုးလ်ကို စောင့်နေသည်…",
+  missingDevice: "URL တွင် deviceId မပါပါ။",
+  voucherRecorded: "ဘောက်ချာ မှတ်သားပြီး",
+  gatewayUnverified: "Gateway အင်တာနက် ရရှိမှုကို မစစ်ဆေးရသေးပါ။ ကုဒ်အသစ် မသုံးခင် hotspot ပိုင်ရှင်ကို ဆက်သွယ်ပါ။"
 };
 
 function t(en, key) {
@@ -392,8 +421,8 @@ async function redeemVoucher(cfg) {
     document.getElementById("root").innerHTML =
       '<div class="pass">' +
       (verifiedGuestAccess ? '<p class="pass-state"><i></i>' + t("Pass active", "passActive") + '</p>' : '') +
-      '<div class="head"><h1 class="ok">' + (verifiedGuestAccess ? t("Voucher accepted", "voucherAccepted") : esc("Voucher recorded")) + '</h1>' +
-      '<p class="welcome">' + (verifiedGuestAccess ? t("Voucher activated for this device. Open a website to check your internet access. If you are asked to sign in again, use the same code.", "voucherActivated") : esc("Gateway internet access has not been verified. Contact the hotspot owner before using another code.")) + '</p></div>' +
+      '<div class="head"><h1 class="ok">' + (verifiedGuestAccess ? t("Voucher accepted", "voucherAccepted") : esc(t("Voucher recorded", "voucherRecorded"))) + '</h1>' +
+      '<p class="welcome">' + (verifiedGuestAccess ? t("Voucher activated for this device. Open a website to check your internet access. If you are asked to sign in again, use the same code.", "voucherActivated") : esc(t("Gateway internet access has not been verified. Contact the hotspot owner before using another code.", "gatewayUnverified"))) + '</p></div>' +
       (verifiedGuestAccess ? '<div class="pass-clock"><span>' + esc(t("Time left", "timeLeft")) + '</span><b id="pass-left"></b></div>' +
         '<dl class="pass-rows"><div><dt>' + esc(t("Valid until: ", "voucherExpiry")) + '</dt><dd>' + esc(new Date(data.expires_at).toLocaleString()) + '</dd></div>' +
         '<div><dt>' + esc(t("Total data allowance: ", "voucherAllowance")) + '</dt><dd>' + esc(data.data_mb) + ' MB</dd></div></dl>' : '') +

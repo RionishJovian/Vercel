@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import useSWR from "swr";
 import { api, ApiError, fetcher, isUnauthorized } from "../../lib/api";
 import { asArray, type Router } from "../../lib/types";
@@ -34,6 +34,20 @@ export function Create() {
   function accept(res: Created) {
     if (res?.state !== "ready") { setResult({ kind: "notReady" }); return; }
     writePending(null); setSaved(null); setResult({ kind: "ready", codes: asArray(res.vouchers) });
+  }
+  // A saved batch from an earlier visit: ask the server first. ready -> show the codes; 404 -> the server never
+  // saved it, so the browser record is just stale; anything else keeps the recovery note (and Discard).
+  useEffect(() => {
+    const id = readPending()?.batch_id;
+    if (!id) return;
+    api.get<Created>("/guest-vouchers/batches/" + encodeURIComponent(id)).then(
+      (res) => { if (res?.state === "ready") accept(res); },
+      (e) => { if (e instanceof ApiError && e.status === 404) { writePending(null); setSaved(null); } },
+    );
+  }, []);
+  function discardSaved() {
+    if (!window.confirm(t("v.discardConfirm"))) return;
+    writePending(null); setSaved(null); setFailure(""); setResult(null);
   }
   async function retry(id: string) {
     setBusy(true); setFailure(""); setResult({ kind: "creating" });
@@ -89,7 +103,7 @@ export function Create() {
       {profiles.error && <Note kind="warn">{errorText(profiles.error, t("c.loadFailed"))}</Note>}
       {profiles.data && !ready && <Note kind="warn">{t("v.hotspotRequired")} <a className="link" href={"/app/network/new?router=" + encodeURIComponent(gateway.device_id)}>{t("nw.title")}</a></Note>}
       {(!profiles.data || !ready) && <button className="pill" type="button" disabled={profiles.isValidating} onClick={() => void profiles.mutate()}>{t(profiles.isValidating ? "r.checking" : "c.retry")}</button>}
-      {saved?.batch_id && <Note kind="warn">{t("v.pendingFirst")} <button type="button" className="pill" disabled={busy} onClick={() => void retry(saved.batch_id!)}>{t("v.retrySavedBatch")}</button></Note>}
+      {saved?.batch_id && <Note kind="warn">{t("v.pendingFirst")} <a className="link" href="/app/vouchers/stock">{t("v.t.stock")}</a> <button type="button" className="pill" disabled={busy} onClick={() => void retry(saved.batch_id!)}>{t("v.retrySavedBatch")}</button> <button type="button" className="pill" disabled={busy} onClick={discardSaved}>{t("v.discardSaved")}</button></Note>}
       <form className="glass pad stack batch-form workspace-main" onSubmit={submit} onChange={(e) => { const f = new FormData(e.currentTarget); setSum({ count: Number(f.get("count")) || 0, data: Number(f.get("data")) || 0 }); }}>
         <Field label={t("v.f.gateway")} htmlFor="gv-gw"><select className="input" id="gv-gw" name="gw" value={gateway.device_id} onChange={e => setSelected(e.target.value)} disabled={busy || !!saved} required>{gateways.map((g) => <option key={g.device_id} value={g.device_id}>{g.hardware_name || g.device_id}</option>)}</select></Field>
         <Field label={t("v.f.label")} htmlFor="gv-label"><input className="input" id="gv-label" name="label" maxLength={80} required placeholder="1 day" /></Field>
