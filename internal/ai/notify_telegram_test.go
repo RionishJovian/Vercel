@@ -129,3 +129,41 @@ func TestFormatIncidentLine_defaults(t *testing.T) {
 		t.Fatalf("subject id fallback missing: %q", line)
 	}
 }
+
+func TestNotifier_failedAlertIsResentOnceAndThenForgotten(t *testing.T) {
+	f := &fakeMsg{err: errors.New("receiver is not running")}
+	n := NewTelegramNotifier(f, "42", zap.NewNop().Sugar())
+	n.IncidentOpened("biz-1", sampleIncident())
+	if len(n.pending) != 1 {
+		t.Fatalf("a failed send must be queued, queue=%d", len(n.pending))
+	}
+	n.Flush(time.Now().Add(time.Minute))
+	if len(f.sent) != 0 || len(n.pending) != 1 {
+		t.Fatal("while Telegram still fails, the line stays queued")
+	}
+	f.err = nil
+	n.Flush(time.Now().Add(2 * time.Minute))
+	if len(f.sent) != 1 || len(n.pending) != 0 {
+		t.Fatalf("delivered once and cleared: sent=%d queue=%d", len(f.sent), len(n.pending))
+	}
+	n.Flush(time.Now().Add(3 * time.Minute))
+	if len(f.sent) != 1 {
+		t.Fatal("a delivered alert must not be sent again")
+	}
+}
+
+func TestNotifier_queueDropsOldLinesAndIsBounded(t *testing.T) {
+	f := &fakeMsg{err: errors.New("down")}
+	n := NewTelegramNotifier(f, "42", zap.NewNop().Sugar())
+	for i := 0; i < incidentQueueMax+5; i++ {
+		n.IncidentOpened("biz-1", sampleIncident())
+	}
+	if len(n.pending) != incidentQueueMax {
+		t.Fatalf("queue must stop at %d, got %d", incidentQueueMax, len(n.pending))
+	}
+	f.err = nil
+	n.Flush(time.Now().Add(incidentRetryMax + time.Minute))
+	if len(f.sent) != 0 || len(n.pending) != 0 {
+		t.Fatalf("lines older than an hour are dropped: sent=%d queue=%d", len(f.sent), len(n.pending))
+	}
+}

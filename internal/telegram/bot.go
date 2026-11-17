@@ -248,6 +248,7 @@ func (b *Bot) AwaitReply(requestID string, timeout time.Duration) (string, strin
 func (b *Bot) Next(ctx context.Context) (InboundMessage, error) {
 	b.nextMu.Lock()
 	defer b.nextMu.Unlock()
+	fails := 0
 	for {
 		if ctx.Err() != nil {
 			return InboundMessage{}, ctx.Err()
@@ -265,15 +266,34 @@ func (b *Bot) Next(ctx context.Context) (InboundMessage, error) {
 			if ctx.Err() != nil {
 				return InboundMessage{}, ctx.Err()
 			}
-			// transient — long-poll short window then retry
-			time.Sleep(500 * time.Millisecond)
+			// Transient: wait longer after each failure so an outage or a revoked
+			// token does not become two requests a second without end.
+			fails++
+			select {
+			case <-ctx.Done():
+				return InboundMessage{}, ctx.Err()
+			case <-time.After(pollBackoff(fails)):
+			}
 			continue
 		}
+		fails = 0
 		if len(msgs) > 0 {
 			b.pending = msgs
 			continue
 		}
 	}
+}
+
+// pollBackoff is the wait after the nth consecutive failed poll: 0.5s, 1s, 2s ... up to 30s.
+func pollBackoff(failures int) time.Duration {
+	if failures < 1 {
+		failures = 1
+	}
+	d := 500 * time.Millisecond << min(failures-1, 6)
+	if d > 30*time.Second {
+		d = 30 * time.Second
+	}
+	return d
 }
 
 // nextBatch performs one getUpdates call and returns only messages that pass

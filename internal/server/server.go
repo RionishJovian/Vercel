@@ -249,7 +249,8 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 	botRuntime := telegram.NewRuntime(telegramBindings{db: db, repo: database.NewBusinessTelegramBotRepository(db), reservedToken: reservedTelegramToken}, func(b telegram.Binding) telegram.PurchaseDecider {
 		return telegram.CompositePurchaseDecider{Deciders: []telegram.PurchaseDecider{handler.AccountRenewalDecider{Handler: platformHandler, ActorID: b.ActorID}, storeHandler, billingHandler, telegram.ScopedPurchaseDecider{BusinessID: b.BusinessID, Decider: ownerDecider}}}
 	}, nil)
-	notifierr.SetIncidentSink(ai.NewTelegramNotifier(botRuntime, "platform", sugar))
+	incidentTelegram := ai.NewTelegramNotifier(botRuntime, "platform", sugar)
+	notifierr.SetIncidentSink(incidentTelegram)
 	portalHandler := handler.NewPortalHandler(
 		db,
 		database.NewDeviceRepository(db),
@@ -561,6 +562,7 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 		telegramRuntime: botRuntime,
 		renotify: func(ctx context.Context) {
 			go platformHandler.RunRenewalNotifier(ctx, botRuntime)
+			go incidentTelegram.Run(ctx)
 			guestWifiHandler.RunOwnerAlertRetry(ctx)
 		},
 		cfg:   cfg,
