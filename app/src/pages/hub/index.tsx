@@ -18,7 +18,7 @@ import { errorText } from "../../lib/errors";
 import { ageShort } from "../../lib/age";
 
 interface GW extends RouterRow { site_id?: string | null; management_ip?: string; vendor?: string; device_model?: string; management_connected?: boolean }
-interface Capability { available?: boolean; lookup_enabled?: boolean; code?: string }
+interface Capability { available?: boolean; callback_enrollment_enabled?: boolean; lookup_enabled?: boolean; code?: string }
 const EDITORS = ["OWNER", "ADMIN", "DEVELOPER"];
 
 // Platform Admin only. Erases the history that normally keeps a record, so the exact name must
@@ -117,7 +117,7 @@ function Card({ r, state, canEdit, platform, cap, openId, setOpen, onChanged, on
       {r.management_connected ? <Note kind="ok">{t("hub.connected")}</Note> : canEdit && (cap.available ? (
         <>
           <button className="btn" type="button" aria-expanded={openId === r.device_id} onClick={() => setOpen(openId === r.device_id ? "" : r.device_id)}>{t("hub.connect")}</button>
-          {openId === r.device_id && <Enrollment id={r.device_id} onVerified={onChanged} />}
+          {openId === r.device_id && <Enrollment id={r.device_id} onVerified={onChanged} routerKey={cap.callback_enrollment_enabled === true} />}
         </>
       ) : <Note>{t(enrollmentUnavailableKey(cap.code))}</Note>)}
       <div className="row" style={{ justifyContent: "flex-start", flexWrap: "wrap" }}>

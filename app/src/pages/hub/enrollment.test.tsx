@@ -7,6 +7,7 @@ const ID = "6f69dede-53d9-478a-bc68-9911e878d440";
 const SETUP = "{\n:put \"probe\"\n}\n";
 const PASTE = "\n" + SETUP;
 let calls: Array<{ method: string; url: string; body?: Record<string, unknown> }>;
+let callbackAnswer: { status: number; body: unknown } = { status: 200, body: { one_paste: true, key_custody: "router_only", router_script: SETUP } };
 let liveAnswer: { status: number; body: unknown }, enrollAnswer: { status: number; body: unknown };
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 const ENROLLED = { state: "hub_peer_enrolled", router_configuration_required: true, one_paste: true, automatic_management: true, router_script: SETUP, tunnel_address: "10.77.0.20/32", hub_public_key: "HUBKEY", endpoint: "megamagic.tech:51820", allowed_ips: ["10.77.0.1/32"] };
@@ -18,13 +19,14 @@ beforeEach(() => {
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
     const method = init?.method ?? "GET", path = String(url).replace("/api/v1", "");
     calls.push({ method, url: path, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+    if (path.endsWith("/callback-enroll")) return json(callbackAnswer.status, callbackAnswer.body);
     if (path.endsWith("/quick-enroll")) return json(enrollAnswer.status, enrollAnswer.body);
     if (path.endsWith("/live")) return json(liveAnswer.status, liveAnswer.body);
     return json(404, {});
   }));
 });
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); });
-const open = (onVerified = vi.fn()) => { render(<I18nProvider><Enrollment id={ID} onVerified={onVerified} /></I18nProvider>); return onVerified; };
+const open = (onVerified = vi.fn(), routerKey = false) => { render(<I18nProvider><Enrollment id={ID} onVerified={onVerified} routerKey={routerKey} /></I18nProvider>); return onVerified; };
 const click = (name: string | RegExp) => fireEvent.click(screen.getByRole("button", { name }));
 const generate = async () => { fireEvent.click(screen.getByRole("checkbox")); click("Generate one-paste script"); await screen.findByRole("textbox", { name: "Connection script" }); };
 const rail = () => [...screen.getByRole("list", { name: "Connection steps" }).querySelectorAll("li")].map((li) => li.getAttribute("data-state"));
@@ -214,5 +216,31 @@ describe("one-paste connection", () => {
     const form = screen.getByRole("button", { name: "Generate one-paste script" }).closest("form")!;
     fireEvent.submit(form); fireEvent.submit(form);
     release(); await screen.findByRole("textbox", { name: "Connection script" }); expect(calls.filter((c) => c.url.endsWith("/quick-enroll"))).toHaveLength(1);
+  });
+});
+
+describe("router-generated key option", () => {
+  it("is hidden while the server flag is off", () => {
+    open();
+    expect(screen.queryByText("Let the router create its own key (new)")).toBeNull();
+  });
+  it("uses the callback endpoint, sends no key and hides the network choices", async () => {
+    open(vi.fn(), true);
+    fireEvent.click(screen.getByLabelText("Let the router create its own key (new)"));
+    expect(screen.queryByText(/Router network setup/i)).toBeNull();
+    fireEvent.click(screen.getByLabelText(/I authorize/));
+    click("Generate one-paste script");
+    await screen.findByRole("textbox", { name: "Connection script" });
+    expect(calls[0]).toEqual({ method: "POST", url: `/vps/peers/${ID}/callback-enroll`, body: {} });
+    expect(screen.getByText(/works for 15 minutes/)).toBeTruthy();
+  });
+  it("refuses a reply that does not state router-only key custody", async () => {
+    callbackAnswer = { status: 200, body: { one_paste: true, key_custody: "app", router_script: SETUP } };
+    open(vi.fn(), true);
+    fireEvent.click(screen.getByLabelText("Let the router create its own key (new)"));
+    fireEvent.click(screen.getByLabelText(/I authorize/));
+    click("Generate one-paste script");
+    expect(await screen.findByText(/not confirmed/)).toBeTruthy();
+    expect(screen.queryByRole("textbox", { name: "Connection script" })).toBeNull();
   });
 });
