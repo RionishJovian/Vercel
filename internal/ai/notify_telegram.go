@@ -1,8 +1,10 @@
 package ai
 
 import (
+	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"go.uber.org/zap"
@@ -16,13 +18,30 @@ import (
 //
 // It is BEST-EFFORT: a send failure is logged and swallowed — the incident is
 // already persisted, so a notify failure must never block, undo, or re-raise it.
+// A failed line is kept in memory and resent by Run until it is delivered or an hour old
+// (shortcut: the queue is lost if the process stops, which is acceptable because the
+// incident itself is stored and the usual cause is the receiver still starting).
 // Nil-safe: with no messenger or no target it is a no-op. It never logs the bot
 // token (the messenger owns the token; this type never sees or echoes it).
 type TelegramNotifier struct {
 	msg    telegram.Messenger
 	target string
 	logger *zap.SugaredLogger
+
+	mu      sync.Mutex
+	pending []unsentLine
 }
+
+type unsentLine struct {
+	text  string
+	since time.Time
+}
+
+const (
+	incidentRetryEvery = time.Minute
+	incidentRetryMax   = time.Hour
+	incidentQueueMax   = 50
+)
 
 // NewTelegramNotifier builds the notifier. A nil messenger or empty target makes
 // IncidentOpened a no-op.
@@ -39,8 +58,55 @@ func (n *TelegramNotifier) IncidentOpened(_ string, inc *model.Incident) {
 	if n == nil || n.msg == nil || n.target == "" || inc == nil {
 		return
 	}
-	if err := n.msg.SendMessage(n.target, formatIncidentLine(inc)); err != nil {
-		n.logger.Warnf("ai: telegram incident notify failed: %v", err)
+	text := formatIncidentLine(inc)
+	if err := n.msg.SendMessage(n.target, text); err != nil {
+		n.logger.Warnf("ai: telegram incident notify failed, will retry: %v", err)
+		n.mu.Lock()
+		if len(n.pending) >= incidentQueueMax {
+			n.pending = n.pending[1:]
+		}
+		n.pending = append(n.pending, unsentLine{text: text, since: time.Now()})
+		n.mu.Unlock()
+	}
+}
+
+// Flush resends queued lines; delivered ones and ones older than an hour leave the queue.
+func (n *TelegramNotifier) Flush(now time.Time) {
+	if n == nil || n.msg == nil || n.target == "" {
+		return
+	}
+	n.mu.Lock()
+	queue := n.pending
+	n.pending = nil
+	n.mu.Unlock()
+	var keep []unsentLine
+	for _, l := range queue {
+		if now.Sub(l.since) > incidentRetryMax {
+			n.logger.Warnf("ai: telegram incident alert dropped after an hour without delivery")
+			continue
+		}
+		if err := n.msg.SendMessage(n.target, l.text); err != nil {
+			keep = append(keep, l)
+		}
+	}
+	if len(keep) > 0 {
+		n.mu.Lock()
+		n.pending = append(keep, n.pending...)
+		n.mu.Unlock()
+	}
+}
+
+// Run resends undelivered alerts every minute until ctx ends.
+func (n *TelegramNotifier) Run(ctx context.Context) {
+	tick := time.NewTicker(incidentRetryEvery)
+	defer tick.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case now := <-tick.C:
+			n.Flush(now)
+		}
 	}
 }
 
