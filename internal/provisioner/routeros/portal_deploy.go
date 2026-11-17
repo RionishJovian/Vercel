@@ -154,7 +154,7 @@ button:hover{filter:brightness(1.07)}button:disabled{cursor:wait;opacity:.7}
 .lang button{width:auto;min-height:44px;margin:0;padding:0 14px;border:0;border-radius:999px;background:none;box-shadow:none;color:var(--ink);font-size:14px;font-weight:600}
 .lang button[aria-pressed=true]{background:var(--portal-brand);color:var(--portal-on-brand)}.lang button:hover,.tabs button:hover{filter:none}
 .sup{display:flex;gap:8px;margin:22px 16px 0}.sup a{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;min-height:48px;border-radius:12px;border:1px solid var(--edge);background:var(--surface);color:var(--ink);font-size:14px;font-weight:650;text-decoration:none}
-.tr{list-style:none;display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:22px 16px 0;padding:0;text-align:center;font-size:11px;line-height:1.35;color:var(--ink-soft)}.tr .ic{display:block;width:26px;height:26px;margin:0 auto 5px;color:var(--accent)}
+.tr{list-style:none;display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:22px 16px 0;padding:0;text-align:center;font-size:12px;line-height:1.35;color:var(--ink-soft)}.tr .ic{display:block;width:26px;height:26px;margin:0 auto 5px;color:var(--accent)}
 html[lang=my] :is(p,label,summary,button,a,li,b,.consent,.hn){line-height:1.75}html[lang=my] :is(h1,h2){line-height:1.6}
 @media(prefers-reduced-motion:reduce){button,.tabs button{transition:none}}
 /*login*/
@@ -173,7 +173,7 @@ button.gh,a.alt{display:flex;align-items:center;justify-content:center;gap:8px;w
 details{margin:0 0 12px;font-size:14px;line-height:1.6;color:var(--ink-soft);text-align:left}details p{white-space:pre-wrap;margin:10px 0;font-size:14px}summary{cursor:pointer;min-height:44px;display:flex;align-items:center;font-weight:600}summary::after{content:"+";margin-left:auto;font-size:18px}details[open] summary::after{content:"\2212"}
 .pg{list-style:none;margin:0 16px;padding:0;display:grid;grid-template-columns:1fr 1fr;gap:14px 10px}
 .pg li{position:relative;display:flex;flex-direction:column;gap:3px;min-width:0;padding:16px 12px 12px;border-radius:14px;border:1px solid var(--line);background:var(--surface);box-shadow:var(--shadow)}
-.pg .bv{border-color:var(--accent)}.pg em{position:absolute;top:-10px;right:10px;padding:2px 9px;border-radius:999px;background:var(--portal-brand);color:var(--portal-on-brand);font-size:11px;font-weight:700;font-style:normal}
+.pg .bv{border-color:var(--accent)}.pg em{position:absolute;top:-10px;right:10px;padding:2px 9px;border-radius:999px;background:var(--portal-brand);color:var(--portal-on-brand);font-size:12px;font-weight:700;font-style:normal}
 .pg b{font-size:13px;color:var(--ink-soft);overflow-wrap:anywhere}.pg .d{font-size:22px;font-weight:750;color:var(--ink)}.pg .s{font-size:12px;color:var(--ink-soft)}.pg strong{margin-top:6px;font-size:15px;color:var(--ink)}
 .pg a{display:flex;align-items:center;justify-content:center;min-height:44px;margin-top:8px;border-radius:10px;background:var(--portal-brand);color:var(--portal-on-brand);font-size:14px;font-weight:700;text-decoration:none}
 </style></head><body><div class="wrap"><header class="hero"></header><main class="card">
@@ -189,7 +189,7 @@ $(if error)<p class="err">$(error)</p>$(endif)
 <div class="tabs" role="tablist"><button type="button" id="tab-v" role="tab" aria-selected="true" onclick="setMode('v')" data-t="tabV">Voucher Code</button><button type="button" id="tab-m" role="tab" aria-selected="false" onclick="setMode('m')" data-t="tabM">Member Login</button></div>
 <form id="voucher-login" action="$(link-login-only)" method="post" onsubmit="return doLogin()" novalidate>
 <div id="pane-v"><label class="field-label" for="voucher" data-t="voucher">Voucher code</label>
-<input id="voucher" name="voucher" type="text" placeholder="••••••••" autocapitalize="characters" autocorrect="off" autocomplete="off" spellcheck="false" aria-describedby="login-error"></div>
+<input id="voucher" name="voucher" type="text" autocapitalize="characters" autocorrect="off" autocomplete="off" spellcheck="false" aria-describedby="login-error"></div>
 <div id="pane-m" hidden><label class="lbl" for="mu" data-t="user">Username</label><input id="mu" class="txt" type="text" autocapitalize="none" autocorrect="off" autocomplete="username" spellcheck="false"><label class="lbl" for="mp" data-t="pass">Password</label><input id="mp" class="txt" type="password" autocomplete="current-password"></div>
 <p id="login-error" class="err" role="alert" hidden></p>
 <button id="connect" type="submit" data-t="connect">Connect to Wi-Fi</button>

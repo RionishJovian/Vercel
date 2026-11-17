@@ -245,7 +245,7 @@ function renderVoucher(cfg) {
     '<section class="voucher-login" aria-labelledby="voucher-title">' +
       '<h3 id="voucher-title">' + t("Use a voucher code", "voucherTitle") + '</h3>' +
       '<p class="voucher-help">' + t("Enter the code printed on your WiFi voucher.", "voucherHelp") + '</p>' +
-      '<div class="voucher-row"><input id="voucher-code" class="code-input" inputmode="text" autocomplete="one-time-code" autocapitalize="characters" autocorrect="off" spellcheck="false" maxlength="64" placeholder="••••••••" aria-label="Voucher code">' +
+      '<div class="voucher-row"><input id="voucher-code" class="code-input" inputmode="text" autocomplete="one-time-code" autocapitalize="characters" autocorrect="off" spellcheck="false" maxlength="64" aria-label="Voucher code">' +
       '<button class="btn" id="voucher-submit" type="button">' + t("Connect", "voucherConnect") + '</button></div>' +
       '<p class="voucher-msg" id="voucher-msg" role="status" aria-live="polite"></p>' +
     '</section>' +
@@ -386,7 +386,8 @@ async function redeemVoucher(cfg) {
   var code = input.value.trim().replace(/\s+/g, "").toUpperCase();
   input.value = code;
   msg.className = "voucher-msg msg";
-  if (!code) { msg.textContent = t("Enter your voucher code.", "voucherRequired"); input.focus(); return; }
+  input.removeAttribute("aria-invalid");
+  if (!code) { msg.className = "voucher-msg bad"; input.setAttribute("aria-invalid", "true"); msg.textContent = t("Enter your voucher code.", "voucherRequired"); input.focus(); return; }
   var consent = portalConsent(cfg);
   if (consent === null) return;
   if (PREVIEW) {
@@ -430,6 +431,7 @@ async function redeemVoucher(cfg) {
       (cfg.terms_text ? '<p class="terms">' + esc(cfg.terms_text) + '</p>' : '') + '</div>';
     if (verifiedGuestAccess) { loadMediaTiles(); tickPass(new Date(data.expires_at).getTime()); }
   } catch (e) {
+    if (msg.isConnected) { msg.className = "voucher-msg bad"; input.setAttribute("aria-invalid", "true"); }
     if (msg.isConnected) msg.textContent = (e.message || t("Could not redeem this voucher.", "voucherFailed")) + ' ' +
       t("Retry the same code. If access is still unavailable, ask the hotspot owner before using another voucher.", "voucherRetry");
   } finally {

@@ -176,3 +176,19 @@ describe("rich router pages", () => {
     expect(saved[0]).toMatchObject({ support_phone: "+959123456789", support_telegram: "magic_cafe", support_viber: "" });
   });
 });
+
+describe("preview tabs and theme marker", () => {
+  it("moves between preview tabs with the arrow keys and wraps", async () => {
+    await open();
+    const login = screen.getByRole("tab", { name: "Login page" });
+    fireEvent.keyDown(login, { key: "ArrowRight" });
+    expect(screen.getByRole("tab", { name: "Connected page" }).getAttribute("aria-selected")).toBe("true");
+    fireEvent.keyDown(screen.getByRole("tab", { name: "Connected page" }), { key: "ArrowLeft" });
+    fireEvent.keyDown(screen.getByRole("tab", { name: "Login page" }), { key: "ArrowLeft" });
+    expect(screen.getByRole("tab", { name: "Pay page" }).getAttribute("aria-selected")).toBe("true");
+  });
+  it("says Selected in words on the chosen theme", async () => {
+    await open();
+    expect(screen.getAllByText(/Selected/).length).toBe(1);
+  });
+});

@@ -106,6 +106,8 @@
   .voucher-row input::placeholder { color: var(--ink-mute); letter-spacing: .3em; }
   .voucher-row input:focus, .field input:focus { outline: none; border-color: var(--accent); box-shadow: var(--focus-glow); }
   .voucher-msg { min-height: 1.5em; font-size: .92rem; }
+  .voucher-msg.bad { color: var(--bad); font-weight: 600; }
+  .voucher-row input[aria-invalid="true"] { border-color: var(--bad); }
   .portal-nav { display: grid; gap: 8px; padding-top: 16px; border-top: 1px solid var(--line); }
   .portal-nav-note { color: var(--ink-mute); font-size: .85rem; }
 

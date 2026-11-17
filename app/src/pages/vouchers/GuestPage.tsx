@@ -152,10 +152,15 @@ export function GuestPage() {
     <div className="gp-layout">
       <section className="glass pad stack gp-preview" aria-labelledby="gp-prev">
         <h2 id="gp-prev">{t("g.guestPortal")}</h2>
-        <div className="row" role="tablist" aria-label={t("g.guestPortal")}>
-          <button type="button" role="tab" aria-selected={tab === "login"} className={"pill" + (tab === "login" ? " on" : "")} onClick={() => setTab("login")}>{t("gt.tabLogin")}</button>
-          <button type="button" role="tab" aria-selected={tab === "status"} className={"pill" + (tab === "status" ? " on" : "")} onClick={() => setTab("status")}>{t("gt.tabStatus")}</button>
-          <button type="button" role="tab" aria-selected={tab === "pay"} className={"pill" + (tab === "pay" ? " on" : "")} onClick={() => setTab("pay")}>{t("gt.tabPay")}</button>
+        <div className="row gp-tabs" role="tablist" aria-label={t("g.guestPortal")} onKeyDown={(e) => {
+          const order = ["login", "status", "pay"] as const, i = order.indexOf(tab), step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+          if (!step) return;
+          e.preventDefault(); setTab(order[(i + step + 3) % 3]);
+          (e.currentTarget.querySelectorAll<HTMLElement>("[role=tab]")[(i + step + 3) % 3])?.focus();
+        }}>
+          <button type="button" role="tab" tabIndex={tab === "login" ? 0 : -1} aria-selected={tab === "login"} className={"pill" + (tab === "login" ? " on" : "")} onClick={() => setTab("login")}>{t("gt.tabLogin")}</button>
+          <button type="button" role="tab" tabIndex={tab === "status" ? 0 : -1} aria-selected={tab === "status"} className={"pill" + (tab === "status" ? " on" : "")} onClick={() => setTab("status")}>{t("gt.tabStatus")}</button>
+          <button type="button" role="tab" tabIndex={tab === "pay" ? 0 : -1} aria-selected={tab === "pay"} className={"pill" + (tab === "pay" ? " on" : "")} onClick={() => setTab("pay")}>{t("gt.tabPay")}</button>
         </div>
         <div className="phone">
           {tab === "pay"
@@ -180,6 +185,7 @@ export function GuestPage() {
                     <button type="button" key={x.id} className={"tpl-card" + (effectiveTemplate(draft.template) === x.id ? " on" : "")} aria-pressed={effectiveTemplate(draft.template) === x.id} onClick={() => pick(x.id)} data-template={x.id}>
                       <span className="tpl-swatch" aria-hidden="true" style={{ background: x.bg, borderColor: x.accent }}><i style={{ background: x.surface }} /><b style={{ background: x.accent }} /><em style={{ background: x.ink }} /></span>
                       <span className="tpl-name">{lang === "my" ? x.nameMy : x.name}</span>
+                      {effectiveTemplate(draft.template) === x.id && <span className="tpl-sel">✓ {t("gt.selected")}</span>}
                       {premium && <span className={"chip " + (owned ? "ok" : "warn")}>{owned ? t("gt.unlocked") : t("gt.addon")}</span>}
                     </button>
                   );
