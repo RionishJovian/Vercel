@@ -64,6 +64,8 @@ func BuildCallbackBootstrapScript(deviceID, baseURL, token string) (string, erro
 :local mmVer [/system resource get version]
 :local mmMajor [:tonum [:pick $mmVer 0 [:find $mmVer "."]]]
 :if ($mmMajor < 7) do={ :error ("STOP: Magic Hub needs RouterOS 7 or newer; this router runs " . $mmVer . ". Nothing changed.") }
+:local mmYear [:tonum [:pick [/system/clock get date] 0 4]]
+:if ($mmYear < 2024) do={ :error "STOP: the router clock is wrong (year before 2024), so it cannot verify the app certificate. Set the time (System > Clock or NTP) and paste again. Nothing changed." }
 :local mmIface [/interface/wireguard find where name="%[1]s"]
 :if ([:len $mmIface] > 1) do={ :error "STOP: duplicate tunnel interface; nothing changed" }
 :if ([:len $mmIface] = 0) do={
@@ -76,7 +78,7 @@ func BuildCallbackBootstrapScript(deviceID, baseURL, token string) (string, erro
 :local mmReply
 :do {
   :set mmReply [/tool/fetch url="%[4]s" http-method=post http-header-field="Content-Type: application/json" http-data=$mmBody check-certificate=yes output=user as-value]
-} on-error={ :error "STOP: the app did not accept this setup. Check the router can reach the app and trusts its certificate, then ask the app for a new script." }
+} on-error={ :error "STOP: the app did not accept this setup. Likely causes: no internet or DNS on the router, a wrong clock, a certificate authority the router does not trust (on RouterOS before 7.19 import it under System > Certificates), or a used or expired setup token. Fix that or ask the app for a new script. The empty tunnel interface it created is harmless." }
 :if ($mmReply->"status" != "finished") do={ :error "STOP: the app did not finish answering; run this block again" }
 :local mmRun [:parse ($mmReply->"data")]
 $mmRun

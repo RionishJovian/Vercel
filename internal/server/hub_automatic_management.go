@@ -256,7 +256,9 @@ func managementSourceCIDR(addresses []net.Addr) (string, error) {
 }
 
 // Keep both stages in one RouterOS execution block: a tunnel validation error
-// must stop execution before accounts, keys or management rules are changed.
+// must stop execution before accounts, keys or management rules are changed, and
+// a management conflict (a foreign user with our name) must stop it before the
+// tunnel is written. Both checks therefore run before the first write.
 func automaticEnrollmentScript(id string, p pendingManagement) (string, error) {
 	ip, network, err := net.ParseCIDR(p.sourceCIDR)
 	if err != nil || ip.To4() == nil || !ip.IsPrivate() {
@@ -270,6 +272,10 @@ func automaticEnrollmentScript(id string, p pendingManagement) (string, error) {
 	if strings.Contains(tunnel, redactedRouterKey) {
 		return "", errors.New("the router already connected and its setup key was removed; no script is reissued")
 	}
+	// The router answers SSH through the tunnel routes, so the Hub source must be one of them.
+	if strings.Contains(tunnel, "/ip/route add") && !strings.Contains(tunnel, "dst-address="+p.sourceCIDR) && !strings.Contains(tunnel, "dst-address="+ip.String()) {
+		return "", errors.New("management source is not among the tunnel routes")
+	}
 	management := strings.TrimSpace(automaticManagementScript(id, p))
 	if !strings.HasPrefix(tunnel, "{\n") || !strings.HasSuffix(tunnel, "\n}") {
 		return "", errors.New("invalid tunnel execution block")
@@ -278,8 +284,24 @@ func automaticEnrollmentScript(id string, p pendingManagement) (string, error) {
 	management = strings.ReplaceAll(management, "10.77.0.9", ip.String())
 	// The tunnel block's header says it never touches SSH or users; this combined
 	// paste does, so say what it really changes before the operator runs it.
-	tunnel = strings.Replace(tunnel, "# Scoped tunnel only. Does not enable SSH/REST or change WAN/LAN/firewall/users.",
-		"# Creates the Magic Hub tunnel, then a dedicated management user, its group and SSH key,\n# lets SSH in from the Hub address only, and adds one input firewall rule for it.\n# WAN, LAN and your other users are not changed.", 1)
+	honest := "# Creates the Magic Hub tunnel, then a dedicated management user, its group and SSH key,\n# lets SSH in from the Hub address only, adds one input firewall rule for it, and removes\n# management users left by an older Magic Hub setup. WAN, LAN and your other users are not changed."
+	// Two generators can supply the tunnel block; each states a header that is only true
+	// for the tunnel part, so replace whichever one is present.
+	for _, stale := range []string{
+		"# Scoped tunnel only. Does not enable SSH/REST or change WAN/LAN/firewall/users.",
+		"# Creates missing tunnel resources only. Does not remove prior tunnels or change WAN/LAN/users.",
+	} {
+		tunnel = strings.Replace(tunnel, stale, honest, 1)
+	}
+	// Check the management account before the tunnel is written, so a conflict
+	// leaves the router exactly as it was.
+	marker := "mega-magic:" + p.user
+	preflight := fmt.Sprintf("# PREFLIGHT (management): a user with our name that is not from Magic Hub stops everything.\n"+
+		":local mmUserCheck [/user find where name=\"%[1]s\"]\n"+
+		":if ([:len $mmUserCheck] = 1) do={\n"+
+		"  :if ([:find [/user get $mmUserCheck comment] \"%[3]s:\"] != 0) do={ :error \"STOP: a user named %[1]s exists and is not from Magic Hub; nothing changed\" }\n"+
+		"}\n", p.user, len(marker)+1, marker)
+	tunnel = "{\n" + preflight + strings.TrimPrefix(tunnel, "{\n")
 	// The final line break makes the terminal run the block on paste. Without it,
 	// a real WinBox terminal waited for one more Enter and looked finished.
 	return strings.TrimSuffix(tunnel, "\n}") + "\n" + strings.TrimPrefix(management, "{\n") + "\n", nil
@@ -289,6 +311,9 @@ func automaticManagementScript(id string, p pendingManagement) string {
 	hash := sha256.Sum256([]byte(id))
 	iface := fmt.Sprintf("mmh-%x", hash[:6])
 	marker := "mega-magic:" + p.user
+	// The login password is derived from, but is not, the proof: the proof sits in the
+	// user's comment where any read-only router user can see it, so it must not unlock a login.
+	pw := sha256.Sum256([]byte("mm-password:" + p.proof))
 	// All interpolated values are generated locally as hex, fixed labels or RSA
 	// authorized-key data. No operator text reaches the RouterOS commands.
 	// /ip/service also lists live SSH connections, so the service is the first match.
@@ -302,11 +327,11 @@ func automaticManagementScript(id string, p pendingManagement) string {
 :if ([:typeof $mmPort] != "num") do={ :set mmPort 22 }
 :local account [/user find where name="%[1]s"]
 :if ([:len $account] = 1) do={
-  :if ([:pick [/user get $account comment] 0 %[2]d] != "%[3]s:") do={ :error "STOP: a user named %[1]s exists and is not from Magic Hub; management unchanged" }
+  :if ([:find [/user get $account comment] "%[3]s:"] != 0) do={ :error "STOP: a user named %[1]s exists and is not from Magic Hub; management unchanged" }
 }
 :foreach mmOldUser in=[/user find where name~"^mm-" and name!="%[1]s"] do={
   :local mmOldName [/user get $mmOldUser name]
-  :if ([:pick [/user get $mmOldUser comment] 0 14] = "mega-magic:mm-") do={
+  :if ([:find [/user get $mmOldUser comment] "mega-magic:mm-"] = 0) do={
     /user/ssh-keys remove [find where user=$mmOldName]
     /ip/firewall/filter remove [find where comment=("mega-magic:" . $mmOldName)]
     /ip/firewall/nat remove [find where comment=("mega-magic:" . $mmOldName)]
@@ -316,10 +341,10 @@ func automaticManagementScript(id string, p pendingManagement) string {
 }
 :local grp [/user/group find where name="%[1]s"]
 :if ([:len $grp] = 0) do={ /user/group add name="%[1]s" policy=ssh,read,write,policy,test,sensitive,reboot,ftp } else={ /user/group set $grp policy=ssh,read,write,policy,test,sensitive,reboot,ftp }
-:if ([:len $account] = 0) do={ /user add name="%[1]s" group="%[1]s" address=10.77.0.9/32 password="%[4]s" comment="%[3]s:%[4]s" }
-:if ([:len $account] = 1) do={ /user set $account group="%[1]s" address=10.77.0.9/32 password="%[4]s" comment="%[3]s:%[4]s" disabled=no }
+:if ([:len $account] = 0) do={ /user add name="%[1]s" group="%[1]s" address=10.77.0.9/32 password="%[7]s" comment="%[3]s:%[4]s" }
+:if ([:len $account] = 1) do={ /user set $account group="%[1]s" address=10.77.0.9/32 password="%[7]s" comment="%[3]s:%[4]s" disabled=no }
 :local keyfile "%[1]s.pub.txt"
-:if ([:len [/file find where name=$keyfile]] = 0) do={ /file print file="%[1]s.pub"; :delay 1s }
+:if ([:len [/file find where name=$keyfile]] = 0) do={ /file print file="%[1]s.pub"; :for mmWait from=1 to=20 do={ :if ([:len [/file find where name=$keyfile]] = 0) do={ :delay 500ms } } }
 /file set [find where name=$keyfile] contents="%[5]s"
 /user/ssh-keys remove [find where user="%[1]s"]
 /user/ssh-keys import public-key-file=$keyfile user="%[1]s"
@@ -369,7 +394,7 @@ func automaticManagementScript(id string, p pendingManagement) string {
   }
 }
 :if ($mmReached) do={ :put "Setup complete. You can close this window: Mega Magic connects by itself." } else={ :put "NOT CONNECTED YET: this router has not reached Magic Hub. Check its internet connection. There is nothing more to paste: it connects by itself as soon as it can." }
-}`, p.user, len(marker)+1, marker, p.proof, p.public, iface)
+}`, p.user, len(marker)+1, marker, p.proof, p.public, iface, hex.EncodeToString(pw[:]))
 }
 
 // Bootstrap trust is scoped to the cryptographically authenticated WireGuard
