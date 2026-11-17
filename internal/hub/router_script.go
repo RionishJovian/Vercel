@@ -215,10 +215,12 @@ func BuildQuickConnectScript(deviceID string, peer Peer, privateKey string) (str
 # A different enrollment requires an explicit migration, NOT an automatic cleanup.
 
 # PREFLIGHT: inspect all existing Magic Hub identities and destinations before any writes.
+:local mmVer [/system/resource get version]
+:if ([:tonum [:pick $mmVer 0 [:find $mmVer "."]]] < 7) do={ :error ("STOP: Magic Hub needs RouterOS 7 or newer; this router runs " . $mmVer . ". Nothing changed.") }
 :foreach mmItem in=[/interface/wireguard find where name~"^mmh-"] do={
   :local mmName [/interface/wireguard get $mmItem name]
   :local mmComment [/interface/wireguard get $mmItem comment]
-  :if ($mmName != "%[1]s" && [:pick $mmComment 0 15] = "mega-magic:mmh-") do={
+  :if ($mmName != "%[1]s" && [:find $mmComment "mega-magic:mmh-"] = 0) do={
     :error "STOP: older Magic Hub tunnel found. Migrate separately; nothing changed"
   }
 }
@@ -257,8 +259,8 @@ func BuildQuickConnectScript(deviceID string, peer Peer, privateKey string) (str
   }
 }
 `, name, marker, peer.TunnelAddress, privateKey, peer.RouterPublicKey, peer.HubPublicKey, host, portRaw, strings.Join(peer.AllowedIPs, ";"))
-for _, raw := range peer.AllowedIPs {
-  w(`:local mmRoute [/ip/route find where dst-address="%[1]s"]
+	for _, raw := range peer.AllowedIPs {
+		w(`:local mmRoute [/ip/route find where dst-address="%[1]s"]
 :if ([:len $mmRoute] > 1) do={ :error "STOP: duplicate Hub routes; nothing changed" }
 :if ([:len $mmRoute] = 1) do={
   :if ([/ip/route get $mmRoute comment] != "%[2]s" ||
@@ -267,8 +269,8 @@ for _, raw := range peer.AllowedIPs {
   }
 }
 `, raw, marker, name)
-}
-w(`
+	}
+	w(`
 # APPLY: only add absent resources or enable the matching enrollment.
 :if ([:len $mmIface] = 0) do={
   /interface/wireguard add name="%[1]s" mtu=1280 private-key="%[3]s" comment="%[2]s"
@@ -284,12 +286,12 @@ w(`
   /ip/address add address=%[8]s interface="%[1]s" comment="%[2]s"
 } else={ /ip/address set $mmAddr disabled=no }
 `, name, marker, privateKey, peer.HubPublicKey, host, portRaw, strings.Join(peer.AllowedIPs, ","), peer.TunnelAddress)
-for _, raw := range peer.AllowedIPs {
-  w(`:if ([:len [/ip/route find where dst-address="%[1]s"]] = 0) do={
+	for _, raw := range peer.AllowedIPs {
+		w(`:if ([:len [/ip/route find where dst-address="%[1]s"]] = 0) do={
   /ip/route add dst-address=%[1]s gateway="%[2]s" comment="%[3]s"
 } else={ /ip/route set [find where dst-address="%[1]s"] disabled=no }
 `, raw, name, marker)
-}
+	}
 	w(":put \"Tunnel configured.\"\n}")
 	return b.String(), nil
 }
@@ -324,7 +326,7 @@ func BuildDisconnectScript(deviceID string, peer Peer, managementUser string) (s
 /ip/firewall/nat remove [find where comment="%[1]s"]
 :local mmAccount [/user find where name="%[2]s"]
 :if ([:len $mmAccount] = 1) do={
-  :if ([:pick [/user get $mmAccount comment] 0 %[3]d] = "%[1]s:") do={
+  :if ([:find [/user get $mmAccount comment] "%[1]s:"] = 0) do={
     /user/ssh-keys remove [find where user="%[2]s"]
     /user remove $mmAccount
     :put "Management user and SSH key removed."
@@ -332,10 +334,10 @@ func BuildDisconnectScript(deviceID string, peer Peer, managementUser string) (s
 }
 :local mmGroup [/user/group find where name="%[2]s"]
 :if ([:len $mmGroup] = 1) do={ :do { /user/group remove $mmGroup } on-error={ :put "Management group is still in use; left in place." } }
-/ip/route remove [find where comment="%[5]s"]
-/ip/address remove [find where comment="%[5]s"]
-/interface/wireguard/peers remove [find where interface="%[4]s" and comment="%[5]s"]
-/interface/wireguard remove [find where name="%[4]s" and comment="%[5]s"]
+/ip/route remove [find where comment="%[4]s"]
+/ip/address remove [find where comment="%[4]s"]
+/interface/wireguard/peers remove [find where interface="%[3]s" and comment="%[4]s"]
+/interface/wireguard remove [find where name="%[3]s" and comment="%[4]s"]
 :put "Magic Hub setup removed from this router."
-}`, marker, managementUser, len(marker)+1, name, tunnelMarker), nil
+}`, marker, managementUser, name, tunnelMarker), nil
 }
