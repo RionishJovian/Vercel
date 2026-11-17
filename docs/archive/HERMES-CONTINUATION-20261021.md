@@ -20,7 +20,7 @@ all passed. Older notes were preserved with dated scope corrections.
 Continue `/Users/aces/123/mega-magic-implementation`, origin
 `RionishJovian/Mega`, branch `feature/access-tier-user-role-separation`, observed
 HEAD `b5e7c0c7684c9e16f07851567101a85dde32fa90`. Recheck before work.
-Read `AGENTS.md` and `docs/HERMES-BUILD-CONTEXT.md`.
+Read `AGENTS.md` and `docs/archive/HERMES-BUILD-CONTEXT.md`.
 
 ## What the review established
 

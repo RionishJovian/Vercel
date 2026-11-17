@@ -8,7 +8,7 @@
 
 > **Historical progress record:** this document contains dated and sometimes
 > conflicting milestones. Its former “canonical status” claim is superseded by
-> [CURRENT-HANDOFF.md](../docs/CURRENT-HANDOFF.md). Preserve the history, but do
+> [CURRENT-HANDOFF.md](../docs/archive/CURRENT-HANDOFF.md). Preserve the history, but do
 > not infer current migration, deployment or production verification from it.
 
 **Updated:** 2026-09-26 · **Repo:** `mega-magic-project` (V-language VSL, ~11,600 LOC) · **Tree:** clean, vet+build green
@@ -159,7 +159,7 @@ Two queued follow-ups (require an explicit decision):
 
 This checkpoint saves the remaining local source, migrations, UI assets, tests
 and rollout notes. It is not a claim that all features are production-ready.
-See `docs/CURRENT-HANDOFF.md` for deployed-versus-local status and open work.
+See `docs/archive/CURRENT-HANDOFF.md` for deployed-versus-local status and open work.
 
 - Hub: create-only signed enrollment backend and guided admin UI implemented
   locally; live Hub patch/flag rollout remains pending.

@@ -1,0 +1,12 @@
+# Keep the code graph on current code. These are historical or prototype material
+# (see AGENTS.md sections 2 and 8); graph answers from them mislead agents.
+backend/
+src/
+worker/
+lib/
+magichub/
+ui-reference/
+design-alternatives/
+migrations/
+docs/archive/
+tests/

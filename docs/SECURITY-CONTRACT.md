@@ -107,7 +107,7 @@ private chrome `noindex`.
 
 1. Unit + integration suite must pass before deploy (`go test ./...` → 20 packages green).
 2. E2E must pass against the live origin (`scripts/e2e-public.sh`).
-3. Every deploy happens through `./deploy.sh web|api|all` — never raw `cp` / `nohup`.
+3. Every deploy happens through the CI release (`.github/workflows/deploy.yml`, which runs `deploy/deploy-vps.sh`: backup, migrations, health and header checks, rollback) — never raw `cp` / `nohup` or a hand copy to the server. The old `deploy.sh` was removed on 2026-11-17.
 4. Binary swap keeps `server.prev` for instant rollback.
 5. Verify compiled artifact (strings on the running binary) — never trust build logs alone.
 6. Release hygiene: prune all but current + previous release; never accumulate.

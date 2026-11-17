@@ -1,6 +1,6 @@
 # Database migrations
 
-Production schema changes are explicit operator actions. `deploy.sh api` checks
+Production schema changes are explicit operator actions. the CI release (`deploy/deploy-vps.sh`) checks
 the schema before replacing the binary and stops safely when the required
 device SSH objects are absent; it never mutates the database automatically.
 
@@ -147,7 +147,7 @@ ENVIRONMENT=production go run ./cmd/device-ssh-schema --action check --config co
 any incomplete credential record remains. The `check` action is deliberately a
 deploy-ready check: it verifies the fingerprint-aware definitions and requires
 both constraints to be validated. Only after `validate` and `check` pass should
-the API be deployed with `./deploy.sh api`. Re-running `apply` afterward is safe
+the API be deployed through the CI release. Re-running `apply` afterward is safe
 and preserves the validated state.
 
 ## Authentication sessions
@@ -160,7 +160,7 @@ ENVIRONMENT=production go run ./cmd/auth-session-schema --action check --config 
 ```
 
 The migration creates an owner-only authentication bootstrap table and revocation
-triggers. API startup and `deploy.sh api` refuse to proceed without this schema.
+triggers. API startup and the CI release refuse to proceed without this schema.
 Existing tokens are invalidated: all users must sign in again. Expired/revoked
 session rows can be removed during regular database maintenance.
 
