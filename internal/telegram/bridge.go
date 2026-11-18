@@ -2,6 +2,7 @@ package telegram
 
 import (
 	"context"
+	"log"
 	"strings"
 	"time"
 )
@@ -91,6 +92,18 @@ func (b *PurchaseBridge) handle(m InboundMessage) {
 		return
 	}
 	if err := b.decider.DecidePurchaseRequest(businessID, requestID, approve); err != nil {
+		// Deciders (store, guest, media, add-on) all say "already decided"; Telegram can
+		// redeliver a tap after a restart, so that is not a failure.
+		if strings.Contains(err.Error(), "already decided") {
+			b.ack("Order " + OrderReference(requestID) + " was already decided. Nothing changed.")
+			if bot, down := b.msg.(*Bot); down {
+				if m.CallbackID != "" {
+					logIf("answer callback", requestID, bot.AnswerCallback(m.CallbackID, "Already decided"))
+				}
+				logIf("remove buttons", requestID, bot.RemoveButtons(m.ChatID, m.MessageID))
+			}
+			return
+		}
 		b.ack("Couldn't update order " + OrderReference(requestID) + ". Please check its status in Mega Magic before trying again.")
 		if bot, down := b.msg.(*Bot); down && m.CallbackID != "" {
 			_ = bot.AnswerCallback(m.CallbackID, "Decision failed")
@@ -110,9 +123,9 @@ func (b *PurchaseBridge) handle(m InboundMessage) {
 			shown = "Rejected"
 		}
 		if m.CallbackID != "" {
-			_ = bot.AnswerCallback(m.CallbackID, shown)
+			logIf("answer callback", requestID, bot.AnswerCallback(m.CallbackID, shown))
 		}
-		_ = bot.RemoveButtons(m.ChatID, m.MessageID)
+		logIf("remove buttons", requestID, bot.RemoveButtons(m.ChatID, m.MessageID))
 	}
 }
 
@@ -120,7 +133,14 @@ func (b *PurchaseBridge) ack(text string) {
 	if b.msg == nil || b.target == "" {
 		return
 	}
-	_ = b.msg.SendMessage(b.target, text)
+	logIf("ack", "", b.msg.SendMessage(b.target, text))
+}
+
+// logIf records a failed Telegram reply; the decision itself is already saved.
+func logIf(what, requestID string, err error) {
+	if err != nil {
+		log.Printf("telegram approval %s %s: %v", requestID, what, err)
+	}
 }
 
 // ParsePurchaseReply parses an operator Telegram reply into a purchase decision.

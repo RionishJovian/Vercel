@@ -3,6 +3,7 @@ package telegram
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -336,4 +337,17 @@ func newTestBridge(src InboundSource, msg Messenger, target string, d PurchaseDe
 	b := NewPurchaseBridge(src, msg, target, d)
 	b.SetAuthorization(func(InboundMessage, string) bool { return true })
 	return b
+}
+
+func TestPurchaseBridge_redeliveredTapIsNotAFailure(t *testing.T) {
+	src := &fakeSource{msgs: []InboundMessage{{ChatID: 1, Text: "approve pur-1"}}}
+	dec := &fakeDecider{resolved: map[string]string{"pur-1": "bizA"}, errDecide: errors.New("store purchase already decided")}
+	msgr := &fakeMsg{}
+	b := newTestBridge(src, msgr, "999", dec)
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() { time.Sleep(300 * time.Millisecond); cancel() }()
+	_ = b.Run(ctx)
+	if len(msgr.sent) != 1 || !strings.Contains(msgr.sent[0], "already decided. Nothing changed") || strings.Contains(msgr.sent[0], "Couldn't") {
+		t.Fatalf("acks = %v, want the friendly already-decided note", msgr.sent)
+	}
 }
