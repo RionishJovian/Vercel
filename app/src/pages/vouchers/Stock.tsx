@@ -4,6 +4,7 @@ import { api, fetcher, isUnauthorized } from "../../lib/api";
 import { asArray, num } from "../../lib/types";
 import { useI18n } from "../../i18n";
 import { Note } from "../../components/ui";
+import { errorText } from "../../lib/errors";
 import { Skeleton } from "../../components/Skeleton";
 import { HeadCheck, Pager } from "../../components/DenseTable";
 import { DEFAULT_LAYOUT, printCodes, type Layout, type PrintVoucher } from "./printCodes";
@@ -87,8 +88,10 @@ export function Stock() {
   const slips = selected.filter(canSlip), deletable = selected.filter(canDelete);
   const toHandOut = selected.filter((v) => handOutOn && v.status === "unused" && !isHanded(v));
 
-  function toggle(v: Voucher, on: boolean) { setPicked((m) => { const n = new Map(m); if (on) n.set(v.id, v); else n.delete(v.id); return n; }); }
-  function togglePage(on: boolean) { setPicked((m) => { const n = new Map(m); for (const v of rows) { if (on) n.set(v.id, v); else n.delete(v.id); } return n; }); }
+  const limits = list.data?.data_limits_mb;
+  const withLimit = (v: Voucher, l?: Record<string, number>): Voucher => ({ ...v, data_mb: num(l?.[v.id]) ?? v.data_mb });
+  function toggle(v: Voucher, on: boolean) { setPicked((m) => { const n = new Map(m); if (on) n.set(v.id, withLimit(v, limits)); else n.delete(v.id); return n; }); }
+  function togglePage(on: boolean) { setPicked((m) => { const n = new Map(m); for (const v of rows) { if (on) n.set(v.id, withLimit(v, limits)); else n.delete(v.id); } return n; }); }
   function changeFilter(fn: () => void) { fn(); setPage(1); }
 
   async function selectAll() {
@@ -98,7 +101,7 @@ export function Stock() {
       for (let p = 1; ; p++) {
         const res = await api.get<PageRes>(listKey(p, 200, filters));
         const got = asArray<Voucher>(res.vouchers);
-        for (const v of got) next.set(v.id, v);
+        for (const v of got) next.set(v.id, withLimit(v, res.data_limits_mb));
         if (got.length < 200 || p * 200 >= (num(res.total) ?? 0)) break;
       }
       setPicked(next);
@@ -154,15 +157,15 @@ export function Stock() {
   }
   async function retry(id: string) {
     setRetrying(id);
-    try { await api.post(`/guest-vouchers/batches/${encodeURIComponent(id)}/retry`, {}); } catch (e) { if (isUnauthorized(e)) throw e; }
+    try { await api.post(`/guest-vouchers/batches/${encodeURIComponent(id)}/retry`, {}); } catch (e) { if (isUnauthorized(e)) throw e; setMsg({ kind: "bad", text: errorText(e, t("c.loadFailed")) }); }
     setRetrying(null); void batchesRes.mutate(); void list.mutate();
   }
   async function printBatch(id: string) {
     setBusy(true); setMsg(null);
     try {
-      const res = await api.get<{ state?: string; vouchers?: PrintVoucher[] }>("/guest-vouchers/batches/" + encodeURIComponent(id));
+      const res = await api.get<{ state?: string; data_mb?: number; vouchers?: PrintVoucher[] }>("/guest-vouchers/batches/" + encodeURIComponent(id));
       // A deleted, used or expired code stays in its batch's record but must not be printed.
-      const codes = asArray<Voucher>(res?.vouchers).filter((v) => v.status === undefined || v.status === "unused" || v.status === "active");
+      const codes = asArray<Voucher>(res?.vouchers).filter((v) => v.status === undefined || v.status === "unused" || v.status === "active").map((v) => ({ ...v, data_mb: res?.data_mb ?? v.data_mb }));
       if (res?.state === "ready" && codes.length) printCodes(codes, layout, firstUse); else setMsg({ kind: "warn", text: t("p.notReady") });
     } catch (e) { if (isUnauthorized(e)) throw e; setMsg({ kind: "bad", text: t("c.loadFailed") }); }
     setBusy(false);

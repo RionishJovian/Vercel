@@ -26,6 +26,7 @@ export function RevenuePayments({ canDecide }: { canDecide: boolean }) {
   const reqs = asArray<Req>(Array.isArray(inbox.data) ? inbox.data : inbox.data?.requests);
   const unalerted = new Set(Array.isArray(inbox.data) ? [] : inbox.data?.unalerted_ids ?? []);
   async function decide(id: string, action: "approve" | "reject") {
+    if (action === "approve" && !window.confirm(t("rp.confirmApprove"))) return;
     setBusy(id + action); setMsg(`${t(action === "approve" ? "rp.approving" : "rp.rejecting")}…`);
     try { await api.post(`/guest-wifi/${action}/${encodeURIComponent(id)}`, {}); setMsg(""); await Promise.all([inbox.mutate(), sum.mutate()]); }
     catch (e) { if (isUnauthorized(e)) throw e; setMsg(errorText(e, t(action === "approve" ? "rp.approveFail" : "rp.rejectFail"))); }

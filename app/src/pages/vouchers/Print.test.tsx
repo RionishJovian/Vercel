@@ -100,4 +100,18 @@ describe("printCodes", () => {
     expect(r.rows.map(([k]) => k)).toEqual(["Wi-Fi", "ဆက်သွယ်ရန် / Support"]);
     expect(r.terms).toBe("");
   });
+
+  it("prints the data allowance in MB or GB so a guest sees the cap", () => {
+    const rows = (mb?: number) => receipt({ code: "A", price_mmk: 1500, duration_minutes: 60, data_mb: mb }, LAYOUT, "first").rows.find(([k]) => k === "ဒေတာ / Data")?.[1];
+    expect(rows(500)).toBe("500 MB");
+    expect(rows(1024)).toBe("1.02 GB");
+    expect(rows(2000)).toBe("2 GB");
+    expect(rows(undefined)).toBeUndefined();
+    expect(rows(0)).toBeUndefined();
+  });
+
+  it("leaves the price line off a free voucher", () => {
+    const r = receipt({ code: "A", price_mmk: 0, duration_minutes: 60 }, LAYOUT, "first");
+    expect(r.rows.map(([k]) => k)).not.toContain("စျေးနှုန်း / Price");
+  });
 });
