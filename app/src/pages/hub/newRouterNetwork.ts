@@ -118,7 +118,7 @@ ${uplinkApply}:for mmWait from=1 to=30 do={
 :if ([:len [/ip route find where dst-address="0.0.0.0/0" and active=yes and gateway=$mmGateway]] = 0) do={ :error "STOP: no active default route through the WAN; undo in Safe Mode with Ctrl+D" }
 :put "WAN DHCP and default route are ready. Continuing with Magic Hub."
 :if (![/system ntp client get enabled]) do={ :do { /system ntp client set enabled=yes servers=pool.ntp.org } on-error={ :put "NTP: could not enable the time client; set it in WinBox, System, NTP Client." } }
-:if ([/system clock get time-zone-name] = "UTC") do={ :do { /system clock set time-zone-autodetect=no time-zone-name=Asia/Yangon } on-error={ :put "Clock: could not set the time zone; set it in WinBox, System, Clock." } }
+:if ([/system clock get time-zone-name] = "UTC" || [/system clock get time-zone-name] = "manual") do={ :do { /system clock set time-zone-autodetect=no time-zone-name=Asia/Yangon } on-error={ :put "Clock: could not set the time zone; set it in WinBox, System, Clock." } }
 `;
   const blockStart = script.indexOf("{") + 1;
   return script.slice(0, blockStart) + checks + script.slice(blockStart, applyAt) + changes + script.slice(applyAt);
