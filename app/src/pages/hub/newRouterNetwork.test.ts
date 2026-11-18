@@ -31,6 +31,22 @@ describe("hAP ax2 network setup", () => {
   });
 });
 
+describe("time sync", () => {
+  it.each(["ethernet", "5ghz", "2ghz"] as const)("turns the time client on after the WAN is proven, only if it is off (%s)", uplink => {
+    const script = make(ax2, uplink);
+    const routeOk = script.indexOf('Continuing with Magic Hub."');
+    const ntp = script.indexOf("/system ntp client set enabled=yes servers=pool.ntp.org");
+    const tz = script.indexOf("time-zone-name=Asia/Yangon");
+    expect(routeOk).toBeGreaterThan(-1);
+    expect(ntp).toBeGreaterThan(routeOk);              // after the default route is proven
+    expect(tz).toBeGreaterThan(routeOk);
+    expect(ntp).toBeLessThan(script.indexOf("# APPLY: tunnel")); // and before the Hub's own writes
+    expect(script).toContain(":if (![/system ntp client get enabled])");       // an existing NTP setup is left alone
+    expect(script).toContain(':if ([/system clock get time-zone-name] = "UTC")'); // a chosen time zone is left alone
+    expect(script).toContain("on-error="); // a failure here must not stop the Magic Hub setup
+  });
+});
+
 describe("Wi-Fi WAN can resume a cut-off paste", () => {
   it.each([["hap-ax2", "5ghz"], ["hap-ac2", "5ghz"]] as const)("%s %s marks what it creates and only continues its own work", (id, band) => {
     const script = make(findProfile(id)!, band);
