@@ -7,6 +7,12 @@ describe("port panels", () => {
     expect(panelFor("C53UiG+5HPaxD2HPaxD")?.id).toBe("hap-ax3");
     expect(panelFor("c52iG-5HaxD2HaxD-TC")?.id).toBe("hap-ax2");
   });
+  it("finds the diagram from the friendly board name RouterOS reports in /system resource", () => {
+    // Seen on a real hAP ax2 on RouterOS 7.25.1: the board name is "hAP ax^2" even though the model code is C52iG-5HaxD2HaxD.
+    expect(panelFor("hAP ax^2", "ax3")?.id).toBe("hap-ax2");
+    expect(panelFor("hAP ax^3")?.id).toBe("hap-ax3");
+    expect(panelFor("RB5009UG+S+IN", "hAP ax2")).toBeUndefined();
+  });
   it("falls back to the owner's name only on an exact model match, and never lends one model's panel to another", () => {
     expect(panelFor(undefined, "hAP ax3")?.id).toBe("hap-ax3");
     expect(panelFor(undefined, "hAP ax²")?.id).toBe("hap-ax2");
