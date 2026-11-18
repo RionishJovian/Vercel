@@ -313,3 +313,27 @@ func TestInlineBlockCommentDetector(t *testing.T) {
 		t.Fatal("detector does not tell an inline block comment from a full-line comment")
 	}
 }
+
+// WinBox's terminal treats the end of a line as the end of a statement, so a condition that
+// continues after "||" or "&&" on the next line is a syntax error there. That ran the rest of
+// the block outside its braces, with its variables empty, and half-applied the setup on a real
+// hAP ax2. Every condition must sit on one line.
+var lineEndsInOperator = regexp.MustCompile(`(?m)(\|\||&&)[ \t]*$`)
+
+func TestScriptsHaveNoConditionContinuedOnTheNextLine(t *testing.T) {
+	privateKey, publicKey, _ := GenerateRouterKeypair()
+	p := scriptFixture()
+	p.RouterPublicKey = publicKey
+	quick, _ := BuildQuickConnectScript("gateway", p, privateKey)
+	startOver, _ := BuildStartOverScript("gateway", p, privateKey)
+	resume, _ := BuildResumeScript("gateway", p)
+	disconnect, _ := BuildDisconnectScript("gateway", p, "mm-user")
+	for name, script := range map[string]string{"quick": quick, "start over": startOver, "resume": resume, "disconnect": disconnect} {
+		if lineEndsInOperator.MatchString(script) {
+			t.Errorf("%s has a line ending in || or &&; WinBox reads that as a syntax error", name)
+		}
+	}
+	if !lineEndsInOperator.MatchString("if (a ||\n b) do={}") || lineEndsInOperator.MatchString("if (a || b) do={}") {
+		t.Fatal("detector does not tell a continued condition from a one-line one")
+	}
+}

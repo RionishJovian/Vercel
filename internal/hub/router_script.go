@@ -294,22 +294,18 @@ func buildQuickConnect(deviceID string, peer Peer, privateKey string, startOver 
 :local mmPeer [/interface/wireguard/peers find where interface="%[1]s"]
 %[11]s:foreach mmItem in=$mmPeer do={
   :if ([/interface/wireguard/peers get $mmItem comment] != "%[2]s") do={ :error "STOP: a peer on the Magic Hub interface belongs to another setup; nothing changed" }
-  :if ([/interface/wireguard/peers get $mmItem public-key] != "%[6]s" ||
-       [/interface/wireguard/peers get $mmItem endpoint-address] != "%[7]s" ||
-       [:tostr [/interface/wireguard/peers get $mmItem endpoint-port]] != "%[8]s" ||
-       [:tostr [/interface/wireguard/peers get $mmItem allowed-address]] != "%[9]s") do={
-    %[12]s
-  }
+  :if ([/interface/wireguard/peers get $mmItem public-key] != "%[6]s") do={ %[12]s }
+  :if ([/interface/wireguard/peers get $mmItem endpoint-address] != "%[7]s") do={ %[12]s }
+  :if ([:tostr [/interface/wireguard/peers get $mmItem endpoint-port]] != "%[8]s") do={ %[12]s }
+  :if ([:tostr [/interface/wireguard/peers get $mmItem allowed-address]] != "%[9]s") do={ %[12]s }
 }
 :foreach mmItem in=[/ip/address find where interface="%[1]s"] do={
   :if ([/ip/address get $mmItem comment] != "%[2]s") do={ :error "STOP: an address on the Magic Hub interface belongs to another setup; nothing changed" }
   :if ([/ip/address get $mmItem address] != "%[3]s") do={ %[13]s }
 }
 :foreach mmItem in=[/ip/address find where address="%[3]s"] do={
-  :if ([/ip/address get $mmItem interface] != "%[1]s" ||
-       [/ip/address get $mmItem comment] != "%[2]s") do={
-    :error "STOP: tunnel address already assigned elsewhere; nothing changed"
-  }
+  :if ([/ip/address get $mmItem interface] != "%[1]s") do={ :error "STOP: tunnel address already assigned elsewhere; nothing changed" }
+  :if ([/ip/address get $mmItem comment] != "%[2]s") do={ :error "STOP: tunnel address already assigned elsewhere; nothing changed" }
 }
 :foreach mmItem in=[/ip/route find where comment~"^mega-magic:mmh-"] do={
   :if ([/ip/route get $mmItem comment] != "%[2]s") do={
