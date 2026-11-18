@@ -42,7 +42,8 @@ describe("time sync", () => {
     expect(tz).toBeGreaterThan(routeOk);
     expect(ntp).toBeLessThan(script.indexOf("# APPLY: tunnel")); // and before the Hub's own writes
     expect(script).toContain(":if (![/system ntp client get enabled])");       // an existing NTP setup is left alone
-    expect(script).toContain(':if ([/system clock get time-zone-name] = "UTC")'); // a chosen time zone is left alone
+    // A factory router reports its zone as "manual" (seen on a real hAP ax2, 7.25.1) or "UTC"; a zone someone chose is left alone.
+    expect(script).toContain(':if ([/system clock get time-zone-name] = "UTC" || [/system clock get time-zone-name] = "manual")');
     expect(script).toContain("on-error="); // a failure here must not stop the Magic Hub setup
   });
 });
