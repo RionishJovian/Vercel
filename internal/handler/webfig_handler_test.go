@@ -247,24 +247,24 @@ func TestWebFigSessionEndsWithTheAccountPass(t *testing.T) {
 func TestWebFigRecheckEndsAccessWhenThingsChange(t *testing.T) {
 	grant := webfig.Grant{BusinessID: webFigOwner, DeviceID: webFigDevice, Host: "10.77.0.9"}
 	t.Setenv("MM_WEBFIG_ACCESS", "open")
-	if err := webFigStillAllowed(context.Background(), grant, "OWNER", webFigTargets{}); err != nil {
+	if err := webFigStillAllowed(context.Background(), grant, "OWNER", webFigTargets{}, false); err != nil {
 		t.Fatal(err)
 	}
-	if webFigStillAllowed(context.Background(), grant, "VIEWER", webFigTargets{}) == nil {
+	if webFigStillAllowed(context.Background(), grant, "VIEWER", webFigTargets{}, false) == nil {
 		t.Fatal("demoted user kept access")
 	}
 	moved := grant
 	moved.BusinessID = webFigForeign
-	if webFigStillAllowed(context.Background(), moved, "OWNER", webFigTargets{}) == nil {
+	if webFigStillAllowed(context.Background(), moved, "OWNER", webFigTargets{}, false) == nil {
 		t.Fatal("router outside the tenant kept access")
 	}
 	readdressed := grant
 	readdressed.Host = "10.77.0.10"
-	if webFigStillAllowed(context.Background(), readdressed, "OWNER", webFigTargets{}) == nil {
+	if webFigStillAllowed(context.Background(), readdressed, "OWNER", webFigTargets{}, false) == nil {
 		t.Fatal("changed address kept access")
 	}
 	t.Setenv("MM_WEBFIG_ACCESS", "locked")
-	if webFigStillAllowed(context.Background(), grant, "OWNER", webFigTargets{}) == nil {
+	if webFigStillAllowed(context.Background(), grant, "OWNER", webFigTargets{}, false) == nil {
 		t.Fatal("locking did not end the session")
 	}
 }

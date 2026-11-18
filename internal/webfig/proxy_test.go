@@ -245,7 +245,7 @@ func TestLockSwitch(t *testing.T) {
 			t.Fatalf("%q: %s", tc.env, got)
 		}
 	}
-	if Entitled(ModeOff, "DEVELOPER") || Entitled(ModeLocked, "OWNER") || !Entitled(ModeLocked, "DEVELOPER") || !Entitled(ModeOpen, "ADMIN") {
+	if Entitled(ModeOff, "DEVELOPER", true) || Entitled(ModeLocked, "OWNER", false) || !Entitled(ModeLocked, "OWNER", true) || !Entitled(ModeLocked, "DEVELOPER", false) || !Entitled(ModeOpen, "ADMIN", false) {
 		t.Fatal("entitlement table is wrong")
 	}
 }

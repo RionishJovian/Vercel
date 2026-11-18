@@ -37,7 +37,26 @@ type WebFigControl struct {
 	store      *webfig.Store
 	host       string
 	sourceCIDR string
-	record     func(c *gin.Context, businessID, deviceID, action, reason string)
+	// paid says whether a business has an active paid WebFig add-on; nil means none is.
+	paid   func(ctx context.Context, businessID string) (bool, error)
+	record func(c *gin.Context, businessID, deviceID, action, reason string)
+}
+
+// SetWebFigPaid attaches the paid-add-on check used in ModeLocked.
+func (h *SecurityHandler) SetWebFigPaid(paid func(ctx context.Context, businessID string) (bool, error)) {
+	if h.webFig != nil {
+		h.webFig.paid = paid
+	}
+}
+
+// webFigPaid is true while the signed-in business has an active paid add-on. An unreadable
+// answer counts as not paid, so the feature fails closed.
+func (h *SecurityHandler) webFigPaid(c *gin.Context) bool {
+	if h.webFig == nil || h.webFig.paid == nil {
+		return false
+	}
+	ok, err := h.webFig.paid(c.Request.Context(), auth.GetBusinessID(c))
+	return err == nil && ok
 }
 
 // webFigConfirm is what the console sends after showing the plan.
@@ -71,7 +90,7 @@ func (h *SecurityHandler) webFigGate(c *gin.Context) (*WebFigControl, string, st
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "WebFig is not available", "code": "webfig_off", "access": webfig.ModeOff})
 		return nil, "", "", "", false
 	}
-	if !webfig.Entitled(mode, auth.GetUserRole(c)) {
+	if !webfig.Entitled(mode, auth.GetUserRole(c), h.webFigPaid(c)) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "WebFig is locked on this account", "code": "webfig_locked", "access": webfig.ModeLocked})
 		return nil, "", "", "", false
 	}
@@ -112,7 +131,7 @@ func (h *SecurityHandler) WebFigStatus(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"access": webfig.ModeOff})
 		return
 	}
-	if !webfig.Entitled(mode, auth.GetUserRole(c)) {
+	if !webfig.Entitled(mode, auth.GetUserRole(c), h.webFigPaid(c)) {
 		c.JSON(http.StatusOK, gin.H{"access": webfig.ModeLocked})
 		return
 	}
@@ -228,7 +247,7 @@ func (h *SecurityHandler) WebFigOpen(c *gin.Context) {
 // tenant's at this address. passAccess is nil when passes aren't enforced.
 func WebFigChecker(db interface {
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
-}, targets routeros.TargetSource, passAccess func(context.Context, string) (bool, error)) webfig.Checker {
+}, targets routeros.TargetSource, passAccess, paid func(context.Context, string) (bool, error)) webfig.Checker {
 	return func(ctx context.Context, g webfig.Grant) error {
 		var role string
 		err := db.QueryRowContext(ctx, `SELECT s.user_role FROM auth_sessions s
@@ -243,7 +262,13 @@ func WebFigChecker(db interface {
 		if err := webFigPassValid(ctx, g.BusinessID, passAccess); err != nil {
 			return err
 		}
-		return webFigStillAllowed(ctx, g, role, targets)
+		isPaid := false
+		if paid != nil {
+			if ok, err := paid(ctx, g.BusinessID); err == nil {
+				isPaid = ok
+			}
+		}
+		return webFigStillAllowed(ctx, g, role, targets, isPaid)
 	}
 }
 
@@ -262,11 +287,11 @@ func webFigPassValid(ctx context.Context, businessID string, passAccess func(con
 	return nil
 }
 
-func webFigStillAllowed(ctx context.Context, g webfig.Grant, role string, targets routeros.TargetSource) error {
+func webFigStillAllowed(ctx context.Context, g webfig.Grant, role string, targets routeros.TargetSource, paid bool) error {
 	if !model.HasAtLeastRole(model.UserRole(role), model.RoleAdmin) {
 		return errors.New("role no longer qualifies")
 	}
-	if !webfig.Entitled(webfig.ModeFromEnv(), role) {
+	if !webfig.Entitled(webfig.ModeFromEnv(), role, paid) {
 		return errors.New("feature is off or locked")
 	}
 	target, err := targets.TargetForDevice(ctx, g.BusinessID, g.DeviceID)
