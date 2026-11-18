@@ -1,8 +1,14 @@
 package handler
 
 import (
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
+	"github.com/gin-gonic/gin"
+
+	"mega-magic/internal/auth"
 	"mega-magic/internal/database"
 )
 
@@ -59,5 +65,31 @@ func TestPlatformSuspendKeepsUserFlagsAndAudits(t *testing.T) {
 		if !got[want] {
 			t.Errorf("missing audit row %s (have %v)", want, got)
 		}
+	}
+}
+
+func TestPlatformPricingPublishIsAudited(t *testing.T) {
+	db := harness_testdb(t)
+	repo := database.NewPlatformBusinessRepository(db)
+	email := "price-" + randHex(6) + "@example.test"
+	biz, owner, err := repo.CreateTenant("Price Cafe", email, "$2a$10$aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "SMALL_WISP", 1, database.PlatformActor{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := NewPlatformHandler(repo, database.NewPlatformIncidentRepository(db), database.NewPricingRepository(db), db, nil)
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Set(auth.ContextKeyBusinessID, biz)
+	c.Set(auth.ContextKeyUserID, owner)
+	c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/platform/pricing", strings.NewReader(`{"monthly_standard_mmk":9000,"annual_standard_mmk":90000,"active":false}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	h.PutPricing(c)
+	if w.Code != http.StatusOK {
+		t.Fatalf("publish: %d %s", w.Code, w.Body.String())
+	}
+	var n int
+	if err := db.QueryRow(`SELECT count(*) FROM audit_events WHERE business_id=$1 AND action='platform.pricing.publish' AND after_state->>'monthly_standard_mmk'='9000'`, biz).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("pricing audit rows = %d (err %v), want 1", n, err)
 	}
 }

@@ -16,6 +16,7 @@ export function Pricing() {
   const p = data?.pricing ?? {};
   async function save(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (!window.confirm(t("pp.confirmPublish"))) return;
     const f = new FormData(e.currentTarget);
     const num = (k: string) => { const raw = String(f.get(k) ?? "").trim(); if (!raw) return null; const v = Number(raw); return Number.isSafeInteger(v) ? v : NaN; };
     const body = { active: f.get("active") === "on", starts_on: String(f.get("starts") ?? "") || null, ends_on: String(f.get("ends") ?? "") || null, label: String(f.get("label") ?? "").trim() || null, monthly_promo_mmk: num("mp"), monthly_standard_mmk: num("ms"), annual_promo_mmk: num("ap"), annual_standard_mmk: num("as") };

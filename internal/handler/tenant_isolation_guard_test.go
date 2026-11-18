@@ -27,6 +27,7 @@ var directTenantReads = map[string]string{
 	"telegram_renewals.go:AccountRenewalDecider.ResolveRequestBusiness": "finds which business owns a request id from a platform Telegram tap; the approver is authorized by the platform binding",
 	"telegram_renewals.go:PlatformHandler.sendAccountRenewal":           "platform Telegram alert for one pending request, system context",
 	"telegram_renewals.go:PlatformHandler.RunRenewalNotifier":           "system retry loop for undelivered platform alerts, across businesses",
+	"platform_handler.go:PlatformHandler.PutPricing":                    "writes one platform audit row for a DEVELOPER-only price publish, filed under the signed-in operator's own business",
 	"guest_wifi_handler.go:GuestWifiHandler.RunOwnerAlertRetry":         "system retry loop for undelivered owner alerts; each alert goes only to that request's own business bot",
 }
 
