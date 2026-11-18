@@ -26,11 +26,12 @@ export const portPanels: readonly PortPanel[] = [
   },
 ];
 
-/** The diagram for this router, or none. The board name wins; the owner's typed name is the fallback and must match exactly. */
+/** The diagram for this router, or none. The reported board wins (model code or the friendly name RouterOS reports); the owner's typed name is the fallback and must match exactly. */
 export function panelFor(board?: string, hardwareName?: string): PortPanel | undefined {
   const code = (board ?? "").trim();
   const byBoard = code ? portPanels.find((p) => p.board.test(code)) : undefined;
   if (byBoard) return byBoard;
-  const id = productForName(hardwareName)?.id;
+  // RouterOS reports the friendly board name ("hAP ax^2"), not the RouterBOARD model code, in /system resource.
+  const id = productForName(code)?.id ?? productForName(hardwareName)?.id;
   return id ? portPanels.find((p) => p.id === id) : undefined;
 }
