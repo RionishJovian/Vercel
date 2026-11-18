@@ -8,8 +8,8 @@ import { Field, Note } from "../../components/ui";
 import { Skeleton } from "../../components/Skeleton";
 import { errorText } from "../../lib/errors";
 
-interface Biz { business_id: string; company_name?: string; owner_email?: string; access_tier?: string; device_quota_limit?: number; is_active?: boolean; created_at?: string }
-interface State { company_name?: string; access_tier?: string; is_active?: boolean; owner_email?: string; device_count?: number; device_quota_limit?: number; open_incidents?: number; purchased_extra_slots?: number; ai_token_balance?: number }
+interface Biz { business_id: string; company_name?: string; access_tier?: string; device_quota_limit?: number; is_active?: boolean; created_at?: string }
+interface State { company_name?: string; access_tier?: string; is_active?: boolean; device_count?: number; device_quota_limit?: number; open_incidents?: number; purchased_extra_slots?: number; ai_token_balance?: number }
 
 function Row({ b, self, onChanged }: { b: Biz; self: boolean; onChanged: () => void }) {
   const { t } = useI18n();
@@ -18,17 +18,17 @@ function Row({ b, self, onChanged }: { b: Biz; self: boolean; onChanged: () => v
   return (
     <article className="glass pad stack">
       <div className="row"><b>{b.company_name}</b><span className={"chip " + (b.is_active ? "ok" : "")}>{b.is_active ? t("dev.tm.active") : t("pb.suspended")}</span></div>
-      <p className="soft small">{b.owner_email} · {b.access_tier} · <span className="num">{b.device_quota_limit}</span> · <span className="num">{b.created_at ? new Date(b.created_at).toLocaleDateString() : ""}</span></p>
+      <p className="soft small">{b.access_tier} · <span className="num">{b.device_quota_limit}</span> · <span className="num">{b.created_at ? new Date(b.created_at).toLocaleDateString() : ""}</span></p>
       <div className="row" style={{ justifyContent: "flex-start", flexWrap: "wrap" }}>
-        {self ? <span className="soft small">{t("pb.yours")}</span> : <button className="pill" type="button" disabled={busy} onClick={() => void run(() => api.post(`/platform/businesses/${encodeURIComponent(b.business_id)}/${b.is_active ? "suspend" : "unsuspend"}`, {}))}>{b.is_active ? t("pb.suspend") : t("pb.unsuspend")}</button>}
+        {self ? <span className="soft small">{t("pb.yours")}</span> : <button className="pill" type="button" disabled={busy} onClick={() => { if (window.confirm(t(b.is_active ? "pb.confirmSuspend" : "pb.confirmUnsuspend"))) void run(() => api.post(`/platform/businesses/${encodeURIComponent(b.business_id)}/${b.is_active ? "suspend" : "unsuspend"}`, {})); }}>{b.is_active ? t("pb.suspend") : t("pb.unsuspend")}</button>}
         <button className="pill" type="button" onClick={() => setPw(pw === null ? "" : null)}>{t("pb.resetPw")}</button>
         <button className="pill" type="button" disabled={busy} onClick={() => void (async () => { try { setSt(await api.get<State>(`/platform/businesses/${encodeURIComponent(b.business_id)}/state`)); } catch (e) { if (isUnauthorized(e)) throw e; setMsg(errorText(e, t("pb.failed"))); } })()}>{t("pb.state")}</button>
       </div>
       {pw !== null && (
         <div className="note stack"><input className="input" type="password" autoComplete="new-password" minLength={6} pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9]).{6,128}" value={pw} onChange={(e) => setPw(e.target.value)} aria-label={t("pb.newPw")} placeholder={t("pb.newPw")} />
-          <button className="pill danger" type="button" disabled={busy || !validPassword(pw)} onClick={() => void run(async () => { await api.post(`/platform/businesses/${encodeURIComponent(b.business_id)}/reset-owner-password`, { new_password: pw }); setPw(null); }, t("pb.pwReset"))}>{t("pb.resetPw")}</button></div>
+          <button className="pill danger" type="button" disabled={busy || !validPassword(pw)} onClick={() => { if (window.confirm(t("pb.confirmReset"))) void run(async () => { await api.post(`/platform/businesses/${encodeURIComponent(b.business_id)}/reset-owner-password`, { new_password: pw }); setPw(null); }, t("pb.pwReset")); }}>{t("pb.resetPw")}</button></div>
       )}
-      {st && <dl className="spec"><dt>{t("pb.owner")}</dt><dd>{st.owner_email}</dd><dt>{t("pb.devices")}</dt><dd className="num">{st.device_count} / {st.device_quota_limit}</dd><dt>{t("pb.incidents")}</dt><dd className="num">{st.open_incidents}</dd><dt>{t("pb.extra")}</dt><dd className="num">{st.purchased_extra_slots}</dd><dt>AI</dt><dd className="num">{st.ai_token_balance}</dd></dl>}
+      {st && <dl className="spec"><dt>{t("pb.devices")}</dt><dd className="num">{st.device_count} / {st.device_quota_limit}</dd><dt>{t("pb.incidents")}</dt><dd className="num">{st.open_incidents}</dd><dt>{t("pb.extra")}</dt><dd className="num">{st.purchased_extra_slots}</dd><dt>AI</dt><dd className="num">{st.ai_token_balance}</dd></dl>}
       {msg && <p className="soft small" role="status">{msg}</p>}
     </article>
   );

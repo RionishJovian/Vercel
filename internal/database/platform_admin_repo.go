@@ -37,7 +37,25 @@ func TierDefaultsFor(tier string) TierDefaults {
 // CreateTenant creates a business + its OWNER user + support rows in ONE
 // transaction. Any failure rolls the whole thing back — never a half tenant.
 // Returns (businessID, ownerUserID). key = owner_email (duplicate => error).
-func (r *PlatformBusinessRepository) CreateTenant(companyName, ownerEmail, passwordHash, accessTier string, deviceQuotaLimit int) (string, string, error) {
+// PlatformActor is who performed a platform action, for the audit trail.
+type PlatformActor struct{ UserID, IP, UserAgent string }
+
+// auditPlatformTX records a platform action in audit_events inside the caller's transaction,
+// so an action and its trail commit or roll back together.
+func auditPlatformTX(tx *sql.Tx, businessID string, a PlatformActor, action, reason string) error {
+	var user, ip any
+	if a.UserID != "" {
+		user = a.UserID
+	}
+	if a.IP != "" {
+		ip = a.IP
+	}
+	_, err := tx.Exec(`INSERT INTO audit_events(business_id,user_id,user_role,action,entity_type,entity_id,reason,ip_address,user_agent)
+VALUES($1,$2,'DEVELOPER',$3,'business',$7,$4,$5,NULLIF($6,''))`, businessID, user, action, reason, ip, a.UserAgent, businessID)
+	return err
+}
+
+func (r *PlatformBusinessRepository) CreateTenant(companyName, ownerEmail, passwordHash, accessTier string, deviceQuotaLimit int, actor PlatformActor) (string, string, error) {
 	tx, err := r.db.Begin()
 	if err != nil {
 		return "", "", fmt.Errorf("begin tenant tx: %w", err)
@@ -94,16 +112,19 @@ func (r *PlatformBusinessRepository) CreateTenant(companyName, ownerEmail, passw
 		return "", "", fmt.Errorf("create owner: %w", err)
 	}
 
+	if err := auditPlatformTX(tx, businessID, actor, "platform.business.create", "Platform Admin created a client workspace"); err != nil {
+		return "", "", fmt.Errorf("audit tenant create: %w", err)
+	}
 	if err := tx.Commit(); err != nil {
 		return "", "", fmt.Errorf("commit tenant: %w", err)
 	}
 	return businessID, owner.UserID, nil
 }
 
-// SetBusinessActive suspends/unsuspends a tenant. It ALSO flips the tenant's
-// users.is_active, because the login path already refuses inactive users — this
-// achieves "suspended tenant cannot log in" WITHOUT touching auth/login core.
-func (r *PlatformBusinessRepository) SetBusinessActive(businessID string, active bool) error {
+// SetBusinessActive suspends/unsuspends a tenant. It changes only businesses.is_active:
+// login, sessions and RequireActiveTenant all read that flag, and leaving users.is_active
+// alone means unsuspending never re-enables a person the owner had switched off.
+func (r *PlatformBusinessRepository) SetBusinessActive(businessID string, active bool, actor PlatformActor) error {
 	tx, err := r.db.Begin()
 	if err != nil {
 		return fmt.Errorf("begin: %w", err)
@@ -117,16 +138,25 @@ func (r *PlatformBusinessRepository) SetBusinessActive(businessID string, active
 	if n, _ := res.RowsAffected(); n == 0 {
 		return ErrTenantNotFound
 	}
-	if _, err := tx.Exec(`UPDATE users SET is_active=$2, updated_at=now() WHERE business_id=$1`, businessID, active); err != nil {
-		return fmt.Errorf("set users active: %w", err)
+	action := "platform.business.suspend"
+	if active {
+		action = "platform.business.unsuspend"
+	}
+	if err := auditPlatformTX(tx, businessID, actor, action, "Platform Admin changed the business status"); err != nil {
+		return fmt.Errorf("audit business status: %w", err)
 	}
 	return tx.Commit()
 }
 
 // ResetOwnerPassword sets a new bcrypt hash on the tenant's OWNER user. The
 // plaintext is never stored or logged.
-func (r *PlatformBusinessRepository) ResetOwnerPassword(businessID, passwordHash string) error {
-	res, err := r.db.Exec(
+func (r *PlatformBusinessRepository) ResetOwnerPassword(businessID, passwordHash string, actor PlatformActor) error {
+	tx, err := r.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin: %w", err)
+	}
+	defer tx.Rollback()
+	res, err := tx.Exec(
 		`UPDATE users SET password_hash=$2, updated_at=now()
 		  WHERE business_id=$1 AND user_role='OWNER'`, businessID, passwordHash)
 	if err != nil {
@@ -135,7 +165,10 @@ func (r *PlatformBusinessRepository) ResetOwnerPassword(businessID, passwordHash
 	if n, _ := res.RowsAffected(); n == 0 {
 		return ErrTenantNotFound
 	}
-	return nil
+	if err := auditPlatformTX(tx, businessID, actor, "platform.owner.password_reset", "Platform Admin reset the owner password"); err != nil {
+		return fmt.Errorf("audit password reset: %w", err)
+	}
+	return tx.Commit()
 }
 
 // TenantState is the per-tenant admin read.
