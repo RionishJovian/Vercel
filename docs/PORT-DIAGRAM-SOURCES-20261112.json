@@ -1,0 +1,164 @@
+{
+  "source": "https://box.mikrotik.com/d/9268c785266147a9b83c/",
+  "linkedFrom": "https://mikrotik.com/download/tools",
+  "retrieved": "2026-11-12",
+  "processing": "Decode embedded PNG, crop in original pixels, fit within 1200x1200, WebP quality 85. Port centres inspected on 10-percent grid.",
+  "models": [
+    {
+      "id": "ccr2004",
+      "sourcePath": "/Visio and SVG files for homepage/CCR/CCR2004-16G-2S PC.svg",
+      "sourceSvgSha256": "bccd2ad80816ca75821a84e99e856c564b8691675bb760ba8429383a1a296862",
+      "cropPixels": [
+        610,
+        355,
+        2060,
+        611
+      ],
+      "outputSha256": "d4a52ea67303968aa5070a4a1c8454c7f89b5ce01c1205da0bae70a80eb80eca"
+    },
+    {
+      "id": "ccr2116",
+      "sourcePath": "/Visio and SVG files for homepage/CCR/CCR2116-12G-4S .svg",
+      "sourceSvgSha256": "3997f5cfea73453d813cea6f0b9a7fa6ed7625e43c8c3fcf49d32d5115e5b5a0",
+      "cropPixels": [
+        83,
+        338,
+        2430,
+        616
+      ],
+      "outputSha256": "de08b32f6c2fb11bbbdb15f8afc105526914ef25cc9f413896d1a313b6883c39"
+    },
+    {
+      "id": "ccr2216",
+      "sourcePath": "/Visio and SVG files for homepage/CCR/CCR2216-1G-12XS-2XQ.svg",
+      "sourceSvgSha256": "592945872aecc493e2b209bdb96eed2123d42da1f60b9a9fe859270e99e1c053",
+      "cropPixels": [
+        81,
+        361,
+        2428,
+        616
+      ],
+      "outputSha256": "09e4b04de9590c320cb38d009c19b25d2063aeff1b11f361a4858d8153e3f59b"
+    },
+    {
+      "id": "crs112",
+      "sourcePath": "/Visio and SVG files for homepage/CRS/CRS112-8P-4S-IN.svg",
+      "sourceSvgSha256": "d3360ea97b1430c09822867bb2efe7cf0242920be94d123b41e44d3161b4acb4",
+      "cropPixels": [
+        160,
+        750,
+        1873,
+        1107
+      ],
+      "outputSha256": "c7cf38d63197fcd165adab0b1303201198ba17717074cdd8cee1397a89d1fb87"
+    },
+    {
+      "id": "crs305",
+      "sourcePath": "/Visio and SVG files for homepage/CRS/CRS305-1G-4S IN.svg",
+      "sourceSvgSha256": "8eb90f83959f354ece0f3cb508a97bf158258b6d4b7137fb031d20cb9cb4a4d8",
+      "cropPixels": [
+        92,
+        490,
+        1370,
+        755
+      ],
+      "outputSha256": "cf1723431040921ffa43594cd8515cd2a68c98637cb7ad8af834d40fc02a30df"
+    },
+    {
+      "id": "crs309",
+      "sourcePath": "/Visio and SVG files for homepage/CRS/CRS309-1G-8S IN.svg",
+      "sourceSvgSha256": "50b93a2798533e7fa24eede97c5e9caf7dda91ae5fbddcd3fc50e9eb32509fef",
+      "cropPixels": [
+        121,
+        1040,
+        2703,
+        1310
+      ],
+      "outputSha256": "6d55fd3ed6b32f5799160da03d218c18b89f7866e33af5c8bfcea366b8110cd1"
+    },
+    {
+      "id": "crs310",
+      "sourcePath": "/Visio and SVG files for homepage/CRS/CRS310-8G 2S IN.svg",
+      "sourceSvgSha256": "3ae50cb0b692ecaf8449db7c92bd4e7cef777f20eddbe37f0f3426f66fd56351",
+      "cropPixels": [
+        728,
+        358,
+        1800,
+        616
+      ],
+      "outputSha256": "f7eedd88f2828d562ba5a998c01ede4354f807439a6b7169e103745045ad78f4"
+    },
+    {
+      "id": "crs328",
+      "sourcePath": "/Visio and SVG files for homepage/CRS/CRS328-24P-4S RM.svg",
+      "sourceSvgSha256": "975ce9396a2b5b62c5d491508c312c86345cc3ece76aa93436d25306ee78a04f",
+      "cropPixels": [
+        77,
+        570,
+        2483,
+        809
+      ],
+      "outputSha256": "e6980c23ff1ddf7ad5cbf4ded6f6e2cfb313ece47c8055d377e65c4ad996fc6c"
+    },
+    {
+      "id": "l009",
+      "sourcePath": "/Visio and SVG files for homepage/Ethernet routers/L009UiGS-RM.svg",
+      "sourceSvgSha256": "788552c4d7195bdd6aa82c8db07bb41c48503174b8b8e988223485d7245dcb00",
+      "cropPixels": [
+        633,
+        479,
+        1810,
+        614
+      ],
+      "outputSha256": "269a6e2a90736b92ae45842a173732424c849fa4ce26c002f120f86c5265f711"
+    },
+    {
+      "id": "hap-ax-lite",
+      "sourcePath": "/Visio and SVG files for homepage/Wireless for home and office/L41G-2axD.svg",
+      "sourceSvgSha256": "c580f417cf676081438ae345ccb0e6035a9330f9c5eb79d3eae14fe564962dea",
+      "cropPixels": [
+        570,
+        261,
+        1398,
+        2147
+      ],
+      "outputSha256": "12a995837d65e15bfc803dff530ac9bccc918b79b483a4701d5154317d68d0ec"
+    },
+    {
+      "id": "rb4011",
+      "sourcePath": "/Visio and SVG files for homepage/Ethernet routers/RB4011iGS RM.svg",
+      "sourceSvgSha256": "1ed75844de11bb4c7815f886f2495b2d69fc432f110e75cbda1efe95546750e0",
+      "cropPixels": [
+        159,
+        870,
+        2401,
+        1121
+      ],
+      "outputSha256": "7026a1cb2a18677b612b4b4cf3c83a97103532e92104eeceb013d23b17c0bc2c"
+    },
+    {
+      "id": "hex-s",
+      "sourcePath": "/Visio and SVG files for homepage/Ethernet routers/RB760iGS.svg",
+      "sourceSvgSha256": "a6920130449a02525705524dcff57a31416246a33e94b4693a86c9d0ab458c8d",
+      "cropPixels": [
+        466,
+        790,
+        2112,
+        1109
+      ],
+      "outputSha256": "289381bc6ae21a00810026ad8c54ae5ca3f73ad9a64b44f6c3588c6163588fe1"
+    },
+    {
+      "id": "hap-ac3",
+      "sourcePath": "/Visio and SVG files for homepage/Wireless for home and office/RBD53iG-5HacD2HnD.svg",
+      "sourceSvgSha256": "595987750821f422ff578eb923d885344add7a490551dc0c9e5ba0028e2d8a83",
+      "cropPixels": [
+        390,
+        1410,
+        2310,
+        1684
+      ],
+      "outputSha256": "a22b20ba1bb50ed301bac015be6539ae64c6d5b0b36cc2d2b24eb6186d9d2e8e"
+    }
+  ]
+}
