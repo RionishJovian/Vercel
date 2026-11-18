@@ -5,16 +5,18 @@ import { asArray, mmk, type Me } from "../../lib/types";
 import { useI18n } from "../../i18n";
 import { Field, Note } from "../../components/ui";
 import { Skeleton } from "../../components/Skeleton";
+import { errorText } from "../../lib/errors";
 
 interface PReq { id: string; business_id: string; company_name?: string; name_en?: string; bank_reference: string; price_mmk: number }
-interface PAddon { id: string; addon_key: string; name_en: string; active: boolean; price_mmk: number }
+interface PAddon { id: string; addon_key: string; name_en: string; name_my?: string; description_en?: string; description_my?: string; kind?: string; period?: string; sort_order?: number; active: boolean; price_mmk: number }
 
 function Pending({ r, onDone }: { r: PReq; onDone: () => void }) {
   const { t } = useI18n();
-  const [note, setNote] = useState(""), [busy, setBusy] = useState(false);
+  const [note, setNote] = useState(""), [busy, setBusy] = useState(false), [err, setErr] = useState("");
   async function decide(decision: "approve" | "reject") {
-    setBusy(true);
-    try { await api.post(`/platform/store/requests/${encodeURIComponent(r.id)}/decision`, { decision, note: note.trim() }); onDone(); } catch (e) { if (isUnauthorized(e)) throw e; setBusy(false); }
+    if (!window.confirm(t(decision === "approve" ? "pf.confirmApprove" : "pf.confirmReject"))) return;
+    setBusy(true); setErr("");
+    try { await api.post(`/platform/store/requests/${encodeURIComponent(r.id)}/decision`, { decision, note: note.trim() }); onDone(); } catch (e) { if (isUnauthorized(e)) throw e; setErr(errorText(e, t("st.failed"))); setBusy(false); }
   }
   return (
     <div className="stack rq">
@@ -25,8 +27,13 @@ function Pending({ r, onDone }: { r: PReq; onDone: () => void }) {
         <button className="pill on" type="button" disabled={busy} onClick={() => void decide("approve")}>{t("pf.approve")}</button>
         <button className="pill danger" type="button" disabled={busy} onClick={() => void decide("reject")}>{t("pf.reject")}</button>
       </div>
+      {err && <Note kind="bad">{err}</Note>}
     </div>
   );
+}
+
+async function toggleAddon(a: PAddon) {
+  await api.put(`/platform/store/addons/${encodeURIComponent(a.id)}`, { addon_key: a.addon_key, kind: a.kind, name_en: a.name_en, name_my: a.name_my, description_en: a.description_en ?? "", description_my: a.description_my ?? "", price_mmk: a.price_mmk, period: a.period, active: !a.active, sort_order: a.sort_order });
 }
 
 function NewAddon({ onDone }: { onDone: () => void }) {
@@ -73,7 +80,7 @@ export function Addons({ me }: { me: Me }) {
       <section className="glass pad stack workspace-main"><h2>{t("pf.pending")}</h2>{pending.length ? pending.map((r) => <Pending key={r.id} r={r} onDone={refresh} />) : <p className="soft small">{t("pf.none")}</p>}</section>
       <div className="workspace-rail workspace-stack">
       <section className="glass pad stack"><h2>{t("pf.catalog")}</h2>
-        {addons.map((a) => <div className="row small" key={a.id}><span>{a.name_en} <span className="soft mono">{a.addon_key}</span></span><span className={"chip " + (a.active ? "ok" : "")}>{a.active ? t("pf.active") : t("pf.hidden")} <span className="num">{mmk(a.price_mmk)}</span></span></div>)}
+        {addons.map((a) => <div className="row small" key={a.id}><span>{a.name_en} <span className="soft mono">{a.addon_key}</span></span><span className={"chip " + (a.active ? "ok" : "")}>{a.active ? t("pf.active") : t("pf.hidden")} <span className="num">{mmk(a.price_mmk)}</span></span><button className="pill" type="button" onClick={() => void toggleAddon(a).then(refresh).catch((e) => { if (isUnauthorized(e)) throw e; })}>{a.active ? t("pf.hide") : t("pf.show")}</button></div>)}
       </section>
       <NewAddon onDone={refresh} />
       </div>

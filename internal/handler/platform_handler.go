@@ -1,7 +1,9 @@
 package handler
 
 import (
+	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"regexp"
 	"strings"
@@ -70,9 +72,20 @@ func (h *PlatformHandler) PutPricing(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	before, _ := h.pricingRepo.GetPromo(c.Request.Context())
 	if err := h.pricingRepo.UpsertPromo(c.Request.Context(), &p); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to publish platform pricing"})
 		return
+	}
+	// shortcut: the audit row is written after the upsert, not in its transaction, so a failed
+	// audit write is logged but does not undo the price change; upgrade if pricing gains a repo tx.
+	b, _ := json.Marshal(before)
+	a, _ := json.Marshal(p)
+	actor := platformActor(c)
+	if _, err := h.db.Exec(`INSERT INTO audit_events(business_id,user_id,user_role,action,entity_type,entity_id,before_state,after_state,reason,ip_address,user_agent)
+VALUES($1,NULLIF($2,'')::uuid,'DEVELOPER','platform.pricing.publish','pricing','platform',NULLIF($3,'null')::jsonb,$4::jsonb,'Platform Admin published the subscription price list',NULLIF($5,'')::inet,NULLIF($6,''))`,
+		auth.GetBusinessID(c), actor.UserID, string(b), string(a), actor.IP, actor.UserAgent); err != nil {
+		log.Printf("platform pricing: audit row not written: %v", err)
 	}
 	c.JSON(http.StatusOK, gin.H{"published": true, "pricing": p})
 }
