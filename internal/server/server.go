@@ -271,7 +271,9 @@ func New(cfg *config.Config, log *logger.Logger) (*Server, error) {
 				return
 			}
 			if msg, ok := botRuntime.MessengerFor(bot.BotToken); ok {
-				_ = msg.SendMessage(strconv.FormatInt(bot.TargetChatID, 10), text)
+				if err := msg.SendMessage(strconv.FormatInt(bot.TargetChatID, 10), text); err != nil {
+					sugar.Errorw("business Telegram alert not delivered", "error", err)
+				}
 			}
 		},
 	)

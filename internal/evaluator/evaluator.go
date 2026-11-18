@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -60,18 +61,18 @@ func (e *Evaluator) Start() error {
 
 // sampleEnvelope is the minimal payload the ingest handler publishes to NATS.
 type sampleEnvelope struct {
-	BusinessID    string   `json:"business_id"`
-	DeviceID      *string  `json:"device_id,omitempty"`
-	SubjectKind   string   `json:"subject_kind"`
-	SubjectID     string   `json:"subject_id"`
-	SubjectLabel  string   `json:"subject_label,omitempty"`
-	CPUPercent    *float64 `json:"cpu_pct,omitempty"`
-	MemoryPercent *float64 `json:"memory_pct,omitempty"`
-	LatencyMs     *int     `json:"latency_ms,omitempty"`
-	WANState      *string  `json:"wan_state,omitempty"`
-	ConnectorState *string `json:"connector_state,omitempty"`
-	TunnelState   *string  `json:"tunnel_state,omitempty"`
-	ObservedAt    time.Time `json:"observed_at"`
+	BusinessID     string    `json:"business_id"`
+	DeviceID       *string   `json:"device_id,omitempty"`
+	SubjectKind    string    `json:"subject_kind"`
+	SubjectID      string    `json:"subject_id"`
+	SubjectLabel   string    `json:"subject_label,omitempty"`
+	CPUPercent     *float64  `json:"cpu_pct,omitempty"`
+	MemoryPercent  *float64  `json:"memory_pct,omitempty"`
+	LatencyMs      *int      `json:"latency_ms,omitempty"`
+	WANState       *string   `json:"wan_state,omitempty"`
+	ConnectorState *string   `json:"connector_state,omitempty"`
+	TunnelState    *string   `json:"tunnel_state,omitempty"`
+	ObservedAt     time.Time `json:"observed_at"`
 }
 
 func (e *Evaluator) handleSample(m *nats.Msg) {
@@ -167,9 +168,9 @@ func (e *Evaluator) raiseIncident(businessID string, p *model.AlertPolicy, s *sa
 // peerStateEnvelope is the payload the monitoring service publishes to
 // `mm.<business_id>.monitor.peer.state` after a peer reachability evaluation.
 type peerStateEnvelope struct {
-	BusinessID string   `json:"business_id"`
-	PeerID     string   `json:"peer_id"`
-	State      string   `json:"state"`
+	BusinessID string    `json:"business_id"`
+	PeerID     string    `json:"peer_id"`
+	State      string    `json:"state"`
 	ObservedAt time.Time `json:"observed_at"`
 }
 
@@ -246,7 +247,9 @@ func (e *Evaluator) raisePeerIncident(businessID string, env *peerStateEnvelope)
 			"state":       env.State,
 		}
 		if data, err := json.Marshal(trig); err == nil {
-			_ = e.msg.Publish(businessID, "peer.recover", data)
+			if err := e.msg.Publish(businessID, "peer.recover", data); err != nil {
+				log.Printf("publish failed: %v", err)
+			}
 		}
 	}
 

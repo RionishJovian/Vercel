@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"errors"
 	"fmt"
 	"regexp"
@@ -124,7 +125,11 @@ func ReleaseTenantConn(ctx context.Context, conn *sql.Conn) {
 	if conn == nil {
 		return
 	}
-	_, _ = conn.ExecContext(ctx, `RESET ROLE`)
-	_, _ = conn.ExecContext(ctx, `SELECT set_config('app.current_business_id', '', false)`)
+	_, e1 := conn.ExecContext(ctx, `RESET ROLE`)
+	_, e2 := conn.ExecContext(ctx, `SELECT set_config('app.current_business_id', '', false)`)
+	if e1 != nil || e2 != nil {
+		// A connection that kept the tenant role must never return to the pool.
+		_ = conn.Raw(func(any) error { return driver.ErrBadConn })
+	}
 	_ = conn.Close()
 }

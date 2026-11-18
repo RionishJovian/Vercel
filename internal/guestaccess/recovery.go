@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"errors"
+	"log"
 	"net"
 	"strings"
 	"time"
@@ -103,13 +104,17 @@ func (s RecoveryService) Restore(ctx context.Context, req RecoveryRequest) (Reco
 	fail := func() (RecoveryClaim, error) {
 		// Remote writes may have succeeded even if their request timed out.
 		cleanup, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		_ = s.Router.Contain(cleanup, g)
+		if err := s.Router.Contain(cleanup, g); err != nil {
+			log.Printf("guest access: router containment failed, needs repair: %v", err)
+		}
 		cancel()
 		// An offline router may consume the whole cleanup deadline. Give the
 		// durable failure fence its own budget, independent of router I/O.
 		block, cancelBlock := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancelBlock()
-		_ = s.Store.Block(block, g)
+		if err := s.Store.Block(block, g); err != nil {
+			log.Printf("guest access: could not record the failure block, needs repair: %v", err)
+		}
 		return RecoveryClaim{}, ErrRecoveryNeedsRepair
 	}
 	now := time.Now

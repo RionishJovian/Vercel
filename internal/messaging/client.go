@@ -83,10 +83,12 @@ func (c *Client) Publish(businessID, subject string, data []byte) error {
 	}
 
 	if c.repo != nil {
-		_, _ = c.repo.Register(&model.NATSSubject{
+		if _, err := c.repo.Register(&model.NATSSubject{
 			BusinessID:    businessID,
 			SubjectPrefix: subject,
-		})
+		}); err != nil {
+			log.Printf("nats: register subject %s failed: %v", subject, err)
+		}
 	}
 
 	return nil
@@ -104,10 +106,12 @@ func (c *Client) PublishJetStream(businessID, subject string, data []byte, opts 
 	}
 
 	if c.repo != nil {
-		_, _ = c.repo.Register(&model.NATSSubject{
+		if _, err := c.repo.Register(&model.NATSSubject{
 			BusinessID:    businessID,
 			SubjectPrefix: subject,
-		})
+		}); err != nil {
+			log.Printf("nats: register subject %s failed: %v", subject, err)
+		}
 	}
 
 	return nil

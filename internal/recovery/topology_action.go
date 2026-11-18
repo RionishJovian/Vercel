@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -245,5 +246,10 @@ func (c *TopologyActionConsumer) publishJSON(businessID, subject string, payload
 	if err != nil {
 		return fmt.Errorf("marshal %s: %w", subject, err)
 	}
-	return c.events.Publish(businessID, subject, data)
+	// Callers treat events as best-effort; keep a trace so a lost result is visible.
+	err = c.events.Publish(businessID, subject, data)
+	if err != nil {
+		log.Printf("recovery: publish %s failed: %v", subject, err)
+	}
+	return err
 }
