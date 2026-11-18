@@ -1,6 +1,6 @@
 import useSWR from "swr";
 import { fetcher } from "../../lib/api";
-import { asArray, type Router, type Me } from "../../lib/types";
+import { asArray, type Router } from "../../lib/types";
 import { useI18n } from "../../i18n";
 import { Note, SectionHead, WorkspaceTabs, BackLink } from "../../components/ui";
 import { Skeleton } from "../../components/Skeleton";
@@ -19,7 +19,7 @@ const hubStatusFromFleet = (fleet: FleetData | undefined, routers: RouterRow[]):
 
 const seenAt = (value: string | undefined, never: string) => (value && !Number.isNaN(new Date(value).getTime()) ? new Date(value).toLocaleString() : never);
 
-export function Routers({ sub, params, me }: { sub: string; params: URLSearchParams; me: Me }) {
+export function Routers({ sub, params }: { sub: string; params: URLSearchParams }) {
   const { t } = useI18n();
   const { data, error, isLoading } = useSWR<{ routers?: RouterRow[] }>("/routers", fetcher);
   const fleet = useFleet({ shouldRetryOnError: false });
@@ -28,7 +28,7 @@ export function Routers({ sub, params, me }: { sub: string; params: URLSearchPar
   if (error) return <Note kind="bad">{t("c.loadFailed")}</Note>;
   const list = asArray<RouterRow>(data?.routers);
   const onMap = sub === "map";
-  if (sub && !onMap) return <><BackLink href="/app/router">{t("r.ws.list")}</BackLink><Detail id={sub} router={list.find((d) => d.device_id === sub)} canReview={["OWNER", "DEVELOPER"].includes(me.user?.user_role ?? "")} /></>;
+  if (sub && !onMap) return <><BackLink href="/app/router">{t("r.ws.list")}</BackLink><Detail id={sub} router={list.find((d) => d.device_id === sub)} /></>;
 
   const tabs = <WorkspaceTabs items={[{ href: "/app/router", label: t("r.ws.list"), current: !onMap }, { href: "/app/router/map", label: t("r.ws.map"), current: onMap }, { href: "/app/network", label: t("title.network"), current: false }]} />;
   if (onMap) {

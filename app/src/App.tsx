@@ -84,7 +84,7 @@ export function App() {
   let page: React.ReactNode;
   switch (route.name) {
     case "revenue": page = <Revenue me={me} />; break;
-    case "router": page = <Routers sub={route.sub} params={route.params} me={me} />; break;
+    case "router": page = <Routers sub={route.sub} params={route.params} />; break;
     case "jellyfin": page = <Jellyfin sub={route.sub} me={me} />; break;
     case "fleet": page = <Fleet />; break;
     case "guests": page = <Guests me={me} />; break;
