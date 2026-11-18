@@ -199,7 +199,7 @@ func TestIndividualProductionRouteChain(t *testing.T) {
 	}
 	// Actual password login remains available after expiry, including a newly
 	// registered client that must not inherit the historical transition.
-	registered := req("POST", "/api/v1/auth/register", "", `{"company_name":"New client","full_name":"Fixture","email":"new-client@fixture.test","password":"fixture-only-password"}`, 201)
+	registered := req("POST", "/api/v1/auth/register", "", `{"company_name":"New client","full_name":"Fixture","email":"new-client@fixture.test","password":"Fixture-only-password-1"}`, 201)
 	var client model.AuthResponse
 	if e := json.Unmarshal(registered.Body.Bytes(), &client); e != nil || client.Business.DeviceQuotaLimit != 1 {
 		t.Fatal("new client capacity", e, registered.Body.String())
@@ -212,7 +212,7 @@ func TestIndividualProductionRouteChain(t *testing.T) {
 	if _, e := db.Exec(`UPDATE app_account_passes SET activated_at=now()-interval '2 months',expires_at=now()-interval '1 second' WHERE user_id=$1`, client.User.UserID); e != nil {
 		t.Fatal(e)
 	}
-	login := req("POST", "/api/v1/auth/login", "", `{"email":"new-client@fixture.test","password":"fixture-only-password"}`, 200)
+	login := req("POST", "/api/v1/auth/login", "", `{"email":"new-client@fixture.test","password":"Fixture-only-password-1"}`, 200)
 	fresh := ""
 	for _, cookie := range login.Result().Cookies() {
 		if cookie.Name == "mm_access" {

@@ -55,6 +55,10 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	if !auth.ValidPassword(req.Password) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "password must be " + auth.PasswordRule})
+		return
+	}
 
 	// Hash password first
 	hash, err := h.authService.HashPassword(req.Password)
@@ -466,10 +470,10 @@ func (h *AuthHandler) UpdateProfile(c *gin.Context) {
 func (h *AuthHandler) ChangePassword(c *gin.Context) {
 	var req struct {
 		CurrentPassword string `json:"current_password" binding:"required"`
-		NewPassword     string `json:"new_password" binding:"required,min=10,max=128"`
+		NewPassword     string `json:"new_password" binding:"required,max=128"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "current password and a new password of at least 10 characters are required"})
+	if err := c.ShouldBindJSON(&req); err != nil || !auth.ValidPassword(req.NewPassword) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "current password and a new password of " + auth.PasswordRule + " are required"})
 		return
 	}
 	userID, businessID := auth.GetUserID(c), auth.GetBusinessID(c)
