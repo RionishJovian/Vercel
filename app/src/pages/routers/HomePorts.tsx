@@ -12,7 +12,7 @@ import { cableHints } from "./cableHealth";
 import { linkText } from "./portInfo";
 import { rateText, stillMeasuring } from "./speed";
 
-interface PortSnapshot { read_at?: string; resources?: { board_name?: string }; interfaces?: PortState[] }
+interface PortSnapshot { read_at?: string; resources?: { board_name?: string }; firmware?: { model?: string } | null; interfaces?: PortState[] }
 
 export function HomePorts({ router }: { router: Router }) {
   const { t } = useI18n();
@@ -26,7 +26,8 @@ export function HomePorts({ router }: { router: Router }) {
   if (error || !snap) return <><Note kind="warn">{t("r.telFail")}</Note><button className="pill" type="button" onClick={() => void mutate()}>{t("c.retry")}</button></>;
   const ports = asArray<PortState>(snap.interfaces);
   if (!ports.length) return <Note>{t("home.noPorts")}</Note>;
-  const panel = panelFor(snap.resources?.board_name, router.hardware_name);
+  // The RouterBOARD model code is exact; RouterOS only reports a friendly name ("hAP ax^2") in /system resource.
+  const panel = panelFor(snap.firmware?.model || snap.resources?.board_name, router.hardware_name);
   const words = { full: t("r.full"), half: t("r.half"), updateAvail: t("r.updateAvail"), noNewer: t("r.noNewer"), fwUpgrade: t("r.fwUpgrade") };
   const measuring = stillMeasuring(ports, reads) ? t("r.measuring") : null;
   const settings = router.deployment_layer === "MAIN_GATEWAY"

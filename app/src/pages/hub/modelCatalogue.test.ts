@@ -44,7 +44,8 @@ describe("model picker catalogue", () => {
   it("shows the back-panel diagram where one exists and never borrows one", () => {
     expect(findModel("hap-ax3")?.panel?.id).toBe("hap-ax3");
     expect(findModel("hap-ax2")?.panel?.id).toBe("hap-ax2");
-    expect(modelCatalogue.filter(m => m.panel).map(m => m.product.id).sort()).toEqual(["hap-ax2", "hap-ax3"]);
+    expect(modelCatalogue.filter(m => m.panel).map(m => m.product.id).sort()).toEqual(
+      ["ccr2004", "ccr2116", "ccr2216", "crs112", "crs305", "crs309", "crs310", "crs328", "hap-ac3", "hap-ax-lite", "hap-ax2", "hap-ax3", "hex-s", "l009", "rb4011"]);
   });
   it("groups by category with models that can be set up first", () => {
     const groups = modelGroups();
