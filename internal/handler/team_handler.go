@@ -158,8 +158,8 @@ func (h *TeamHandler) Create(c *gin.Context) {
 	body.Email = strings.ToLower(strings.TrimSpace(body.Email))
 	role := model.UserRole(strings.ToUpper(strings.TrimSpace(body.UserRole)))
 
-	if body.FullName == "" || body.Email == "" || len(body.Password) < auth.MinPasswordLength {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "full_name, email and a 10+ char password are required"})
+	if body.FullName == "" || body.Email == "" || !auth.ValidPassword(body.Password) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "full_name, email and a password of " + auth.PasswordRule + " are required"})
 		return
 	}
 	// Never grant a system role to a tenant member.

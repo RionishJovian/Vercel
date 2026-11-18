@@ -27,7 +27,7 @@ func TestRegisterStartsSevenDayTrial(t *testing.T) {
 	h.IndividualPassesEnabled = true
 	gin.SetMode(gin.TestMode)
 	email := "trial-" + randHex(6) + "@example.test"
-	body := `{"company_name":"Trial Cafe","full_name":"Trial Owner","email":"` + email + `","password":"correct horse battery"}`
+	body := `{"company_name":"Trial Cafe","full_name":"Trial Owner","email":"` + email + `","password":"Correct-horse-battery-1"}`
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", strings.NewReader(body))

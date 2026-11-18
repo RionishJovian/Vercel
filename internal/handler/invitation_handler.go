@@ -33,8 +33,8 @@ func (h *InvitationHandler) Accept(c *gin.Context) {
 		return
 	}
 	body.Token = strings.TrimSpace(body.Token)
-	if body.Token == "" || len(body.Password) < auth.MinPasswordLength {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "token and a 10+ character password are required"})
+	if body.Token == "" || !auth.ValidPassword(body.Password) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "token and a password of " + auth.PasswordRule + " are required"})
 		return
 	}
 	hash, err := h.auth.HashPassword(body.Password)

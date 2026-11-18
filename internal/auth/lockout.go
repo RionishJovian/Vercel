@@ -7,7 +7,30 @@ import (
 )
 
 // MinPasswordLength is the shortest password accepted when one is set or changed. Existing passwords keep working.
-const MinPasswordLength = 10
+const MinPasswordLength = 6
+
+// PasswordRule is the one sentence every screen and API error uses for the password format.
+const PasswordRule = "at least 6 characters with an uppercase letter, a lowercase letter and a digit"
+
+// ValidPassword is the single password format check: length 6 to 128 with at least one
+// uppercase letter, one lowercase letter and one digit. Existing passwords keep working.
+func ValidPassword(p string) bool {
+	if len(p) < MinPasswordLength || len(p) > 128 {
+		return false
+	}
+	var up, low, dig bool
+	for _, r := range p {
+		switch {
+		case r >= 'A' && r <= 'Z':
+			up = true
+		case r >= 'a' && r <= 'z':
+			low = true
+		case r >= '0' && r <= '9':
+			dig = true
+		}
+	}
+	return up && low && dig
+}
 
 // LoginLimiter slows password guessing against one account, on top of the per-address limit. It is process-local,
 // which matches the single API instance. After maxFails failures inside window the email is locked for lockFor; a

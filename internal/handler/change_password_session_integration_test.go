@@ -29,7 +29,7 @@ func TestChangePasswordKeepsThisBrowserSignedIn(t *testing.T) {
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	email := "chpw-" + randHex(6) + "@example.test"
-	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", strings.NewReader(`{"company_name":"Pw Cafe","full_name":"Pw Owner","email":"`+email+`","password":"correct horse battery"}`))
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", strings.NewReader(`{"company_name":"Pw Cafe","full_name":"Pw Owner","email":"`+email+`","password":"Correct-horse-battery-1"}`))
 	c.Request.Header.Set("Content-Type", "application/json")
 	h.Register(c)
 	if w.Code != http.StatusCreated {
@@ -53,7 +53,7 @@ func TestChangePasswordKeepsThisBrowserSignedIn(t *testing.T) {
 
 	w = httptest.NewRecorder()
 	c, _ = gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/me/password", strings.NewReader(`{"current_password":"correct horse battery","new_password":"another long passphrase"}`))
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/me/password", strings.NewReader(`{"current_password":"Correct-horse-battery-1","new_password":"Another-long-passphrase-2"}`))
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Set(auth.ContextKeyUserID, reg.User.UserID)
 	c.Set(auth.ContextKeyBusinessID, reg.Business.BusinessID)

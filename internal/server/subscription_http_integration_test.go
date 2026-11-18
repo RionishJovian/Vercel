@@ -113,7 +113,7 @@ func TestDB_SubscriptionAuthenticatedHTTP(t *testing.T) {
 		return w
 	}
 	email := "subscription-" + time.Now().UTC().Format("150405.000000000") + "@example.test"
-	w := request("POST", "/api/v1/auth/register", gin.H{"company_name": "Disposable subscription", "full_name": "Test owner", "email": email, "password": "disposable-test-password"}, 201)
+	w := request("POST", "/api/v1/auth/register", gin.H{"company_name": "Disposable subscription", "full_name": "Test owner", "email": email, "password": "Disposable-test-password-1"}, 201)
 	cookies = w.Result().Cookies()
 	var registered model.AuthResponse
 	if err = json.Unmarshal(w.Body.Bytes(), &registered); err != nil {
@@ -131,7 +131,7 @@ func TestDB_SubscriptionAuthenticatedHTTP(t *testing.T) {
 	request("GET", "/api/v1/routers", nil, 200)
 	request("GET", "/api/v1/store/checkout-options", nil, 200)
 	// Login/refresh must not restart the one-time trial.
-	w = request("POST", "/api/v1/auth/login", gin.H{"email": email, "password": "disposable-test-password"}, 200)
+	w = request("POST", "/api/v1/auth/login", gin.H{"email": email, "password": "Disposable-test-password-1"}, 200)
 	cookies = w.Result().Cookies()
 	var repeated time.Time
 	if err = db.QueryRow(`SELECT trial_expires_at FROM business_subscription_trials WHERE business_id=$1`, biz).Scan(&repeated); err != nil || !repeated.Equal(expiry) {
@@ -169,7 +169,7 @@ func TestDB_SubscriptionAuthenticatedHTTP(t *testing.T) {
 	if _, e := db.Exec(`UPDATE users SET user_role='DEVELOPER' WHERE user_id=$1`, registered.User.UserID); e != nil {
 		t.Fatal(e)
 	}
-	w = request("POST", "/api/v1/auth/login", gin.H{"email": email, "password": "disposable-test-password"}, 200)
+	w = request("POST", "/api/v1/auth/login", gin.H{"email": email, "password": "Disposable-test-password-1"}, 200)
 	cookies = w.Result().Cookies()
 	request("POST", "/api/v1/store/purchases/"+created.Purchase.ID+"/approve", nil, 200)
 	request("POST", "/api/v1/store/purchases/"+created.Purchase.ID+"/approve", nil, 409)
@@ -184,7 +184,7 @@ func TestDB_SubscriptionAuthenticatedHTTP(t *testing.T) {
 	if _, e := db.Exec(`UPDATE users SET user_role='OWNER' WHERE user_id=$1`, registered.User.UserID); e != nil {
 		t.Fatal(e)
 	}
-	w = request("POST", "/api/v1/auth/login", gin.H{"email": email, "password": "disposable-test-password"}, 200)
+	w = request("POST", "/api/v1/auth/login", gin.H{"email": email, "password": "Disposable-test-password-1"}, 200)
 	cookies = w.Result().Cookies()
 	request("GET", "/api/v1/routers", nil, 200)
 	// Browser write guards still apply with a valid, paid session.
@@ -202,7 +202,7 @@ func TestDB_SubscriptionAuthenticatedHTTP(t *testing.T) {
 	if _, err = db.Exec(`UPDATE users SET user_role='VIEWER' WHERE user_id=$1`, registered.User.UserID); err != nil {
 		t.Fatal(err)
 	}
-	w = request("POST", "/api/v1/auth/login", gin.H{"email": email, "password": "disposable-test-password"}, 200)
+	w = request("POST", "/api/v1/auth/login", gin.H{"email": email, "password": "Disposable-test-password-1"}, 200)
 	cookies = w.Result().Cookies()
 	request("POST", "/api/v1/store/purchases/"+created.Purchase.ID+"/approve", nil, 403)
 	var before, after int
@@ -222,10 +222,10 @@ func TestDB_SubscriptionAuthenticatedHTTP(t *testing.T) {
 	if _, err = db.Exec(`UPDATE users SET user_role='OWNER'  WHERE user_id=$1`, registered.User.UserID); err != nil {
 		t.Fatal(err)
 	}
-	w = request("POST", "/api/v1/auth/login", gin.H{"email": email, "password": "disposable-test-password"}, 200)
+	w = request("POST", "/api/v1/auth/login", gin.H{"email": email, "password": "Disposable-test-password-1"}, 200)
 	cookies = w.Result().Cookies()
 	ownerCookies := cookies
-	w = request("POST", "/api/v1/auth/register", gin.H{"company_name": "Other disposable tenant", "full_name": "Other owner", "email": "other-" + email, "password": "disposable-test-password"}, 201)
+	w = request("POST", "/api/v1/auth/register", gin.H{"company_name": "Other disposable tenant", "full_name": "Other owner", "email": "other-" + email, "password": "Disposable-test-password-1"}, 201)
 	cookies = w.Result().Cookies()
 	request("POST", "/api/v1/store/purchases/"+created.Purchase.ID+"/approve", nil, 403)
 	cookies = ownerCookies
@@ -238,7 +238,7 @@ func TestDB_SubscriptionAuthenticatedHTTP(t *testing.T) {
 	for i := 0; i < 8; i++ {
 		request("POST", "/api/v1/auth/login", gin.H{"email": email, "password": "wrong-password-" + strconv.Itoa(i)}, 401)
 	}
-	w = request("POST", "/api/v1/auth/login", gin.H{"email": email, "password": "disposable-test-password"}, 429)
+	w = request("POST", "/api/v1/auth/login", gin.H{"email": email, "password": "Disposable-test-password-1"}, 429)
 	if w.Header().Get("Retry-After") == "" {
 		t.Fatal("lockout response has no Retry-After")
 	}
