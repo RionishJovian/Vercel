@@ -3,6 +3,7 @@ package monitoring
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"time"
 
 	"mega-magic/internal/cache"
@@ -98,7 +99,9 @@ func (s *MonitoringService) EvaluatePeer(ctx context.Context, businessID, peerID
 			"observed_at": time.Now().UTC().Format(time.RFC3339),
 		}
 		if data, err := json.Marshal(payload); err == nil {
-			_ = s.msg.Publish(businessID, "monitor.peer.state", data)
+			if err := s.msg.Publish(businessID, "monitor.peer.state", data); err != nil {
+				log.Printf("publish failed: %v", err)
+			}
 		}
 	}
 
@@ -144,7 +147,9 @@ func (s *MonitoringService) captureVersion(ctx context.Context, businessID, peer
 	}); err != nil {
 		return true
 	}
-	_ = tx.Commit()
+	if err := tx.Commit(); err != nil {
+		log.Printf("monitoring: save router version failed: %v", err)
+	}
 	return true
 }
 

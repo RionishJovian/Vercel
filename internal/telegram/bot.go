@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -197,7 +198,9 @@ func (b *Bot) RemoveButtons(chatID, messageID int64) error {
 		OK          bool   `json:"ok"`
 		Description string `json:"description"`
 	}
-	_ = b.do(ctx, "editMessageReplyMarkup", vals, &resp)
+	if err := b.do(ctx, "editMessageReplyMarkup", vals, &resp); err != nil {
+		log.Printf("telegram: remove buttons failed: %v", err)
+	}
 	return nil
 }
 

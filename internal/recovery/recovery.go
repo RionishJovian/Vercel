@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -16,9 +17,9 @@ import (
 	"mega-magic/internal/monitoring"
 )
 
-const recoverSubject      = "peer.recover"
+const recoverSubject = "peer.recover"
 const recoveryResultSubject = "peer.recovery.result"
-const escalateSubject     = "peer.escalate"
+const escalateSubject = "peer.escalate"
 
 // RecoveryService drives the WireGuard peer self-healing loop (spec 4.2). It is
 // triggered on `mm.<biz>.peer.recover` (published by the evaluator when a peer
@@ -27,11 +28,11 @@ const escalateSubject     = "peer.escalate"
 // in-band recovery is exhausted. A RateLimit backoff guard (spec 4.2.6) stops a
 // genuinely dead peer from thrashing the hub.
 type RecoveryService struct {
-	msg    *messaging.Client
-	cache  *cache.Client
+	msg     *messaging.Client
+	cache   *cache.Client
 	monitor *monitoring.MonitoringService
-	cfg    config.RecoveryConfig
-	logger *zap.SugaredLogger
+	cfg     config.RecoveryConfig
+	logger  *zap.SugaredLogger
 }
 
 func New(msg *messaging.Client, c *cache.Client, monitor *monitoring.MonitoringService, cfg config.RecoveryConfig, logger *zap.SugaredLogger) *RecoveryService {
@@ -134,7 +135,9 @@ func (s *RecoveryService) emitHubAction(req *recoveryRequest, action string, ttr
 		"action":      action,
 	}
 	if data, err := json.Marshal(payload); err == nil && s.msg != nil {
-		_ = s.msg.Publish(req.BusinessID, recoverSubject+".cmd", data)
+		if err := s.msg.Publish(req.BusinessID, recoverSubject+".cmd", data); err != nil {
+			log.Printf("publish failed: %v", err)
+		}
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -149,15 +152,17 @@ func (s *RecoveryService) emitResult(req *recoveryRequest, action string, ok boo
 		return
 	}
 	payload := map[string]string{
-		"business_id": req.BusinessID,
-		"peer_id":     req.PeerID,
-		"action":      action,
-		"ok":          fmt.Sprintf("%v", ok),
+		"business_id":        req.BusinessID,
+		"peer_id":            req.PeerID,
+		"action":             action,
+		"ok":                 fmt.Sprintf("%v", ok),
 		"time_to_recover_ms": fmt.Sprintf("%d", ttr.Nanoseconds()/1000000),
-		"observed_at": time.Now().UTC().Format(time.RFC3339),
+		"observed_at":        time.Now().UTC().Format(time.RFC3339),
 	}
 	if data, err := json.Marshal(payload); err == nil {
-		_ = s.msg.Publish(req.BusinessID, recoveryResultSubject, data)
+		if err := s.msg.Publish(req.BusinessID, recoveryResultSubject, data); err != nil {
+			log.Printf("publish failed: %v", err)
+		}
 	}
 }
 
@@ -173,6 +178,8 @@ func (s *RecoveryService) emitEscalate(req *recoveryRequest, state string) {
 		"observed_at": time.Now().UTC().Format(time.RFC3339),
 	}
 	if data, err := json.Marshal(payload); err == nil {
-		_ = s.msg.Publish(req.BusinessID, escalateSubject, data)
+		if err := s.msg.Publish(req.BusinessID, escalateSubject, data); err != nil {
+			log.Printf("publish failed: %v", err)
+		}
 	}
 }

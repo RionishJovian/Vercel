@@ -3,6 +3,7 @@ package guestaccess
 import (
 	"context"
 	"errors"
+	"log"
 	"net"
 	"strings"
 	"time"
@@ -64,11 +65,15 @@ func (s ProvisionService) Redeem(ctx context.Context, req ProvisionRequest) (mod
 	}
 	fail := func() (model.GuestVoucherGrant, error) {
 		cleanup, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		_ = s.Router.Contain(cleanup, g)
+		if err := s.Router.Contain(cleanup, g); err != nil {
+			log.Printf("guest access: router containment failed, needs repair: %v", err)
+		}
 		cancel()
 		block, cancelBlock := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancelBlock()
-		_ = s.Store.Block(block, g)
+		if err := s.Store.Block(block, g); err != nil {
+			log.Printf("guest access: could not record the failure block, needs repair: %v", err)
+		}
 		return model.GuestVoucherGrant{}, ErrProvisionNeedsRepair
 	}
 	// Never send inconsistent store data to a router, even for containment.

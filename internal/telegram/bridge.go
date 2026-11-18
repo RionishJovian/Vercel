@@ -63,7 +63,7 @@ func (b *PurchaseBridge) Run(ctx context.Context) error {
 func (b *PurchaseBridge) handle(m InboundMessage) {
 	if b.authorize == nil || !b.authorize(m, "") {
 		if bot, ok := b.msg.(*Bot); ok && m.CallbackID != "" {
-			_ = bot.AnswerCallback(m.CallbackID, "You are not authorized to approve this payment")
+			logIf("answer callback", "", bot.AnswerCallback(m.CallbackID, "You are not authorized to approve this payment"))
 		}
 		return
 	}
@@ -72,7 +72,7 @@ func (b *PurchaseBridge) handle(m InboundMessage) {
 		// Unparseable (or an inline tap we already consumed): ack so the tap
 		// spinner clears even on an unrecognised/skipped update.
 		if bot, down := b.msg.(*Bot); down && m.CallbackID != "" {
-			_ = bot.AnswerCallback(m.CallbackID, "Unknown request")
+			logIf("answer callback", "", bot.AnswerCallback(m.CallbackID, "Unknown request"))
 		}
 		return // fail closed: never act on an unparseable reply
 	}
@@ -81,13 +81,13 @@ func (b *PurchaseBridge) handle(m InboundMessage) {
 	if err != nil {
 		b.ack("We couldn't find this order. Please review it in Mega Magic.")
 		if bot, down := b.msg.(*Bot); down && m.CallbackID != "" {
-			_ = bot.AnswerCallback(m.CallbackID, "Request not found")
+			logIf("answer callback", "", bot.AnswerCallback(m.CallbackID, "Request not found"))
 		}
 		return
 	}
 	if b.authorize != nil && !b.authorize(m, businessID) {
 		if bot, ok := b.msg.(*Bot); ok && m.CallbackID != "" {
-			_ = bot.AnswerCallback(m.CallbackID, "You are not authorized to approve this payment")
+			logIf("answer callback", "", bot.AnswerCallback(m.CallbackID, "You are not authorized to approve this payment"))
 		}
 		return
 	}
@@ -106,7 +106,7 @@ func (b *PurchaseBridge) handle(m InboundMessage) {
 		}
 		b.ack("Couldn't update order " + OrderReference(requestID) + ". Please check its status in Mega Magic before trying again.")
 		if bot, down := b.msg.(*Bot); down && m.CallbackID != "" {
-			_ = bot.AnswerCallback(m.CallbackID, "Decision failed")
+			logIf("answer callback", "", bot.AnswerCallback(m.CallbackID, "Decision failed"))
 		}
 		return
 	}
