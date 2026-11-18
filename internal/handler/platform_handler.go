@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
@@ -121,11 +120,11 @@ func validatePricingPromo(p *model.PricingPromo) error {
 // Sensitive fields (OwnerEmail) are intentionally omitted so cross-tenant
 // business listings never expose owner contact details.
 type PlatformBusinessSummary struct {
-	BusinessID       string `json:"business_id"`
-	CompanyName      string `json:"company_name"`
-	AccessTier       string `json:"access_tier"`
-	IsActive         bool   `json:"is_active"`
-	DeviceQuotaLimit int    `json:"device_quota_limit"`
+	BusinessID       string    `json:"business_id"`
+	CompanyName      string    `json:"company_name"`
+	AccessTier       string    `json:"access_tier"`
+	IsActive         bool      `json:"is_active"`
+	DeviceQuotaLimit int       `json:"device_quota_limit"`
 	CreatedAt        time.Time `json:"created_at"`
 	UpdatedAt        time.Time `json:"updated_at"`
 }
@@ -225,7 +224,7 @@ func (h *PlatformHandler) CreateBusiness(c *gin.Context) {
 		return
 	}
 
-	businessID, ownerUserID, err := h.businessRepo.CreateTenant(body.CompanyName, body.OwnerEmail, hash, tier, body.DeviceQuotaLimit)
+	businessID, ownerUserID, err := h.businessRepo.CreateTenant(body.CompanyName, body.OwnerEmail, hash, tier, body.DeviceQuotaLimit, platformActor(c))
 	if err != nil {
 		if err == database.ErrEmailInUse {
 			c.JSON(http.StatusConflict, gin.H{"error": "owner email already registered"})
@@ -256,7 +255,7 @@ func (h *PlatformHandler) setActive(c *gin.Context, active bool) {
 		c.JSON(http.StatusConflict, gin.H{"error": "cannot suspend your own tenant"})
 		return
 	}
-	if err := h.businessRepo.SetBusinessActive(businessID, active); err != nil {
+	if err := h.businessRepo.SetBusinessActive(businessID, active, platformActor(c)); err != nil {
 		if err == database.ErrTenantNotFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": "tenant not found"})
 			return
@@ -286,7 +285,7 @@ func (h *PlatformHandler) ResetOwnerPassword(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to secure password"})
 		return
 	}
-	if err := h.businessRepo.ResetOwnerPassword(businessID, hash); err != nil {
+	if err := h.businessRepo.ResetOwnerPassword(businessID, hash, platformActor(c)); err != nil {
 		if err == database.ErrTenantNotFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": "tenant or owner not found"})
 			return
@@ -302,15 +301,15 @@ func (h *PlatformHandler) ResetOwnerPassword(c *gin.Context) {
 // Sensitive fields (OwnerEmail) are intentionally omitted so platform queries
 // never expose owner contact details.
 type PlatformBusinessState struct {
-	BusinessID            string `json:"business_id"`
-	CompanyName           string `json:"company_name"`
-	AccessTier            string `json:"access_tier"`
-	IsActive              bool   `json:"is_active"`
-	DeviceQuotaLimit      int    `json:"device_quota_limit"`
-	DeviceCount           int    `json:"device_count"`
-	OpenIncidents         int    `json:"open_incidents"`
-	PurchasedExtraSlots   bool   `json:"purchased_extra_slots"`
-	AITokenBalance        int    `json:"ai_token_balance"`
+	BusinessID          string `json:"business_id"`
+	CompanyName         string `json:"company_name"`
+	AccessTier          string `json:"access_tier"`
+	IsActive            bool   `json:"is_active"`
+	DeviceQuotaLimit    int    `json:"device_quota_limit"`
+	DeviceCount         int    `json:"device_count"`
+	OpenIncidents       int    `json:"open_incidents"`
+	PurchasedExtraSlots bool   `json:"purchased_extra_slots"`
+	AITokenBalance      int    `json:"ai_token_balance"`
 }
 
 // TenantState: GET /platform/businesses/:businessId/state
@@ -338,5 +337,7 @@ func (h *PlatformHandler) TenantState(c *gin.Context) {
 	})
 }
 
-var _ = strconv.Itoa
-var _ = model.RoleDeveloper
+// platformActor names the signed-in platform admin for the audit trail.
+func platformActor(c *gin.Context) database.PlatformActor {
+	return database.PlatformActor{UserID: auth.GetUserID(c), IP: c.ClientIP(), UserAgent: c.Request.UserAgent()}
+}
