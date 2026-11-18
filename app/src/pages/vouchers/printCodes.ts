@@ -7,7 +7,7 @@ export interface Layout {
   thermal_columns: number; thermal_rows_per_strip: number; paper_width_mm: number;
 }
 export const DEFAULT_LAYOUT: Layout = { business_name: "", wifi_name: "", support_contact: "", terms: "", show_price: true, show_expiry: true, show_qr: false, a4_columns: 3, a4_rows_per_page: 8, thermal_columns: 1, thermal_rows_per_strip: 1, paper_width_mm: 210 };
-export interface PrintVoucher { code: string; price_mmk?: number; duration_minutes?: number; plan_label?: string }
+export interface PrintVoucher { code: string; price_mmk?: number; duration_minutes?: number; plan_label?: string; data_mb?: number }
 
 export const isThermal = (paperWidthMm: number) => paperWidthMm < 150;
 
@@ -18,6 +18,11 @@ function validity(minutes: number): string {
   return minutes ? `${minutes} မိနစ် / min` : "";
 }
 
+/** The data allowance as a guest reads it: MB below 1 GB, otherwise GB (the router counts 1 GB as 1000 MB). */
+function dataLabel(mb: number): string {
+  return mb >= 1000 ? `${Number((mb / 1000).toFixed(2))} GB` : `${mb} MB`;
+}
+
 export interface Receipt { business: string; code: string; qr: boolean; rows: Array<[string, string]>; terms: string }
 
 /** What one receipt says. The live preview and the printed receipt both draw this, so they cannot disagree. */
@@ -25,7 +30,8 @@ export function receipt(v: PrintVoucher, layout: Partial<Layout>, firstUse: stri
   const L = { ...DEFAULT_LAYOUT, ...layout };
   const rows: Array<[string, string]> = [];
   if (v.plan_label) rows.push(["ပလန် / Plan", v.plan_label]);
-  if (L.show_price) rows.push(["စျေးနှုန်း / Price", mmk(v.price_mmk ?? 0) + " MMK"]);
+  if (L.show_price && (v.price_mmk ?? 0) > 0) rows.push(["စျေးနှုန်း / Price", mmk(v.price_mmk ?? 0) + " MMK"]);
+  if (v.data_mb && v.data_mb > 0) rows.push(["ဒေတာ / Data", dataLabel(v.data_mb)]);
   if (L.wifi_name) rows.push(["Wi-Fi", L.wifi_name]);
   if (L.show_expiry && v.duration_minutes) rows.push(["သက်တမ်း / Valid", validity(v.duration_minutes) + " · " + firstUse]);
   if (L.support_contact) rows.push(["ဆက်သွယ်ရန် / Support", L.support_contact]);

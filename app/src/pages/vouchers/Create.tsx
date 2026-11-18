@@ -14,7 +14,7 @@ const readPending = (): Pending | null => { try { return JSON.parse(localStorage
 const writePending = (v: Pending | null) => { try { if (v) localStorage.setItem(PENDING_KEY, JSON.stringify(v)); else localStorage.removeItem(PENDING_KEY); } catch { /* storage blocked */ } };
 const DURATIONS = ["60", "1440", "10080", "43200"];
 
-interface Created { state?: string; vouchers?: Array<PrintVoucher & { code: string }> }
+interface Created { state?: string; data_mb?: number; vouchers?: Array<PrintVoucher & { code: string }> }
 
 export function Create() {
   const { t } = useI18n();
@@ -33,7 +33,7 @@ export function Create() {
   const ready = profiles.data?.profiles?.length === 1;
   function accept(res: Created) {
     if (res?.state !== "ready") { setResult({ kind: "notReady" }); return; }
-    writePending(null); setSaved(null); setResult({ kind: "ready", codes: asArray(res.vouchers) });
+    writePending(null); setSaved(null); setResult({ kind: "ready", codes: asArray<PrintVoucher & { code: string }>(res.vouchers).map((v) => ({ ...v, data_mb: res.data_mb ?? v.data_mb })) });
   }
   // A saved batch from an earlier visit: ask the server first. ready -> show the codes; 404 -> the server never
   // saved it, so the browser record is just stale; anything else keeps the recovery note (and Discard).
