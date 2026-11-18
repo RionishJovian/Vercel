@@ -21,7 +21,8 @@ const (
 	ModeOff Mode = "off"
 	// ModeOpen lets every authorized ADMIN or above use it, with no charge.
 	ModeOpen Mode = "open"
-	// ModeLocked shows the feature as locked. See Entitled.
+	// ModeLocked shows the feature as locked except to the platform administrator and to a
+	// business whose paid WebFig add-on is active. See Entitled.
 	ModeLocked Mode = "locked"
 )
 
@@ -37,15 +38,15 @@ func ModeFromEnv() Mode {
 }
 
 // Entitled is the single place that decides whether a role may use WebFig under
-// a mode. When this becomes a paid service, the check for a paid key or pass
-// goes here, in the ModeLocked branch. The platform administrator stays exempt
-// so the locked state can be tested.
-func Entitled(mode Mode, role string) bool {
+// a mode. In ModeLocked it is the paid service: paid is true while the business's
+// WebFig add-on is active (database.WebFigAddonActive). The platform administrator
+// stays exempt so the locked state can be tested.
+func Entitled(mode Mode, role string, paid bool) bool {
 	switch mode {
 	case ModeOpen:
 		return true
 	case ModeLocked:
-		return model.UserRole(role) == model.RoleDeveloper
+		return paid || model.UserRole(role) == model.RoleDeveloper
 	}
 	return false
 }

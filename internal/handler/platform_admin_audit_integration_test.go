@@ -1,10 +1,12 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -91,5 +93,52 @@ func TestPlatformPricingPublishIsAudited(t *testing.T) {
 	var n int
 	if err := db.QueryRow(`SELECT count(*) FROM audit_events WHERE business_id=$1 AND action='platform.pricing.publish' AND after_state->>'monthly_standard_mmk'='9000'`, biz).Scan(&n); err != nil || n != 1 {
 		t.Fatalf("pricing audit rows = %d (err %v), want 1", n, err)
+	}
+}
+
+func TestWebFigAddonActiveFollowsApproval(t *testing.T) {
+	db := harness_testdb(t)
+	repo := database.NewPlatformBusinessRepository(db)
+	email := "wf-" + randHex(6) + "@example.test"
+	biz, owner, err := repo.CreateTenant("WebFig Cafe", email, "$2a$10$aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "SMALL_WISP", 1, database.PlatformActor{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var addon string
+	if err := db.QueryRow(`INSERT INTO store_addons(addon_key,kind,name_en,name_my,price_mmk,period)
+		VALUES('webfig_access','feature','WebFig','WebFig',10000,'monthly')
+		ON CONFLICT (addon_key) DO UPDATE SET active=true RETURNING id`).Scan(&addon); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	active := func() bool {
+		ok, err := database.WebFigAddonActive(context.Background(), db, biz, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return ok
+	}
+	if active() {
+		t.Fatal("active with no request")
+	}
+	var req string
+	if err := db.QueryRow(`INSERT INTO store_addon_requests(business_id,user_id,addon_id,price_mmk,period,bank_reference,idempotency_key)
+		VALUES($1,$2,$3,10000,'monthly','REF-0001',$4) RETURNING id`, biz, owner, addon, "idem-"+randHex(8)).Scan(&req); err != nil {
+		t.Fatal(err)
+	}
+	if active() {
+		t.Fatal("active while the request is still pending")
+	}
+	if _, err := db.Exec(`UPDATE store_addon_requests SET status='approved', decided_at=$2 WHERE id=$1`, req, now.AddDate(0, 0, -10)); err != nil {
+		t.Fatal(err)
+	}
+	if !active() {
+		t.Fatal("not active 10 days after approval")
+	}
+	if _, err := db.Exec(`UPDATE store_addon_requests SET decided_at=$2 WHERE id=$1`, req, now.AddDate(0, -1, -2)); err != nil {
+		t.Fatal(err)
+	}
+	if active() {
+		t.Fatal("still active more than a day after the month ended")
 	}
 }
