@@ -23,7 +23,7 @@ function uptime(sec: unknown) {
 const Kv = ({ k, v }: { k: string; v: string }) => <div className="row small"><span className="soft">{k}</span><b className="num">{v}</b></div>;
 
 /** Telemetry is read-only; editing is available in existing reviewed, server-gated workflows. */
-export function Detail({ id, router, canReview }: { id: string; router?: RouterRow; canReview: boolean }) {
+export function Detail({ id, router }: { id: string; router?: RouterRow }) {
   const { t, lang } = useI18n();
   const { data, error, isLoading, mutate } = useSWR<{ telemetry?: Telemetry }>(`/routers/${encodeURIComponent(id)}/telemetry`, fetcher, keepPolling(15000));
   const tele = data?.telemetry, snap = tele?.snapshot, r = snap?.resources ?? {};
@@ -66,7 +66,7 @@ export function Detail({ id, router, canReview }: { id: string; router?: RouterR
           </section>
           {asArray<string>(snap.issues).length > 0 && <Note kind="warn">{asArray<string>(snap.issues).join(" · ")}</Note>}
           <Capabilities id={id} />
-          <CAPsMANInventoryPanel key={id} id={id} siteId={router?.site_id} canReview={canReview} />
+          <CAPsMANInventoryPanel key={id} id={id} />
         </>
       )}
     </>
