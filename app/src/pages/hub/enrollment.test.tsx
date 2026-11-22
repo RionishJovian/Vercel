@@ -114,6 +114,14 @@ describe("one-paste connection", () => {
     fireEvent.change(screen.getByLabelText("Router model"), { target: { value: "hap-ax2" } });
     expect(setupOptions()).toEqual(["existing", "ethernet", "5ghz", "2ghz"]);
   });
+  it("tells the owner about the router clock: kept as is for existing settings, set up by the new-router options", () => {
+    open();
+    fireEvent.change(screen.getByLabelText("Router model"), { target: { value: "hap-ax2" } });
+    expect(screen.getByText(/does not touch the router's clock/)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Router network setup"), { target: { value: "5ghz" } });
+    expect(screen.queryByText(/does not touch the router's clock/)).toBeNull();
+    expect(screen.getByText(/turns on automatic time \(NTP\)/)).toBeTruthy();
+  });
   it.each([
     ["cap-xl-ac", /board code has not been confirmed/],
     ["crs310", /no WAN port/],
