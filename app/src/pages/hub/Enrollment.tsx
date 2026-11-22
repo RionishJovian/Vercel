@@ -112,6 +112,7 @@ function NetworkSetup() {
           {choices.includes("2ghz") && <option value="2ghz">{t("hub.net.wifi24")}</option>}
         </select>
       </label>
+      {uplink === "existing" && <p className="soft small">{t("hub.net.existingTime")}</p>}
       {profile && (
         <>
           <dl className="spec">
